@@ -14,6 +14,7 @@ const StatusBadge = ({ status }) => {
     ocupada: { bg: "#d1fae5", color: "#065f46", label: "Ocupada" },
     disponible: { bg: "#e0e7ff", color: "#3730a3", label: "Disponible" },
     activo: { bg: "#d1fae5", color: "#065f46", label: "Activo" },
+    vencido: { bg: "#fee2e2", color: "#991b1b", label: "Vencido" },
     nuevo: { bg: "#fef3c7", color: "#92400e", label: "Nuevo" },
     en_proceso: { bg: "#dbeafe", color: "#1e40af", label: "En proceso" },
     resuelto: { bg: "#d1fae5", color: "#065f46", label: "Resuelto" },
@@ -30,7 +31,7 @@ const StatusBadge = ({ status }) => {
 
 const Modal = ({ title, onClose, children }) => (
   <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-    <div style={{ background: "#fff", borderRadius: 16, padding: 32, width: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+    <div style={{ background: "#fff", borderRadius: 16, padding: 32, width: 500, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#1a1a2e" }}>{title}</h2>
         <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 16 }}>✕</button>
@@ -40,15 +41,16 @@ const Modal = ({ title, onClose, children }) => (
   </div>
 );
 
-const Field = ({ label, children }) => (
+const Field = ({ label, hint, children }) => (
   <div style={{ marginBottom: 16 }}>
-    <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>{label}</label>
+    <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 4 }}>{label}</label>
+    {hint && <p style={{ margin: "0 0 6px", fontSize: 11, color: "#9ca3af" }}>{hint}</p>}
     {children}
   </div>
 );
 
 const Input = (props) => (
-  <input {...props} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", outline: "none", ...props.style }} />
+  <input {...props} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", ...props.style }} />
 );
 
 const Select = ({ children, ...props }) => (
@@ -57,43 +59,87 @@ const Select = ({ children, ...props }) => (
   </select>
 );
 
-const Btn = ({ children, onClick, color = "#1a1a2e", disabled }) => (
-  <button onClick={onClick} disabled={disabled} style={{ background: color, color: "#fff", border: "none", borderRadius: 10, padding: "11px 20px", fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", fontSize: 14, opacity: disabled ? 0.6 : 1 }}>
+const Btn = ({ children, onClick, color = "#1a1a2e", disabled, full }) => (
+  <button onClick={onClick} disabled={disabled} style={{
+    background: color, color: "#fff", border: "none", borderRadius: 10,
+    padding: "11px 20px", fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer",
+    fontSize: 14, opacity: disabled ? 0.6 : 1, width: full ? "100%" : "auto"
+  }}>
     {children}
   </button>
-);
+);// ─── FUNCIÓN CLAVE: Genera los pagos automáticamente ──────────────────────────
+const generarPagos = (contrato) => {
+  const pagos = [];
+  const inicio = new Date(contrato.start_date);
+  const fin = new Date(contrato.end_date);
+  const diaCorte = parseInt(contrato.payment_day);
+
+  let fecha = new Date(inicio);
+  fecha.setDate(1); // arrancar desde inicio del mes
+
+  while (fecha <= fin) {
+    const year = fecha.getFullYear();
+    const month = fecha.getMonth() + 1;
+
+    // Calcular fecha de vencimiento con el día específico del inquilino
+    const diasEnMes = new Date(year, month, 0).getDate();
+    const diaReal = Math.min(diaCorte, diasEnMes);
+    const vencimiento = `${year}-${String(month).padStart(2, "0")}-${String(diaReal).padStart(2, "0")}`;
+
+    pagos.push({
+      contract_id: contrato.id,
+      tenant_name: contrato.tenant_name,
+      property_name: contrato.property_name,
+      period_month: month,
+      period_year: year,
+      amount: contrato.monthly_rent,
+      due_date: vencimiento,
+      status: "pendiente",
+      payment_method: null,
+      notes: null,
+    });
+
+    fecha.setMonth(fecha.getMonth() + 1);
+  }
+  return pagos;
+};
 
 export default function Home() {
   const [view, setView] = useState("dashboard");
   const [properties, setProperties] = useState([]);
   const [payments, setPayments] = useState([]);
   const [tickets, setTickets] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Formularios
   const [propForm, setPropForm] = useState({ name: "", address: "", property_type: "depto", rent_amount: "", status: "disponible", notes: "" });
   const [payForm, setPayForm] = useState({ tenant_name: "", property_name: "", amount: "", due_date: "", status: "pendiente", payment_method: "transferencia", notes: "" });
-  const [ticketForm, setTicketForm] = useState({ property_name: "", tenant_name: "", title: "", description: "", category: "otro", priority: "media", status: "nuevo" });
+  const [ticketForm, setTicketForm] = useState({ property_name: "", tenant_name: "", title: "", description: "", category: "otro", priority: "media" });
+  const [contractForm, setContractForm] = useState({
+    tenant_name: "", property_name: "", monthly_rent: "",
+    start_date: "", end_date: "", payment_day: "5", deposit_amount: "", notes: ""
+  });
 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 3500);
   };
 
   const loadData = async () => {
     setLoading(true);
-    const [p, pay, t] = await Promise.all([
+    const [p, pay, t, c] = await Promise.all([
       supabase.from("properties").select("*").order("created_at", { ascending: false }),
-      supabase.from("payments").select("*").order("created_at", { ascending: false }),
+      supabase.from("payments").select("*").order("due_date", { ascending: true }),
       supabase.from("maintenance_tickets").select("*").order("created_at", { ascending: false }),
+      supabase.from("contracts").select("*").order("created_at", { ascending: false }),
     ]);
     setProperties(p.data || []);
     setPayments(pay.data || []);
     setTickets(t.data || []);
+    setContracts(c.data || []);
     setLoading(false);
   };
 
@@ -101,7 +147,9 @@ export default function Home() {
 
   const saveProperty = async () => {
     setSaving(true);
-    const { error } = await supabase.from("properties").insert([{ ...propForm, rent_amount: parseFloat(propForm.rent_amount) || 0 }]);
+    const { error } = await supabase.from("properties").insert([{
+      ...propForm, rent_amount: parseFloat(propForm.rent_amount) || 0
+    }]);
     setSaving(false);
     if (error) { showToast("Error: " + error.message, false); return; }
     showToast("Propiedad guardada ✅");
@@ -110,9 +158,42 @@ export default function Home() {
     loadData();
   };
 
+  const saveContract = async () => {
+    setSaving(true);
+
+    // 1. Guardar el contrato
+    const { data: newContract, error } = await supabase.from("contracts").insert([{
+      tenant_name: contractForm.tenant_name,
+      property_name: contractForm.property_name,
+      monthly_rent: parseFloat(contractForm.monthly_rent) || 0,
+      start_date: contractForm.start_date,
+      end_date: contractForm.end_date,
+      payment_day: parseInt(contractForm.payment_day),
+      deposit_amount: parseFloat(contractForm.deposit_amount) || 0,
+      status: "activo",
+      notes: contractForm.notes,
+    }]).select().single();
+
+    if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
+
+    // 2. Generar pagos automáticamente
+    const pagos = generarPagos(newContract);
+    const { error: errorPagos } = await supabase.from("payments").insert(pagos);
+
+    setSaving(false);
+    if (errorPagos) { showToast("Contrato creado pero error en pagos: " + errorPagos.message, false); return; }
+
+    showToast(`✅ Contrato creado con ${pagos.length} cobros generados automáticamente`);
+    setShowModal(null);
+    setContractForm({ tenant_name: "", property_name: "", monthly_rent: "", start_date: "", end_date: "", payment_day: "5", deposit_amount: "", notes: "" });
+    loadData();
+  };
+
   const savePayment = async () => {
     setSaving(true);
-    const { error } = await supabase.from("payments").insert([{ ...payForm, amount: parseFloat(payForm.amount) || 0 }]);
+    const { error } = await supabase.from("payments").insert([{
+      ...payForm, amount: parseFloat(payForm.amount) || 0
+    }]);
     setSaving(false);
     if (error) { showToast("Error: " + error.message, false); return; }
     showToast("Pago registrado ✅");
@@ -123,12 +204,12 @@ export default function Home() {
 
   const saveTicket = async () => {
     setSaving(true);
-    const { error } = await supabase.from("maintenance_tickets").insert([{ ...ticketForm }]);
+    const { error } = await supabase.from("maintenance_tickets").insert([{ ...ticketForm, status: "nuevo" }]);
     setSaving(false);
     if (error) { showToast("Error: " + error.message, false); return; }
     showToast("Ticket creado ✅");
     setShowModal(null);
-    setTicketForm({ property_name: "", tenant_name: "", title: "", description: "", category: "otro", priority: "media", status: "nuevo" });
+    setTicketForm({ property_name: "", tenant_name: "", title: "", description: "", category: "otro", priority: "media" });
     loadData();
   };
 
@@ -149,8 +230,14 @@ export default function Home() {
   const overdue = payments.filter(p => p.status === "atrasado").reduce((a, p) => a + (p.amount || 0), 0);
   const pending = payments.filter(p => p.status === "pendiente").reduce((a, p) => a + (p.amount || 0), 0);
 
-  const nav = [
+  const hoy = new Date().toISOString().split("T")[0];
+  const pagosMes = payments.filter(p => {
+    const d = new Date(p.due_date);
+    const ahora = new Date();
+    return d.getMonth() === ahora.getMonth() && d.getFullYear() === ahora.getFullYear();
+  });const nav = [
     { id: "dashboard", label: "📊 Panel" },
+    { id: "contracts", label: "📋 Contratos" },
     { id: "properties", label: "🏠 Propiedades" },
     { id: "payments", label: "💰 Cobranza" },
     { id: "tickets", label: "🔧 Mantenimiento" },
@@ -159,7 +246,6 @@ export default function Home() {
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif", background: "#f4f5f7" }}>
 
-      {/* Toast */}
       {toast && (
         <div style={{ position: "fixed", top: 24, right: 24, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 2000, boxShadow: "0 4px 20px rgba(0,0,0,0.2)" }}>
           {toast.msg}
@@ -190,63 +276,103 @@ export default function Home() {
 
       {/* Main */}
       <div style={{ flex: 1, padding: 32, overflowY: "auto" }}>
-        {loading && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200 }}>
-            <p style={{ color: "#6b7280", fontSize: 16 }}>Cargando datos...</p>
-          </div>
-        )}
+        {loading && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200 }}><p style={{ color: "#6b7280" }}>Cargando...</p></div>}
 
+        {/* DASHBOARD */}
         {!loading && view === "dashboard" && (
           <div>
             <h1 style={{ margin: "0 0 24px", fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>Panel de Control</h1>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 28 }}>
               {[
-                { label: "Renta mensual total", value: fmt(totalRent), color: "#1a1a2e" },
+                { label: "Renta mensual", value: fmt(totalRent), color: "#1a1a2e" },
                 { label: "Cobrado", value: fmt(paid), color: "#065f46" },
                 { label: "Pendiente", value: fmt(pending), color: "#92400e" },
                 { label: "Atrasado", value: fmt(overdue), color: "#991b1b" },
+                { label: "Contratos activos", value: contracts.filter(c => c.status === "activo").length, color: "#1e40af" },
               ].map((s, i) => (
-                <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                   <p style={{ margin: "0 0 8px", fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
-                  <p style={{ margin: 0, fontSize: 26, fontWeight: 800, color: s.color }}>{s.value}</p>
+                  <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</p>
                 </div>
               ))}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-              <div style={{ background: "#fff", borderRadius: 14, padding: 22, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Últimos pagos</h3>
-                {payments.slice(0, 5).map(p => (
-                  <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f3f4f6" }}>
-                    <div>
-                      <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>{p.tenant_name || "—"}</p>
-                      <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{p.property_name || "—"}</p>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>{fmt(p.amount)}</span>
-                      <StatusBadge status={p.status} />
-                    </div>
+
+            {/* Pagos del mes */}
+            <div style={{ background: "#fff", borderRadius: 14, padding: 22, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", marginBottom: 20 }}>
+              <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>
+                Cobros de este mes ({pagosMes.length})
+              </h3>
+              {pagosMes.length === 0 && <p style={{ color: "#9ca3af", fontSize: 13 }}>No hay cobros este mes — crea un contrato para generarlos automáticamente</p>}
+              {pagosMes.map(p => (
+                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f3f4f6" }}>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>{p.tenant_name || "—"}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{p.property_name} · Vence {p.due_date}</p>
                   </div>
-                ))}
-                {payments.length === 0 && <p style={{ color: "#9ca3af", fontSize: 13 }}>No hay pagos registrados aún</p>}
-              </div>
-              <div style={{ background: "#fff", borderRadius: 14, padding: 22, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Resumen de propiedades</h3>
-                {[
-                  { label: "Ocupadas", count: properties.filter(p => p.status === "ocupada").length, color: "#065f46" },
-                  { label: "Disponibles", count: properties.filter(p => p.status === "disponible").length, color: "#3730a3" },
-                  { label: "En mantenimiento", count: properties.filter(p => p.status === "mantenimiento").length, color: "#9d174d" },
-                  { label: "Total", count: properties.length, color: "#1a1a2e" },
-                ].map((s, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #f3f4f6" }}>
-                    <span style={{ fontSize: 14, color: "#374151" }}>{s.label}</span>
-                    <span style={{ fontWeight: 800, fontSize: 16, color: s.color }}>{s.count}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{fmt(p.amount)}</span>
+                    <StatusBadge status={p.status} />
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
+        {/* CONTRATOS */}
+        {!loading && view === "contracts" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+              <div>
+                <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>Contratos ({contracts.length})</h1>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>Al crear un contrato se generan los cobros automáticamente</p>
+              </div>
+              <Btn color="#c8a96e" onClick={() => setShowModal("contract")}>+ Nuevo contrato</Btn>
+            </div>
+            {contracts.length === 0 && (
+              <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}>
+                <p style={{ fontSize: 32, margin: "0 0 12px" }}>📋</p>
+                <p style={{ color: "#6b7280", fontSize: 15, margin: "0 0 20px" }}>No tienes contratos aún. Al crear uno se generan todos los cobros del año automáticamente.</p>
+                <Btn color="#c8a96e" onClick={() => setShowModal("contract")}>+ Crear primer contrato</Btn>
+              </div>
+            )}
+            <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+              {contracts.length > 0 && (
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "#f9fafb" }}>
+                      {["Inquilino", "Propiedad", "Renta", "Vigencia", "Día de pago", "Estado"].map(h => (
+                        <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contracts.map(c => {
+                      const diasRestantes = Math.ceil((new Date(c.end_date) - new Date()) / (1000 * 60 * 60 * 24));
+                      return (
+                        <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                          <td style={{ padding: "14px 16px", fontWeight: 600, fontSize: 14 }}>{c.tenant_name}</td>
+                          <td style={{ padding: "14px 16px", fontSize: 13, color: "#6b7280" }}>{c.property_name}</td>
+                          <td style={{ padding: "14px 16px", fontWeight: 700 }}>{fmt(c.monthly_rent)}</td>
+                          <td style={{ padding: "14px 16px", fontSize: 12, color: "#6b7280" }}>
+                            {c.start_date} → {c.end_date}
+                            <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: diasRestantes <= 30 ? "#dc2626" : "#9ca3af" }}>
+                              ({diasRestantes}d)
+                            </span>
+                          </td>
+                          <td style={{ padding: "14px 16px", fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>Día {c.payment_day}</td>
+                          <td style={{ padding: "14px 16px" }}><StatusBadge status={c.status} /></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* PROPIEDADES */}
         {!loading && view === "properties" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
@@ -275,7 +401,6 @@ export default function Home() {
                       <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Renta mensual</p>
                       <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#1a1a2e" }}>{fmt(p.rent_amount)}</p>
                     </div>
-                    {p.notes && <p style={{ margin: "8px 0 0", fontSize: 12, color: "#9ca3af", fontStyle: "italic" }}>{p.notes}</p>}
                   </div>
                 </div>
               ))}
@@ -283,36 +408,36 @@ export default function Home() {
           </div>
         )}
 
+        {/* COBRANZA */}
         {!loading && view === "payments" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>Cobranza ({payments.length})</h1>
-              <Btn color="#c8a96e" onClick={() => setShowModal("payment")}>+ Registrar pago</Btn>
+              <Btn color="#c8a96e" onClick={() => setShowModal("payment")}>+ Registrar pago manual</Btn>
             </div>
             {payments.length === 0 && (
               <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}>
                 <p style={{ fontSize: 32, margin: "0 0 12px" }}>💰</p>
-                <p style={{ color: "#6b7280", fontSize: 16, margin: 0 }}>No hay pagos registrados aún.</p>
+                <p style={{ color: "#6b7280", fontSize: 15, margin: 0 }}>No hay cobros aún. Crea un contrato y se generarán automáticamente.</p>
               </div>
             )}
-            <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-              {payments.length > 0 && (
+            {payments.length > 0 && (
+              <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#f9fafb" }}>
-                      {["Arrendatario", "Propiedad", "Monto", "Vencimiento", "Método", "Estado", "Acciones"].map(h => (
+                      {["Inquilino", "Propiedad", "Monto", "Vencimiento", "Estado", "Actualizar"].map(h => (
                         <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {payments.map(p => (
-                      <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                      <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", background: p.status === "atrasado" ? "#fff5f5" : "#fff" }}>
                         <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{p.tenant_name || "—"}</td>
                         <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{p.property_name || "—"}</td>
                         <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(p.amount)}</td>
                         <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{p.due_date || "—"}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{p.payment_method || "—"}</td>
                         <td style={{ padding: "12px 16px" }}><StatusBadge status={p.status} /></td>
                         <td style={{ padding: "12px 16px" }}>
                           <select onChange={e => updatePaymentStatus(p.id, e.target.value)} value={p.status}
@@ -327,11 +452,12 @@ export default function Home() {
                     ))}
                   </tbody>
                 </table>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
+        {/* MANTENIMIENTO */}
         {!loading && view === "tickets" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
@@ -348,18 +474,12 @@ export default function Home() {
               {tickets.map(t => (
                 <div key={t.id} style={{ background: "#fff", borderRadius: 14, padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ flex: 1 }}>
+                    <div>
                       <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700 }}>{t.title}</h3>
-                      <p style={{ margin: "0 0 8px", fontSize: 13, color: "#6b7280" }}>
-                        📍 {t.property_name || "—"} · 👤 {t.tenant_name || "—"}
-                      </p>
-                      {t.description && <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>{t.description}</p>}
+                      <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>📍 {t.property_name || "—"} · 👤 {t.tenant_name || "—"}</p>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end", marginLeft: 16 }}>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <StatusBadge status={t.priority} />
-                        <StatusBadge status={t.status} />
-                      </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <StatusBadge status={t.priority} />
                       <select onChange={e => updateTicketStatus(t.id, e.target.value)} value={t.status}
                         style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, cursor: "pointer" }}>
                         <option value="nuevo">Nuevo</option>
@@ -376,16 +496,59 @@ export default function Home() {
         )}
       </div>
 
-      {/* Modal: Nueva Propiedad */}
+      {/* MODAL: Nuevo Contrato */}
+      {showModal === "contract" && (
+        <Modal title="📋 Nuevo Contrato" onClose={() => setShowModal(null)}>
+          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginBottom: 20 }}>
+            <p style={{ margin: 0, fontSize: 13, color: "#065f46", fontWeight: 600 }}>
+              ✨ Al guardar se generarán automáticamente todos los cobros mensuales
+            </p>
+          </div>
+          <Field label="Nombre del inquilino *">
+            <Input placeholder="Ej: Ana García" value={contractForm.tenant_name} onChange={e => setContractForm({ ...contractForm, tenant_name: e.target.value })} />
+          </Field>
+          <Field label="Propiedad *">
+            <Input placeholder="Ej: Depto 3B Torre Esmeralda" value={contractForm.property_name} onChange={e => setContractForm({ ...contractForm, property_name: e.target.value })} />
+          </Field>
+          <Field label="Renta mensual (MXN) *">
+            <Input type="number" placeholder="Ej: 12500" value={contractForm.monthly_rent} onChange={e => setContractForm({ ...contractForm, monthly_rent: e.target.value })} />
+          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Inicio del contrato *">
+              <Input type="date" value={contractForm.start_date} onChange={e => setContractForm({ ...contractForm, start_date: e.target.value })} />
+            </Field>
+            <Field label="Fin del contrato *">
+              <Input type="date" value={contractForm.end_date} onChange={e => setContractForm({ ...contractForm, end_date: e.target.value })} />
+            </Field>
+          </div>
+          <Field label="¿Qué día del mes paga este inquilino?" hint="Ej: 5 = paga el día 5 de cada mes, 15 = paga el día 15, etc.">
+            <Input type="number" min="1" max="28" placeholder="Ej: 10" value={contractForm.payment_day} onChange={e => setContractForm({ ...contractForm, payment_day: e.target.value })} />
+          </Field>
+          <Field label="Depósito (MXN)">
+            <Input type="number" placeholder="Ej: 25000" value={contractForm.deposit_amount} onChange={e => setContractForm({ ...contractForm, deposit_amount: e.target.value })} />
+          </Field>
+          <Field label="Notas (opcional)">
+            <Input placeholder="Cualquier condición especial" value={contractForm.notes} onChange={e => setContractForm({ ...contractForm, notes: e.target.value })} />
+          </Field>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <button onClick={() => setShowModal(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn onClick={saveContract} disabled={saving || !contractForm.tenant_name || !contractForm.property_name || !contractForm.monthly_rent || !contractForm.start_date || !contractForm.end_date}>
+              {saving ? "Generando cobros..." : "Crear contrato"}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* MODAL: Nueva Propiedad */}
       {showModal === "property" && (
-        <Modal title="Nueva Propiedad" onClose={() => setShowModal(null)}>
-          <Field label="Nombre de la propiedad *">
+        <Modal title="🏠 Nueva Propiedad" onClose={() => setShowModal(null)}>
+          <Field label="Nombre *">
             <Input placeholder="Ej: Depto 3B Torre Esmeralda" value={propForm.name} onChange={e => setPropForm({ ...propForm, name: e.target.value })} />
           </Field>
           <Field label="Dirección">
             <Input placeholder="Ej: Av. Insurgentes Sur 1234, CDMX" value={propForm.address} onChange={e => setPropForm({ ...propForm, address: e.target.value })} />
           </Field>
-          <Field label="Tipo de propiedad">
+          <Field label="Tipo">
             <Select value={propForm.property_type} onChange={e => setPropForm({ ...propForm, property_type: e.target.value })}>
               <option value="depto">Departamento</option>
               <option value="casa">Casa</option>
@@ -404,20 +567,17 @@ export default function Home() {
               <option value="mantenimiento">En mantenimiento</option>
             </Select>
           </Field>
-          <Field label="Notas (opcional)">
-            <Input placeholder="Cualquier nota relevante" value={propForm.notes} onChange={e => setPropForm({ ...propForm, notes: e.target.value })} />
-          </Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={() => setShowModal(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={saveProperty} disabled={saving || !propForm.name}>{saving ? "Guardando..." : "Guardar propiedad"}</Btn>
+            <Btn onClick={saveProperty} disabled={saving || !propForm.name}>{saving ? "Guardando..." : "Guardar"}</Btn>
           </div>
         </Modal>
       )}
 
-      {/* Modal: Registrar Pago */}
+      {/* MODAL: Pago Manual */}
       {showModal === "payment" && (
-        <Modal title="Registrar Pago" onClose={() => setShowModal(null)}>
-          <Field label="Nombre del arrendatario *">
+        <Modal title="💰 Registrar Pago Manual" onClose={() => setShowModal(null)}>
+          <Field label="Inquilino *">
             <Input placeholder="Ej: Ana García" value={payForm.tenant_name} onChange={e => setPayForm({ ...payForm, tenant_name: e.target.value })} />
           </Field>
           <Field label="Propiedad">
@@ -442,51 +602,49 @@ export default function Home() {
               <option value="pendiente">Pendiente</option>
               <option value="pagado">Pagado</option>
               <option value="atrasado">Atrasado</option>
-              <option value="en_revision">En revisión</option>
             </Select>
-          </Field>
-          <Field label="Notas (opcional)">
-            <Input placeholder="Cualquier nota" value={payForm.notes} onChange={e => setPayForm({ ...payForm, notes: e.target.value })} />
           </Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={() => setShowModal(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={savePayment} disabled={saving || !payForm.tenant_name || !payForm.amount}>{saving ? "Guardando..." : "Registrar pago"}</Btn>
+            <Btn onClick={savePayment} disabled={saving || !payForm.tenant_name || !payForm.amount}>{saving ? "Guardando..." : "Registrar"}</Btn>
           </div>
         </Modal>
       )}
 
-      {/* Modal: Nuevo Ticket */}
+      {/* MODAL: Ticket */}
       {showModal === "ticket" && (
-        <Modal title="Nuevo Ticket de Mantenimiento" onClose={() => setShowModal(null)}>
+        <Modal title="🔧 Nuevo Ticket de Mantenimiento" onClose={() => setShowModal(null)}>
           <Field label="Título del problema *">
             <Input placeholder="Ej: Fuga de agua en baño" value={ticketForm.title} onChange={e => setTicketForm({ ...ticketForm, title: e.target.value })} />
           </Field>
           <Field label="Propiedad">
             <Input placeholder="Ej: Casa Satélite Oriente" value={ticketForm.property_name} onChange={e => setTicketForm({ ...ticketForm, property_name: e.target.value })} />
           </Field>
-          <Field label="Arrendatario">
+          <Field label="Inquilino">
             <Input placeholder="Ej: Roberto Silva" value={ticketForm.tenant_name} onChange={e => setTicketForm({ ...ticketForm, tenant_name: e.target.value })} />
           </Field>
           <Field label="Descripción">
-            <Input placeholder="Describe el problema con detalle" value={ticketForm.description} onChange={e => setTicketForm({ ...ticketForm, description: e.target.value })} />
+            <Input placeholder="Describe el problema" value={ticketForm.description} onChange={e => setTicketForm({ ...ticketForm, description: e.target.value })} />
           </Field>
-          <Field label="Categoría">
-            <Select value={ticketForm.category} onChange={e => setTicketForm({ ...ticketForm, category: e.target.value })}>
-              <option value="plomería">Plomería</option>
-              <option value="electricidad">Electricidad</option>
-              <option value="pintura">Pintura</option>
-              <option value="carpintería">Carpintería</option>
-              <option value="otro">Otro</option>
-            </Select>
-          </Field>
-          <Field label="Prioridad">
-            <Select value={ticketForm.priority} onChange={e => setTicketForm({ ...ticketForm, priority: e.target.value })}>
-              <option value="baja">Baja</option>
-              <option value="media">Media</option>
-              <option value="alta">Alta</option>
-              <option value="urgente">Urgente</option>
-            </Select>
-          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Categoría">
+              <Select value={ticketForm.category} onChange={e => setTicketForm({ ...ticketForm, category: e.target.value })}>
+                <option value="plomería">Plomería</option>
+                <option value="electricidad">Electricidad</option>
+                <option value="pintura">Pintura</option>
+                <option value="carpintería">Carpintería</option>
+                <option value="otro">Otro</option>
+              </Select>
+            </Field>
+            <Field label="Prioridad">
+              <Select value={ticketForm.priority} onChange={e => setTicketForm({ ...ticketForm, priority: e.target.value })}>
+                <option value="baja">Baja</option>
+                <option value="media">Media</option>
+                <option value="alta">Alta</option>
+                <option value="urgente">Urgente</option>
+              </Select>
+            </Field>
+          </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={() => setShowModal(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
             <Btn onClick={saveTicket} disabled={saving || !ticketForm.title}>{saving ? "Guardando..." : "Crear ticket"}</Btn>
