@@ -49,7 +49,7 @@ const TenantLogin = ({ onLogin }) => {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        shouldCreateUser: false,
+        shouldCreateUser: true,
         emailRedirectTo: "https://app.emporioinmobiliario.com.mx/inquilino"
       }
     });
