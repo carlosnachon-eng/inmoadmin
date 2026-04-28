@@ -126,12 +126,8 @@ const LoginScreen = ({ onLogin }) => {
           <p style={{ margin: "8px 0 0", fontSize: 14, color: "#6b7280" }}>Emporio Inmobiliario</p>
         </div>
         {error && <div style={{ background: "#fee2e2", color: "#991b1b", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 14, fontWeight: 600 }}>{error}</div>}
-        <Field label="Email">
-          <Input type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} />
-        </Field>
-        <Field label="Contraseña">
-          <Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} />
-        </Field>
+        <Field label="Email"><Input type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} /></Field>
+        <Field label="Contraseña"><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} /></Field>
         <button onClick={handleLogin} disabled={loading || !email || !password} style={{ width: "100%", background: "#c8a96e", color: "#fff", border: "none", borderRadius: 10, padding: "14px", fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", fontSize: 16, marginTop: 8, opacity: loading ? 0.7 : 1 }}>
           {loading ? "Entrando..." : "Entrar"}
         </button>
@@ -156,7 +152,7 @@ export default function Home() {
   const [confirm, setConfirm] = useState(null);
   const [editing, setEditing] = useState(null);
 
-  const emptyProp = { name: "", address: "", property_type: "depto", rent_amount: "", status: "disponible", notes: "" };
+  const emptyProp = { name: "", address: "", property_type: "depto", rent_amount: "", status: "disponible", notes: "", owner_email: "", owner_phone: "" };
   const emptyContract = { tenant_name: "", tenant_email: "", owner_name: "", property_name: "", monthly_rent: "", start_date: "", end_date: "", payment_day: "5", deposit_amount: "", commission_type: "porcentaje", commission_value: "", commission_who: "propietario_descuento", notes: "" };
   const emptyPayment = { tenant_name: "", tenant_email: "", property_name: "", amount: "", due_date: "", status: "pendiente", payment_method: "transferencia", notes: "" };
   const emptyTicket = { property_name: "", tenant_name: "", title: "", description: "", category: "otro", priority: "media" };
@@ -210,8 +206,14 @@ export default function Home() {
 
   const openEdit = (type, item) => {
     setEditing({ type, id: item.id });
-    if (type === "property") { setPropForm({ name: item.name || "", address: item.address || "", property_type: item.property_type || "depto", rent_amount: item.rent_amount || "", status: item.status || "disponible", notes: item.notes || "" }); setShowModal("property"); }
-    if (type === "contract") { setContractForm({ tenant_name: item.tenant_name || "", tenant_email: item.tenant_email || "", owner_name: item.owner_name || "", property_name: item.property_name || "", monthly_rent: item.monthly_rent || "", start_date: item.start_date || "", end_date: item.end_date || "", payment_day: item.payment_day || "5", deposit_amount: item.deposit_amount || "", commission_type: item.commission_type || "porcentaje", commission_value: item.commission_value || "", commission_who: item.commission_who || "propietario_descuento", notes: item.notes || "" }); setShowModal("contract"); }
+    if (type === "property") {
+      setPropForm({ name: item.name || "", address: item.address || "", property_type: item.property_type || "depto", rent_amount: item.rent_amount || "", status: item.status || "disponible", notes: item.notes || "", owner_email: item.owner_email || "", owner_phone: item.owner_phone || "" });
+      setShowModal("property");
+    }
+    if (type === "contract") {
+      setContractForm({ tenant_name: item.tenant_name || "", tenant_email: item.tenant_email || "", owner_name: item.owner_name || "", property_name: item.property_name || "", monthly_rent: item.monthly_rent || "", start_date: item.start_date || "", end_date: item.end_date || "", payment_day: item.payment_day || "5", deposit_amount: item.deposit_amount || "", commission_type: item.commission_type || "porcentaje", commission_value: item.commission_value || "", commission_who: item.commission_who || "propietario_descuento", notes: item.notes || "" });
+      setShowModal("contract");
+    }
   };
 
   const closeModal = () => { setShowModal(null); setEditing(null); setPropForm(emptyProp); setContractForm(emptyContract); setPayForm(emptyPayment); setTicketForm(emptyTicket); };
@@ -219,7 +221,9 @@ export default function Home() {
   const saveProperty = async () => {
     setSaving(true);
     const data = { ...propForm, rent_amount: parseFloat(propForm.rent_amount) || 0 };
-    const { error } = editing?.type === "property" ? await supabase.from("properties").update(data).eq("id", editing.id) : await supabase.from("properties").insert([data]);
+    const { error } = editing?.type === "property"
+      ? await supabase.from("properties").update(data).eq("id", editing.id)
+      : await supabase.from("properties").insert([data]);
     setSaving(false);
     if (error) { showToast("Error: " + error.message, false); return; }
     showToast(editing ? "Propiedad actualizada ✅" : "Propiedad guardada ✅");
@@ -508,7 +512,8 @@ export default function Home() {
                       <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{p.name}</h3>
                       <StatusBadge status={p.status} />
                     </div>
-                    <p style={{ margin: "0 0 10px", fontSize: 12, color: "#6b7280" }}>📍 {p.address || "Sin dirección"}</p>
+                    <p style={{ margin: "0 0 4px", fontSize: 12, color: "#6b7280" }}>📍 {p.address || "Sin dirección"}</p>
+                    {p.owner_email && <p style={{ margin: "0 0 10px", fontSize: 11, color: "#9ca3af" }}>👤 {p.owner_email}</p>}
                     <div style={{ paddingTop: 10, borderTop: "1px solid #f3f4f6", marginBottom: 12 }}>
                       <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Renta mensual</p>
                       <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#1a1a2e" }}>{fmt(p.rent_amount)}</p>
@@ -560,9 +565,7 @@ export default function Home() {
                         <td style={{ padding: "12px 16px" }}>
                           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                             {p.status === "en_revision" && p.receipt_url && (
-                              <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ background: "#7c3aed", color: "#fff", padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
-                                🧾 Ver
-                              </a>
+                              <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ background: "#7c3aed", color: "#fff", padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>🧾 Ver</a>
                             )}
                             {["pendiente", "atrasado"].includes(p.status) && (
                               <Btn small color="#1e40af" onClick={() => sendReminder(p)}>📧</Btn>
@@ -719,6 +722,8 @@ export default function Home() {
           <Field label="Tipo"><Sel value={propForm.property_type} onChange={e => setPropForm({ ...propForm, property_type: e.target.value })}><option value="depto">Departamento</option><option value="casa">Casa</option><option value="local">Local comercial</option><option value="bodega">Bodega</option><option value="oficina">Oficina</option></Sel></Field>
           <Field label="Renta mensual (MXN)"><Input type="number" placeholder="Ej: 12500" value={propForm.rent_amount} onChange={e => setPropForm({ ...propForm, rent_amount: e.target.value })} /></Field>
           <Field label="Estado"><Sel value={propForm.status} onChange={e => setPropForm({ ...propForm, status: e.target.value })}><option value="disponible">Disponible</option><option value="ocupada">Ocupada</option><option value="mantenimiento">En mantenimiento</option></Sel></Field>
+          <Field label="Email del propietario" hint="Para que acceda a su portal"><Input type="email" placeholder="propietario@email.com" value={propForm.owner_email} onChange={e => setPropForm({ ...propForm, owner_email: e.target.value })} /></Field>
+          <Field label="Teléfono del propietario"><Input placeholder="Ej: 55 1234 5678" value={propForm.owner_phone} onChange={e => setPropForm({ ...propForm, owner_phone: e.target.value })} /></Field>
           <Field label="Notas"><Input placeholder="Notas adicionales" value={propForm.notes} onChange={e => setPropForm({ ...propForm, notes: e.target.value })} /></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
