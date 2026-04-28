@@ -80,9 +80,7 @@ const Btn = ({ children, onClick, color = "#1a1a2e", disabled, small }) => (
 
 const calcComision = (contrato) => {
   if (!contrato.commission_value) return 0;
-  if (contrato.commission_type === "porcentaje") {
-    return (contrato.monthly_rent * contrato.commission_value) / 100;
-  }
+  if (contrato.commission_type === "porcentaje") return (contrato.monthly_rent * contrato.commission_value) / 100;
   return contrato.commission_value;
 };
 
@@ -98,25 +96,55 @@ const generarPagos = (contrato) => {
     const diasEnMes = new Date(year, month, 0).getDate();
     const diaReal = Math.min(diaCorte, diasEnMes);
     const vencimiento = `${year}-${String(month).padStart(2, "0")}-${String(diaReal).padStart(2, "0")}`;
-    pagos.push({
-      contract_id: contrato.id,
-      tenant_name: contrato.tenant_name,
-      tenant_email: contrato.tenant_email || null,
-      property_name: contrato.property_name,
-      period_month: month,
-      period_year: year,
-      amount: contrato.monthly_rent,
-      due_date: vencimiento,
-      status: "pendiente",
-      payment_method: null,
-      notes: null,
-    });
+    pagos.push({ contract_id: contrato.id, tenant_name: contrato.tenant_name, tenant_email: contrato.tenant_email || null, property_name: contrato.property_name, period_month: month, period_year: year, amount: contrato.monthly_rent, due_date: vencimiento, status: "pendiente", payment_method: null, notes: null });
     fecha.setMonth(fecha.getMonth() + 1);
   }
   return pagos;
 };
 
+// ─── LOGIN SCREEN ────────────────────────────────────────────────────────────
+const LoginScreen = ({ onLogin }) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleLogin = async () => {
+    setLoading(true);
+    setError("");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+    if (error) setError("Email o contraseña incorrectos");
+    else onLogin();
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ background: "#fff", borderRadius: 20, padding: 48, width: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🏢</div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#1a1a2e" }}>InmoAdmin</h1>
+          <p style={{ margin: "8px 0 0", fontSize: 14, color: "#6b7280" }}>Emporio Inmobiliario</p>
+        </div>
+        {error && <div style={{ background: "#fee2e2", color: "#991b1b", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 14, fontWeight: 600 }}>{error}</div>}
+        <Field label="Email">
+          <Input type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} />
+        </Field>
+        <Field label="Contraseña">
+          <Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} />
+        </Field>
+        <button onClick={handleLogin} disabled={loading || !email || !password} style={{ width: "100%", background: "#c8a96e", color: "#fff", border: "none", borderRadius: 10, padding: "14px", fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", fontSize: 16, marginTop: 8, opacity: loading ? 0.7 : 1 }}>
+          {loading ? "Entrando..." : "Entrar"}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export default function Home() {
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [view, setView] = useState("dashboard");
   const [properties, setProperties] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -140,6 +168,33 @@ export default function Home() {
   const [ticketForm, setTicketForm] = useState(emptyTicket);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
+  const isAdmin = profile?.role === "admin";
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) loadProfile(session.user.id);
+      else setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) loadProfile(session.user.id);
+      else { setProfile(null); setAuthLoading(false); }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const loadProfile = async (userId) => {
+    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    setProfile(data);
+    setAuthLoading(false);
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setProfile(null);
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -156,7 +211,7 @@ export default function Home() {
     setLoading(false);
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { if (session) loadData(); }, [session]);
 
   const openEdit = (type, item) => {
     setEditing({ type, id: item.id });
@@ -169,9 +224,7 @@ export default function Home() {
   const saveProperty = async () => {
     setSaving(true);
     const data = { ...propForm, rent_amount: parseFloat(propForm.rent_amount) || 0 };
-    const { error } = editing?.type === "property"
-      ? await supabase.from("properties").update(data).eq("id", editing.id)
-      : await supabase.from("properties").insert([data]);
+    const { error } = editing?.type === "property" ? await supabase.from("properties").update(data).eq("id", editing.id) : await supabase.from("properties").insert([data]);
     setSaving(false);
     if (error) { showToast("Error: " + error.message, false); return; }
     showToast(editing ? "Propiedad actualizada ✅" : "Propiedad guardada ✅");
@@ -180,21 +233,7 @@ export default function Home() {
 
   const saveContract = async () => {
     setSaving(true);
-    const contractData = {
-      tenant_name: contractForm.tenant_name,
-      tenant_email: contractForm.tenant_email,
-      owner_name: contractForm.owner_name,
-      property_name: contractForm.property_name,
-      monthly_rent: parseFloat(contractForm.monthly_rent) || 0,
-      start_date: contractForm.start_date,
-      end_date: contractForm.end_date,
-      payment_day: parseInt(contractForm.payment_day),
-      deposit_amount: parseFloat(contractForm.deposit_amount) || 0,
-      commission_type: contractForm.commission_type,
-      commission_value: parseFloat(contractForm.commission_value) || 0,
-      commission_who: contractForm.commission_who,
-      notes: contractForm.notes,
-    };
+    const contractData = { tenant_name: contractForm.tenant_name, tenant_email: contractForm.tenant_email, owner_name: contractForm.owner_name, property_name: contractForm.property_name, monthly_rent: parseFloat(contractForm.monthly_rent) || 0, start_date: contractForm.start_date, end_date: contractForm.end_date, payment_day: parseInt(contractForm.payment_day), deposit_amount: parseFloat(contractForm.deposit_amount) || 0, commission_type: contractForm.commission_type, commission_value: parseFloat(contractForm.commission_value) || 0, commission_who: contractForm.commission_who, notes: contractForm.notes };
     if (editing?.type === "contract") {
       const { error } = await supabase.from("contracts").update(contractData).eq("id", editing.id);
       setSaving(false);
@@ -228,6 +267,7 @@ export default function Home() {
   };
 
   const deleteItem = (type, id, msg) => {
+    if (!isAdmin) { showToast("Solo el admin puede eliminar", false); return; }
     setConfirm({
       message: msg,
       onConfirm: async () => {
@@ -247,15 +287,7 @@ export default function Home() {
   const sendReminder = async (payment) => {
     if (!payment.tenant_email) { showToast("Sin email — edita el contrato para agregarlo", false); return; }
     try {
-      const res = await fetch("/api/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: payment.tenant_email,
-          subject: `Recordatorio de pago — ${payment.property_name}`,
-          html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px;"><h2 style="color:#1a1a2e;">Recordatorio de pago de renta</h2><p>Hola <strong>${payment.tenant_name}</strong>,</p><p>Te recordamos que tienes un pago pendiente:</p><div style="background:#f9fafb;border-radius:12px;padding:20px;margin:20px 0;"><p style="margin:0 0 8px;"><strong>Propiedad:</strong> ${payment.property_name}</p><p style="margin:0 0 8px;"><strong>Monto:</strong> ${Number(payment.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}</p><p style="margin:0;"><strong>Fecha límite:</strong> ${payment.due_date}</p></div><p>Por favor realiza tu pago a tiempo.</p></div>`,
-        }),
-      });
+      const res = await fetch("/api/send-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: payment.tenant_email, subject: `Recordatorio de pago — ${payment.property_name}`, html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px;"><h2 style="color:#1a1a2e;">Recordatorio de pago de renta</h2><p>Hola <strong>${payment.tenant_name}</strong>,</p><p>Te recordamos que tienes un pago pendiente:</p><div style="background:#f9fafb;border-radius:12px;padding:20px;margin:20px 0;"><p style="margin:0 0 8px;"><strong>Propiedad:</strong> ${payment.property_name}</p><p style="margin:0 0 8px;"><strong>Monto:</strong> ${Number(payment.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}</p><p style="margin:0;"><strong>Fecha límite:</strong> ${payment.due_date}</p></div><p>Por favor realiza tu pago a tiempo.</p></div>` }) });
       const data = await res.json();
       if (data.success) showToast("📧 Recordatorio enviado ✅");
       else showToast("Error: " + data.error, false);
@@ -280,6 +312,9 @@ export default function Home() {
     { id: "commissions", label: "💼 Comisiones" },
   ];
 
+  if (authLoading) return <div style={{ minHeight: "100vh", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "center" }}><p style={{ color: "#c8a96e", fontSize: 18, fontWeight: 700 }}>Cargando...</p></div>;
+  if (!session) return <LoginScreen onLogin={() => loadData()} />;
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif", background: "#f4f5f7" }}>
       {toast && <div style={{ position: "fixed", top: 24, right: 24, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 2000, boxShadow: "0 4px 20px rgba(0,0,0,0.2)" }}>{toast.msg}</div>}
@@ -297,7 +332,11 @@ export default function Home() {
           ))}
         </nav>
         <div style={{ padding: 16, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-          <p style={{ margin: 0, color: "rgba(255,255,255,0.4)", fontSize: 12 }}>Admin · Emporio Inmobiliario</p>
+          <p style={{ margin: "0 0 4px", color: "#fff", fontSize: 13, fontWeight: 600 }}>{profile?.email?.split("@")[0]}</p>
+          <p style={{ margin: "0 0 10px", color: "rgba(255,255,255,0.4)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>{profile?.role === "admin" ? "👑 Admin" : "👤 Staff"}</p>
+          <button onClick={logout} style={{ width: "100%", background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", border: "none", borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+            Cerrar sesión
+          </button>
         </div>
       </div>
 
@@ -360,7 +399,7 @@ export default function Home() {
         {!loading && view === "commissions" && (
           <div>
             <h1 style={{ margin: "0 0 8px", fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>💼 Mis Comisiones</h1>
-            <p style={{ margin: "0 0 24px", fontSize: 14, color: "#6b7280" }}>Lo que cobras tú por administrar cada propiedad</p>
+            <p style={{ margin: "0 0 24px", fontSize: 14, color: "#6b7280" }}>Lo que cobras por administrar cada propiedad</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
               {[
                 { label: "Comisión mensual total", value: fmt(totalComisiones), color: "#7c3aed" },
@@ -385,17 +424,14 @@ export default function Home() {
                 <tbody>
                   {contracts.map(c => {
                     const comision = calcComision(c);
-                    const liquidoPropietario = c.monthly_rent - (c.commission_who === "propietario_descuento" ? comision : 0);
-                    const whoMap = { propietario_descuento: "Se descuenta al propietario", propietario_aparte: "Propietario paga aparte", inquilino: "Inquilino" };
+                    const whoMap = { propietario_descuento: "Descuento propietario", propietario_aparte: "Propietario aparte", inquilino: "Inquilino" };
                     return (
                       <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
                         <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{c.tenant_name}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.owner_name || <span style={{ color: "#fca5a5" }}>Sin propietario</span>}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.owner_name || "—"}</td>
                         <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.property_name}</td>
                         <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(c.monthly_rent)}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c3aed" }}>
-                          {c.commission_type === "porcentaje" ? `${c.commission_value}%` : "Fijo"}
-                        </td>
+                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c3aed" }}>{c.commission_type === "porcentaje" ? `${c.commission_value}%` : "Fijo"}</td>
                         <td style={{ padding: "12px 16px", fontWeight: 700, color: "#7c3aed" }}>{fmt(comision)}</td>
                         <td style={{ padding: "12px 16px", fontSize: 12, color: "#6b7280" }}>{whoMap[c.commission_who] || "—"}</td>
                         <td style={{ padding: "12px 16px" }}><StatusBadge status={c.status} /></td>
@@ -404,12 +440,7 @@ export default function Home() {
                   })}
                 </tbody>
               </table>
-              {contracts.length === 0 && (
-                <div style={{ padding: 48, textAlign: "center" }}>
-                  <p style={{ fontSize: 32, margin: "0 0 12px" }}>💼</p>
-                  <p style={{ color: "#6b7280", fontSize: 15, margin: 0 }}>No hay contratos aún. Crea uno para ver tus comisiones.</p>
-                </div>
-              )}
+              {contracts.length === 0 && <div style={{ padding: 48, textAlign: "center" }}><p style={{ color: "#6b7280" }}>No hay contratos aún.</p></div>}
             </div>
           </div>
         )}
@@ -423,13 +454,7 @@ export default function Home() {
               </div>
               <Btn color="#c8a96e" onClick={() => { setEditing(null); setShowModal("contract"); }}>+ Nuevo contrato</Btn>
             </div>
-            {contracts.length === 0 && (
-              <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}>
-                <p style={{ fontSize: 32, margin: "0 0 12px" }}>📋</p>
-                <p style={{ color: "#6b7280", fontSize: 15, margin: "0 0 20px" }}>No tienes contratos aún.</p>
-                <Btn color="#c8a96e" onClick={() => setShowModal("contract")}>+ Crear primer contrato</Btn>
-              </div>
-            )}
+            {contracts.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ fontSize: 32, margin: "0 0 12px" }}>📋</p><p style={{ color: "#6b7280", fontSize: 15, margin: "0 0 20px" }}>No tienes contratos aún.</p><Btn color="#c8a96e" onClick={() => setShowModal("contract")}>+ Crear primer contrato</Btn></div>}
             {contracts.length > 0 && (
               <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -445,25 +470,21 @@ export default function Home() {
                       const diasRestantes = Math.ceil((new Date(c.end_date) - new Date()) / (1000 * 60 * 60 * 24));
                       const cobrosContrato = payments.filter(p => p.contract_id === c.id);
                       const cobradoContrato = cobrosContrato.filter(p => p.status === "pagado").length;
-                      const comision = calcComision(c);
                       return (
                         <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
                           <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{c.tenant_name}</td>
                           <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.owner_name || "—"}</td>
                           <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.property_name}</td>
                           <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(c.monthly_rent)}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c3aed", fontWeight: 700 }}>{fmt(comision)}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 12, color: "#6b7280" }}>
-                            {c.start_date} → {c.end_date}
-                            <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: diasRestantes <= 30 ? "#dc2626" : "#9ca3af" }}>({diasRestantes}d)</span>
-                          </td>
+                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c3aed", fontWeight: 700 }}>{fmt(calcComision(c))}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: "#6b7280" }}>{c.start_date} → {c.end_date} <span style={{ fontSize: 11, fontWeight: 700, color: diasRestantes <= 30 ? "#dc2626" : "#9ca3af" }}>({diasRestantes}d)</span></td>
                           <td style={{ padding: "12px 16px", fontSize: 14, fontWeight: 700, textAlign: "center" }}>Día {c.payment_day}</td>
                           <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{cobradoContrato}/{cobrosContrato.length}</td>
                           <td style={{ padding: "12px 16px" }}><StatusBadge status={c.status} /></td>
                           <td style={{ padding: "12px 16px" }}>
                             <div style={{ display: "flex", gap: 6 }}>
                               <Btn small color="#6b7280" onClick={() => openEdit("contract", c)}>✏️</Btn>
-                              <Btn small color="#dc2626" onClick={() => deleteItem("contract", c.id, `Eliminar contrato de ${c.tenant_name}`)}>🗑️</Btn>
+                              {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("contract", c.id, `Eliminar contrato de ${c.tenant_name}`)}>🗑️</Btn>}
                             </div>
                           </td>
                         </tr>
@@ -501,7 +522,7 @@ export default function Home() {
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <Btn small color="#6b7280" onClick={() => openEdit("property", p)}>✏️ Editar</Btn>
-                      <Btn small color="#dc2626" onClick={() => deleteItem("property", p.id, `Eliminar "${p.name}"`)}>🗑️</Btn>
+                      {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("property", p.id, `Eliminar "${p.name}"`)}>🗑️ Eliminar</Btn>}
                     </div>
                   </div>
                 </div>
@@ -546,7 +567,7 @@ export default function Home() {
                         <td style={{ padding: "12px 16px" }}>
                           <div style={{ display: "flex", gap: 6 }}>
                             {["pendiente", "atrasado"].includes(p.status) && <Btn small color="#1e40af" onClick={() => sendReminder(p)}>📧</Btn>}
-                            <Btn small color="#dc2626" onClick={() => deleteItem("payment", p.id, `Eliminar cobro de ${p.tenant_name}`)}>🗑️</Btn>
+                            {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("payment", p.id, `Eliminar cobro de ${p.tenant_name}`)}>🗑️</Btn>}
                           </div>
                         </td>
                       </tr>
@@ -581,7 +602,7 @@ export default function Home() {
                         <option value="resuelto">Resuelto</option>
                         <option value="cancelado">Cancelado</option>
                       </select>
-                      <Btn small color="#dc2626" onClick={() => deleteItem("ticket", t.id, `Eliminar "${t.title}"`)}>🗑️</Btn>
+                      {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("ticket", t.id, `Eliminar "${t.title}"`)}>🗑️</Btn>}
                     </div>
                   </div>
                 </div>
@@ -652,8 +673,8 @@ export default function Home() {
         <Modal title={editing ? "✏️ Editar Contrato" : "📋 Nuevo Contrato"} onClose={closeModal}>
           {!editing && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginBottom: 20 }}><p style={{ margin: 0, fontSize: 13, color: "#065f46", fontWeight: 600 }}>✨ Al guardar se generan todos los cobros automáticamente</p></div>}
           <Field label="Inquilino *"><Input placeholder="Ej: Ana García" value={contractForm.tenant_name} onChange={e => setContractForm({ ...contractForm, tenant_name: e.target.value })} /></Field>
-          <Field label="Email del inquilino" hint="Para recordatorios automáticos"><Input type="email" placeholder="Ej: ana@gmail.com" value={contractForm.tenant_email} onChange={e => setContractForm({ ...contractForm, tenant_email: e.target.value })} /></Field>
-          <Field label="Propietario" hint="¿A quién le pertenece esta propiedad?"><Input placeholder="Ej: Carlos Mendoza" value={contractForm.owner_name} onChange={e => setContractForm({ ...contractForm, owner_name: e.target.value })} /></Field>
+          <Field label="Email del inquilino"><Input type="email" placeholder="Ej: ana@gmail.com" value={contractForm.tenant_email} onChange={e => setContractForm({ ...contractForm, tenant_email: e.target.value })} /></Field>
+          <Field label="Propietario"><Input placeholder="Ej: Carlos Mendoza" value={contractForm.owner_name} onChange={e => setContractForm({ ...contractForm, owner_name: e.target.value })} /></Field>
           <Field label="Propiedad *">
             <Sel value={contractForm.property_name} onChange={e => { const sel = properties.find(p => p.name === e.target.value); setContractForm({ ...contractForm, property_name: e.target.value, monthly_rent: sel ? sel.rent_amount : contractForm.monthly_rent }); }}>
               <option value="">-- Selecciona una propiedad --</option>
@@ -669,33 +690,14 @@ export default function Home() {
           <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: 16, marginBottom: 16 }}>
             <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>💼 Comisión de administración</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <Field label="Tipo">
-                <Sel value={contractForm.commission_type} onChange={e => setContractForm({ ...contractForm, commission_type: e.target.value })}>
-                  <option value="porcentaje">Porcentaje (%)</option>
-                  <option value="fijo">Monto fijo (MXN)</option>
-                </Sel>
-              </Field>
-              <Field label={contractForm.commission_type === "porcentaje" ? "Porcentaje (%)" : "Monto fijo (MXN)"}>
-                <Input type="number" placeholder={contractForm.commission_type === "porcentaje" ? "Ej: 10" : "Ej: 500"} value={contractForm.commission_value} onChange={e => setContractForm({ ...contractForm, commission_value: e.target.value })} />
-              </Field>
+              <Field label="Tipo"><Sel value={contractForm.commission_type} onChange={e => setContractForm({ ...contractForm, commission_type: e.target.value })}><option value="porcentaje">Porcentaje (%)</option><option value="fijo">Monto fijo (MXN)</option></Sel></Field>
+              <Field label={contractForm.commission_type === "porcentaje" ? "Porcentaje (%)" : "Monto fijo (MXN)"}><Input type="number" placeholder={contractForm.commission_type === "porcentaje" ? "Ej: 10" : "Ej: 500"} value={contractForm.commission_value} onChange={e => setContractForm({ ...contractForm, commission_value: e.target.value })} /></Field>
             </div>
-            <Field label="¿Quién paga la comisión?">
-              <Sel value={contractForm.commission_who} onChange={e => setContractForm({ ...contractForm, commission_who: e.target.value })}>
-                <option value="propietario_descuento">Se descuenta de lo que le pago al propietario</option>
-                <option value="propietario_aparte">El propietario me paga aparte</option>
-                <option value="inquilino">El inquilino la paga directo</option>
-              </Sel>
-            </Field>
+            <Field label="¿Quién paga la comisión?"><Sel value={contractForm.commission_who} onChange={e => setContractForm({ ...contractForm, commission_who: e.target.value })}><option value="propietario_descuento">Se descuenta de lo que le pago al propietario</option><option value="propietario_aparte">El propietario me paga aparte</option><option value="inquilino">El inquilino la paga directo</option></Sel></Field>
             {contractForm.commission_value && contractForm.monthly_rent && (
-              <div style={{ background: "#fff", borderRadius: 8, padding: "10px 14px", marginTop: 4 }}>
-                <p style={{ margin: 0, fontSize: 13, color: "#7c3aed", fontWeight: 700 }}>
-                  Tu comisión: {fmt(contractForm.commission_type === "porcentaje" ? (parseFloat(contractForm.monthly_rent) * parseFloat(contractForm.commission_value) / 100) : parseFloat(contractForm.commission_value))} / mes
-                </p>
-                {contractForm.commission_who === "propietario_descuento" && (
-                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
-                    Propietario recibe: {fmt(parseFloat(contractForm.monthly_rent) - (contractForm.commission_type === "porcentaje" ? (parseFloat(contractForm.monthly_rent) * parseFloat(contractForm.commission_value) / 100) : parseFloat(contractForm.commission_value)))} / mes
-                  </p>
-                )}
+              <div style={{ background: "#fff", borderRadius: 8, padding: "10px 14px" }}>
+                <p style={{ margin: 0, fontSize: 13, color: "#7c3aed", fontWeight: 700 }}>Tu comisión: {fmt(contractForm.commission_type === "porcentaje" ? (parseFloat(contractForm.monthly_rent) * parseFloat(contractForm.commission_value) / 100) : parseFloat(contractForm.commission_value))} / mes</p>
+                {contractForm.commission_who === "propietario_descuento" && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>Propietario recibe: {fmt(parseFloat(contractForm.monthly_rent) - (contractForm.commission_type === "porcentaje" ? (parseFloat(contractForm.monthly_rent) * parseFloat(contractForm.commission_value) / 100) : parseFloat(contractForm.commission_value)))} / mes</p>}
               </div>
             )}
           </div>
@@ -703,9 +705,7 @@ export default function Home() {
           <Field label="Notas"><Input placeholder="Condiciones especiales" value={contractForm.notes} onChange={e => setContractForm({ ...contractForm, notes: e.target.value })} /></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={saveContract} disabled={saving || !contractForm.tenant_name || !contractForm.property_name || !contractForm.monthly_rent || !contractForm.start_date || !contractForm.end_date}>
-              {saving ? (editing ? "Guardando..." : "Generando cobros...") : (editing ? "Guardar cambios" : "Crear contrato")}
-            </Btn>
+            <Btn onClick={saveContract} disabled={saving || !contractForm.tenant_name || !contractForm.property_name || !contractForm.monthly_rent || !contractForm.start_date || !contractForm.end_date}>{saving ? (editing ? "Guardando..." : "Generando cobros...") : (editing ? "Guardar cambios" : "Crear contrato")}</Btn>
           </div>
         </Modal>
       )}
