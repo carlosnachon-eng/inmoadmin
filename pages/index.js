@@ -360,7 +360,150 @@ export default function Home() {
     } catch (e) { showToast("Error: " + e.message, false); }
   };
 
-  const openOwnerPayment = (ownerName, ownerEmail) => {
+  const descargarPDFPropietario = async (ownerName, ownerEmail) => {
+  const { default: jsPDF } = await import("jspdf");
+  const { default: autoTable } = await import("jspdf-autotable");
+  const doc = new jsPDF();
+  const hoy = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
+  const mes = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long" });
+
+  const propsProp = properties.filter(p => p.owner_email === ownerEmail);
+  const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
+  const contractIds = contratosProp.map(c => c.id);
+  const pagosProp = payments.filter(p => contractIds.includes(p.contract_id));
+  const { data: liqProp } = await supabase.from("owner_payments").select("*").eq("owner_email", ownerEmail).order("created_at", { ascending: false });
+  const { data: ticketsProp } = await supabase.from("maintenance_tickets").select("*").in("property_name", propsProp.map(p => p.name)).order("created_at", { ascending: false });
+
+  const totalRentaProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0), 0);
+  const totalComProp = contratosProp.reduce((a, c) => a + calcComision(c), 0);
+  const totalLiqProp = totalRentaProp - totalComProp;
+  const totalPagadoProp = (liqProp || []).filter(l => l.status === "pagado").reduce((a, l) => a + (l.amount_paid || 0), 0);
+
+  doc.setFillColor(26, 26, 46);
+  doc.rect(0, 0, 210, 40, "F");
+  doc.setTextColor(200, 169, 110);
+  doc.setFontSize(20);
+  doc.setFont("helvetica", "bold");
+  doc.text("Emporio Inmobiliario", 20, 18);
+  doc.setFontSize(11);
+  doc.setTextColor(200, 200, 200);
+  doc.text("Reporte de Propietario", 20, 28);
+  doc.text(`Generado: ${hoy}`, 20, 35);
+
+  doc.setTextColor(26, 26, 46);
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text(ownerName, 20, 55);
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Periodo: ${mes}`, 20, 63);
+
+  let y = 75;
+  doc.setFillColor(240, 253, 244);
+  doc.rect(15, y, 180, 35, "F");
+  doc.setDrawColor(200, 169, 110);
+  doc.rect(15, y, 180, 35, "S");
+  doc.setTextColor(26, 26, 46);
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text("RESUMEN FINANCIERO", 20, y + 8);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(`Renta mensual total: ${fmt(totalRentaProp)}`, 20, y + 16);
+  doc.text(`Comisión administración: ${fmt(totalComProp)}`, 20, y + 23);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(6, 95, 70);
+  doc.text(`Líquido mensual: ${fmt(totalLiqProp)}`, 20, y + 30);
+  doc.setTextColor(30, 64, 175);
+  doc.text(`Total liquidado histórico: ${fmt(totalPagadoProp)}`, 110, y + 23);
+  y += 45;
+
+  doc.setTextColor(26, 26, 46);
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text("Propiedades", 20, y);
+  y += 6;
+  autoTable(doc, {
+    startY: y,
+    head: [["Propiedad", "Inquilino", "Renta", "Comisión", "Líquido", "Día pago"]],
+    body: propsProp.map(prop => {
+      const contrato = contratosProp.find(c => c.property_name === prop.name);
+      const com = contrato ? calcComision(contrato) : 0;
+      return [prop.name, contrato?.tenant_name || "—", fmt(prop.rent_amount), fmt(com), fmt((prop.rent_amount || 0) - com), contrato ? `Día ${contrato.payment_day}` : "—"];
+    }),
+    styles: { fontSize: 8, cellPadding: 3 },
+    headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [249, 250, 251] },
+    margin: { left: 15, right: 15 },
+  });
+  y = doc.lastAutoTable.finalY + 12;
+  if (y > 220) { doc.addPage(); y = 20; }
+
+  doc.setTextColor(26, 26, 46);
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text("Pagos del Mes", 20, y);
+  y += 6;
+  const pagosMes = pagosProp.filter(p => { if (!p.due_date) return false; const d = new Date(p.due_date); const h = new Date(); return d.getMonth() === h.getMonth() && d.getFullYear() === h.getFullYear(); });
+  autoTable(doc, {
+    startY: y,
+    head: [["Inquilino", "Propiedad", "Monto", "Vencimiento", "Estado"]],
+    body: pagosMes.length > 0 ? pagosMes.map(p => [p.tenant_name || "—", p.property_name || "—", fmt(p.amount), p.due_date || "—", p.status === "pagado" ? "Pagado" : p.status === "atrasado" ? "Atrasado" : "Pendiente"]) : [["Sin pagos este mes", "", "", "", ""]],
+    styles: { fontSize: 8, cellPadding: 3 },
+    headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [249, 250, 251] },
+    margin: { left: 15, right: 15 },
+  });
+  y = doc.lastAutoTable.finalY + 12;
+  if (y > 220) { doc.addPage(); y = 20; }
+
+  doc.setTextColor(26, 26, 46);
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text("Liquidaciones", 20, y);
+  y += 6;
+  autoTable(doc, {
+    startY: y,
+    head: [["Periodo", "Renta", "Comisión", "Te pagamos", "Fecha", "Estado"]],
+    body: (liqProp || []).length > 0 ? (liqProp || []).map(l => [l.period_description || "—", fmt(l.total_rent), fmt(l.total_commission), fmt(l.amount_paid), l.payment_date || "—", l.status === "pagado" ? "Pagado" : "Pendiente"]) : [["Sin liquidaciones", "", "", "", "", ""]],
+    styles: { fontSize: 8, cellPadding: 3 },
+    headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [249, 250, 251] },
+    margin: { left: 15, right: 15 },
+  });
+  y = doc.lastAutoTable.finalY + 12;
+  if (y > 220) { doc.addPage(); y = 20; }
+
+  doc.setTextColor(26, 26, 46);
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text("Mantenimiento", 20, y);
+  y += 6;
+  autoTable(doc, {
+    startY: y,
+    head: [["Título", "Propiedad", "Costo", "Estado", "Fecha"]],
+    body: (ticketsProp || []).length > 0 ? (ticketsProp || []).map(t => [t.title || "—", t.property_name || "—", t.provider_cost > 0 ? fmt(t.provider_cost) : "—", t.status === "resuelto" ? "Resuelto" : t.status === "en_proceso" ? "En proceso" : "Nuevo", new Date(t.created_at).toLocaleDateString("es-MX")]) : [["Sin mantenimiento", "", "", "", ""]],
+    styles: { fontSize: 8, cellPadding: 3 },
+    headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [249, 250, 251] },
+    margin: { left: 15, right: 15 },
+  });
+
+  const totalPaginas = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPaginas; i++) {
+    doc.setPage(i);
+    doc.setFillColor(26, 26, 46);
+    doc.rect(0, 285, 210, 15, "F");
+    doc.setTextColor(200, 169, 110);
+    doc.setFontSize(8);
+    doc.text("Emporio Inmobiliario — app.emporioinmobiliario.com.mx", 20, 293);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Página ${i} de ${totalPaginas}`, 175, 293);
+  }
+
+  doc.save(`Reporte_${ownerName.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`);
+};const openOwnerPayment = (ownerName, ownerEmail) => {
     const propsPropietario = properties.filter(p => p.owner_email === ownerEmail);
     const contratosPropietario = contracts.filter(c => propsPropietario.some(p => p.name === c.property_name) && c.status === "activo");
     const totalRent = contratosPropietario.reduce((a, c) => a + (c.monthly_rent || 0), 0);
@@ -582,6 +725,7 @@ export default function Home() {
                             <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>{propsProp.length} propiedad{propsProp.length !== 1 ? "es" : ""}</p>
                           </div>
                           <Btn small color="#065f46" onClick={() => openOwnerPayment(owner.name, owner.email)}>💸 Liquidar</Btn>
+<Btn small color="#1e40af" onClick={() => descargarPDFPropietario(owner.name, owner.email)}>📄 PDF</Btn>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                           <div style={{ background: "#f9fafb", borderRadius: 8, padding: "8px 12px" }}>
