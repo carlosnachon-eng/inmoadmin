@@ -22,8 +22,6 @@ const StatusBadge = ({ status }) => {
     mantenimiento: { bg: "#fce7f3", color: "#9d174d", label: "Mantenimiento" },
     entrada: { bg: "#d1fae5", color: "#065f46", label: "Entrada" },
     salida: { bg: "#fee2e2", color: "#991b1b", label: "Salida" },
-    anticipo_pagado: { bg: "#dbeafe", color: "#1e40af", label: "Anticipo pagado" },
-    liquidado: { bg: "#d1fae5", color: "#065f46", label: "Liquidado" },
     inmobiliaria: { bg: "#d1fae5", color: "#065f46", label: "A nosotros" },
     propietario: { bg: "#e0e7ff", color: "#3730a3", label: "Al propietario" },
   };
@@ -96,10 +94,10 @@ const generarPagos = (contrato) => {
   const inicio = new Date(contrato.start_date);
   const fin = new Date(contrato.end_date);
   const diaCorte = parseInt(contrato.payment_day);
-  let fecha = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
   const finMenosUnMes = new Date(fin);
-finMenosUnMes.setMonth(finMenosUnMes.getMonth() - 1);
-while (fecha <= finMenosUnMes) {
+  finMenosUnMes.setMonth(finMenosUnMes.getMonth() - 1);
+  let fecha = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
+  while (fecha <= finMenosUnMes) {
     const year = fecha.getFullYear();
     const month = fecha.getMonth() + 1;
     const diasEnMes = new Date(year, month, 0).getDate();
@@ -312,41 +310,6 @@ export default function Home() {
   };
 
   const updatePaymentStatus = async (id, status) => {
-  const pago = payments.find(p => p.id === id);
-  const contrato = pago ? contracts.find(c => c.id === pago.contract_id) : null;
-  await supabase.from("payments").update({ status }).eq("id", id);
-  if (status === "pagado" && pago) {
-    const rentReceiver = contrato?.rent_receiver || "inmobiliaria";
-    const comision = contrato ? calcComision(contrato) : 0;
-    if (rentReceiver === "inmobiliaria") {
-      // Entra la renta completa — la comisión ya está adentro, NO la registramos por separado
-      await addCashMovement({
-        type: "entrada",
-        category: "renta_cobrada",
-        description: `Renta ${pago.tenant_name} — ${pago.property_name}`,
-        amount: pago.amount,
-        payment_method: "transferencia",
-        date: today,
-        notes: `Incluye comisión de ${fmt(comision)}`,
-        created_by: profile?.email
-      });
-    } else {
-      // El inquilino paga directo al propietario — solo entra nuestra comisión si nos la pagan aparte
-      if (comision > 0 && contrato?.commission_who === "propietario_aparte") {
-        await addCashMovement({
-          type: "entrada",
-          category: "comision_cobrada",
-          description: `Comisión ${contrato?.owner_name || pago.property_name} (renta directa al propietario)`,
-          amount: comision,
-          payment_method: "transferencia",
-          date: today,
-          created_by: profile?.email
-        });
-      }
-    }
-  }
-  showToast("Actualizado ✅"); loadData();
-};
     const pago = payments.find(p => p.id === id);
     const contrato = pago ? contracts.find(c => c.id === pago.contract_id) : null;
     await supabase.from("payments").update({ status }).eq("id", id);
@@ -354,13 +317,23 @@ export default function Home() {
       const rentReceiver = contrato?.rent_receiver || "inmobiliaria";
       const comision = contrato ? calcComision(contrato) : 0;
       if (rentReceiver === "inmobiliaria") {
-        await addCashMovement({ type: "entrada", category: "renta_cobrada", description: `Renta ${pago.tenant_name} — ${pago.property_name}`, amount: pago.amount, payment_method: "transferencia", date: today, notes: `Periodo: ${pago.period_month}/${pago.period_year}`, created_by: profile?.email });
-        if (comision > 0 && contrato?.commission_who === "propietario_descuento") {
-          await addCashMovement({ type: "entrada", category: "comision_cobrada", description: `Comisión ${contrato.owner_name || pago.property_name}`, amount: comision, payment_method: "transferencia", date: today, created_by: profile?.email });
-        }
+        // Entra la renta completa — la comisión ya está adentro, NO se registra por separado
+        await addCashMovement({
+          type: "entrada", category: "renta_cobrada",
+          description: `Renta ${pago.tenant_name} — ${pago.property_name}`,
+          amount: pago.amount, payment_method: "transferencia", date: today,
+          notes: comision > 0 ? `Incluye comisión de ${fmt(comision)}` : "",
+          created_by: profile?.email
+        });
       } else {
-        if (comision > 0 && contrato?.commission_who !== "propietario_descuento") {
-          await addCashMovement({ type: "entrada", category: "comision_cobrada", description: `Comisión ${contrato?.owner_name || pago.property_name} (renta directa)`, amount: comision, payment_method: "transferencia", date: today, created_by: profile?.email });
+        // Renta va directo al propietario — solo registramos comisión si nos la pagan aparte
+        if (comision > 0 && contrato?.commission_who === "propietario_aparte") {
+          await addCashMovement({
+            type: "entrada", category: "comision_cobrada",
+            description: `Comisión ${contrato?.owner_name || pago.property_name} (renta directa)`,
+            amount: comision, payment_method: "transferencia", date: today,
+            created_by: profile?.email
+          });
         }
       }
     }
@@ -375,7 +348,7 @@ export default function Home() {
         await addCashMovement({ type: "salida", category: "pago_proveedor", description: `Proveedor: ${ticket.title} — ${ticket.property_name}`, amount: ticket.provider_cost, payment_method: "transferencia", date: today, created_by: profile?.email });
       }
       if (ticket && ticket.charged_amount > 0 && ticket.payer !== "inmobiliaria") {
-        await addCashMovement({ type: "entrada", category: "mantenimiento_cobrado", description: `Cobro mantenimiento: ${ticket.title} — ${ticket.property_name}`, amount: ticket.charged_amount, payment_method: "transferencia", date: today, created_by: profile?.email });
+        await addCashMovement({ type: "entrada", category: "mantenimiento_cobrado", description: `Cobro mant: ${ticket.title} — ${ticket.property_name}`, amount: ticket.charged_amount, payment_method: "transferencia", date: today, created_by: profile?.email });
       }
     }
     showToast("Actualizado ✅"); loadData();
@@ -416,7 +389,8 @@ export default function Home() {
     const { data: ticketsProp } = await supabase.from("maintenance_tickets").select("*").in("property_name", propsProp.map(p => p.name)).order("created_at", { ascending: false });
     const totalRentaProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0), 0);
     const totalComProp = contratosProp.reduce((a, c) => a + calcComision(c), 0);
-    const totalLiqProp = totalRentaProp - totalComProp;
+    const costoMantProp = (ticketsProp || []).filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
+    const totalLiqProp = totalRentaProp - totalComProp - costoMantProp;
     const totalPagadoProp = (liqProp || []).filter(l => l.status === "pagado").reduce((a, l) => a + (l.amount_paid || 0), 0);
 
     doc.setFillColor(26, 26, 46); doc.rect(0, 0, 210, 40, "F");
@@ -430,18 +404,26 @@ export default function Home() {
     doc.text(`Periodo: ${mes}`, 20, 63);
 
     let y = 75;
-    doc.setFillColor(240, 253, 244); doc.rect(15, y, 180, 35, "F");
-    doc.setDrawColor(200, 169, 110); doc.rect(15, y, 180, 35, "S");
+    const boxH = costoMantProp > 0 ? 50 : 40;
+    doc.setFillColor(240, 253, 244); doc.rect(15, y, 180, boxH, "F");
+    doc.setDrawColor(200, 169, 110); doc.rect(15, y, 180, boxH, "S");
     doc.setTextColor(26, 26, 46); doc.setFontSize(10); doc.setFont("helvetica", "bold");
     doc.text("RESUMEN FINANCIERO", 20, y + 8);
     doc.setFont("helvetica", "normal"); doc.setFontSize(9);
     doc.text(`Renta mensual total: ${fmt(totalRentaProp)}`, 20, y + 16);
-    doc.text(`Comisión administración: ${fmt(totalComProp)}`, 20, y + 23);
-    doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
-    doc.text(`Líquido mensual: ${fmt(totalLiqProp)}`, 20, y + 30);
+    doc.text(`Comisión administración: -${fmt(totalComProp)}`, 20, y + 23);
     doc.setTextColor(30, 64, 175);
-    doc.text(`Total liquidado: ${fmt(totalPagadoProp)}`, 110, y + 23);
-    y += 45;
+    doc.text(`Total liquidado: ${fmt(totalPagadoProp)}`, 110, y + 16);
+    if (costoMantProp > 0) {
+      doc.setTextColor(153, 27, 27); doc.setFont("helvetica", "normal");
+      doc.text(`Mantenimiento a tu cargo: -${fmt(costoMantProp)}`, 20, y + 30);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
+      doc.text(`Líquido a recibir: ${fmt(totalLiqProp)}`, 20, y + 40);
+    } else {
+      doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
+      doc.text(`Líquido mensual: ${fmt(totalLiqProp)}`, 20, y + 32);
+    }
+    y += boxH + 10;
 
     doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
     doc.text("Propiedades", 20, y); y += 6;
@@ -461,7 +443,7 @@ export default function Home() {
 
     doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
     doc.text("Mantenimiento", 20, y); y += 6;
-    autoTable(doc, { startY: y, head: [["Título", "Propiedad", "Costo", "Estado", "Fecha"]], body: (ticketsProp || []).length > 0 ? (ticketsProp || []).map(t => [t.title || "—", t.property_name || "—", t.provider_cost > 0 ? fmt(t.provider_cost) : "—", t.status === "resuelto" ? "Resuelto" : t.status === "en_proceso" ? "En proceso" : "Nuevo", new Date(t.created_at).toLocaleDateString("es-MX")]) : [["Sin mantenimiento", "", "", "", ""]], styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" }, alternateRowStyles: { fillColor: [249, 250, 251] }, margin: { left: 15, right: 15 } });
+    autoTable(doc, { startY: y, head: [["Título", "Propiedad", "¿Quién paga?", "Costo para ti", "Estado", "Fecha"]], body: (ticketsProp || []).length > 0 ? (ticketsProp || []).map(t => [t.title || "—", t.property_name || "—", t.payer === "propietario" ? "Propietario" : t.payer === "inquilino" ? "Inquilino" : "Inmobiliaria", t.payer === "propietario" && t.charged_amount > 0 ? fmt(t.charged_amount) : "—", t.status === "resuelto" ? "Resuelto" : t.status === "en_proceso" ? "En proceso" : "Nuevo", new Date(t.created_at).toLocaleDateString("es-MX")]) : [["Sin mantenimiento", "", "", "", "", ""]], styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" }, alternateRowStyles: { fillColor: [249, 250, 251] }, margin: { left: 15, right: 15 } });
 
     const totalPaginas = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPaginas; i++) { doc.setPage(i); doc.setFillColor(26, 26, 46); doc.rect(0, 285, 210, 15, "F"); doc.setTextColor(200, 169, 110); doc.setFontSize(8); doc.text("Emporio Inmobiliario — app.emporioinmobiliario.com.mx", 20, 293); doc.setTextColor(150, 150, 150); doc.text(`Página ${i} de ${totalPaginas}`, 175, 293); }
@@ -488,8 +470,8 @@ export default function Home() {
   const totalEntradas = cashMovements.filter(m => m.type === "entrada").reduce((a, m) => a + (m.amount || 0), 0);
   const totalSalidas = cashMovements.filter(m => m.type === "salida").reduce((a, m) => a + (m.amount || 0), 0);
   const saldoCaja = totalEntradas - totalSalidas;
-  const saldoEfectivo = cashMovements.filter(m => m.payment_method === "efectivo").reduce((a, m) => a + (m.type === "entrada" ? m.amount : -m.amount), 0);
-  const saldoTransferencia = cashMovements.filter(m => m.payment_method === "transferencia").reduce((a, m) => a + (m.type === "entrada" ? m.amount : -m.amount), 0);
+  const entradasEfectivo = cashMovements.filter(m => m.type === "entrada" && m.payment_method === "efectivo").reduce((a, m) => a + (m.amount || 0), 0);
+  const entradasBanco = cashMovements.filter(m => m.type === "entrada" && m.payment_method === "transferencia").reduce((a, m) => a + (m.amount || 0), 0);
   const totalRent = properties.filter(p => p.status === "ocupada").reduce((a, p) => a + (p.rent_amount || 0), 0);
   const paid = payments.filter(p => p.status === "pagado").reduce((a, p) => a + (p.amount || 0), 0);
   const overdue = payments.filter(p => p.status === "atrasado").reduce((a, p) => a + (p.amount || 0), 0);
@@ -500,9 +482,7 @@ export default function Home() {
   const propietariosUnicos = [...new Map(properties.filter(p => p.owner_email).map(p => [p.owner_email, { name: contracts.find(c => c.property_name === p.name)?.owner_name || p.owner_email.split("@")[0], email: p.owner_email }])).values()];
 
   const pagosFiltrados = payments.filter(p => {
-    const matchSearch = !searchPago ||
-      (p.tenant_name || "").toLowerCase().includes(searchPago.toLowerCase()) ||
-      (p.property_name || "").toLowerCase().includes(searchPago.toLowerCase());
+    const matchSearch = !searchPago || (p.tenant_name || "").toLowerCase().includes(searchPago.toLowerCase()) || (p.property_name || "").toLowerCase().includes(searchPago.toLowerCase());
     const matchEstatus = !filterEstatus || p.status === filterEstatus;
     const matchMes = !filterMes || (p.due_date && new Date(p.due_date).getMonth() + 1 === parseInt(filterMes));
     return matchSearch && matchEstatus && matchMes;
@@ -620,8 +600,8 @@ export default function Home() {
                 { label: "Saldo total", value: fmt(saldoCaja), color: saldoCaja >= 0 ? "#065f46" : "#dc2626", bg: saldoCaja >= 0 ? "#f0fdf4" : "#fff5f5" },
                 { label: "Total entradas", value: fmt(totalEntradas), color: "#065f46", bg: "#f0fdf4" },
                 { label: "Total salidas", value: fmt(totalSalidas), color: "#dc2626", bg: "#fff5f5" },
-                { label: "Saldo efectivo", value: fmt(saldoEfectivo), color: "#92400e", bg: "#fffbeb" },
-                { label: "Saldo banco", value: fmt(saldoTransferencia), color: "#1e40af", bg: "#eff6ff" },
+                { label: "Entradas efectivo", value: fmt(entradasEfectivo), color: "#92400e", bg: "#fffbeb" },
+                { label: "Entradas banco", value: fmt(entradasBanco), color: "#1e40af", bg: "#eff6ff" },
               ].map((s, i) => (
                 <div key={i} style={{ background: s.bg, borderRadius: 14, padding: "18px 20px" }}>
                   <p style={{ margin: "0 0 8px", fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
@@ -832,8 +812,6 @@ export default function Home() {
               <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>Cobranza ({payments.length})</h1>
               <Btn color="#c8a96e" onClick={() => setShowModal("payment")}>+ Registrar pago manual</Btn>
             </div>
-
-            {/* Filtros */}
             <div style={{ background: "#fff", borderRadius: 14, padding: "16px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
               <input placeholder="🔍 Buscar inquilino o propiedad..." value={searchPago} onChange={e => setSearchPago(e.target.value)} style={{ flex: 1, minWidth: 200, padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14 }} />
               <select value={filterEstatus} onChange={e => setFilterEstatus(e.target.value)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, background: "#fff" }}>
@@ -854,13 +832,7 @@ export default function Home() {
               )}
               <span style={{ fontSize: 13, color: "#6b7280", fontWeight: 600 }}>{pagosFiltrados.length} resultado{pagosFiltrados.length !== 1 ? "s" : ""}</span>
             </div>
-
-            {pagosFiltrados.length === 0 && (
-              <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}>
-                <p style={{ fontSize: 32, margin: "0 0 12px" }}>🔍</p>
-                <p style={{ color: "#6b7280", fontSize: 15, margin: 0 }}>No hay resultados para tu búsqueda</p>
-              </div>
-            )}
+            {pagosFiltrados.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ fontSize: 32, margin: "0 0 12px" }}>🔍</p><p style={{ color: "#6b7280", fontSize: 15, margin: 0 }}>No hay resultados</p></div>}
             {pagosFiltrados.length > 0 && (
               <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -1054,7 +1026,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* MODALES */}
       {showModal === "cash" && (
         <Modal title={cashForm.type === "entrada" ? "💚 Entrada Manual" : "🔴 Salida Manual"} onClose={closeModal}>
           <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
