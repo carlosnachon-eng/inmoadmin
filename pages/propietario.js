@@ -33,7 +33,10 @@ const OwnerLogin = ({ onLogin }) => {
     setError("");
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: "https://app.emporioinmobiliario.com.mx/propietario" }
+      options: { 
+  shouldCreateUser: true,
+  emailRedirectTo: "https://app.emporioinmobiliario.com.mx/propietario" 
+}
     });
     setLoading(false);
     if (error) { setError("Error: " + error.message); return; }
