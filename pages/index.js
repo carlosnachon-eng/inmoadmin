@@ -1195,6 +1195,7 @@ export default function Home() {
           {!editing && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginBottom: 20 }}><p style={{ margin: 0, fontSize: 13, color: "#065f46", fontWeight: 600 }}>✨ Al guardar se generan todos los cobros automáticamente</p></div>}
           <Field label="Inquilino *"><Input value={contractForm.tenant_name} onChange={e => setContractForm({ ...contractForm, tenant_name: e.target.value })} /></Field>
           <Field label="Email del inquilino"><Input type="email" value={contractForm.tenant_email} onChange={e => setContractForm({ ...contractForm, tenant_email: e.target.value })} /></Field>
+<Field label="Teléfono del inquilino" hint="10 dígitos sin espacios, ej: 2221234567"><Input type="tel" placeholder="2221234567" value={contractForm.tenant_phone || ""} onChange={e => setContractForm({ ...contractForm, tenant_phone: e.target.value })} /></Field>
           <Field label="Propietario"><Input value={contractForm.owner_name} onChange={e => setContractForm({ ...contractForm, owner_name: e.target.value })} /></Field>
           <Field label="Propiedad *">
             <Sel value={contractForm.property_name} onChange={e => { const sel = properties.find(p => p.name === e.target.value); setContractForm({ ...contractForm, property_name: e.target.value, monthly_rent: sel ? sel.rent_amount : contractForm.monthly_rent }); }}>
