@@ -312,6 +312,41 @@ export default function Home() {
   };
 
   const updatePaymentStatus = async (id, status) => {
+  const pago = payments.find(p => p.id === id);
+  const contrato = pago ? contracts.find(c => c.id === pago.contract_id) : null;
+  await supabase.from("payments").update({ status }).eq("id", id);
+  if (status === "pagado" && pago) {
+    const rentReceiver = contrato?.rent_receiver || "inmobiliaria";
+    const comision = contrato ? calcComision(contrato) : 0;
+    if (rentReceiver === "inmobiliaria") {
+      // Entra la renta completa — la comisión ya está adentro, NO la registramos por separado
+      await addCashMovement({
+        type: "entrada",
+        category: "renta_cobrada",
+        description: `Renta ${pago.tenant_name} — ${pago.property_name}`,
+        amount: pago.amount,
+        payment_method: "transferencia",
+        date: today,
+        notes: `Incluye comisión de ${fmt(comision)}`,
+        created_by: profile?.email
+      });
+    } else {
+      // El inquilino paga directo al propietario — solo entra nuestra comisión si nos la pagan aparte
+      if (comision > 0 && contrato?.commission_who === "propietario_aparte") {
+        await addCashMovement({
+          type: "entrada",
+          category: "comision_cobrada",
+          description: `Comisión ${contrato?.owner_name || pago.property_name} (renta directa al propietario)`,
+          amount: comision,
+          payment_method: "transferencia",
+          date: today,
+          created_by: profile?.email
+        });
+      }
+    }
+  }
+  showToast("Actualizado ✅"); loadData();
+};
     const pago = payments.find(p => p.id === id);
     const contrato = pago ? contracts.find(c => c.id === pago.contract_id) : null;
     await supabase.from("payments").update({ status }).eq("id", id);
