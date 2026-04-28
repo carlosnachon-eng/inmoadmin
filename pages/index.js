@@ -102,7 +102,6 @@ const generarPagos = (contrato) => {
   return pagos;
 };
 
-// ─── LOGIN SCREEN ────────────────────────────────────────────────────────────
 const LoginScreen = ({ onLogin }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -190,11 +189,7 @@ export default function Home() {
     setAuthLoading(false);
   };
 
-  const logout = async () => {
-    await supabase.auth.signOut();
-    setSession(null);
-    setProfile(null);
-  };
+  const logout = async () => { await supabase.auth.signOut(); setSession(null); setProfile(null); };
 
   const loadData = async () => {
     setLoading(true);
@@ -333,10 +328,8 @@ export default function Home() {
         </nav>
         <div style={{ padding: 16, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
           <p style={{ margin: "0 0 4px", color: "#fff", fontSize: 13, fontWeight: 600 }}>{profile?.email?.split("@")[0]}</p>
-          <p style={{ margin: "0 0 10px", color: "rgba(255,255,255,0.4)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>{profile?.role === "admin" ? "👑 Admin" : "👤 Staff"}</p>
-          <button onClick={logout} style={{ width: "100%", background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", border: "none", borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-            Cerrar sesión
-          </button>
+          <p style={{ margin: "0 0 10px", color: "rgba(255,255,255,0.4)", fontSize: 11, textTransform: "uppercase" }}>{profile?.role === "admin" ? "👑 Admin" : "👤 Staff"}</p>
+          <button onClick={logout} style={{ width: "100%", background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", border: "none", borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Cerrar sesión</button>
         </div>
       </div>
 
@@ -364,7 +357,7 @@ export default function Home() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
               <div style={{ background: "#fff", borderRadius: 14, padding: 22, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                 <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Cobros de este mes ({pagosMes.length})</h3>
-                {pagosMes.length === 0 && <p style={{ color: "#9ca3af", fontSize: 13 }}>Crea un contrato para ver cobros aquí</p>}
+                {pagosMes.length === 0 && <p style={{ color: "#9ca3af", fontSize: 13 }}>No hay cobros este mes</p>}
                 {pagosMes.map(p => (
                   <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f3f4f6" }}>
                     <div>
@@ -522,7 +515,7 @@ export default function Home() {
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <Btn small color="#6b7280" onClick={() => openEdit("property", p)}>✏️ Editar</Btn>
-                      {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("property", p.id, `Eliminar "${p.name}"`)}>🗑️ Eliminar</Btn>}
+                      {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("property", p.id, `Eliminar "${p.name}"`)}>🗑️</Btn>}
                     </div>
                   </div>
                 </div>
@@ -565,33 +558,18 @@ export default function Home() {
                           </select>
                         </td>
                         <td style={{ padding: "12px 16px" }}>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <td style={{ padding: "12px 16px" }}>
-  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-    <td style={{ padding: "12px 16px" }}>
-  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-    {p.status === "en_revision" && p.receipt_url && (
-      <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ background: "#7c3aed", color: "#fff", padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
-        🧾 Ver comprobante
-      </a>
-    )}
-    {["pendiente", "atrasado"].includes(p.status) && (
-      <Btn small color="#1e40af" onClick={() => sendReminder(p)}>📧</Btn>
-    )}
-    {isAdmin && (
-      <Btn small color="#dc2626" onClick={() => deleteItem("payment", p.id, `Eliminar cobro de ${p.tenant_name}`)}>🗑️</Btn>
-    )}
-  </div>
-</td>
-      <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ background: "#7c3aed", color: "#fff", padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
-        🧾 Ver comprobante
-      </a>
-    )}
-    {["pendiente", "atrasado"].includes(p.status) && <Btn small color="#1e40af" onClick={() => sendReminder(p)}>📧</Btn>}
-    {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("payment", p.id, `Eliminar cobro de ${p.tenant_name}`)}>🗑️</Btn>}
-  </div>
-</td>
-                            {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("payment", p.id, `Eliminar cobro de ${p.tenant_name}`)}>🗑️</Btn>}
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            {p.status === "en_revision" && p.receipt_url && (
+                              <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ background: "#7c3aed", color: "#fff", padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+                                🧾 Ver
+                              </a>
+                            )}
+                            {["pendiente", "atrasado"].includes(p.status) && (
+                              <Btn small color="#1e40af" onClick={() => sendReminder(p)}>📧</Btn>
+                            )}
+                            {isAdmin && (
+                              <Btn small color="#dc2626" onClick={() => deleteItem("payment", p.id, `Eliminar cobro de ${p.tenant_name}`)}>🗑️</Btn>
+                            )}
                           </div>
                         </td>
                       </tr>
