@@ -846,11 +846,16 @@ export default function Home() {
                       {gastosPropiedad.length > 0 && (
                         <div style={{ marginTop: 10, borderTop: "1px solid #f3f4f6", paddingTop: 8 }}>
                           {gastosPropiedad.slice(0, 3).map(e => (
-                            <div key={e.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#6b7280", padding: "2px 0" }}>
-                              <span>{expenseCategoryLabels[e.category]} · {e.description}</span>
-                              <span style={{ color: "#dc2626", fontWeight: 600 }}>{fmt(e.amount)}</span>
-                            </div>
-                          ))}
+  <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#6b7280", padding: "2px 0" }}>
+    <span>{expenseCategoryLabels[e.category]} · {e.description}</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <span style={{ color: "#dc2626", fontWeight: 600 }}>{fmt(e.amount)}</span>
+      {isAdmin && (
+        <button onClick={() => deleteItem("expense", e.id, `Eliminar gasto: ${e.description}`)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, padding: "0 2px", color: "#dc2626" }}>🗑️</button>
+      )}
+    </div>
+  </div>
+))}
                         </div>
                       )}
                     </div>
