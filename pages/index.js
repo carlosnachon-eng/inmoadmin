@@ -22,6 +22,10 @@ const StatusBadge = ({ status }) => {
     mantenimiento: { bg: "#fce7f3", color: "#9d174d", label: "Mantenimiento" },
     entrada: { bg: "#d1fae5", color: "#065f46", label: "Entrada" },
     salida: { bg: "#fee2e2", color: "#991b1b", label: "Salida" },
+    anticipo_pagado: { bg: "#dbeafe", color: "#1e40af", label: "Anticipo pagado" },
+    liquidado: { bg: "#d1fae5", color: "#065f46", label: "Liquidado" },
+    inmobiliaria: { bg: "#d1fae5", color: "#065f46", label: "A nosotros" },
+    propietario: { bg: "#e0e7ff", color: "#3730a3", label: "Al propietario" },
   };
   const s = map[status] || { bg: "#f3f4f6", color: "#374151", label: status };
   return <span style={{ background: s.bg, color: s.color, padding: "2px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{s.label}</span>;
@@ -99,10 +103,14 @@ const generarPagos = (contrato) => {
     const diasEnMes = new Date(year, month, 0).getDate();
     const diaReal = Math.min(diaCorte, diasEnMes);
     const vencimiento = `${year}-${String(month).padStart(2, "0")}-${String(diaReal).padStart(2, "0")}`;
-    pagos.push({ contract_id: contrato.id, tenant_name: contrato.tenant_name, tenant_email: contrato.tenant_email || null, property_name: contrato.property_name, period_month: month, period_year: year, amount: contrato.monthly_rent, due_date: vencimiento, status: "pendiente", payment_method: null, notes: null });
+    pagos.push({ contract_id: contrato.id, tenant_name: contrato.tenant_name, tenant_email: contrato.tenant_email || null, property_name: contrato.property_name, period_month: month, period_year: year, amount: contrato.monthly_rent, due_date: vencimiento, status: "pendiente" });
     fecha.setMonth(fecha.getMonth() + 1);
   }
   return pagos;
+};
+
+const addCashMovement = async (data) => {
+  await supabase.from("cash_movements").insert([{ ...data, created_at: new Date().toISOString() }]);
 };
 
 const LoginScreen = ({ onLogin }) => {
@@ -140,9 +148,12 @@ const categoryLabels = {
   renta_cobrada: "💰 Renta cobrada",
   comision_cobrada: "💼 Comisión cobrada",
   mantenimiento_cobrado: "🔧 Mantenimiento cobrado",
+  anticipo_mantenimiento: "🔧 Anticipo mantenimiento",
   liquidacion_propietario: "🏦 Liquidación propietario",
   gasto_mantenimiento: "🔨 Gasto mantenimiento",
   gasto_operativo: "📋 Gasto operativo",
+  pago_proveedor: "🛠️ Pago proveedor",
+  material: "📦 Material/Refacción",
   otro: "📌 Otro",
 };
 
@@ -165,9 +176,9 @@ export default function Home() {
   const [editing, setEditing] = useState(null);
 
   const emptyProp = { name: "", address: "", property_type: "depto", rent_amount: "", status: "disponible", notes: "", owner_email: "", owner_phone: "" };
-  const emptyContract = { tenant_name: "", tenant_email: "", owner_name: "", property_name: "", monthly_rent: "", start_date: "", end_date: "", payment_day: "5", deposit_amount: "", commission_type: "porcentaje", commission_value: "", commission_who: "propietario_descuento", notes: "" };
+  const emptyContract = { tenant_name: "", tenant_email: "", owner_name: "", property_name: "", monthly_rent: "", start_date: "", end_date: "", payment_day: "5", deposit_amount: "", commission_type: "porcentaje", commission_value: "", commission_who: "propietario_descuento", rent_receiver: "inmobiliaria", notes: "" };
   const emptyPayment = { tenant_name: "", tenant_email: "", property_name: "", amount: "", due_date: "", status: "pendiente", payment_method: "transferencia", notes: "" };
-  const emptyTicket = { property_name: "", tenant_name: "", title: "", description: "", category: "otro", priority: "media" };
+  const emptyTicket = { property_name: "", tenant_name: "", title: "", description: "", category: "otro", priority: "media", payer: "propietario", provider_cost: "", charged_amount: "", advance_amount: "", advance_paid: false, status_pago: "pendiente" };
   const emptyOwnerPayment = { owner_name: "", owner_email: "", period_description: "", total_rent: "", total_commission: "", total_liquid: "", amount_paid: "", payment_method: "transferencia", payment_date: "", status: "pagado", notes: "" };
   const emptyCash = { type: "entrada", category: "renta_cobrada", description: "", amount: "", payment_method: "transferencia", date: new Date().toISOString().split("T")[0], notes: "" };
 
@@ -180,17 +191,14 @@ export default function Home() {
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
   const isAdmin = profile?.role === "admin";
+  const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) loadProfile(session.user.id);
-      else setAuthLoading(false);
+      setSession(session); if (session) loadProfile(session.user.id); else setAuthLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) loadProfile(session.user.id);
-      else { setProfile(null); setAuthLoading(false); }
+      setSession(session); if (session) loadProfile(session.user.id); else { setProfile(null); setAuthLoading(false); }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -212,12 +220,8 @@ export default function Home() {
       supabase.from("owner_payments").select("*").order("created_at", { ascending: false }),
       supabase.from("cash_movements").select("*").order("date", { ascending: false }),
     ]);
-    setProperties(p.data || []);
-    setPayments(pay.data || []);
-    setTickets(t.data || []);
-    setContracts(c.data || []);
-    setOwnerPayments(op.data || []);
-    setCashMovements(cm.data || []);
+    setProperties(p.data || []); setPayments(pay.data || []); setTickets(t.data || []);
+    setContracts(c.data || []); setOwnerPayments(op.data || []); setCashMovements(cm.data || []);
     setLoading(false);
   };
 
@@ -226,7 +230,8 @@ export default function Home() {
   const openEdit = (type, item) => {
     setEditing({ type, id: item.id });
     if (type === "property") { setPropForm({ name: item.name || "", address: item.address || "", property_type: item.property_type || "depto", rent_amount: item.rent_amount || "", status: item.status || "disponible", notes: item.notes || "", owner_email: item.owner_email || "", owner_phone: item.owner_phone || "" }); setShowModal("property"); }
-    if (type === "contract") { setContractForm({ tenant_name: item.tenant_name || "", tenant_email: item.tenant_email || "", owner_name: item.owner_name || "", property_name: item.property_name || "", monthly_rent: item.monthly_rent || "", start_date: item.start_date || "", end_date: item.end_date || "", payment_day: item.payment_day || "5", deposit_amount: item.deposit_amount || "", commission_type: item.commission_type || "porcentaje", commission_value: item.commission_value || "", commission_who: item.commission_who || "propietario_descuento", notes: item.notes || "" }); setShowModal("contract"); }
+    if (type === "contract") { setContractForm({ tenant_name: item.tenant_name || "", tenant_email: item.tenant_email || "", owner_name: item.owner_name || "", property_name: item.property_name || "", monthly_rent: item.monthly_rent || "", start_date: item.start_date || "", end_date: item.end_date || "", payment_day: item.payment_day || "5", deposit_amount: item.deposit_amount || "", commission_type: item.commission_type || "porcentaje", commission_value: item.commission_value || "", commission_who: item.commission_who || "propietario_descuento", rent_receiver: item.rent_receiver || "inmobiliaria", notes: item.notes || "" }); setShowModal("contract"); }
+    if (type === "ticket") { setTicketForm({ property_name: item.property_name || "", tenant_name: item.tenant_name || "", title: item.title || "", description: item.description || "", category: item.category || "otro", priority: item.priority || "media", payer: item.payer || "propietario", provider_cost: item.provider_cost || "", charged_amount: item.charged_amount || "", advance_amount: item.advance_amount || "", advance_paid: item.advance_paid || false, status_pago: item.status_pago || "pendiente" }); setShowModal("ticket"); }
   };
 
   const closeModal = () => { setShowModal(null); setEditing(null); setPropForm(emptyProp); setContractForm(emptyContract); setPayForm(emptyPayment); setTicketForm(emptyTicket); setOwnerPayForm(emptyOwnerPayment); setCashForm(emptyCash); };
@@ -243,7 +248,7 @@ export default function Home() {
 
   const saveContract = async () => {
     setSaving(true);
-    const contractData = { tenant_name: contractForm.tenant_name, tenant_email: contractForm.tenant_email, owner_name: contractForm.owner_name, property_name: contractForm.property_name, monthly_rent: parseFloat(contractForm.monthly_rent) || 0, start_date: contractForm.start_date, end_date: contractForm.end_date, payment_day: parseInt(contractForm.payment_day), deposit_amount: parseFloat(contractForm.deposit_amount) || 0, commission_type: contractForm.commission_type, commission_value: parseFloat(contractForm.commission_value) || 0, commission_who: contractForm.commission_who, notes: contractForm.notes };
+    const contractData = { tenant_name: contractForm.tenant_name, tenant_email: contractForm.tenant_email, owner_name: contractForm.owner_name, property_name: contractForm.property_name, monthly_rent: parseFloat(contractForm.monthly_rent) || 0, start_date: contractForm.start_date, end_date: contractForm.end_date, payment_day: parseInt(contractForm.payment_day), deposit_amount: parseFloat(contractForm.deposit_amount) || 0, commission_type: contractForm.commission_type, commission_value: parseFloat(contractForm.commission_value) || 0, commission_who: contractForm.commission_who, rent_receiver: contractForm.rent_receiver, notes: contractForm.notes };
     if (editing?.type === "contract") {
       const { error } = await supabase.from("contracts").update(contractData).eq("id", editing.id);
       setSaving(false);
@@ -270,19 +275,30 @@ export default function Home() {
 
   const saveTicket = async () => {
     setSaving(true);
-    const { error } = await supabase.from("maintenance_tickets").insert([{ ...ticketForm, status: "nuevo" }]);
+    const ticketData = { ...ticketForm, status: editing ? ticketForm.status || "nuevo" : "nuevo", provider_cost: parseFloat(ticketForm.provider_cost) || 0, charged_amount: parseFloat(ticketForm.charged_amount) || 0, advance_amount: parseFloat(ticketForm.advance_amount) || 0 };
+    const { data: savedTicket, error } = editing?.type === "ticket"
+      ? await supabase.from("maintenance_tickets").update(ticketData).eq("id", editing.id).select().single()
+      : await supabase.from("maintenance_tickets").insert([ticketData]).select().single();
+    if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
+
+    // Auto registro en caja si hay anticipo nuevo
+    if (!editing && ticketData.advance_amount > 0 && ticketData.advance_paid) {
+      const payerLabel = ticketData.payer === "inquilino" ? `Inquilino: ${ticketData.tenant_name}` : `Propietario`;
+      await addCashMovement({ type: "entrada", category: "anticipo_mantenimiento", description: `Anticipo mantenimiento: ${ticketData.title} — ${ticketData.property_name}`, amount: ticketData.advance_amount, payment_method: "transferencia", date: today, notes: `Pagado por: ${payerLabel}`, created_by: profile?.email });
+    }
     setSaving(false);
-    if (error) { showToast("Error: " + error.message, false); return; }
-    showToast("Ticket creado ✅"); closeModal(); loadData();
+    showToast(editing ? "Ticket actualizado ✅" : "Ticket creado ✅"); closeModal(); loadData();
   };
 
   const saveOwnerPayment = async () => {
     setSaving(true);
     const data = { ...ownerPayForm, total_rent: parseFloat(ownerPayForm.total_rent) || 0, total_commission: parseFloat(ownerPayForm.total_commission) || 0, total_liquid: parseFloat(ownerPayForm.total_liquid) || 0, amount_paid: parseFloat(ownerPayForm.amount_paid) || 0 };
     const { error } = await supabase.from("owner_payments").insert([data]);
+    if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
+    // Auto registro salida en caja
+    await addCashMovement({ type: "salida", category: "liquidacion_propietario", description: `Liquidación ${ownerPayForm.owner_name} — ${ownerPayForm.period_description}`, amount: parseFloat(ownerPayForm.amount_paid) || 0, payment_method: ownerPayForm.payment_method, date: ownerPayForm.payment_date || today, notes: ownerPayForm.notes, created_by: profile?.email });
     setSaving(false);
-    if (error) { showToast("Error: " + error.message, false); return; }
-    showToast("Liquidación registrada ✅"); closeModal(); loadData();
+    showToast("Liquidación registrada ✅ — Salida en caja registrada automáticamente"); closeModal(); loadData();
   };
 
   const saveCashMovement = async () => {
@@ -292,6 +308,67 @@ export default function Home() {
     setSaving(false);
     if (error) { showToast("Error: " + error.message, false); return; }
     showToast("Movimiento registrado ✅"); closeModal(); loadData();
+  };
+
+  // ── Actualizar estatus de pago con lógica de caja automática ──
+  const updatePaymentStatus = async (id, status) => {
+    const pago = payments.find(p => p.id === id);
+    const contrato = pago ? contracts.find(c => c.id === pago.contract_id) : null;
+    await supabase.from("payments").update({ status }).eq("id", id);
+    if (status === "pagado" && pago) {
+      const rentReceiver = contrato?.rent_receiver || "inmobiliaria";
+      const comision = contrato ? calcComision(contrato) : 0;
+      if (rentReceiver === "inmobiliaria") {
+        // Entra toda la renta a nuestra caja
+        await addCashMovement({ type: "entrada", category: "renta_cobrada", description: `Renta ${pago.tenant_name} — ${pago.property_name}`, amount: pago.amount, payment_method: "transferencia", date: today, notes: `Periodo: ${pago.period_month}/${pago.period_year}`, created_by: profile?.email });
+        // Si la comisión ya está descontada, registramos la comisión como entrada separada
+        if (comision > 0 && contrato?.commission_who === "propietario_descuento") {
+          await addCashMovement({ type: "entrada", category: "comision_cobrada", description: `Comisión ${contrato.owner_name || pago.property_name}`, amount: comision, payment_method: "transferencia", date: today, notes: `Incluida en renta de ${pago.tenant_name}`, created_by: profile?.email });
+        }
+      } else {
+        // El inquilino le paga al propietario — solo registramos la comisión si nos la pagan a nosotros
+        if (comision > 0 && contrato?.commission_who !== "propietario_descuento") {
+          await addCashMovement({ type: "entrada", category: "comision_cobrada", description: `Comisión ${contrato?.owner_name || pago.property_name} (renta directa)`, amount: comision, payment_method: "transferencia", date: today, notes: `Renta va directo al propietario`, created_by: profile?.email });
+        }
+      }
+    }
+    showToast("Actualizado ✅"); loadData();
+  };
+
+  const updateTicketStatus = async (id, status) => {
+    await supabase.from("maintenance_tickets").update({ status }).eq("id", id);
+    // Si se resuelve, registrar gasto en caja automáticamente
+    if (status === "resuelto") {
+      const ticket = tickets.find(t => t.id === id);
+      if (ticket && ticket.provider_cost > 0) {
+        await addCashMovement({ type: "salida", category: "pago_proveedor", description: `Pago proveedor: ${ticket.title} — ${ticket.property_name}`, amount: ticket.provider_cost, payment_method: "transferencia", date: today, notes: `Pagado por: ${ticket.payer}`, created_by: profile?.email });
+      }
+      if (ticket && ticket.charged_amount > 0 && ticket.payer !== "inmobiliaria") {
+        await addCashMovement({ type: "entrada", category: "mantenimiento_cobrado", description: `Cobro mantenimiento: ${ticket.title} — ${ticket.property_name}`, amount: ticket.charged_amount, payment_method: "transferencia", date: today, notes: `Cobrado a: ${ticket.payer}`, created_by: profile?.email });
+      }
+    }
+    showToast("Actualizado ✅"); loadData();
+  };
+
+  const sendReminder = async (payment) => {
+    if (!payment.tenant_email) { showToast("Sin email — edita el contrato para agregarlo", false); return; }
+    try {
+      const res = await fetch("/api/send-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: payment.tenant_email, subject: `Recordatorio de pago — ${payment.property_name}`, html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px;"><h2 style="color:#1a1a2e;">Recordatorio de pago de renta</h2><p>Hola <strong>${payment.tenant_name}</strong>,</p><p>Te recordamos que tienes un pago pendiente:</p><div style="background:#f9fafb;border-radius:12px;padding:20px;margin:20px 0;"><p style="margin:0 0 8px;"><strong>Propiedad:</strong> ${payment.property_name}</p><p style="margin:0 0 8px;"><strong>Monto:</strong> ${Number(payment.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}</p><p style="margin:0;"><strong>Fecha límite:</strong> ${payment.due_date}</p></div><p>Por favor realiza tu pago a tiempo.</p></div>` }) });
+      const data = await res.json();
+      if (data.success) showToast("📧 Recordatorio enviado ✅");
+      else showToast("Error: " + data.error, false);
+    } catch (e) { showToast("Error: " + e.message, false); }
+  };
+
+  const openOwnerPayment = (ownerName, ownerEmail) => {
+    const propsPropietario = properties.filter(p => p.owner_email === ownerEmail);
+    const contratosPropietario = contracts.filter(c => propsPropietario.some(p => p.name === c.property_name) && c.status === "activo");
+    const totalRent = contratosPropietario.reduce((a, c) => a + (c.monthly_rent || 0), 0);
+    const totalComision = contratosPropietario.reduce((a, c) => a + calcComision(c), 0);
+    const totalLiquido = totalRent - totalComision;
+    const propNames = propsPropietario.map(p => p.name).join(", ");
+    setOwnerPayForm({ owner_name: ownerName, owner_email: ownerEmail, period_description: `${new Date().toLocaleDateString("es-MX", { month: "long", year: "numeric" })}`, total_rent: totalRent.toString(), total_commission: totalComision.toString(), total_liquid: totalLiquido.toString(), amount_paid: totalLiquido.toString(), payment_method: "transferencia", payment_date: today, status: "pagado", notes: `Propiedades: ${propNames}` });
+    setShowModal("owner_payment");
   };
 
   const deleteItem = (type, id, msg) => {
@@ -311,57 +388,11 @@ export default function Home() {
     });
   };
 
-  const updatePaymentStatus = async (id, status) => {
-  await supabase.from("payments").update({ status }).eq("id", id);
-  if (status === "pagado") {
-    const pago = payments.find(p => p.id === id);
-    if (pago) {
-      await supabase.from("cash_movements").insert([{
-        type: "entrada",
-        category: "renta_cobrada",
-        description: `Renta ${pago.tenant_name} — ${pago.property_name}`,
-        amount: pago.amount,
-        payment_method: "transferencia",
-        date: new Date().toISOString().split("T")[0],
-        notes: `Periodo: ${pago.period_month}/${pago.period_year}`,
-        created_by: profile?.email,
-      }]);
-    }
-  }
-  showToast("Actualizado ✅"); loadData();
-};
-  const updateTicketStatus = async (id, status) => { await supabase.from("maintenance_tickets").update({ status }).eq("id", id); showToast("Actualizado ✅"); loadData(); };
-
-  const sendReminder = async (payment) => {
-    if (!payment.tenant_email) { showToast("Sin email — edita el contrato para agregarlo", false); return; }
-    try {
-      const res = await fetch("/api/send-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: payment.tenant_email, subject: `Recordatorio de pago — ${payment.property_name}`, html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px;"><h2 style="color:#1a1a2e;">Recordatorio de pago de renta</h2><p>Hola <strong>${payment.tenant_name}</strong>,</p><p>Te recordamos que tienes un pago pendiente:</p><div style="background:#f9fafb;border-radius:12px;padding:20px;margin:20px 0;"><p style="margin:0 0 8px;"><strong>Propiedad:</strong> ${payment.property_name}</p><p style="margin:0 0 8px;"><strong>Monto:</strong> ${Number(payment.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}</p><p style="margin:0;"><strong>Fecha límite:</strong> ${payment.due_date}</p></div><p>Por favor realiza tu pago a tiempo.</p></div>` }) });
-      const data = await res.json();
-      if (data.success) showToast("📧 Recordatorio enviado ✅");
-      else showToast("Error: " + data.error, false);
-    } catch (e) { showToast("Error: " + e.message, false); }
-  };
-
-  const openOwnerPayment = (ownerName, ownerEmail) => {
-    const propsPropietario = properties.filter(p => p.owner_email === ownerEmail);
-    const contratosPropietario = contracts.filter(c => propsPropietario.some(p => p.name === c.property_name) && c.status === "activo");
-    const totalRent = contratosPropietario.reduce((a, c) => a + (c.monthly_rent || 0), 0);
-    const totalComision = contratosPropietario.reduce((a, c) => a + calcComision(c), 0);
-    const totalLiquido = totalRent - totalComision;
-    const propNames = propsPropietario.map(p => p.name).join(", ");
-    setOwnerPayForm({ owner_name: ownerName, owner_email: ownerEmail, period_description: `${new Date().toLocaleDateString("es-MX", { month: "long", year: "numeric" })}`, total_rent: totalRent.toString(), total_commission: totalComision.toString(), total_liquid: totalLiquido.toString(), amount_paid: totalLiquido.toString(), payment_method: "transferencia", payment_date: new Date().toISOString().split("T")[0], status: "pagado", notes: `Propiedades: ${propNames}` });
-    setShowModal("owner_payment");
-  };
-
-  // ─── CÁLCULOS CAJA ──────────────────────────────────────────────
   const totalEntradas = cashMovements.filter(m => m.type === "entrada").reduce((a, m) => a + (m.amount || 0), 0);
   const totalSalidas = cashMovements.filter(m => m.type === "salida").reduce((a, m) => a + (m.amount || 0), 0);
   const saldoCaja = totalEntradas - totalSalidas;
-  const entradasEfectivo = cashMovements.filter(m => m.type === "entrada" && m.payment_method === "efectivo").reduce((a, m) => a + (m.amount || 0), 0);
-  const salidasEfectivo = cashMovements.filter(m => m.type === "salida" && m.payment_method === "efectivo").reduce((a, m) => a + (m.amount || 0), 0);
-  const entradasTransferencia = cashMovements.filter(m => m.type === "entrada" && m.payment_method === "transferencia").reduce((a, m) => a + (m.amount || 0), 0);
-  const salidasTransferencia = cashMovements.filter(m => m.type === "salida" && m.payment_method === "transferencia").reduce((a, m) => a + (m.amount || 0), 0);
-
+  const saldoEfectivo = cashMovements.filter(m => m.payment_method === "efectivo").reduce((a, m) => a + (m.type === "entrada" ? m.amount : -m.amount), 0);
+  const saldoTransferencia = cashMovements.filter(m => m.payment_method === "transferencia").reduce((a, m) => a + (m.type === "entrada" ? m.amount : -m.amount), 0);
   const totalRent = properties.filter(p => p.status === "ocupada").reduce((a, p) => a + (p.rent_amount || 0), 0);
   const paid = payments.filter(p => p.status === "pagado").reduce((a, p) => a + (p.amount || 0), 0);
   const overdue = payments.filter(p => p.status === "atrasado").reduce((a, p) => a + (p.amount || 0), 0);
@@ -388,7 +419,7 @@ export default function Home() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif", background: "#f4f5f7" }}>
-      {toast && <div style={{ position: "fixed", top: 24, right: 24, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 2000, boxShadow: "0 4px 20px rgba(0,0,0,0.2)" }}>{toast.msg}</div>}
+      {toast && <div style={{ position: "fixed", top: 24, right: 24, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 2000, boxShadow: "0 4px 20px rgba(0,0,0,0.2)", maxWidth: 320 }}>{toast.msg}</div>}
       {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
 
       <div style={{ width: 220, background: "#1a1a2e", display: "flex", flexDirection: "column", flexShrink: 0 }}>
@@ -422,7 +453,7 @@ export default function Home() {
                 { label: "Pendiente", value: fmt(pending), color: "#92400e" },
                 { label: "Atrasado", value: fmt(overdue), color: "#991b1b" },
                 { label: "Mis comisiones/mes", value: fmt(totalComisiones), color: "#7c3aed" },
-                { label: "Saldo en caja", value: fmt(saldoCaja), color: saldoCaja >= 0 ? "#065f46" : "#991b1b" },
+                { label: "Saldo caja", value: fmt(saldoCaja), color: saldoCaja >= 0 ? "#065f46" : "#dc2626" },
               ].map((s, i) => (
                 <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                   <p style={{ margin: "0 0 8px", fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
@@ -452,7 +483,7 @@ export default function Home() {
                 {cashMovements.slice(0, 6).map(m => (
                   <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
                     <div>
-                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#374151" }}>{m.description}</p>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{m.description}</p>
                       <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{categoryLabels[m.category]} · {m.date}</p>
                     </div>
                     <span style={{ fontWeight: 700, fontSize: 14, color: m.type === "entrada" ? "#065f46" : "#dc2626" }}>
@@ -471,36 +502,32 @@ export default function Home() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <div>
                 <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>💵 Caja / Tesorería</h1>
-                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>Control de entradas y salidas de dinero</p>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>Los movimientos se generan automáticamente — solo agrega los manuales aquí</p>
               </div>
               <div style={{ display: "flex", gap: 10 }}>
-                <Btn color="#065f46" onClick={() => { setCashForm({ ...emptyCash, type: "entrada" }); setShowModal("cash"); }}>+ Entrada</Btn>
-                <Btn color="#dc2626" onClick={() => { setCashForm({ ...emptyCash, type: "salida" }); setShowModal("cash"); }}>- Salida</Btn>
+                <Btn color="#065f46" onClick={() => { setCashForm({ ...emptyCash, type: "entrada" }); setShowModal("cash"); }}>+ Entrada manual</Btn>
+                <Btn color="#dc2626" onClick={() => { setCashForm({ ...emptyCash, type: "salida" }); setShowModal("cash"); }}>- Salida manual</Btn>
               </div>
             </div>
-
-            {/* Resumen */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 24 }}>
               {[
                 { label: "Saldo total", value: fmt(saldoCaja), color: saldoCaja >= 0 ? "#065f46" : "#dc2626", bg: saldoCaja >= 0 ? "#f0fdf4" : "#fff5f5" },
                 { label: "Total entradas", value: fmt(totalEntradas), color: "#065f46", bg: "#f0fdf4" },
                 { label: "Total salidas", value: fmt(totalSalidas), color: "#dc2626", bg: "#fff5f5" },
-                { label: "Efectivo neto", value: fmt(entradasEfectivo - salidasEfectivo), color: "#92400e", bg: "#fffbeb" },
-                { label: "Banco neto", value: fmt(entradasTransferencia - salidasTransferencia), color: "#1e40af", bg: "#eff6ff" },
+                { label: "Saldo efectivo", value: fmt(saldoEfectivo), color: "#92400e", bg: "#fffbeb" },
+                { label: "Saldo banco", value: fmt(saldoTransferencia), color: "#1e40af", bg: "#eff6ff" },
               ].map((s, i) => (
-                <div key={i} style={{ background: s.bg, borderRadius: 14, padding: "18px 20px", border: `1px solid ${s.bg}` }}>
+                <div key={i} style={{ background: s.bg, borderRadius: 14, padding: "18px 20px" }}>
                   <p style={{ margin: "0 0 8px", fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
                   <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</p>
                 </div>
               ))}
             </div>
-
-            {/* Movimientos */}
             <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    {["Fecha", "Tipo", "Categoría", "Descripción", "Método", "Monto", ""].map(h => (
+                    {["Fecha", "Tipo", "Categoría", "Descripción", "Método", "Monto", "Registrado por", ""].map(h => (
                       <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                     ))}
                   </tr>
@@ -510,25 +537,21 @@ export default function Home() {
                     <tr key={m.id} style={{ borderTop: "1px solid #f3f4f6", background: m.type === "entrada" ? "#f9fffe" : "#fffafa" }}>
                       <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{m.date}</td>
                       <td style={{ padding: "12px 16px" }}><StatusBadge status={m.type} /></td>
-                      <td style={{ padding: "12px 16px", fontSize: 13, color: "#374151" }}>{categoryLabels[m.category] || m.category}</td>
-                      <td style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, color: "#1a1a2e" }}>{m.description}</td>
+                      <td style={{ padding: "12px 16px", fontSize: 13 }}>{categoryLabels[m.category] || m.category}</td>
+                      <td style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600 }}>{m.description}</td>
                       <td style={{ padding: "12px 16px", fontSize: 12, color: "#6b7280" }}>{m.payment_method}</td>
                       <td style={{ padding: "12px 16px", fontWeight: 800, fontSize: 15, color: m.type === "entrada" ? "#065f46" : "#dc2626" }}>
                         {m.type === "entrada" ? "+" : "-"}{fmt(m.amount)}
                       </td>
+                      <td style={{ padding: "12px 16px", fontSize: 11, color: "#9ca3af" }}>{m.created_by?.split("@")[0] || "sistema"}</td>
                       <td style={{ padding: "12px 16px" }}>
-                        {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("cash", m.id, `Eliminar movimiento: ${m.description}`)}>🗑️</Btn>}
+                        {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("cash", m.id, `Eliminar: ${m.description}`)}>🗑️</Btn>}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {cashMovements.length === 0 && (
-                <div style={{ padding: 48, textAlign: "center" }}>
-                  <p style={{ fontSize: 32, margin: "0 0 12px" }}>💵</p>
-                  <p style={{ color: "#6b7280", fontSize: 15, margin: 0 }}>No hay movimientos registrados aún</p>
-                </div>
-              )}
+              {cashMovements.length === 0 && <div style={{ padding: 48, textAlign: "center" }}><p style={{ fontSize: 32, margin: "0 0 12px" }}>💵</p><p style={{ color: "#6b7280" }}>Los movimientos aparecerán automáticamente aquí</p></div>}
             </div>
           </div>
         )}
@@ -537,28 +560,25 @@ export default function Home() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <div>
-                <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>🏦 Liquidaciones a Propietarios</h1>
-                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>Registra cuándo y cuánto le pagaste a cada propietario</p>
+                <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>🏦 Liquidaciones</h1>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>Al liquidar se registra automáticamente la salida en caja</p>
               </div>
               <Btn color="#c8a96e" onClick={() => setShowModal("owner_payment")}>+ Nueva liquidación</Btn>
             </div>
             {propietariosUnicos.length > 0 && (
               <div style={{ marginBottom: 24 }}>
-                <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Propietarios activos</h3>
+                <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Propietarios activos</h3>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
                   {propietariosUnicos.map((owner, i) => {
                     const propsProp = properties.filter(p => p.owner_email === owner.email);
                     const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
-                    const totalRentaProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0), 0);
-                    const totalComProp = contratosProp.reduce((a, c) => a + calcComision(c), 0);
-                    const liquidoProp = totalRentaProp - totalComProp;
-                    const liquidacionesProp = ownerPayments.filter(op => op.owner_email === owner.email);
-                    const totalPagado = liquidacionesProp.reduce((a, op) => a + (op.amount_paid || 0), 0);
+                    const liquidoProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0) - calcComision(c), 0);
+                    const totalPagado = ownerPayments.filter(op => op.owner_email === owner.email).reduce((a, op) => a + (op.amount_paid || 0), 0);
                     return (
                       <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                           <div>
-                            <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "#1a1a2e" }}>{owner.name}</p>
+                            <p style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>{owner.name}</p>
                             <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>{propsProp.length} propiedad{propsProp.length !== 1 ? "es" : ""}</p>
                           </div>
                           <Btn small color="#065f46" onClick={() => openOwnerPayment(owner.name, owner.email)}>💸 Liquidar</Btn>
@@ -579,14 +599,14 @@ export default function Home() {
                 </div>
               </div>
             )}
-            <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Historial de liquidaciones</h3>
-            {ownerPayments.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ fontSize: 32, margin: "0 0 12px" }}>🏦</p><p style={{ color: "#6b7280", fontSize: 15, margin: 0 }}>No hay liquidaciones registradas aún</p></div>}
+            <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Historial</h3>
+            {ownerPayments.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ fontSize: 32, margin: "0 0 12px" }}>🏦</p><p style={{ color: "#6b7280" }}>No hay liquidaciones aún</p></div>}
             {ownerPayments.length > 0 && (
               <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#f9fafb" }}>
-                      {["Propietario", "Periodo", "Renta", "Comisión", "Líquido", "Pagado", "Fecha", "Método", "Estado", ""].map(h => (
+                      {["Propietario", "Periodo", "Renta", "Comisión", "Líquido", "Pagado", "Fecha", "Estado", ""].map(h => (
                         <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                       ))}
                     </tr>
@@ -597,11 +617,10 @@ export default function Home() {
                         <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{op.owner_name}</td>
                         <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{op.period_description}</td>
                         <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(op.total_rent)}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c3aed" }}>{fmt(op.total_commission)}</td>
+                        <td style={{ padding: "12px 16px", color: "#7c3aed" }}>{fmt(op.total_commission)}</td>
                         <td style={{ padding: "12px 16px", fontWeight: 700, color: "#065f46" }}>{fmt(op.total_liquid)}</td>
                         <td style={{ padding: "12px 16px", fontWeight: 700, color: "#1e40af" }}>{fmt(op.amount_paid)}</td>
                         <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{op.payment_date}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{op.payment_method}</td>
                         <td style={{ padding: "12px 16px" }}><StatusBadge status={op.status} /></td>
                         <td style={{ padding: "12px 16px" }}>{isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("owner_payment", op.id, `Eliminar liquidación de ${op.owner_name}`)}>🗑️</Btn>}</td>
                       </tr>
@@ -613,71 +632,22 @@ export default function Home() {
           </div>
         )}
 
-        {!loading && view === "commissions" && (
-          <div>
-            <h1 style={{ margin: "0 0 8px", fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>💼 Mis Comisiones</h1>
-            <p style={{ margin: "0 0 24px", fontSize: 14, color: "#6b7280" }}>Lo que cobras por administrar cada propiedad</p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
-              {[
-                { label: "Comisión mensual total", value: fmt(totalComisiones), color: "#7c3aed" },
-                { label: "Comisión anual estimada", value: fmt(totalComisiones * 12), color: "#1a1a2e" },
-                { label: "Contratos activos", value: contracts.filter(c => c.status === "activo").length, color: "#1e40af" },
-              ].map((s, i) => (
-                <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-                  <p style={{ margin: "0 0 8px", fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
-                  <p style={{ margin: 0, fontSize: 26, fontWeight: 800, color: s.color }}>{s.value}</p>
-                </div>
-              ))}
-            </div>
-            <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "#f9fafb" }}>
-                    {["Inquilino", "Propietario", "Propiedad", "Renta", "Comisión", "Monto/mes", "Quién paga", "Estado"].map(h => (
-                      <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {contracts.map(c => {
-                    const comision = calcComision(c);
-                    const whoMap = { propietario_descuento: "Descuento propietario", propietario_aparte: "Propietario aparte", inquilino: "Inquilino" };
-                    return (
-                      <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                        <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{c.tenant_name}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.owner_name || "—"}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.property_name}</td>
-                        <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(c.monthly_rent)}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c3aed" }}>{c.commission_type === "porcentaje" ? `${c.commission_value}%` : "Fijo"}</td>
-                        <td style={{ padding: "12px 16px", fontWeight: 700, color: "#7c3aed" }}>{fmt(comision)}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 12, color: "#6b7280" }}>{whoMap[c.commission_who] || "—"}</td>
-                        <td style={{ padding: "12px 16px" }}><StatusBadge status={c.status} /></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {contracts.length === 0 && <div style={{ padding: 48, textAlign: "center" }}><p style={{ color: "#6b7280" }}>No hay contratos aún.</p></div>}
-            </div>
-          </div>
-        )}
-
         {!loading && view === "contracts" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <div>
                 <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>Contratos ({contracts.length})</h1>
-                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>Al crear un contrato se generan todos los cobros automáticamente</p>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>Define si la renta llega a ti o directo al propietario</p>
               </div>
               <Btn color="#c8a96e" onClick={() => { setEditing(null); setShowModal("contract"); }}>+ Nuevo contrato</Btn>
             </div>
-            {contracts.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ fontSize: 32, margin: "0 0 12px" }}>📋</p><p style={{ color: "#6b7280", fontSize: 15, margin: "0 0 20px" }}>No tienes contratos aún.</p><Btn color="#c8a96e" onClick={() => setShowModal("contract")}>+ Crear primer contrato</Btn></div>}
+            {contracts.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><Btn color="#c8a96e" onClick={() => setShowModal("contract")}>+ Crear primer contrato</Btn></div>}
             {contracts.length > 0 && (
               <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#f9fafb" }}>
-                      {["Inquilino", "Propietario", "Propiedad", "Renta", "Comisión", "Vigencia", "Día", "Cobros", "Estado", ""].map(h => (
+                      {["Inquilino", "Propietario", "Propiedad", "Renta", "Comisión", "Renta a", "Vigencia", "Día", "Cobros", ""].map(h => (
                         <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                       ))}
                     </tr>
@@ -694,10 +664,10 @@ export default function Home() {
                           <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.property_name}</td>
                           <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(c.monthly_rent)}</td>
                           <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c3aed", fontWeight: 700 }}>{fmt(calcComision(c))}</td>
+                          <td style={{ padding: "12px 16px" }}><StatusBadge status={c.rent_receiver || "inmobiliaria"} /></td>
                           <td style={{ padding: "12px 16px", fontSize: 12, color: "#6b7280" }}>{c.start_date} → {c.end_date} <span style={{ fontSize: 11, fontWeight: 700, color: diasRestantes <= 30 ? "#dc2626" : "#9ca3af" }}>({diasRestantes}d)</span></td>
-                          <td style={{ padding: "12px 16px", fontSize: 14, fontWeight: 700, textAlign: "center" }}>Día {c.payment_day}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>Día {c.payment_day}</td>
                           <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{cobradoContrato}/{cobrosContrato.length}</td>
-                          <td style={{ padding: "12px 16px" }}><StatusBadge status={c.status} /></td>
                           <td style={{ padding: "12px 16px" }}>
                             <div style={{ display: "flex", gap: 6 }}>
                               <Btn small color="#6b7280" onClick={() => openEdit("contract", c)}>✏️</Btn>
@@ -720,7 +690,6 @@ export default function Home() {
               <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>Propiedades ({properties.length})</h1>
               <Btn color="#c8a96e" onClick={() => { setEditing(null); setShowModal("property"); }}>+ Nueva propiedad</Btn>
             </div>
-            {properties.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ fontSize: 32, margin: "0 0 12px" }}>🏠</p><p style={{ color: "#6b7280", fontSize: 16, margin: 0 }}>No tienes propiedades aún.</p></div>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
               {properties.map(p => (
                 <div key={p.id} style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
@@ -735,7 +704,6 @@ export default function Home() {
                     <p style={{ margin: "0 0 4px", fontSize: 12, color: "#6b7280" }}>📍 {p.address || "Sin dirección"}</p>
                     {p.owner_email && <p style={{ margin: "0 0 10px", fontSize: 11, color: "#9ca3af" }}>👤 {p.owner_email}</p>}
                     <div style={{ paddingTop: 10, borderTop: "1px solid #f3f4f6", marginBottom: 12 }}>
-                      <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Renta mensual</p>
                       <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#1a1a2e" }}>{fmt(p.rent_amount)}</p>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
@@ -755,7 +723,6 @@ export default function Home() {
               <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>Cobranza ({payments.length})</h1>
               <Btn color="#c8a96e" onClick={() => setShowModal("payment")}>+ Registrar pago manual</Btn>
             </div>
-            {payments.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ fontSize: 32, margin: "0 0 12px" }}>💰</p><p style={{ color: "#6b7280", fontSize: 15, margin: 0 }}>No hay cobros aún.</p></div>}
             {payments.length > 0 && (
               <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -767,32 +734,38 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody>
-                    {payments.map(p => (
-                      <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", background: p.status === "atrasado" ? "#fff5f5" : "#fff" }}>
-                        <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{p.tenant_name || "—"}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{p.property_name || "—"}</td>
-                        <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(p.amount)}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{p.due_date || "—"}</td>
-                        <td style={{ padding: "12px 16px" }}><StatusBadge status={p.status} /></td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <select onChange={e => updatePaymentStatus(p.id, e.target.value)} value={p.status} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, cursor: "pointer" }}>
-                            <option value="pendiente">Pendiente</option>
-                            <option value="en_revision">En revisión</option>
-                            <option value="pagado">Pagado</option>
-                            <option value="atrasado">Atrasado</option>
-                          </select>
-                        </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                            {p.status === "en_revision" && p.receipt_url && (
-                              <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ background: "#7c3aed", color: "#fff", padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>🧾 Ver</a>
-                            )}
-                            {["pendiente", "atrasado"].includes(p.status) && <Btn small color="#1e40af" onClick={() => sendReminder(p)}>📧</Btn>}
-                            {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("payment", p.id, `Eliminar cobro de ${p.tenant_name}`)}>🗑️</Btn>}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {payments.map(p => {
+                      const contrato = contracts.find(c => c.id === p.contract_id);
+                      return (
+                        <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", background: p.status === "atrasado" ? "#fff5f5" : "#fff" }}>
+                          <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{p.tenant_name || "—"}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>
+                            {p.property_name || "—"}
+                            {contrato && <span style={{ display: "block", fontSize: 10, color: contrato.rent_receiver === "propietario" ? "#3730a3" : "#065f46" }}>{contrato.rent_receiver === "propietario" ? "→ propietario" : "→ nosotros"}</span>}
+                          </td>
+                          <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(p.amount)}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{p.due_date || "—"}</td>
+                          <td style={{ padding: "12px 16px" }}><StatusBadge status={p.status} /></td>
+                          <td style={{ padding: "12px 16px" }}>
+                            <select onChange={e => updatePaymentStatus(p.id, e.target.value)} value={p.status} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, cursor: "pointer" }}>
+                              <option value="pendiente">Pendiente</option>
+                              <option value="en_revision">En revisión</option>
+                              <option value="pagado">Pagado</option>
+                              <option value="atrasado">Atrasado</option>
+                            </select>
+                          </td>
+                          <td style={{ padding: "12px 16px" }}>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              {p.status === "en_revision" && p.receipt_url && (
+                                <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ background: "#7c3aed", color: "#fff", padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>🧾 Ver</a>
+                              )}
+                              {["pendiente", "atrasado"].includes(p.status) && <Btn small color="#1e40af" onClick={() => sendReminder(p)}>📧</Btn>}
+                              {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("payment", p.id, `Eliminar cobro de ${p.tenant_name}`)}>🗑️</Btn>}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -804,13 +777,12 @@ export default function Home() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>Mantenimiento ({tickets.length})</h1>
-              <Btn color="#c8a96e" onClick={() => setShowModal("ticket")}>+ Nuevo ticket</Btn>
+              <Btn color="#c8a96e" onClick={() => { setEditing(null); setShowModal("ticket"); }}>+ Nuevo ticket</Btn>
             </div>
-            {tickets.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ fontSize: 32, margin: "0 0 12px" }}>🔧</p><p style={{ color: "#6b7280", fontSize: 16, margin: 0 }}>No hay tickets aún.</p></div>}
             <div style={{ display: "grid", gap: 12 }}>
               {tickets.map(t => (
                 <div key={t.id} style={{ background: "#fff", borderRadius: 14, padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                     <div>
                       <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700 }}>{t.title}</h3>
                       <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>📍 {t.property_name || "—"} · 👤 {t.tenant_name || "—"}</p>
@@ -820,14 +792,23 @@ export default function Home() {
                       <select onChange={e => updateTicketStatus(t.id, e.target.value)} value={t.status} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, cursor: "pointer" }}>
                         <option value="nuevo">Nuevo</option>
                         <option value="en_proceso">En proceso</option>
-                        <option value="resuelto">Resuelto</option>
+                        <option value="resuelto">Resuelto ✅</option>
                         <option value="cancelado">Cancelado</option>
                       </select>
+                      <Btn small color="#6b7280" onClick={() => openEdit("ticket", t)}>✏️</Btn>
                       {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("ticket", t.id, `Eliminar "${t.title}"`)}>🗑️</Btn>}
                     </div>
                   </div>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    {t.payer && <span style={{ fontSize: 12, color: "#374151", background: "#f3f4f6", padding: "3px 8px", borderRadius: 6 }}>Paga: {t.payer}</span>}
+                    {t.provider_cost > 0 && <span style={{ fontSize: 12, color: "#dc2626", background: "#fff5f5", padding: "3px 8px", borderRadius: 6 }}>Costo: {fmt(t.provider_cost)}</span>}
+                    {t.charged_amount > 0 && <span style={{ fontSize: 12, color: "#065f46", background: "#f0fdf4", padding: "3px 8px", borderRadius: 6 }}>Cobrado: {fmt(t.charged_amount)}</span>}
+                    {t.advance_amount > 0 && <span style={{ fontSize: 12, color: "#1e40af", background: "#eff6ff", padding: "3px 8px", borderRadius: 6 }}>Anticipo: {fmt(t.advance_amount)} {t.advance_paid ? "✅" : "⏳"}</span>}
+                    {t.provider_cost > 0 && t.charged_amount > 0 && <span style={{ fontSize: 12, color: "#7c3aed", background: "#faf5ff", padding: "3px 8px", borderRadius: 6, fontWeight: 700 }}>Utilidad: {fmt(t.charged_amount - t.provider_cost)}</span>}
+                  </div>
                 </div>
               ))}
+              {tickets.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ fontSize: 32, margin: "0 0 12px" }}>🔧</p><p style={{ color: "#6b7280" }}>No hay tickets aún</p></div>}
             </div>
           </div>
         )}
@@ -839,18 +820,17 @@ export default function Home() {
               <div style={{ background: "#fff", borderRadius: 14, padding: 22, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                 <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Cobros por mes — {new Date().getFullYear()}</h3>
                 {Array.from({ length: 12 }, (_, i) => {
-                  const mes = i + 1;
-                  const año = new Date().getFullYear();
+                  const mes = i + 1; const año = new Date().getFullYear();
                   const pm = payments.filter(p => p.period_month === mes && p.period_year === año);
                   const cobrado = pm.filter(p => p.status === "pagado").reduce((a, p) => a + (p.amount || 0), 0);
                   const total = pm.reduce((a, p) => a + (p.amount || 0), 0);
-                  const meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
                   if (total === 0) return null;
-                  const pct = total > 0 ? Math.round((cobrado / total) * 100) : 0;
+                  const meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+                  const pct = Math.round((cobrado / total) * 100);
                   return (
                     <div key={mes} style={{ padding: "10px 0", borderBottom: "1px solid #f3f4f6" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{meses[i]} {año}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{meses[i]} {año}</span>
                         <div style={{ display: "flex", gap: 8 }}>
                           <span style={{ fontSize: 13, color: "#065f46", fontWeight: 700 }}>{fmt(cobrado)}</span>
                           <span style={{ fontSize: 11, color: "#9ca3af" }}>/ {fmt(total)}</span>
@@ -888,48 +868,83 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        {!loading && view === "commissions" && (
+          <div>
+            <h1 style={{ margin: "0 0 24px", fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>💼 Mis Comisiones</h1>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
+              {[
+                { label: "Comisión mensual total", value: fmt(totalComisiones), color: "#7c3aed" },
+                { label: "Comisión anual estimada", value: fmt(totalComisiones * 12), color: "#1a1a2e" },
+                { label: "Contratos activos", value: contracts.filter(c => c.status === "activo").length, color: "#1e40af" },
+              ].map((s, i) => (
+                <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <p style={{ margin: "0 0 8px", fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
+                  <p style={{ margin: 0, fontSize: 26, fontWeight: 800, color: s.color }}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: "#f9fafb" }}>
+                    {["Inquilino", "Propietario", "Propiedad", "Renta", "Comisión", "Monto/mes", "Renta va a", "Estado"].map(h => (
+                      <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {contracts.map(c => {
+                    const comision = calcComision(c);
+                    return (
+                      <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{c.tenant_name}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.owner_name || "—"}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.property_name}</td>
+                        <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(c.monthly_rent)}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c3aed" }}>{c.commission_type === "porcentaje" ? `${c.commission_value}%` : "Fijo"}</td>
+                        <td style={{ padding: "12px 16px", fontWeight: 700, color: "#7c3aed" }}>{fmt(comision)}</td>
+                        <td style={{ padding: "12px 16px" }}><StatusBadge status={c.rent_receiver || "inmobiliaria"} /></td>
+                        <td style={{ padding: "12px 16px" }}><StatusBadge status={c.status} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* MODAL CAJA */}
+      {/* MODAL CAJA MANUAL */}
       {showModal === "cash" && (
-        <Modal title={cashForm.type === "entrada" ? "💚 Registrar Entrada" : "🔴 Registrar Salida"} onClose={closeModal}>
+        <Modal title={cashForm.type === "entrada" ? "💚 Entrada Manual" : "🔴 Salida Manual"} onClose={closeModal}>
+          <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
+            <p style={{ margin: 0, fontSize: 13, color: "#92400e", fontWeight: 600 }}>⚡ La mayoría de movimientos se registran automáticamente. Usa esto solo para ajustes manuales.</p>
+          </div>
           <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-            <button onClick={() => setCashForm({ ...cashForm, type: "entrada" })} style={{ flex: 1, padding: "10px", borderRadius: 8, border: `2px solid ${cashForm.type === "entrada" ? "#065f46" : "#e5e7eb"}`, background: cashForm.type === "entrada" ? "#f0fdf4" : "#fff", color: cashForm.type === "entrada" ? "#065f46" : "#6b7280", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
-              ✅ Entrada
-            </button>
-            <button onClick={() => setCashForm({ ...cashForm, type: "salida" })} style={{ flex: 1, padding: "10px", borderRadius: 8, border: `2px solid ${cashForm.type === "salida" ? "#dc2626" : "#e5e7eb"}`, background: cashForm.type === "salida" ? "#fff5f5" : "#fff", color: cashForm.type === "salida" ? "#dc2626" : "#6b7280", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
-              🔴 Salida
-            </button>
+            <button onClick={() => setCashForm({ ...cashForm, type: "entrada" })} style={{ flex: 1, padding: "10px", borderRadius: 8, border: `2px solid ${cashForm.type === "entrada" ? "#065f46" : "#e5e7eb"}`, background: cashForm.type === "entrada" ? "#f0fdf4" : "#fff", color: cashForm.type === "entrada" ? "#065f46" : "#6b7280", fontWeight: 700, cursor: "pointer" }}>✅ Entrada</button>
+            <button onClick={() => setCashForm({ ...cashForm, type: "salida" })} style={{ flex: 1, padding: "10px", borderRadius: 8, border: `2px solid ${cashForm.type === "salida" ? "#dc2626" : "#e5e7eb"}`, background: cashForm.type === "salida" ? "#fff5f5" : "#fff", color: cashForm.type === "salida" ? "#dc2626" : "#6b7280", fontWeight: 700, cursor: "pointer" }}>🔴 Salida</button>
           </div>
           <Field label="Categoría">
             <Sel value={cashForm.category} onChange={e => setCashForm({ ...cashForm, category: e.target.value })}>
               {cashForm.type === "entrada" ? (
-                <>
-                  <option value="renta_cobrada">💰 Renta cobrada</option>
-                  <option value="comision_cobrada">💼 Comisión cobrada</option>
-                  <option value="mantenimiento_cobrado">🔧 Mantenimiento cobrado</option>
-                  <option value="otro">📌 Otro ingreso</option>
-                </>
+                <><option value="renta_cobrada">💰 Renta cobrada</option><option value="comision_cobrada">💼 Comisión cobrada</option><option value="mantenimiento_cobrado">🔧 Mantenimiento cobrado</option><option value="anticipo_mantenimiento">🔧 Anticipo mantenimiento</option><option value="otro">📌 Otro ingreso</option></>
               ) : (
-                <>
-                  <option value="liquidacion_propietario">🏦 Liquidación a propietario</option>
-                  <option value="gasto_mantenimiento">🔨 Gasto de mantenimiento</option>
-                  <option value="gasto_operativo">📋 Gasto operativo</option>
-                  <option value="otro">📌 Otro gasto</option>
-                </>
+                <><option value="liquidacion_propietario">🏦 Liquidación propietario</option><option value="pago_proveedor">🛠️ Pago proveedor</option><option value="material">📦 Material/Refacción</option><option value="gasto_operativo">📋 Gasto operativo</option><option value="otro">📌 Otro gasto</option></>
               )}
             </Sel>
           </Field>
-          <Field label="Descripción *" hint="Ej: Renta de Ana García - Depto 3B, Refacción plomería Casa Satélite"><Input placeholder="Describe el movimiento" value={cashForm.description} onChange={e => setCashForm({ ...cashForm, description: e.target.value })} /></Field>
-          <Field label="Monto (MXN) *"><Input type="number" placeholder="Ej: 12500" value={cashForm.amount} onChange={e => setCashForm({ ...cashForm, amount: e.target.value })} /></Field>
+          <Field label="Descripción *"><Input placeholder="Describe el movimiento" value={cashForm.description} onChange={e => setCashForm({ ...cashForm, description: e.target.value })} /></Field>
+          <Field label="Monto *"><Input type="number" placeholder="0" value={cashForm.amount} onChange={e => setCashForm({ ...cashForm, amount: e.target.value })} /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Método"><Sel value={cashForm.payment_method} onChange={e => setCashForm({ ...cashForm, payment_method: e.target.value })}><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option></Sel></Field>
             <Field label="Fecha"><Input type="date" value={cashForm.date} onChange={e => setCashForm({ ...cashForm, date: e.target.value })} /></Field>
           </div>
-          <Field label="Notas (opcional)"><Input placeholder="Observaciones adicionales" value={cashForm.notes} onChange={e => setCashForm({ ...cashForm, notes: e.target.value })} /></Field>
+          <Field label="Notas"><Input placeholder="Observaciones" value={cashForm.notes} onChange={e => setCashForm({ ...cashForm, notes: e.target.value })} /></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={saveCashMovement} color={cashForm.type === "entrada" ? "#065f46" : "#dc2626"} disabled={saving || !cashForm.description || !cashForm.amount}>{saving ? "Guardando..." : cashForm.type === "entrada" ? "Registrar entrada" : "Registrar salida"}</Btn>
+            <Btn onClick={saveCashMovement} color={cashForm.type === "entrada" ? "#065f46" : "#dc2626"} disabled={saving || !cashForm.description || !cashForm.amount}>{saving ? "Guardando..." : "Registrar"}</Btn>
           </div>
         </Modal>
       )}
@@ -937,22 +952,22 @@ export default function Home() {
       {/* MODAL LIQUIDACIÓN */}
       {showModal === "owner_payment" && (
         <Modal title="🏦 Registrar Liquidación" onClose={closeModal}>
-          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginBottom: 20 }}><p style={{ margin: 0, fontSize: 13, color: "#065f46", fontWeight: 600 }}>💸 Registra el pago que le hiciste al propietario</p></div>
+          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginBottom: 20 }}><p style={{ margin: 0, fontSize: 13, color: "#065f46", fontWeight: 600 }}>✅ Al guardar se registra automáticamente la salida en caja</p></div>
           <Field label="Propietario *"><Input placeholder="Ej: Carlos Mendoza" value={ownerPayForm.owner_name} onChange={e => setOwnerPayForm({ ...ownerPayForm, owner_name: e.target.value })} /></Field>
-          <Field label="Email del propietario"><Input type="email" placeholder="propietario@email.com" value={ownerPayForm.owner_email} onChange={e => setOwnerPayForm({ ...ownerPayForm, owner_email: e.target.value })} /></Field>
+          <Field label="Email"><Input type="email" value={ownerPayForm.owner_email} onChange={e => setOwnerPayForm({ ...ownerPayForm, owner_email: e.target.value })} /></Field>
           <Field label="Periodo"><Input placeholder="Ej: Abril 2026" value={ownerPayForm.period_description} onChange={e => setOwnerPayForm({ ...ownerPayForm, period_description: e.target.value })} /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-            <Field label="Renta total"><Input type="number" placeholder="0" value={ownerPayForm.total_rent} onChange={e => { const rent = parseFloat(e.target.value) || 0; const com = parseFloat(ownerPayForm.total_commission) || 0; setOwnerPayForm({ ...ownerPayForm, total_rent: e.target.value, total_liquid: (rent - com).toString(), amount_paid: (rent - com).toString() }); }} /></Field>
-            <Field label="Comisión"><Input type="number" placeholder="0" value={ownerPayForm.total_commission} onChange={e => { const com = parseFloat(e.target.value) || 0; const rent = parseFloat(ownerPayForm.total_rent) || 0; setOwnerPayForm({ ...ownerPayForm, total_commission: e.target.value, total_liquid: (rent - com).toString(), amount_paid: (rent - com).toString() }); }} /></Field>
-            <Field label="Líquido (auto)"><Input type="number" value={ownerPayForm.total_liquid} readOnly style={{ background: "#f9fafb" }} /></Field>
+            <Field label="Renta total"><Input type="number" value={ownerPayForm.total_rent} onChange={e => { const r = parseFloat(e.target.value) || 0; const com = parseFloat(ownerPayForm.total_commission) || 0; setOwnerPayForm({ ...ownerPayForm, total_rent: e.target.value, total_liquid: (r - com).toString(), amount_paid: (r - com).toString() }); }} /></Field>
+            <Field label="Comisión"><Input type="number" value={ownerPayForm.total_commission} onChange={e => { const com = parseFloat(e.target.value) || 0; const r = parseFloat(ownerPayForm.total_rent) || 0; setOwnerPayForm({ ...ownerPayForm, total_commission: e.target.value, total_liquid: (r - com).toString(), amount_paid: (r - com).toString() }); }} /></Field>
+            <Field label="Líquido"><Input type="number" value={ownerPayForm.total_liquid} readOnly style={{ background: "#f9fafb" }} /></Field>
           </div>
-          <Field label="Monto pagado *"><Input type="number" placeholder="0" value={ownerPayForm.amount_paid} onChange={e => setOwnerPayForm({ ...ownerPayForm, amount_paid: e.target.value })} /></Field>
+          <Field label="Monto pagado *"><Input type="number" value={ownerPayForm.amount_paid} onChange={e => setOwnerPayForm({ ...ownerPayForm, amount_paid: e.target.value })} /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Fecha"><Input type="date" value={ownerPayForm.payment_date} onChange={e => setOwnerPayForm({ ...ownerPayForm, payment_date: e.target.value })} /></Field>
             <Field label="Método"><Sel value={ownerPayForm.payment_method} onChange={e => setOwnerPayForm({ ...ownerPayForm, payment_method: e.target.value })}><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option></Sel></Field>
           </div>
           <Field label="Estado"><Sel value={ownerPayForm.status} onChange={e => setOwnerPayForm({ ...ownerPayForm, status: e.target.value })}><option value="pagado">Pagado completo</option><option value="pagado_parcial">Pagado parcial</option><option value="pendiente">Pendiente</option></Sel></Field>
-          <Field label="Notas"><Input placeholder="Propiedades incluidas, observaciones..." value={ownerPayForm.notes} onChange={e => setOwnerPayForm({ ...ownerPayForm, notes: e.target.value })} /></Field>
+          <Field label="Notas"><Input value={ownerPayForm.notes} onChange={e => setOwnerPayForm({ ...ownerPayForm, notes: e.target.value })} /></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
             <Btn onClick={saveOwnerPayment} disabled={saving || !ownerPayForm.owner_name || !ownerPayForm.amount_paid}>{saving ? "Guardando..." : "Registrar liquidación"}</Btn>
@@ -960,57 +975,69 @@ export default function Home() {
         </Modal>
       )}
 
+      {/* MODAL CONTRATO */}
       {showModal === "contract" && (
         <Modal title={editing ? "✏️ Editar Contrato" : "📋 Nuevo Contrato"} onClose={closeModal}>
           {!editing && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginBottom: 20 }}><p style={{ margin: 0, fontSize: 13, color: "#065f46", fontWeight: 600 }}>✨ Al guardar se generan todos los cobros automáticamente</p></div>}
           <Field label="Inquilino *"><Input placeholder="Ej: Ana García" value={contractForm.tenant_name} onChange={e => setContractForm({ ...contractForm, tenant_name: e.target.value })} /></Field>
-          <Field label="Email del inquilino"><Input type="email" placeholder="Ej: ana@gmail.com" value={contractForm.tenant_email} onChange={e => setContractForm({ ...contractForm, tenant_email: e.target.value })} /></Field>
+          <Field label="Email del inquilino"><Input type="email" value={contractForm.tenant_email} onChange={e => setContractForm({ ...contractForm, tenant_email: e.target.value })} /></Field>
           <Field label="Propietario"><Input placeholder="Ej: Carlos Mendoza" value={contractForm.owner_name} onChange={e => setContractForm({ ...contractForm, owner_name: e.target.value })} /></Field>
           <Field label="Propiedad *">
             <Sel value={contractForm.property_name} onChange={e => { const sel = properties.find(p => p.name === e.target.value); setContractForm({ ...contractForm, property_name: e.target.value, monthly_rent: sel ? sel.rent_amount : contractForm.monthly_rent }); }}>
-              <option value="">-- Selecciona una propiedad --</option>
+              <option value="">-- Selecciona --</option>
               {properties.map(p => <option key={p.id} value={p.name}>{p.name} · {fmt(p.rent_amount)}/mes</option>)}
             </Sel>
           </Field>
-          <Field label="Renta mensual (MXN) *"><Input type="number" placeholder="Ej: 12500" value={contractForm.monthly_rent} onChange={e => setContractForm({ ...contractForm, monthly_rent: e.target.value })} /></Field>
+          <Field label="Renta mensual *"><Input type="number" value={contractForm.monthly_rent} onChange={e => setContractForm({ ...contractForm, monthly_rent: e.target.value })} /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Inicio *"><Input type="date" value={contractForm.start_date} onChange={e => setContractForm({ ...contractForm, start_date: e.target.value })} /></Field>
             <Field label="Fin *"><Input type="date" value={contractForm.end_date} onChange={e => setContractForm({ ...contractForm, end_date: e.target.value })} /></Field>
           </div>
-          <Field label="Día de pago *" hint="Del 1 al 28"><Input type="number" min="1" max="28" placeholder="Ej: 10" value={contractForm.payment_day} onChange={e => setContractForm({ ...contractForm, payment_day: e.target.value })} /></Field>
+          <Field label="Día de pago *" hint="Del 1 al 28"><Input type="number" min="1" max="28" value={contractForm.payment_day} onChange={e => setContractForm({ ...contractForm, payment_day: e.target.value })} /></Field>
+
+          <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+            <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#0369a1" }}>💰 ¿A quién le paga la renta el inquilino?</p>
+            <Field label="">
+              <Sel value={contractForm.rent_receiver} onChange={e => setContractForm({ ...contractForm, rent_receiver: e.target.value })}>
+                <option value="inmobiliaria">A nosotros (la inmobiliaria) — entra a nuestra caja</option>
+                <option value="propietario">Directo al propietario — solo registramos la comisión</option>
+              </Sel>
+            </Field>
+          </div>
+
           <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: 16, marginBottom: 16 }}>
             <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>💼 Comisión de administración</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <Field label="Tipo"><Sel value={contractForm.commission_type} onChange={e => setContractForm({ ...contractForm, commission_type: e.target.value })}><option value="porcentaje">Porcentaje (%)</option><option value="fijo">Monto fijo (MXN)</option></Sel></Field>
-              <Field label={contractForm.commission_type === "porcentaje" ? "Porcentaje (%)" : "Monto fijo (MXN)"}><Input type="number" placeholder={contractForm.commission_type === "porcentaje" ? "Ej: 10" : "Ej: 500"} value={contractForm.commission_value} onChange={e => setContractForm({ ...contractForm, commission_value: e.target.value })} /></Field>
+              <Field label="Tipo"><Sel value={contractForm.commission_type} onChange={e => setContractForm({ ...contractForm, commission_type: e.target.value })}><option value="porcentaje">Porcentaje (%)</option><option value="fijo">Monto fijo</option></Sel></Field>
+              <Field label={contractForm.commission_type === "porcentaje" ? "%" : "MXN"}><Input type="number" value={contractForm.commission_value} onChange={e => setContractForm({ ...contractForm, commission_value: e.target.value })} /></Field>
             </div>
-            <Field label="¿Quién paga la comisión?"><Sel value={contractForm.commission_who} onChange={e => setContractForm({ ...contractForm, commission_who: e.target.value })}><option value="propietario_descuento">Se descuenta de lo que le pago al propietario</option><option value="propietario_aparte">El propietario me paga aparte</option><option value="inquilino">El inquilino la paga directo</option></Sel></Field>
+            <Field label="¿Quién paga la comisión?"><Sel value={contractForm.commission_who} onChange={e => setContractForm({ ...contractForm, commission_who: e.target.value })}><option value="propietario_descuento">Se descuenta al propietario</option><option value="propietario_aparte">Propietario paga aparte</option><option value="inquilino">El inquilino</option></Sel></Field>
             {contractForm.commission_value && contractForm.monthly_rent && (
               <div style={{ background: "#fff", borderRadius: 8, padding: "10px 14px" }}>
                 <p style={{ margin: 0, fontSize: 13, color: "#7c3aed", fontWeight: 700 }}>Tu comisión: {fmt(contractForm.commission_type === "porcentaje" ? (parseFloat(contractForm.monthly_rent) * parseFloat(contractForm.commission_value) / 100) : parseFloat(contractForm.commission_value))} / mes</p>
-                {contractForm.commission_who === "propietario_descuento" && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>Propietario recibe: {fmt(parseFloat(contractForm.monthly_rent) - (contractForm.commission_type === "porcentaje" ? (parseFloat(contractForm.monthly_rent) * parseFloat(contractForm.commission_value) / 100) : parseFloat(contractForm.commission_value)))} / mes</p>}
               </div>
             )}
           </div>
-          <Field label="Depósito (MXN)"><Input type="number" placeholder="Ej: 25000" value={contractForm.deposit_amount} onChange={e => setContractForm({ ...contractForm, deposit_amount: e.target.value })} /></Field>
-          <Field label="Notas"><Input placeholder="Condiciones especiales" value={contractForm.notes} onChange={e => setContractForm({ ...contractForm, notes: e.target.value })} /></Field>
+          <Field label="Depósito"><Input type="number" value={contractForm.deposit_amount} onChange={e => setContractForm({ ...contractForm, deposit_amount: e.target.value })} /></Field>
+          <Field label="Notas"><Input value={contractForm.notes} onChange={e => setContractForm({ ...contractForm, notes: e.target.value })} /></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={saveContract} disabled={saving || !contractForm.tenant_name || !contractForm.property_name || !contractForm.monthly_rent || !contractForm.start_date || !contractForm.end_date}>{saving ? (editing ? "Guardando..." : "Generando cobros...") : (editing ? "Guardar cambios" : "Crear contrato")}</Btn>
+            <Btn onClick={saveContract} disabled={saving || !contractForm.tenant_name || !contractForm.property_name || !contractForm.monthly_rent || !contractForm.start_date || !contractForm.end_date}>{saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear contrato"}</Btn>
           </div>
         </Modal>
       )}
 
+      {/* MODAL PROPIEDAD */}
       {showModal === "property" && (
         <Modal title={editing ? "✏️ Editar Propiedad" : "🏠 Nueva Propiedad"} onClose={closeModal}>
-          <Field label="Nombre *"><Input placeholder="Ej: Depto 3B Torre Esmeralda" value={propForm.name} onChange={e => setPropForm({ ...propForm, name: e.target.value })} /></Field>
-          <Field label="Dirección"><Input placeholder="Ej: Av. Insurgentes Sur 1234" value={propForm.address} onChange={e => setPropForm({ ...propForm, address: e.target.value })} /></Field>
+          <Field label="Nombre *"><Input value={propForm.name} onChange={e => setPropForm({ ...propForm, name: e.target.value })} /></Field>
+          <Field label="Dirección"><Input value={propForm.address} onChange={e => setPropForm({ ...propForm, address: e.target.value })} /></Field>
           <Field label="Tipo"><Sel value={propForm.property_type} onChange={e => setPropForm({ ...propForm, property_type: e.target.value })}><option value="depto">Departamento</option><option value="casa">Casa</option><option value="local">Local comercial</option><option value="bodega">Bodega</option><option value="oficina">Oficina</option></Sel></Field>
-          <Field label="Renta mensual (MXN)"><Input type="number" placeholder="Ej: 12500" value={propForm.rent_amount} onChange={e => setPropForm({ ...propForm, rent_amount: e.target.value })} /></Field>
+          <Field label="Renta mensual"><Input type="number" value={propForm.rent_amount} onChange={e => setPropForm({ ...propForm, rent_amount: e.target.value })} /></Field>
           <Field label="Estado"><Sel value={propForm.status} onChange={e => setPropForm({ ...propForm, status: e.target.value })}><option value="disponible">Disponible</option><option value="ocupada">Ocupada</option><option value="mantenimiento">En mantenimiento</option></Sel></Field>
-          <Field label="Email del propietario" hint="Para que acceda a su portal"><Input type="email" placeholder="propietario@email.com" value={propForm.owner_email} onChange={e => setPropForm({ ...propForm, owner_email: e.target.value })} /></Field>
-          <Field label="Teléfono del propietario"><Input placeholder="Ej: 55 1234 5678" value={propForm.owner_phone} onChange={e => setPropForm({ ...propForm, owner_phone: e.target.value })} /></Field>
-          <Field label="Notas"><Input placeholder="Notas adicionales" value={propForm.notes} onChange={e => setPropForm({ ...propForm, notes: e.target.value })} /></Field>
+          <Field label="Email propietario" hint="Para portal del propietario"><Input type="email" value={propForm.owner_email} onChange={e => setPropForm({ ...propForm, owner_email: e.target.value })} /></Field>
+          <Field label="Teléfono propietario"><Input value={propForm.owner_phone} onChange={e => setPropForm({ ...propForm, owner_phone: e.target.value })} /></Field>
+          <Field label="Notas"><Input value={propForm.notes} onChange={e => setPropForm({ ...propForm, notes: e.target.value })} /></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
             <Btn onClick={saveProperty} disabled={saving || !propForm.name}>{saving ? "Guardando..." : editing ? "Guardar cambios" : "Guardar"}</Btn>
@@ -1018,13 +1045,14 @@ export default function Home() {
         </Modal>
       )}
 
+      {/* MODAL PAGO MANUAL */}
       {showModal === "payment" && (
         <Modal title="💰 Registrar Pago Manual" onClose={closeModal}>
-          <Field label="Inquilino *"><Input placeholder="Ej: Ana García" value={payForm.tenant_name} onChange={e => setPayForm({ ...payForm, tenant_name: e.target.value })} /></Field>
-          <Field label="Email"><Input type="email" placeholder="Ej: ana@gmail.com" value={payForm.tenant_email} onChange={e => setPayForm({ ...payForm, tenant_email: e.target.value })} /></Field>
+          <Field label="Inquilino *"><Input value={payForm.tenant_name} onChange={e => setPayForm({ ...payForm, tenant_name: e.target.value })} /></Field>
+          <Field label="Email"><Input type="email" value={payForm.tenant_email} onChange={e => setPayForm({ ...payForm, tenant_email: e.target.value })} /></Field>
           <Field label="Propiedad"><Sel value={payForm.property_name} onChange={e => setPayForm({ ...payForm, property_name: e.target.value })}><option value="">-- Selecciona --</option>{properties.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}</Sel></Field>
-          <Field label="Monto (MXN) *"><Input type="number" placeholder="Ej: 12500" value={payForm.amount} onChange={e => setPayForm({ ...payForm, amount: e.target.value })} /></Field>
-          <Field label="Fecha de vencimiento"><Input type="date" value={payForm.due_date} onChange={e => setPayForm({ ...payForm, due_date: e.target.value })} /></Field>
+          <Field label="Monto *"><Input type="number" value={payForm.amount} onChange={e => setPayForm({ ...payForm, amount: e.target.value })} /></Field>
+          <Field label="Vencimiento"><Input type="date" value={payForm.due_date} onChange={e => setPayForm({ ...payForm, due_date: e.target.value })} /></Field>
           <Field label="Método"><Sel value={payForm.payment_method} onChange={e => setPayForm({ ...payForm, payment_method: e.target.value })}><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option><option value="cheque">Cheque</option></Sel></Field>
           <Field label="Estado"><Sel value={payForm.status} onChange={e => setPayForm({ ...payForm, status: e.target.value })}><option value="pendiente">Pendiente</option><option value="pagado">Pagado</option><option value="atrasado">Atrasado</option></Sel></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
@@ -1034,19 +1062,52 @@ export default function Home() {
         </Modal>
       )}
 
+      {/* MODAL TICKET */}
       {showModal === "ticket" && (
-        <Modal title="🔧 Nuevo Ticket" onClose={closeModal}>
-          <Field label="Título *"><Input placeholder="Ej: Fuga de agua en baño" value={ticketForm.title} onChange={e => setTicketForm({ ...ticketForm, title: e.target.value })} /></Field>
+        <Modal title={editing ? "✏️ Editar Ticket" : "🔧 Nuevo Ticket"} onClose={closeModal}>
+          <Field label="Título *"><Input value={ticketForm.title} onChange={e => setTicketForm({ ...ticketForm, title: e.target.value })} /></Field>
           <Field label="Propiedad"><Sel value={ticketForm.property_name} onChange={e => setTicketForm({ ...ticketForm, property_name: e.target.value })}><option value="">-- Selecciona --</option>{properties.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}</Sel></Field>
-          <Field label="Inquilino"><Input placeholder="Ej: Roberto Silva" value={ticketForm.tenant_name} onChange={e => setTicketForm({ ...ticketForm, tenant_name: e.target.value })} /></Field>
-          <Field label="Descripción"><Input placeholder="Describe el problema" value={ticketForm.description} onChange={e => setTicketForm({ ...ticketForm, description: e.target.value })} /></Field>
+          <Field label="Inquilino"><Input value={ticketForm.tenant_name} onChange={e => setTicketForm({ ...ticketForm, tenant_name: e.target.value })} /></Field>
+          <Field label="Descripción"><Input value={ticketForm.description} onChange={e => setTicketForm({ ...ticketForm, description: e.target.value })} /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Categoría"><Sel value={ticketForm.category} onChange={e => setTicketForm({ ...ticketForm, category: e.target.value })}><option value="plomería">Plomería</option><option value="electricidad">Electricidad</option><option value="pintura">Pintura</option><option value="carpintería">Carpintería</option><option value="otro">Otro</option></Sel></Field>
             <Field label="Prioridad"><Sel value={ticketForm.priority} onChange={e => setTicketForm({ ...ticketForm, priority: e.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option><option value="urgente">Urgente</option></Sel></Field>
           </div>
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+
+          <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, marginBottom: 4 }}>
+            <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#374151" }}>💰 Costos y pagos</p>
+            <Field label="¿Quién paga este mantenimiento?">
+              <Sel value={ticketForm.payer} onChange={e => setTicketForm({ ...ticketForm, payer: e.target.value })}>
+                <option value="propietario">El propietario</option>
+                <option value="inquilino">El inquilino</option>
+                <option value="inmobiliaria">Nosotros (la inmobiliaria)</option>
+              </Sel>
+            </Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Costo del proveedor" hint="Lo que nos cobró el técnico/proveedor"><Input type="number" placeholder="0" value={ticketForm.provider_cost} onChange={e => setTicketForm({ ...ticketForm, provider_cost: e.target.value })} /></Field>
+              <Field label="Lo que cobramos" hint="Lo que le cobrarmos al propietario/inquilino"><Input type="number" placeholder="0" value={ticketForm.charged_amount} onChange={e => setTicketForm({ ...ticketForm, charged_amount: e.target.value })} /></Field>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Anticipo cobrado" hint="Si pediste anticipo antes"><Input type="number" placeholder="0" value={ticketForm.advance_amount} onChange={e => setTicketForm({ ...ticketForm, advance_amount: e.target.value })} /></Field>
+              <Field label="¿Ya recibiste el anticipo?">
+                <Sel value={ticketForm.advance_paid ? "si" : "no"} onChange={e => setTicketForm({ ...ticketForm, advance_paid: e.target.value === "si" })}>
+                  <option value="no">No todavía</option>
+                  <option value="si">Sí, ya lo tengo</option>
+                </Sel>
+              </Field>
+            </div>
+            {ticketForm.provider_cost > 0 && ticketForm.charged_amount > 0 && (
+              <div style={{ background: "#fff", borderRadius: 8, padding: "10px 14px", marginTop: 4 }}>
+                <p style={{ margin: 0, fontSize: 13, color: "#7c3aed", fontWeight: 700 }}>
+                  Utilidad: {fmt((parseFloat(ticketForm.charged_amount) || 0) - (parseFloat(ticketForm.provider_cost) || 0))}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
             <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={saveTicket} disabled={saving || !ticketForm.title}>{saving ? "Guardando..." : "Crear ticket"}</Btn>
+            <Btn onClick={saveTicket} disabled={saving || !ticketForm.title}>{saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear ticket"}</Btn>
           </div>
         </Modal>
       )}
