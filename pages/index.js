@@ -97,7 +97,9 @@ const generarPagos = (contrato) => {
   const fin = new Date(contrato.end_date);
   const diaCorte = parseInt(contrato.payment_day);
   let fecha = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
-  while (fecha <= fin) {
+  const finMenosUnMes = new Date(fin);
+finMenosUnMes.setMonth(finMenosUnMes.getMonth() - 1);
+while (fecha <= finMenosUnMes) {
     const year = fecha.getFullYear();
     const month = fecha.getMonth() + 1;
     const diasEnMes = new Date(year, month, 0).getDate();
