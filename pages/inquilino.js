@@ -36,7 +36,6 @@ const Btn = ({ children, onClick, color = "#1a1a2e", disabled, full }) => (
   </button>
 );
 
-// ─── LOGIN DEL INQUILINO ────────────────────────────────────────────────────
 const TenantLogin = ({ onLogin }) => {
   const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
@@ -49,7 +48,10 @@ const TenantLogin = ({ onLogin }) => {
     setError("");
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: false }
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: "https://app.emporioinmobiliario.com.mx/inquilino"
+      }
     });
     setLoading(false);
     if (error) {
@@ -108,16 +110,19 @@ const TenantLogin = ({ onLogin }) => {
           <>
             <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "14px 16px", marginBottom: 20, textAlign: "center" }}>
               <p style={{ margin: 0, fontSize: 14, color: "#065f46", fontWeight: 600 }}>
-                📧 Enviamos un código a <strong>{email}</strong>
+                📧 Te enviamos un link a <strong>{email}</strong>
               </p>
-              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#047857" }}>Revisa también tu carpeta de spam</p>
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#047857" }}>Haz clic en el link del email para entrar</p>
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#047857" }}>O escribe el código de 6 dígitos aquí:</p>
             </div>
-            <Field label="Código de 6 dígitos">
+            <Field label="Código del email (opcional)">
               <Input type="number" placeholder="123456" value={otp} onChange={e => setOtp(e.target.value)} onKeyDown={e => e.key === "Enter" && verifyOtp()} style={{ textAlign: "center", fontSize: 24, fontWeight: 800, letterSpacing: "0.3em" }} />
             </Field>
-            <Btn full color="#1a1a2e" onClick={verifyOtp} disabled={loading || otp.length < 6}>
-              {loading ? "Verificando..." : "Entrar a mi portal"}
-            </Btn>
+            {otp.length >= 6 && (
+              <Btn full color="#1a1a2e" onClick={verifyOtp} disabled={loading}>
+                {loading ? "Verificando..." : "Entrar con código"}
+              </Btn>
+            )}
             <button onClick={() => { setStep("email"); setOtp(""); setError(""); }} style={{ width: "100%", background: "transparent", border: "none", color: "#6b7280", cursor: "pointer", marginTop: 12, fontSize: 14 }}>
               ← Usar otro email
             </button>
@@ -128,7 +133,6 @@ const TenantLogin = ({ onLogin }) => {
   );
 };
 
-// ─── PORTAL DEL INQUILINO ───────────────────────────────────────────────────
 export default function InquilinoPortal() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -162,14 +166,12 @@ export default function InquilinoPortal() {
   const loadTenantData = async () => {
     setLoading(true);
     const email = session.user.email;
-
     const { data: contractData } = await supabase
       .from("contracts")
       .select("*")
       .eq("tenant_email", email)
       .eq("status", "activo")
       .single();
-
     if (contractData) {
       setContract(contractData);
       const { data: paymentsData } = await supabase
@@ -178,7 +180,6 @@ export default function InquilinoPortal() {
         .eq("contract_id", contractData.id)
         .order("due_date", { ascending: true });
       setPayments(paymentsData || []);
-
       const { data: ticketsData } = await supabase
         .from("maintenance_tickets")
         .select("*")
@@ -231,7 +232,11 @@ export default function InquilinoPortal() {
   const logout = async () => { await supabase.auth.signOut(); setSession(null); };
 
   const hoy = new Date();
-  const pagosMes = payments.filter(p => { if (!p.due_date) return false; const d = new Date(p.due_date); return d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear(); });
+  const pagosMes = payments.filter(p => {
+    if (!p.due_date) return false;
+    const d = new Date(p.due_date);
+    return d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear();
+  });
   const pagoPendiente = pagosMes.find(p => ["pendiente", "atrasado"].includes(p.status));
   const totalPagado = payments.filter(p => p.status === "pagado").length;
 
@@ -264,7 +269,6 @@ export default function InquilinoPortal() {
     <div style={{ minHeight: "100vh", background: "#f4f5f7", fontFamily: "system-ui, sans-serif" }}>
       {toast && <div style={{ position: "fixed", top: 24, right: 24, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 2000, boxShadow: "0 4px 20px rgba(0,0,0,0.2)", maxWidth: 300 }}>{toast.msg}</div>}
 
-      {/* Header */}
       <div style={{ background: "linear-gradient(135deg, #1a1a2e, #2d2d5e)", padding: "24px 20px 0" }}>
         <div style={{ maxWidth: 600, margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
@@ -279,8 +283,6 @@ export default function InquilinoPortal() {
               <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Día {contract.payment_day} de cada mes</p>
             </div>
           </div>
-
-          {/* Tabs */}
           <div style={{ display: "flex", gap: 4 }}>
             {[
               { id: "inicio", label: "🏠 Inicio" },
@@ -288,7 +290,7 @@ export default function InquilinoPortal() {
               { id: "mantenimiento", label: "🔧 Mantenimiento" },
               { id: "contrato", label: "📋 Contrato" },
             ].map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "8px 16px", borderRadius: "8px 8px 0 0", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: tab === t.id ? "#fff" : "rgba(255,255,255,0.1)", color: tab === t.id ? "#1a1a2e" : "rgba(255,255,255,0.7)", transition: "all 0.15s" }}>
+              <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "8px 16px", borderRadius: "8px 8px 0 0", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: tab === t.id ? "#fff" : "rgba(255,255,255,0.1)", color: tab === t.id ? "#1a1a2e" : "rgba(255,255,255,0.7)" }}>
                 {t.label}
               </button>
             ))}
@@ -296,13 +298,10 @@ export default function InquilinoPortal() {
         </div>
       </div>
 
-      {/* Content */}
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "24px 20px" }}>
 
-        {/* INICIO */}
         {tab === "inicio" && (
           <div>
-            {/* Estado del pago de este mes */}
             {pagoPendiente ? (
               <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 16, border: "2px solid #fcd34d" }}>
                 <p style={{ margin: "0 0 4px", fontSize: 12, color: "#92400e", fontWeight: 700, textTransform: "uppercase" }}>⚠️ Pago pendiente este mes</p>
@@ -327,8 +326,6 @@ export default function InquilinoPortal() {
                 </div>
               </div>
             )}
-
-            {/* Resumen */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
               <div style={{ background: "#fff", borderRadius: 14, padding: 18 }}>
                 <p style={{ margin: "0 0 4px", fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>Pagos realizados</p>
@@ -339,14 +336,12 @@ export default function InquilinoPortal() {
                 <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "#1e40af" }}>{tickets.filter(t => t.status !== "resuelto").length}</p>
               </div>
             </div>
-
             <button onClick={logout} style={{ width: "100%", background: "#f3f4f6", border: "none", borderRadius: 10, padding: "12px", cursor: "pointer", fontSize: 14, color: "#6b7280", fontWeight: 600 }}>
               Cerrar sesión
             </button>
           </div>
         )}
 
-        {/* PAGOS */}
         {tab === "pagos" && (
           <div>
             <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700, color: "#1a1a2e" }}>Historial de pagos</h3>
@@ -378,7 +373,6 @@ export default function InquilinoPortal() {
           </div>
         )}
 
-        {/* MANTENIMIENTO */}
         {tab === "mantenimiento" && (
           <div>
             <div style={{ background: "#fff", borderRadius: 16, padding: 22, marginBottom: 16 }}>
@@ -416,7 +410,6 @@ export default function InquilinoPortal() {
                 {saving ? "Enviando..." : "Enviar reporte"}
               </Btn>
             </div>
-
             {tickets.length > 0 && (
               <div>
                 <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Mis reportes</h3>
@@ -434,7 +427,6 @@ export default function InquilinoPortal() {
           </div>
         )}
 
-        {/* CONTRATO */}
         {tab === "contrato" && (
           <div style={{ background: "#fff", borderRadius: 16, padding: 24 }}>
             <h3 style={{ margin: "0 0 20px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Mi contrato</h3>
