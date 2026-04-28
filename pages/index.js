@@ -311,7 +311,25 @@ export default function Home() {
     });
   };
 
-  const updatePaymentStatus = async (id, status) => { await supabase.from("payments").update({ status }).eq("id", id); showToast("Actualizado ✅"); loadData(); };
+  const updatePaymentStatus = async (id, status) => {
+  await supabase.from("payments").update({ status }).eq("id", id);
+  if (status === "pagado") {
+    const pago = payments.find(p => p.id === id);
+    if (pago) {
+      await supabase.from("cash_movements").insert([{
+        type: "entrada",
+        category: "renta_cobrada",
+        description: `Renta ${pago.tenant_name} — ${pago.property_name}`,
+        amount: pago.amount,
+        payment_method: "transferencia",
+        date: new Date().toISOString().split("T")[0],
+        notes: `Periodo: ${pago.period_month}/${pago.period_year}`,
+        created_by: profile?.email,
+      }]);
+    }
+  }
+  showToast("Actualizado ✅"); loadData();
+};
   const updateTicketStatus = async (id, status) => { await supabase.from("maintenance_tickets").update({ status }).eq("id", id); showToast("Actualizado ✅"); loadData(); };
 
   const sendReminder = async (payment) => {
