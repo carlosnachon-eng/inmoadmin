@@ -189,10 +189,9 @@ export default function Home() {
   const [searchPago, setSearchPago] = useState("");
   const [filterEstatus, setFilterEstatus] = useState("");
   const [filterMes, setFilterMes] = useState("");
-  const [selectedProperty, setSelectedProperty] = useState(null);
 
   const emptyProp = { name: "", address: "", property_type: "depto", rent_amount: "", status: "disponible", notes: "", owner_email: "", owner_phone: "" };
-  const emptyContract = { tenant_name: "", tenant_email: "", owner_name: "", property_name: "", monthly_rent: "", start_date: "", end_date: "", payment_day: "5", deposit_amount: "", commission_type: "porcentaje", commission_value: "", commission_who: "propietario_descuento", rent_receiver: "inmobiliaria", notes: "" };
+  const emptyContract = { tenant_name: "", tenant_email: "", tenant_phone: "", owner_name: "", property_name: "", monthly_rent: "", start_date: "", end_date: "", payment_day: "5", deposit_amount: "", commission_type: "porcentaje", commission_value: "", commission_who: "propietario_descuento", rent_receiver: "inmobiliaria", notes: "" };
   const emptyPayment = { tenant_name: "", tenant_email: "", property_name: "", amount: "", due_date: "", status: "pendiente", payment_method: "transferencia", notes: "" };
   const emptyTicket = { property_name: "", tenant_name: "", title: "", description: "", category: "otro", priority: "media", payer: "propietario", provider_cost: "", charged_amount: "", advance_amount: "", advance_paid: false };
   const emptyOwnerPayment = { owner_name: "", owner_email: "", period_description: "", total_rent: "", total_commission: "", total_liquid: "", amount_paid: "", payment_method: "transferencia", payment_date: "", status: "pagado", notes: "" };
@@ -250,11 +249,11 @@ export default function Home() {
   const openEdit = (type, item) => {
     setEditing({ type, id: item.id });
     if (type === "property") { setPropForm({ name: item.name || "", address: item.address || "", property_type: item.property_type || "depto", rent_amount: item.rent_amount || "", status: item.status || "disponible", notes: item.notes || "", owner_email: item.owner_email || "", owner_phone: item.owner_phone || "" }); setShowModal("property"); }
-    if (type === "contract") { setContractForm({ tenant_name: item.tenant_name || "", tenant_email: item.tenant_email || "", owner_name: item.owner_name || "", property_name: item.property_name || "", monthly_rent: item.monthly_rent || "", start_date: item.start_date || "", end_date: item.end_date || "", payment_day: item.payment_day || "5", deposit_amount: item.deposit_amount || "", commission_type: item.commission_type || "porcentaje", commission_value: item.commission_value || "", commission_who: item.commission_who || "propietario_descuento", rent_receiver: item.rent_receiver || "inmobiliaria", notes: item.notes || "" }); setShowModal("contract"); }
+    if (type === "contract") { setContractForm({ tenant_name: item.tenant_name || "", tenant_email: item.tenant_email || "", tenant_phone: item.tenant_phone || "", owner_name: item.owner_name || "", property_name: item.property_name || "", monthly_rent: item.monthly_rent || "", start_date: item.start_date || "", end_date: item.end_date || "", payment_day: item.payment_day || "5", deposit_amount: item.deposit_amount || "", commission_type: item.commission_type || "porcentaje", commission_value: item.commission_value || "", commission_who: item.commission_who || "propietario_descuento", rent_receiver: item.rent_receiver || "inmobiliaria", notes: item.notes || "" }); setShowModal("contract"); }
     if (type === "ticket") { setTicketForm({ property_name: item.property_name || "", tenant_name: item.tenant_name || "", title: item.title || "", description: item.description || "", category: item.category || "otro", priority: item.priority || "media", payer: item.payer || "propietario", provider_cost: item.provider_cost || "", charged_amount: item.charged_amount || "", advance_amount: item.advance_amount || "", advance_paid: item.advance_paid || false }); setShowModal("ticket"); }
   };
 
-  const closeModal = () => { setShowModal(null); setEditing(null); setPropForm(emptyProp); setContractForm(emptyContract); setPayForm(emptyPayment); setTicketForm(emptyTicket); setOwnerPayForm(emptyOwnerPayment); setCashForm(emptyCash); setExpenseForm(emptyExpense); setSelectedProperty(null); };
+  const closeModal = () => { setShowModal(null); setEditing(null); setPropForm(emptyProp); setContractForm(emptyContract); setPayForm(emptyPayment); setTicketForm(emptyTicket); setOwnerPayForm(emptyOwnerPayment); setCashForm(emptyCash); setExpenseForm(emptyExpense); };
 
   const saveProperty = async () => {
     setSaving(true);
@@ -268,7 +267,7 @@ export default function Home() {
 
   const saveContract = async () => {
     setSaving(true);
-    const contractData = { tenant_name: contractForm.tenant_name, tenant_email: contractForm.tenant_email, owner_name: contractForm.owner_name, property_name: contractForm.property_name, monthly_rent: parseFloat(contractForm.monthly_rent) || 0, start_date: contractForm.start_date, end_date: contractForm.end_date, payment_day: parseInt(contractForm.payment_day), deposit_amount: parseFloat(contractForm.deposit_amount) || 0, commission_type: contractForm.commission_type, commission_value: parseFloat(contractForm.commission_value) || 0, commission_who: contractForm.commission_who, rent_receiver: contractForm.rent_receiver, notes: contractForm.notes };
+    const contractData = { tenant_name: contractForm.tenant_name, tenant_email: contractForm.tenant_email, tenant_phone: contractForm.tenant_phone, owner_name: contractForm.owner_name, property_name: contractForm.property_name, monthly_rent: parseFloat(contractForm.monthly_rent) || 0, start_date: contractForm.start_date, end_date: contractForm.end_date, payment_day: parseInt(contractForm.payment_day), deposit_amount: parseFloat(contractForm.deposit_amount) || 0, commission_type: contractForm.commission_type, commission_value: parseFloat(contractForm.commission_value) || 0, commission_who: contractForm.commission_who, rent_receiver: contractForm.rent_receiver, notes: contractForm.notes };
     if (editing?.type === "contract") {
       const { error } = await supabase.from("contracts").update(contractData).eq("id", editing.id);
       setSaving(false);
@@ -332,7 +331,6 @@ export default function Home() {
     const data = { ...expenseForm, amount, created_by: profile?.email };
     const { error } = await supabase.from("property_expenses").insert([data]);
     if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
-    // Si lo paga la inmobiliaria, sale de caja
     if (expenseForm.paid_by === "inmobiliaria") {
       await addCashMovement({ type: "salida", category: "gasto_operativo", description: `${expenseCategoryLabels[expenseForm.category] || expenseForm.category}: ${expenseForm.description} — ${expenseForm.property_name}`, amount, payment_method: expenseForm.payment_method, date: expenseForm.date, created_by: profile?.email });
     }
@@ -390,7 +388,7 @@ export default function Home() {
   const sendWhatsApp = (payment) => {
     const contrato = contracts.find(c => c.id === payment.contract_id);
     const phone = contrato?.tenant_phone || "";
-    if (!phone) { showToast("Sin teléfono — agrega el teléfono del inquilino en el contrato", false); return; }
+    if (!phone) { showToast("Sin teléfono — edita el contrato para agregarlo", false); return; }
     const phoneClean = phone.replace(/\D/g, "");
     const msg = encodeURIComponent(`Hola ${payment.tenant_name}, te recordamos que tienes un pago pendiente de ${fmt(payment.amount)} correspondiente a ${payment.property_name} con fecha límite ${payment.due_date}. Por favor regulariza tu pago. Gracias, Emporio Inmobiliario.`);
     window.open(`https://wa.me/52${phoneClean}?text=${msg}`, "_blank");
@@ -775,7 +773,7 @@ export default function Home() {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#f9fafb" }}>
-                      {["Inquilino", "Propietario", "Propiedad", "Renta", "Comisión", "Renta a", "Vigencia", "Día", "Cobros", ""].map(h => (
+                      {["Inquilino", "Teléfono", "Propietario", "Propiedad", "Renta", "Comisión", "Renta a", "Vigencia", "Día", "Cobros", ""].map(h => (
                         <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                       ))}
                     </tr>
@@ -788,6 +786,7 @@ export default function Home() {
                       return (
                         <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
                           <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{c.tenant_name}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.tenant_phone || "—"}</td>
                           <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.owner_name || "—"}</td>
                           <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.property_name}</td>
                           <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(c.monthly_rent)}</td>
@@ -846,16 +845,14 @@ export default function Home() {
                       {gastosPropiedad.length > 0 && (
                         <div style={{ marginTop: 10, borderTop: "1px solid #f3f4f6", paddingTop: 8 }}>
                           {gastosPropiedad.slice(0, 3).map(e => (
-  <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#6b7280", padding: "2px 0" }}>
-    <span>{expenseCategoryLabels[e.category]} · {e.description}</span>
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <span style={{ color: "#dc2626", fontWeight: 600 }}>{fmt(e.amount)}</span>
-      {isAdmin && (
-        <button onClick={() => deleteItem("expense", e.id, `Eliminar gasto: ${e.description}`)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, padding: "0 2px", color: "#dc2626" }}>🗑️</button>
-      )}
-    </div>
-  </div>
-))}
+                            <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#6b7280", padding: "2px 0" }}>
+                              <span>{expenseCategoryLabels[e.category]} · {e.description}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ color: "#dc2626", fontWeight: 600 }}>{fmt(e.amount)}</span>
+                                {isAdmin && <button onClick={() => deleteItem("expense", e.id, `Eliminar gasto: ${e.description}`)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, padding: "0 2px", color: "#dc2626" }}>🗑️</button>}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -930,9 +927,7 @@ export default function Home() {
                                 <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ background: "#7c3aed", color: "#fff", padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>🧾 Ver</a>
                               )}
                               {["pendiente", "atrasado"].includes(p.status) && <Btn small color="#1e40af" onClick={() => sendReminder(p)}>📧</Btn>}
-                              {["pendiente", "atrasado"].includes(p.status) && (
-                                <Btn small color="#25d366" onClick={() => sendWhatsApp(p)}>💬</Btn>
-                              )}
+                              {["pendiente", "atrasado"].includes(p.status) && <Btn small color="#25d366" onClick={() => sendWhatsApp(p)}>💬</Btn>}
                               {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("payment", p.id, `Eliminar cobro de ${p.tenant_name}`)}>🗑️</Btn>}
                             </div>
                           </td>
@@ -1089,7 +1084,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* MODAL GASTO OPERATIVO */}
       {showModal === "expense" && (
         <Modal title="💸 Registrar Gasto Operativo" onClose={closeModal}>
           <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
@@ -1195,7 +1189,7 @@ export default function Home() {
           {!editing && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginBottom: 20 }}><p style={{ margin: 0, fontSize: 13, color: "#065f46", fontWeight: 600 }}>✨ Al guardar se generan todos los cobros automáticamente</p></div>}
           <Field label="Inquilino *"><Input value={contractForm.tenant_name} onChange={e => setContractForm({ ...contractForm, tenant_name: e.target.value })} /></Field>
           <Field label="Email del inquilino"><Input type="email" value={contractForm.tenant_email} onChange={e => setContractForm({ ...contractForm, tenant_email: e.target.value })} /></Field>
-<Field label="Teléfono del inquilino" hint="10 dígitos sin espacios, ej: 2221234567"><Input type="tel" placeholder="2221234567" value={contractForm.tenant_phone || ""} onChange={e => setContractForm({ ...contractForm, tenant_phone: e.target.value })} /></Field>
+          <Field label="Teléfono del inquilino" hint="10 dígitos, ej: 2221234567"><Input type="tel" placeholder="2221234567" value={contractForm.tenant_phone} onChange={e => setContractForm({ ...contractForm, tenant_phone: e.target.value })} /></Field>
           <Field label="Propietario"><Input value={contractForm.owner_name} onChange={e => setContractForm({ ...contractForm, owner_name: e.target.value })} /></Field>
           <Field label="Propiedad *">
             <Sel value={contractForm.property_name} onChange={e => { const sel = properties.find(p => p.name === e.target.value); setContractForm({ ...contractForm, property_name: e.target.value, monthly_rent: sel ? sel.rent_amount : contractForm.monthly_rent }); }}>
