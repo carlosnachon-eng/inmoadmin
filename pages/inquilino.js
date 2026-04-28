@@ -19,13 +19,6 @@ const StatusBadge = ({ status }) => {
   return <span style={{ background: s.bg, color: s.color, padding: "2px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{s.label}</span>;
 };
 
-const Field = ({ label, children }) => (
-  <div style={{ marginBottom: 16 }}>
-    <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>{label}</label>
-    {children}
-  </div>
-);
-
 const Input = (props) => (
   <input {...props} style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 15, boxSizing: "border-box", ...props.style }} />
 );
@@ -37,43 +30,25 @@ const Btn = ({ children, onClick, color = "#1a1a2e", disabled, full }) => (
 );
 
 const TenantLogin = ({ onLogin }) => {
-  const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
+  const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const sendOtp = async () => {
+  const sendMagicLink = async () => {
     setLoading(true);
     setError("");
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        shouldCreateUser: true,
-        emailRedirectTo: "https://app.emporioinmobiliario.com.mx/inquilino"
+        emailRedirectTo: "https://app.emporioinmobiliario.com.mx/inquilino",
       }
     });
     setLoading(false);
     if (error) {
-      setError("No encontramos ese email. Verifica que sea el mismo que diste a tu inmobiliaria.");
+      setError("Error al enviar el enlace: " + error.message);
     } else {
-      setStep("otp");
-    }
-  };
-
-  const verifyOtp = async () => {
-    setLoading(true);
-    setError("");
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token: otp,
-      type: "email"
-    });
-    setLoading(false);
-    if (error) {
-      setError("Código incorrecto o expirado. Intenta de nuevo.");
-    } else {
-      onLogin();
+      setSent(true);
     }
   };
 
@@ -92,41 +67,34 @@ const TenantLogin = ({ onLogin }) => {
           </div>
         )}
 
-        {step === "email" && (
+        {!sent ? (
           <>
             <p style={{ fontSize: 14, color: "#6b7280", margin: "0 0 20px", textAlign: "center" }}>
-              Ingresa el email que registraste con tu inmobiliaria
+              Ingresa tu email y te mandamos un enlace para entrar
             </p>
-            <Field label="Tu email">
-              <Input type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && sendOtp()} />
-            </Field>
-            <Btn full color="#c8a96e" onClick={sendOtp} disabled={loading || !email}>
-              {loading ? "Enviando código..." : "Continuar →"}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Tu email</label>
+              <Input type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMagicLink()} />
+            </div>
+            <Btn full color="#c8a96e" onClick={sendMagicLink} disabled={loading || !email}>
+              {loading ? "Enviando..." : "Enviar enlace de acceso →"}
             </Btn>
           </>
-        )}
-
-        {step === "otp" && (
-          <>
-            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "14px 16px", marginBottom: 20, textAlign: "center" }}>
-              <p style={{ margin: 0, fontSize: 14, color: "#065f46", fontWeight: 600 }}>
-                📧 Te enviamos un link a <strong>{email}</strong>
-              </p>
-              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#047857" }}>Haz clic en el link del email para entrar</p>
-              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#047857" }}>O escribe el código de 6 dígitos aquí:</p>
-            </div>
-            <Field label="Código del email (opcional)">
-              <Input type="number" placeholder="123456" value={otp} onChange={e => setOtp(e.target.value)} onKeyDown={e => e.key === "Enter" && verifyOtp()} style={{ textAlign: "center", fontSize: 24, fontWeight: 800, letterSpacing: "0.3em" }} />
-            </Field>
-            {otp.length >= 6 && (
-              <Btn full color="#1a1a2e" onClick={verifyOtp} disabled={loading}>
-                {loading ? "Verificando..." : "Entrar con código"}
-              </Btn>
-            )}
-            <button onClick={() => { setStep("email"); setOtp(""); setError(""); }} style={{ width: "100%", background: "transparent", border: "none", color: "#6b7280", cursor: "pointer", marginTop: 12, fontSize: 14 }}>
-              ← Usar otro email
+        ) : (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 56, marginBottom: 16 }}>📧</div>
+            <h3 style={{ margin: "0 0 12px", color: "#1a1a2e", fontSize: 18, fontWeight: 800 }}>¡Revisa tu email!</h3>
+            <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 8px" }}>
+              Enviamos un enlace de acceso a:
+            </p>
+            <p style={{ color: "#1a1a2e", fontWeight: 700, fontSize: 15, margin: "0 0 20px" }}>{email}</p>
+            <p style={{ color: "#9ca3af", fontSize: 13, margin: "0 0 20px" }}>
+              Haz clic en el enlace del email para entrar a tu portal. Revisa también tu carpeta de spam.
+            </p>
+            <button onClick={() => { setSent(false); setEmail(""); }} style={{ background: "transparent", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 14, textDecoration: "underline" }}>
+              Usar otro email
             </button>
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -299,7 +267,6 @@ export default function InquilinoPortal() {
       </div>
 
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "24px 20px" }}>
-
         {tab === "inicio" && (
           <div>
             {pagoPendiente ? (
@@ -307,13 +274,11 @@ export default function InquilinoPortal() {
                 <p style={{ margin: "0 0 4px", fontSize: 12, color: "#92400e", fontWeight: 700, textTransform: "uppercase" }}>⚠️ Pago pendiente este mes</p>
                 <p style={{ margin: "0 0 16px", fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>{fmt(pagoPendiente.amount)}</p>
                 <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6b7280" }}>Vence el {pagoPendiente.due_date}</p>
-                <div>
-                  <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 600, color: "#374151" }}>¿Ya pagaste? Sube tu comprobante:</p>
-                  <label style={{ display: "flex", alignItems: "center", gap: 10, background: "#1a1a2e", color: "#c8a96e", padding: "12px 20px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 14, width: "fit-content" }}>
-                    {uploadingFile === pagoPendiente.id ? "Subiendo..." : "📎 Subir comprobante"}
-                    <input type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={e => e.target.files[0] && uploadReceipt(pagoPendiente.id, e.target.files[0])} disabled={!!uploadingFile} />
-                  </label>
-                </div>
+                <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 600, color: "#374151" }}>¿Ya pagaste? Sube tu comprobante:</p>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, background: "#1a1a2e", color: "#c8a96e", padding: "12px 20px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 14, width: "fit-content" }}>
+                  {uploadingFile === pagoPendiente.id ? "Subiendo..." : "📎 Subir comprobante"}
+                  <input type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={e => e.target.files[0] && uploadReceipt(pagoPendiente.id, e.target.files[0])} disabled={!!uploadingFile} />
+                </label>
               </div>
             ) : (
               <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 16, border: "2px solid #6ee7b7" }}>
@@ -356,7 +321,7 @@ export default function InquilinoPortal() {
                 </div>
                 {["pendiente", "atrasado"].includes(p.status) && (
                   <label style={{ display: "flex", alignItems: "center", gap: 8, background: "#f9fafb", padding: "10px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#374151", border: "1px dashed #d1d5db" }}>
-                    {uploadingFile === p.id ? "⏳ Subiendo..." : "📎 Subir comprobante de pago"}
+                    {uploadingFile === p.id ? "⏳ Subiendo..." : "📎 Subir comprobante"}
                     <input type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={e => e.target.files[0] && uploadReceipt(p.id, e.target.files[0])} disabled={!!uploadingFile} />
                   </label>
                 )}
@@ -382,8 +347,8 @@ export default function InquilinoPortal() {
                 <Input placeholder="Ej: Fuga de agua en baño" value={ticketForm.title} onChange={e => setTicketForm({ ...ticketForm, title: e.target.value })} />
               </div>
               <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Descripción (opcional)</label>
-                <textarea placeholder="Describe el problema con más detalle..." value={ticketForm.description} onChange={e => setTicketForm({ ...ticketForm, description: e.target.value })} style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", minHeight: 80, resize: "vertical", fontFamily: "inherit" }} />
+                <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Descripción</label>
+                <textarea placeholder="Describe el problema..." value={ticketForm.description} onChange={e => setTicketForm({ ...ticketForm, description: e.target.value })} style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", minHeight: 80, resize: "vertical", fontFamily: "inherit" }} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
                 <div>
@@ -406,9 +371,9 @@ export default function InquilinoPortal() {
                   </select>
                 </div>
               </div>
-              <Btn full color="#1a1a2e" onClick={submitTicket} disabled={saving || !ticketForm.title}>
+              <button onClick={submitTicket} disabled={saving || !ticketForm.title} style={{ width: "100%", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: 12, padding: "13px", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontSize: 15, opacity: saving ? 0.6 : 1 }}>
                 {saving ? "Enviando..." : "Enviar reporte"}
-              </Btn>
+              </button>
             </div>
             {tickets.length > 0 && (
               <div>
@@ -433,24 +398,17 @@ export default function InquilinoPortal() {
             {[
               ["Propiedad", contract.property_name],
               ["Inquilino", contract.tenant_name],
-              ["Inicio del contrato", contract.start_date],
-              ["Fin del contrato", contract.end_date],
+              ["Inicio", contract.start_date],
+              ["Fin", contract.end_date],
               ["Renta mensual", fmt(contract.monthly_rent)],
               ["Depósito", fmt(contract.deposit_amount)],
               ["Día de pago", `Día ${contract.payment_day} de cada mes`],
-              ["Estado", contract.status],
             ].map(([k, v]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid #f9fafb" }}>
                 <span style={{ fontSize: 14, color: "#6b7280" }}>{k}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: "#1a1a2e", textAlign: "right", maxWidth: "60%" }}>{v}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>{v}</span>
               </div>
             ))}
-            {contract.notes && (
-              <div style={{ marginTop: 16, background: "#f9fafb", borderRadius: 10, padding: "12px 16px" }}>
-                <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 700, color: "#6b7280" }}>NOTAS</p>
-                <p style={{ margin: 0, fontSize: 14, color: "#374151" }}>{contract.notes}</p>
-              </div>
-            )}
           </div>
         )}
       </div>
