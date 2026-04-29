@@ -162,7 +162,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         from: "InmoAdmin <cobros@emporioinmobiliario.com.mx>",
-        to: ["carlos.nachon@emporioinmobiliario.mx"],
+        to: ["carlos.nachon@emporioinmobiliario.mx", "asistente1@emporioinmobiliario.mx", "administracion@emporioinmobiliario.com.mx"],
         subject: `📋 Reporte diario — ${marcadosAtrasados} atrasados, ${enviados} recordatorios — ${fmtFecha(hoy)}`,
         html: htmlEquipo,
       }),
