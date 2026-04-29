@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     const params = new URLSearchParams();
     params.append("limit", "10");
     params.append("page", page);
-    params.append("search[operation_types][]", operacion === "sale" ? "sale" : "rental");
+    params.append("search[operation_type]", operacion === "sale" ? "sale" : "rental");
     params.append("search[statuses][]", "published");
     params.append("search[statuses][]", "reserved");
     if (tipo) params.append("search[property_types][]", tipo);
