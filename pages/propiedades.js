@@ -104,12 +104,13 @@ export default function Propiedades() {
             <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4, textTransform: "uppercase" }}>Tipo</label>
             <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, background: "#fff" }}>
               <option value="">Todos</option>
-              <option value="Departamento">Departamento</option>
-              <option value="Casa">Casa</option>
-              <option value="Local">Local comercial</option>
-              <option value="Oficina">Oficina</option>
-              <option value="Terreno">Terreno</option>
-              <option value="Bodega">Bodega</option>
+<option value="Departamento">Departamento</option>
+<option value="Casa">Casa</option>
+<option value="Casa en condominio">Casa en condominio</option>
+<option value="Local comercial">Local comercial</option>
+<option value="Oficina">Oficina</option>
+<option value="Terreno">Terreno</option>
+<option value="Bodega">Bodega</option>
             </select>
           </div>
           <div>
