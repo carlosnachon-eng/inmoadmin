@@ -4,6 +4,29 @@ const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
 }).format(n || 0);
 
+const STATUS_BADGE = {
+  published:  { label: "Publicado",  bg: "#dcfce7", color: "#166534", dot: "#22c55e" },
+  reserved:   { label: "Reservado",  bg: "#fef9c3", color: "#854d0e", dot: "#eab308" },
+  leased:     { label: "Rentado",    bg: "#fee2e2", color: "#991b1b", dot: "#ef4444" },
+  sold:       { label: "Vendido",    bg: "#fee2e2", color: "#991b1b", dot: "#ef4444" },
+  draft:      { label: "Borrador",   bg: "#f3f4f6", color: "#6b7280", dot: "#9ca3af" },
+};
+
+function StatusBadge({ status }) {
+  const s = STATUS_BADGE[status] || STATUS_BADGE.published;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 5,
+      background: s.bg, color: s.color,
+      padding: "3px 10px", borderRadius: 99,
+      fontSize: 11, fontWeight: 700, letterSpacing: "0.03em"
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.dot, flexShrink: 0 }} />
+      {s.label}
+    </span>
+  );
+}
+
 export default function Propiedades() {
   const [properties, setProperties] = useState([]);
   const [pagination, setPagination] = useState({});
@@ -45,25 +68,16 @@ export default function Propiedades() {
   useEffect(() => { fetchProperties(); }, []);
 
   const handleOperacion = (op) => {
-    setOperacion(op);
-    setPage(1);
+    setOperacion(op); setPage(1);
     fetchProperties({ operacion: op, page: 1 });
   };
-
-  const handleFiltros = () => {
-    setPage(1);
-    fetchProperties({ page: 1 });
-  };
-
+  const handleFiltros = () => { setPage(1); fetchProperties({ page: 1 }); };
   const handleLimpiar = () => {
     setTipo(""); setPrecioMin(""); setPrecioMax(""); setRecamaras(""); setPage(1);
     fetchProperties({ tipo: "", precioMin: "", precioMax: "", recamaras: "", page: 1 });
   };
-
   const handlePage = (p) => {
-    setPage(p);
-    fetchProperties({ page: p });
-    window.scrollTo(0, 0);
+    setPage(p); fetchProperties({ page: p }); window.scrollTo(0, 0);
   };
 
   return (
@@ -89,7 +103,12 @@ export default function Propiedades() {
         {/* Toggle */}
         <div style={{ maxWidth: 1100, margin: "20px auto 0", display: "flex", gap: 8 }}>
           {[{ label: "🏠 Renta", value: "rental" }, { label: "🏡 Venta", value: "sale" }].map(op => (
-            <button key={op.value} onClick={() => handleOperacion(op.value)} style={{ padding: "8px 24px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 14, background: operacion === op.value ? "#c8a96e" : "rgba(255,255,255,0.1)", color: operacion === op.value ? "#1a1a2e" : "rgba(255,255,255,0.7)" }}>
+            <button key={op.value} onClick={() => handleOperacion(op.value)} style={{
+              padding: "8px 24px", borderRadius: 8, border: "none", cursor: "pointer",
+              fontWeight: 700, fontSize: 14,
+              background: operacion === op.value ? "#c8a96e" : "rgba(255,255,255,0.1)",
+              color: operacion === op.value ? "#1a1a2e" : "rgba(255,255,255,0.7)"
+            }}>
               {op.label}
             </button>
           ))}
@@ -104,13 +123,13 @@ export default function Propiedades() {
             <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4, textTransform: "uppercase" }}>Tipo</label>
             <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, background: "#fff" }}>
               <option value="">Todos</option>
-<option value="Departamento">Departamento</option>
-<option value="Casa">Casa</option>
-<option value="Casa en condominio">Casa en condominio</option>
-<option value="Local comercial">Local comercial</option>
-<option value="Oficina">Oficina</option>
-<option value="Terreno">Terreno</option>
-<option value="Bodega">Bodega</option>
+              <option value="Departamento">Departamento</option>
+              <option value="Casa">Casa</option>
+              <option value="Casa en condominio">Casa en condominio</option>
+              <option value="Local comercial">Local comercial</option>
+              <option value="Oficina">Oficina</option>
+              <option value="Terreno">Terreno</option>
+              <option value="Bodega">Bodega</option>
             </select>
           </div>
           <div>
@@ -159,14 +178,34 @@ export default function Propiedades() {
           const op = p.operations?.[0];
           const precio = op?.amount || 0;
           const imgUrl = p.title_image_thumb || p.title_image_full;
+
+          // Agente: EasyBroker lo devuelve en agent o user
+          const agente = p.agent?.name || p.user?.name || null;
+          const agenteInicial = agente ? agente.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() : null;
+
+          // Status
+          const status = p.status || "published";
+
           return (
             <a key={p.public_id} href={`/propiedad/${p.public_id}`} style={{ textDecoration: "none" }}>
-              <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)", display: "flex", cursor: "pointer", transition: "box-shadow 0.2s" }}
+              <div
+                style={{ background: "#fff", borderRadius: 16, overflow: "hidden", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)", display: "flex", cursor: "pointer", transition: "box-shadow 0.2s" }}
                 onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 20px rgba(0,0,0,0.15)"}
-                onMouseLeave={e => e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.08)"}>
-                <div style={{ width: 280, minWidth: 280, height: 200, overflow: "hidden", flexShrink: 0, background: "#e5e7eb" }}>
-                  {imgUrl ? <img src={imgUrl} alt={p.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🏠</div>}
+                onMouseLeave={e => e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.08)"}
+              >
+                {/* Imagen */}
+                <div style={{ width: 280, minWidth: 280, height: 200, overflow: "hidden", flexShrink: 0, background: "#e5e7eb", position: "relative" }}>
+                  {imgUrl
+                    ? <img src={imgUrl} alt={p.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🏠</div>
+                  }
+                  {/* Badge status sobre imagen */}
+                  <div style={{ position: "absolute", top: 10, left: 10 }}>
+                    <StatusBadge status={status} />
+                  </div>
                 </div>
+
+                {/* Contenido */}
                 <div style={{ padding: "20px 24px", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
@@ -178,16 +217,28 @@ export default function Propiedades() {
                     </div>
                     <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6b7280" }}>📍 {typeof p.location === "string" ? p.location : ""}</p>
                   </div>
+
                   <div>
-                    <div style={{ display: "flex", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 12, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
                       {p.property_type && <span style={{ fontSize: 12, background: "#f3f4f6", color: "#374151", padding: "3px 10px", borderRadius: 99, fontWeight: 600 }}>{p.property_type}</span>}
                       {p.bedrooms > 0 && <span style={{ fontSize: 13, color: "#374151" }}>🛏 {p.bedrooms}</span>}
                       {p.bathrooms > 0 && <span style={{ fontSize: 13, color: "#374151" }}>🚿 {p.bathrooms}</span>}
                       {p.parking_spaces > 0 && <span style={{ fontSize: 13, color: "#374151" }}>🚗 {p.parking_spaces}</span>}
                       {p.construction_size > 0 && <span style={{ fontSize: 13, color: "#374151" }}>📐 {p.construction_size} m²</span>}
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 11, color: "#9ca3af" }}>ID: {p.public_id}</span>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      {/* Agente asignado */}
+                      {agente ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#1a1a2e", color: "#c8a96e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
+                            {agenteInicial}
+                          </div>
+                          <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>{agente}</span>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 11, color: "#9ca3af" }}>ID: {p.public_id}</span>
+                      )}
                       <span style={{ fontSize: 13, fontWeight: 700, color: "#c8a96e" }}>Ver detalle →</span>
                     </div>
                   </div>
