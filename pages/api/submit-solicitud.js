@@ -134,12 +134,12 @@ export default async function handler(req, res) {
     ];
 
     await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: "A1",
-      valueInputOption: "USER_ENTERED",
-      resource: { values: [row] },
-    });
-
+  spreadsheetId,
+  range: "A1",
+  valueInputOption: "USER_ENTERED",
+  insertDataOption: "INSERT_ROWS",
+  resource: { values: [row] },
+});
     // Email a jurídico
     const linksHtml = [
       linkIdentidadFisica ? `<tr><td style="padding:8px;color:#6b7280;font-size:12px;">ID Persona física</td><td style="padding:8px;"><a href="${linkIdentidadFisica}">Ver archivo</a></td></tr>` : "",
