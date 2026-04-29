@@ -126,7 +126,7 @@ function Galeria({ fotos, titulo }) {
       )}
 
       {/* Imagen principal */}
-      <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 10, background: "#e5e7eb", height: 320, position: "relative", cursor: fotos.length > 0 ? "zoom-in" : "default" }}>
+      <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 10, background: "#e5e7eb", height: 260, position: "relative", cursor: fotos.length > 0 ? "zoom-in" : "default" }}>
         {imagenPrincipal ? (
           <img
             src={imagenPrincipal}
@@ -236,7 +236,7 @@ export default function PropiedadDetalle({ propiedad }) {
       </div>
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 20px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 24, alignItems: "start" }}>
 
           {/* Columna izquierda */}
           <div>
