@@ -1,3 +1,4 @@
+import { supabase } from "../lib/supabase";
 import { useState } from "react";
 
 const colors = {
@@ -135,24 +136,37 @@ export default function SolicitudArrendamiento() {
     try {
       const payload = { ...form };
 
-      // Convertir archivos a base64
-      if (files.identidad_fisica) {
-        payload.file_identidad_fisica = await fileToBase64(files.identidad_fisica);
-        payload.file_identidad_fisica_type = files.identidad_fisica.type;
-      }
-      if (files.identidad_moral) {
-        payload.file_identidad_moral = await fileToBase64(files.identidad_moral);
-        payload.file_identidad_moral_type = files.identidad_moral.type;
-      }
-      if (files.ingresos) {
-        payload.file_ingresos = await fileToBase64(files.ingresos);
-        payload.file_ingresos_type = files.ingresos.type;
-      }
-      if (files.empresa) {
-        payload.file_empresa = await fileToBase64(files.empresa);
-        payload.file_empresa_type = files.empresa.type;
-      }
+      // Subir archivos a Supabase Storage directamente
+      const subirArchivo = async (file, nombre) => {
+        if (!file) return null;
+        const ext = file.name.split(".").pop();
+        const path = `solicitudes/${Date.now()}_${nombre}.${ext}`;
+        const { data, error } = await supabase.storage
+          .from("receipts")
+          .upload(path, file, { contentType: file.type, upsert: true });
+        if (error) throw new Error("Error subiendo archivo: " + error.message);
+        const { data: urlData } = supabase.storage.from("receipts").getPublicUrl(path);
+        return urlData.publicUrl;
+      };
 
+      payload.file_identidad_fisica = await subirArchivo(files.identidad_fisica, "identidad_fisica");
+      payload.file_identidad_moral = await subirArchivo(files.identidad_moral, "identidad_moral");
+      payload.file_ingresos = await subirArchivo(files.ingresos, "ingresos");
+      payload.file_empresa = await subirArchivo(files.empresa, "empresa");
+
+      const res = await fetch("/api/submit-solicitud", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) setSubmitted(true);
+      else setError("Error al enviar: " + data.error);
+    } catch (e) {
+      setError("Error de conexión: " + e.message);
+    }
+    setSubmitting(false);
+  };
       const res = await fetch("/api/submit-solicitud", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
