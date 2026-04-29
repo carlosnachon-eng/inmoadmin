@@ -108,7 +108,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         from: "InmoAdmin <cobros@emporioinmobiliario.com.mx>",
-        to: ["carlos.nachon@emporioinmobiliario.mx", "administracion@emporioinmobiliario.com.mx"],
+        to: ["carlos.nachon@emporioinmobiliario.mx", "juridico@emporioinmobiliario.mx"],
         subject: `📋 Nueva solicitud de arrendamiento — ${d.nombre_completo} — ${d.direccion_inmueble}`,
         html: `
           <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px;">
