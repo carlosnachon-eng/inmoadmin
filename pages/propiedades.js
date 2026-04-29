@@ -4,10 +4,10 @@ const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
 }).format(n || 0);
 
-export default function Propiedades({ initialData }) {
-  const [properties, setProperties] = useState(initialData?.content || []);
-  const [pagination, setPagination] = useState(initialData?.pagination || {});
-  const [loading, setLoading] = useState(false);
+export default function Propiedades() {
+  const [properties, setProperties] = useState([]);
+  const [pagination, setPagination] = useState({});
+  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [operacion, setOperacion] = useState("rental");
   const [tipo, setTipo] = useState("");
@@ -18,15 +18,23 @@ export default function Propiedades({ initialData }) {
   const fetchProperties = async (params = {}) => {
     setLoading(true);
     try {
-      const query = new URLSearchParams({
-        page: params.page || page,
-        operacion: params.operacion !== undefined ? params.operacion : operacion,
-        tipo: params.tipo !== undefined ? params.tipo : tipo,
-        precioMin: params.precioMin !== undefined ? params.precioMin : precioMin,
-        precioMax: params.precioMax !== undefined ? params.precioMax : precioMax,
-        recamaras: params.recamaras !== undefined ? params.recamaras : recamaras,
-      });
-      const res = await fetch(`/api/propiedades-eb?${query}`);
+      const p = {
+        page: params.page ?? page,
+        operacion: params.operacion ?? operacion,
+        tipo: params.tipo ?? tipo,
+        precioMin: params.precioMin ?? precioMin,
+        precioMax: params.precioMax ?? precioMax,
+        recamaras: params.recamaras ?? recamaras,
+      };
+      const query = new URLSearchParams();
+      query.append("page", p.page);
+      query.append("operacion", p.operacion);
+      if (p.tipo) query.append("tipo", p.tipo);
+      if (p.precioMin) query.append("precioMin", p.precioMin);
+      if (p.precioMax) query.append("precioMax", p.precioMax);
+      if (p.recamaras) query.append("recamaras", p.recamaras);
+
+      const res = await fetch(`/api/propiedades-eb?${query.toString()}`);
       const data = await res.json();
       setProperties(data.content || []);
       setPagination(data.pagination || {});
@@ -34,14 +42,29 @@ export default function Propiedades({ initialData }) {
     setLoading(false);
   };
 
+  useEffect(() => { fetchProperties(); }, []);
+
   const handleOperacion = (op) => {
-    setOperacion(op); setPage(1);
+    setOperacion(op);
+    setPage(1);
     fetchProperties({ operacion: op, page: 1 });
   };
 
-  const handleFiltros = () => { setPage(1); fetchProperties({ page: 1 }); };
+  const handleFiltros = () => {
+    setPage(1);
+    fetchProperties({ page: 1 });
+  };
 
-  const handlePage = (p) => { setPage(p); fetchProperties({ page: p }); window.scrollTo(0, 0); };
+  const handleLimpiar = () => {
+    setTipo(""); setPrecioMin(""); setPrecioMax(""); setRecamaras(""); setPage(1);
+    fetchProperties({ tipo: "", precioMin: "", precioMax: "", recamaras: "", page: 1 });
+  };
+
+  const handlePage = (p) => {
+    setPage(p);
+    fetchProperties({ page: p });
+    window.scrollTo(0, 0);
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: "#f4f5f7", fontFamily: "system-ui, sans-serif" }}>
@@ -63,13 +86,10 @@ export default function Propiedades({ initialData }) {
           </a>
         </div>
 
-        {/* Toggle Renta / Venta */}
+        {/* Toggle */}
         <div style={{ maxWidth: 1100, margin: "20px auto 0", display: "flex", gap: 8 }}>
-          {[
-            { label: "🏠 Renta", value: "rental" },
-            { label: "🏡 Venta", value: "sale" },
-          ].map(op => (
-            <button key={op.value} onClick={() => handleOperacion(op.value)} style={{ padding: "8px 24px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 14, background: operacion === op.value ? "#c8a96e" : "rgba(255,255,255,0.1)", color: operacion === op.value ? "#1a1a2e" : "rgba(255,255,255,0.7)", transition: "all 0.2s" }}>
+          {[{ label: "🏠 Renta", value: "rental" }, { label: "🏡 Venta", value: "sale" }].map(op => (
+            <button key={op.value} onClick={() => handleOperacion(op.value)} style={{ padding: "8px 24px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 14, background: operacion === op.value ? "#c8a96e" : "rgba(255,255,255,0.1)", color: operacion === op.value ? "#1a1a2e" : "rgba(255,255,255,0.7)" }}>
               {op.label}
             </button>
           ))}
@@ -114,13 +134,13 @@ export default function Propiedades({ initialData }) {
             🔍 Buscar
           </button>
           {(tipo || precioMin || precioMax || recamaras) && (
-            <button onClick={() => { setTipo(""); setPrecioMin(""); setPrecioMax(""); setRecamaras(""); setPage(1); fetchProperties({ tipo: "", precioMin: "", precioMax: "", recamaras: "", page: 1 }); }} style={{ padding: "9px 16px", background: "#f3f4f6", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 13, color: "#6b7280" }}>
+            <button onClick={handleLimpiar} style={{ padding: "9px 16px", background: "#f3f4f6", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 13, color: "#6b7280" }}>
               ✕ Limpiar
             </button>
           )}
         </div>
 
-        {/* Lista de propiedades */}
+        {/* Lista */}
         {loading && (
           <div style={{ textAlign: "center", padding: 60 }}>
             <p style={{ color: "#6b7280", fontSize: 16 }}>Cargando propiedades...</p>
@@ -137,46 +157,35 @@ export default function Propiedades({ initialData }) {
         {!loading && properties.map(p => {
           const op = p.operations?.[0];
           const precio = op?.amount || 0;
-          const moneda = op?.currency || "MXN";
           const imgUrl = p.title_image_thumb || p.title_image_full;
-
           return (
             <a key={p.public_id} href={`/propiedad/${p.public_id}`} style={{ textDecoration: "none" }}>
-              <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)", display: "flex", transition: "box-shadow 0.2s", cursor: "pointer" }}
+              <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)", display: "flex", cursor: "pointer", transition: "box-shadow 0.2s" }}
                 onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 20px rgba(0,0,0,0.15)"}
                 onMouseLeave={e => e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.08)"}>
-
-                {/* Foto */}
                 <div style={{ width: 280, minWidth: 280, height: 200, overflow: "hidden", flexShrink: 0, background: "#e5e7eb" }}>
-                  {imgUrl ? (
-                    <img src={imgUrl} alt={p.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  ) : (
-                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🏠</div>
-                  )}
+                  {imgUrl ? <img src={imgUrl} alt={p.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🏠</div>}
                 </div>
-
-                {/* Info */}
                 <div style={{ padding: "20px 24px", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#1a1a2e", lineHeight: 1.3, maxWidth: "70%" }}>{p.title}</h3>
                       <div style={{ textAlign: "right" }}>
                         <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#c8a96e" }}>{fmt(precio)}</p>
-                        <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{moneda} / {op?.unit === "total" ? "total" : "mes"}</p>
+                        <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{op?.currency} / {op?.unit === "total" ? "total" : "mes"}</p>
                       </div>
                     </div>
-                    <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6b7280" }}>📍 {p.location}</p>
+                    <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6b7280" }}>📍 {typeof p.location === "string" ? p.location : ""}</p>
                   </div>
-
                   <div>
-                    <div style={{ display: "flex", gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
                       {p.property_type && <span style={{ fontSize: 12, background: "#f3f4f6", color: "#374151", padding: "3px 10px", borderRadius: 99, fontWeight: 600 }}>{p.property_type}</span>}
-                      {p.bedrooms > 0 && <span style={{ fontSize: 13, color: "#374151" }}>🛏 {p.bedrooms} rec</span>}
-                      {p.bathrooms > 0 && <span style={{ fontSize: 13, color: "#374151" }}>🚿 {p.bathrooms} baños</span>}
-                      {p.parking_spaces > 0 && <span style={{ fontSize: 13, color: "#374151" }}>🚗 {p.parking_spaces} est</span>}
+                      {p.bedrooms > 0 && <span style={{ fontSize: 13, color: "#374151" }}>🛏 {p.bedrooms}</span>}
+                      {p.bathrooms > 0 && <span style={{ fontSize: 13, color: "#374151" }}>🚿 {p.bathrooms}</span>}
+                      {p.parking_spaces > 0 && <span style={{ fontSize: 13, color: "#374151" }}>🚗 {p.parking_spaces}</span>}
                       {p.construction_size > 0 && <span style={{ fontSize: 13, color: "#374151" }}>📐 {p.construction_size} m²</span>}
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ fontSize: 11, color: "#9ca3af" }}>ID: {p.public_id}</span>
                       <span style={{ fontSize: 13, fontWeight: 700, color: "#c8a96e" }}>Ver detalle →</span>
                     </div>
@@ -189,39 +198,18 @@ export default function Propiedades({ initialData }) {
 
         {/* Paginación */}
         {pagination.total > 10 && (
-          <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 24, flexWrap: "wrap" }}>
-            {page > 1 && (
-              <button onClick={() => handlePage(page - 1)} style={{ padding: "10px 20px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>← Anterior</button>
-            )}
-            <span style={{ padding: "10px 20px", background: "#1a1a2e", color: "#c8a96e", borderRadius: 8, fontWeight: 700 }}>
-              Página {page} de {Math.ceil(pagination.total / 10)}
-            </span>
-            {pagination.next_page && (
-              <button onClick={() => handlePage(page + 1)} style={{ padding: "10px 20px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>Siguiente →</button>
-            )}
+          <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 24 }}>
+            {page > 1 && <button onClick={() => handlePage(page - 1)} style={{ padding: "10px 20px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>← Anterior</button>}
+            <span style={{ padding: "10px 20px", background: "#1a1a2e", color: "#c8a96e", borderRadius: 8, fontWeight: 700 }}>Página {page} de {Math.ceil(pagination.total / 10)}</span>
+            {pagination.next_page && <button onClick={() => handlePage(page + 1)} style={{ padding: "10px 20px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>Siguiente →</button>}
           </div>
         )}
-
-        {/* WhatsApp flotante */}
-        <a href="https://wa.me/522222573237" target="_blank" rel="noreferrer" style={{ position: "fixed", bottom: 24, right: 24, background: "#25d366", color: "#fff", width: 56, height: 56, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, boxShadow: "0 4px 12px rgba(0,0,0,0.2)", textDecoration: "none", zIndex: 100 }}>
-          💬
-        </a>
       </div>
+
+      {/* WhatsApp flotante */}
+      <a href="https://wa.me/522222573237" target="_blank" rel="noreferrer" style={{ position: "fixed", bottom: 24, right: 24, background: "#25d366", color: "#fff", width: 56, height: 56, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, boxShadow: "0 4px 12px rgba(0,0,0,0.2)", textDecoration: "none", zIndex: 100 }}>
+        💬
+      </a>
     </div>
   );
-}
-
-export async function getServerSideProps() {
-  try {
-    const res = await fetch("https://api.easybroker.com/v1/properties?limit=10&page=1&search[operation_types][]=rental&search[statuses][]=published&search[statuses][]=reserved", {
-      headers: {
-        "X-Authorization": process.env.EASYBROKER_API_KEY,
-        "accept": "application/json",
-      },
-    });
-    const data = await res.json();
-    return { props: { initialData: data } };
-  } catch (e) {
-    return { props: { initialData: { content: [], pagination: {} } } };
-  }
 }
