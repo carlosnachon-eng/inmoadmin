@@ -4,28 +4,6 @@ const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
 }).format(n || 0);
 
-const STATUS_BADGE = {
-  published:  { label: "Publicado",  bg: "#dcfce7", color: "#166534", dot: "#22c55e" },
-  reserved:   { label: "Reservado",  bg: "#fef9c3", color: "#854d0e", dot: "#eab308" },
-  leased:     { label: "Rentado",    bg: "#fee2e2", color: "#991b1b", dot: "#ef4444" },
-  sold:       { label: "Vendido",    bg: "#fee2e2", color: "#991b1b", dot: "#ef4444" },
-  draft:      { label: "Borrador",   bg: "#f3f4f6", color: "#6b7280", dot: "#9ca3af" },
-};
-
-function StatusBadge({ status }) {
-  const s = STATUS_BADGE[status] || STATUS_BADGE.published;
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 5,
-      background: s.bg, color: s.color,
-      padding: "3px 10px", borderRadius: 99,
-      fontSize: 11, fontWeight: 700, letterSpacing: "0.03em"
-    }}>
-      <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.dot, flexShrink: 0 }} />
-      {s.label}
-    </span>
-  );
-}
 
 export default function Propiedades() {
   const [properties, setProperties] = useState([]);
@@ -183,8 +161,10 @@ export default function Propiedades() {
           const agente = p.agent?.name || p.user?.name || null;
           const agenteInicial = agente ? agente.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() : null;
 
-          // Status
-          const status = p.status || "published";
+          // Badge de operación (dato confiable del listado)
+          const tipoOp = op?.type === "sale" ? "EN VENTA" : "EN RENTA";
+          const opBadgeBg = op?.type === "sale" ? "#c8a96e" : "#1a1a2e";
+          const opBadgeColor = op?.type === "sale" ? "#1a1a2e" : "#c8a96e";
 
           return (
             <a key={p.public_id} href={`/propiedad/${p.public_id}`} style={{ textDecoration: "none" }}>
@@ -199,9 +179,11 @@ export default function Propiedades() {
                     ? <img src={imgUrl} alt={p.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🏠</div>
                   }
-                  {/* Badge status sobre imagen */}
+                  {/* Badge operación sobre imagen */}
                   <div style={{ position: "absolute", top: 10, left: 10 }}>
-                    <StatusBadge status={status} />
+                    <span style={{ display: "inline-block", background: opBadgeBg, color: opBadgeColor, padding: "4px 10px", borderRadius: 99, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em" }}>
+                      {tipoOp}
+                    </span>
                   </div>
                 </div>
 
