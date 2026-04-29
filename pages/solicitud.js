@@ -71,13 +71,6 @@ const FileUpload = ({ label, hint, required, onChange, value }) => (
   </Field>
 );
 
-const fileToBase64 = (file) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(reader.result.split(",")[1]);
-  reader.onerror = reject;
-  reader.readAsDataURL(file);
-});
-
 export default function SolicitudArrendamiento() {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -132,16 +125,16 @@ export default function SolicitudArrendamiento() {
 
   const handleSubmit = async () => {
     if (!aceptaPrivacidad) { setError("Debes aceptar el Aviso de Privacidad para continuar."); return; }
-    setSubmitting(true); setError("");
+    setSubmitting(true);
+    setError("");
     try {
       const payload = { ...form };
 
-      // Subir archivos a Supabase Storage directamente
       const subirArchivo = async (file, nombre) => {
         if (!file) return null;
         const ext = file.name.split(".").pop();
         const path = `solicitudes/${Date.now()}_${nombre}.${ext}`;
-        const { data, error } = await supabase.storage
+        const { error } = await supabase.storage
           .from("receipts")
           .upload(path, file, { contentType: file.type, upsert: true });
         if (error) throw new Error("Error subiendo archivo: " + error.message);
@@ -164,21 +157,9 @@ export default function SolicitudArrendamiento() {
       else setError("Error al enviar: " + data.error);
     } catch (e) {
       setError("Error de conexión: " + e.message);
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
-  };
-      const res = await fetch("/api/submit-solicitud", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (data.success) setSubmitted(true);
-      else setError("Error al enviar: " + data.error);
-    } catch (e) {
-      setError("Error de conexión: " + e.message);
-    }
-    setSubmitting(false);
   };
 
   if (submitted) return (
