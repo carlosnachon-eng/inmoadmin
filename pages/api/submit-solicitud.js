@@ -6,9 +6,10 @@ export const config = {
     bodyParser: {
       sizeLimit: "20mb",
     },
+    responseLimit: false,
   },
+  maxDuration: 60,
 };
-
 const FOLDER_ID = "1989KmcCFWJ_k0vDM7AgDAhmE3OVrsSyiJJMFJspIDz3EfAYcjXUWIl9iq5KbJsJ-6VEe7PrM";
 
 async function uploadFileToDrive(drive, base64File, fileName, mimeType) {
