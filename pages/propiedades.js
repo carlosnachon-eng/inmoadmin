@@ -213,7 +213,7 @@ export default function Propiedades({ initialData }) {
 
 export async function getServerSideProps() {
   try {
-    const res = await fetch("https://api.easybroker.com/v1/properties?limit=10&page=1&search[operation_types][]=rental", {
+    const res = await fetch("https://api.easybroker.com/v1/properties?limit=10&page=1&search[operation_types][]=rental&search[statuses][]=published&search[statuses][]=reserved", {
       headers: {
         "X-Authorization": process.env.EASYBROKER_API_KEY,
         "accept": "application/json",
