@@ -2,14 +2,18 @@ export default async function handler(req, res) {
   try {
     const { page = 1, operacion = "rental", tipo, precioMin, precioMax, recamaras } = req.query;
 
-    let url = `https://api.easybroker.com/v1/properties?limit=10&page=${page}`;
-url += `&search[operation_types][]=${operacion}`;
-url += `&search[statuses][]=published`;
-url += `&search[statuses][]=reserved`;
-    if (tipo) url += `&search[property_types][]=${tipo}`;
-    if (precioMin) url += `&search[min_price]=${precioMin}`;
-    if (precioMax) url += `&search[max_price]=${precioMax}`;
-    if (recamaras) url += `&search[bedrooms_min]=${recamaras}`;
+    const params = new URLSearchParams();
+    params.append("limit", "10");
+    params.append("page", page);
+    params.append("search[operation_types][]", operacion);
+    params.append("search[statuses][]", "published");
+    params.append("search[statuses][]", "reserved");
+    if (tipo) params.append("search[property_types][]", tipo);
+    if (precioMin) params.append("search[min_price]", precioMin);
+    if (precioMax) params.append("search[max_price]", precioMax);
+    if (recamaras) params.append("search[bedrooms_min]", recamaras);
+
+    const url = `https://api.easybroker.com/v1/properties?${params.toString()}`;
 
     const response = await fetch(url, {
       headers: {
