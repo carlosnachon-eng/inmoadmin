@@ -25,6 +25,7 @@ async function uploadFileToDrive(drive, base64File, fileName, mimeType) {
       body: stream,
     },
     fields: "id, webViewLink",
+    supportsAllDrives: true,
   });
   return res.data.webViewLink;
 }
