@@ -3,7 +3,9 @@ export default async function handler(req, res) {
     const { page = 1, operacion = "rental", tipo, precioMin, precioMax, recamaras } = req.query;
 
     let url = `https://api.easybroker.com/v1/properties?limit=10&page=${page}`;
-    url += `&search[operation_types][]=${operacion}`;
+url += `&search[operation_types][]=${operacion}`;
+url += `&search[statuses][]=published`;
+url += `&search[statuses][]=reserved`;
     if (tipo) url += `&search[property_types][]=${tipo}`;
     if (precioMin) url += `&search[min_price]=${precioMin}`;
     if (precioMax) url += `&search[max_price]=${precioMax}`;
