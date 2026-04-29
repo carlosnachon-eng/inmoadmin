@@ -126,7 +126,7 @@ function Galeria({ fotos, titulo }) {
       )}
 
       {/* Imagen principal */}
-      <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 10, background: "#e5e7eb", height: 420, position: "relative", cursor: fotos.length > 0 ? "zoom-in" : "default" }}>
+      <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 10, background: "#e5e7eb", height: 320, position: "relative", cursor: fotos.length > 0 ? "zoom-in" : "default" }}>
         {imagenPrincipal ? (
           <img
             src={imagenPrincipal}
