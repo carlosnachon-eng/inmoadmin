@@ -150,8 +150,11 @@ export default function PropiedadDetalle({ propiedad }) {
 
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #f0f0f0", padding: "16px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-        <a href="https://emporioinmobiliario.com.mx">
-          <img src="https://www.emporioinmobiliario.com.mx/wp-content/uploads/2022/03/emporio-1-768x434.png" alt="Emporio" style={{ height: 40, width: "auto" }} />
+        <a href="https://emporioinmobiliario.com.mx" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span style={{ fontSize: 16, fontWeight: 900, color: "#C8102E", letterSpacing: "0.05em", lineHeight: 1 }}>EMPORIO</span>
+            <span style={{ fontSize: 8, fontWeight: 600, color: "#9ca3af", letterSpacing: "0.2em" }}>INMOBILIARIO</span>
+          </div>
         </a>
         <a href="/propiedades" style={{ color: "#C8102E", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>← Volver a propiedades</a>
       </div>
