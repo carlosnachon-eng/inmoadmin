@@ -1,35 +1,13 @@
 import { google } from "googleapis";
-import { Readable } from "stream";
 
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: "20mb",
+      sizeLimit: "2mb",
     },
-    responseLimit: false,
   },
   maxDuration: 60,
 };
-const FOLDER_ID = "1989KmcCFWJ_k0vDM7AgDAhmE3OVrsSyiJJMFJspIDz3EfAYcjXUWIl9iq5KbJsJ-6VEe7PrM";
-
-async function uploadFileToDrive(drive, base64File, fileName, mimeType) {
-  if (!base64File) return null;
-  const buffer = Buffer.from(base64File, "base64");
-  const stream = Readable.from(buffer);
-  const res = await drive.files.create({
-    requestBody: {
-      name: fileName,
-      parents: [FOLDER_ID],
-    },
-    media: {
-      mimeType,
-      body: stream,
-    },
-    fields: "id, webViewLink",
-    supportsAllDrives: true,
-  });
-  return res.data.webViewLink;
-}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -38,25 +16,21 @@ export default async function handler(req, res) {
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
     const auth = new google.auth.GoogleAuth({
       credentials,
-      scopes: [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-      ],
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
     });
 
     const sheets = google.sheets({ version: "v4", auth });
-    const drive = google.drive({ version: "v3", auth });
     const spreadsheetId = "1jufU_KEqOUzpWUq7mbfIxk5e-HT--IfnghpPxZJGqVs";
 
     const d = req.body;
     const now = new Date().toLocaleString("es-MX", { timeZone: "America/Mexico_City" });
     const nombre = d.nombre_completo || d.razon_social || "Solicitante";
 
-    // Subir archivos a Drive
-    const linkIdentidadFisica = await uploadFileToDrive(drive, d.file_identidad_fisica, `${nombre}_identidad_fisica_${Date.now()}`, d.file_identidad_fisica_type || "application/pdf");
-    const linkIdentidadMoral = await uploadFileToDrive(drive, d.file_identidad_moral, `${nombre}_identidad_moral_${Date.now()}`, d.file_identidad_moral_type || "application/pdf");
-    const linkIngresos = await uploadFileToDrive(drive, d.file_ingresos, `${nombre}_ingresos_${Date.now()}`, d.file_ingresos_type || "application/pdf");
-    const linkEmpresa = await uploadFileToDrive(drive, d.file_empresa, `${nombre}_empresa_${Date.now()}`, d.file_empresa_type || "application/pdf");
+    // Los links ya vienen listos desde Supabase Storage
+    const linkIdentidadFisica = d.file_identidad_fisica || "";
+    const linkIdentidadMoral  = d.file_identidad_moral  || "";
+    const linkIngresos        = d.file_ingresos         || "";
+    const linkEmpresa         = d.file_empresa          || "";
 
     const row = [
       now,
@@ -82,8 +56,8 @@ export default async function handler(req, res) {
       d.nombre_representante || "",
       d.telefono_representante || "",
       d.email_representante || "",
-      linkIdentidadFisica || "",
-      linkIdentidadMoral || "",
+      linkIdentidadFisica,
+      linkIdentidadMoral,
       d.empresa_labora || "",
       d.giro_empresa_labora || "",
       d.pagina_web_empresa || "",
@@ -94,13 +68,13 @@ export default async function handler(req, res) {
       d.telefono_email_jefe || "",
       d.tipo_ingresos || "",
       d.ingresos_mensuales || "",
-      linkIngresos || "",
+      linkIngresos,
       d.actividad_empresa || "",
       d.giro_comercial || "",
       d.pagina_web_empresa2 || "",
       d.origen_recursos || "",
       d.ingresos_empresa || "",
-      linkEmpresa || "",
+      linkEmpresa,
       d.uso_inmueble || "",
       d.descripcion_uso || "",
       d.subarrendamiento || "",
@@ -135,18 +109,19 @@ export default async function handler(req, res) {
     ];
 
     await sheets.spreadsheets.values.append({
-  spreadsheetId,
-  range: "A1",
-  valueInputOption: "USER_ENTERED",
-  insertDataOption: "INSERT_ROWS",
-  resource: { values: [row] },
-});
+      spreadsheetId,
+      range: "A1",
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
+      resource: { values: [row] },
+    });
+
     // Email a jurídico
     const linksHtml = [
       linkIdentidadFisica ? `<tr><td style="padding:8px;color:#6b7280;font-size:12px;">ID Persona física</td><td style="padding:8px;"><a href="${linkIdentidadFisica}">Ver archivo</a></td></tr>` : "",
-      linkIdentidadMoral ? `<tr style="background:#f9fafb;"><td style="padding:8px;color:#6b7280;font-size:12px;">ID Persona moral</td><td style="padding:8px;"><a href="${linkIdentidadMoral}">Ver archivo</a></td></tr>` : "",
-      linkIngresos ? `<tr><td style="padding:8px;color:#6b7280;font-size:12px;">Documentos ingresos</td><td style="padding:8px;"><a href="${linkIngresos}">Ver archivo</a></td></tr>` : "",
-      linkEmpresa ? `<tr style="background:#f9fafb;"><td style="padding:8px;color:#6b7280;font-size:12px;">Documentos empresa</td><td style="padding:8px;"><a href="${linkEmpresa}">Ver archivo</a></td></tr>` : "",
+      linkIdentidadMoral  ? `<tr style="background:#f9fafb;"><td style="padding:8px;color:#6b7280;font-size:12px;">ID Persona moral</td><td style="padding:8px;"><a href="${linkIdentidadMoral}">Ver archivo</a></td></tr>` : "",
+      linkIngresos        ? `<tr><td style="padding:8px;color:#6b7280;font-size:12px;">Documentos ingresos</td><td style="padding:8px;"><a href="${linkIngresos}">Ver archivo</a></td></tr>` : "",
+      linkEmpresa         ? `<tr style="background:#f9fafb;"><td style="padding:8px;color:#6b7280;font-size:12px;">Documentos empresa</td><td style="padding:8px;"><a href="${linkEmpresa}">Ver archivo</a></td></tr>` : "",
     ].join("");
 
     await fetch("https://api.resend.com/emails", {
