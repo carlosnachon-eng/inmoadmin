@@ -381,9 +381,58 @@ export default function Home() {
     showToast("Gasto registrado ✅"); closeModal(); loadData();
   };
 
+  const [uploadingContrato, setUploadingContrato] = useState(null);
+
   const openExpenseModal = (propertyName) => {
     setExpenseForm({ ...emptyExpense, property_name: propertyName });
     setShowModal("expense");
+  };
+
+  // ── Subir contrato PDF a Supabase Storage ──────────────────────────────────
+  const subirContrato = async (propertyId, propertyName, file) => {
+    if (!file) return;
+    if (file.type !== "application/pdf") { showToast("Solo se permiten archivos PDF", false); return; }
+    if (file.size > 10 * 1024 * 1024) { showToast("El archivo es muy grande (máx 10MB)", false); return; }
+    setUploadingContrato(propertyId);
+    try {
+      const fileName = `${propertyId}_${Date.now()}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from("contratos")
+        .upload(fileName, file, { upsert: true, contentType: "application/pdf" });
+      if (uploadError) throw uploadError;
+      const { error: updateError } = await supabase.from("properties")
+        .update({ contrato_url: fileName })
+        .eq("id", propertyId);
+      if (updateError) throw updateError;
+      showToast(`✅ Contrato subido para ${propertyName}`);
+      loadData();
+    } catch (e) {
+      showToast("Error al subir: " + e.message, false);
+    }
+    setUploadingContrato(null);
+  };
+
+  const verContrato = async (contratoUrl) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from("contratos")
+        .createSignedUrl(contratoUrl, 60);
+      if (error) throw error;
+      window.open(data.signedUrl, "_blank");
+    } catch (e) {
+      showToast("Error al abrir contrato: " + e.message, false);
+    }
+  };
+
+  const eliminarContrato = async (propertyId, contratoUrl) => {
+    try {
+      await supabase.storage.from("contratos").remove([contratoUrl]);
+      await supabase.from("properties").update({ contrato_url: null }).eq("id", propertyId);
+      showToast("Contrato eliminado ✅");
+      loadData();
+    } catch (e) {
+      showToast("Error: " + e.message, false);
+    }
   };
 
   // ── CAMBIO 4: updatePaymentStatus — comisión va a caja SOLO si ya está cobrada ─
@@ -918,6 +967,32 @@ export default function Home() {
                         <Btn small color="#6b7280" onClick={() => openEdit("property", p)}>✏️</Btn>
                         <Btn small color="#f59e0b" onClick={() => openExpenseModal(p.name)}>💸 Gasto</Btn>
                         {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("property", p.id, `Eliminar "${p.name}"`)}>🗑️</Btn>}
+                      </div>
+
+                      {/* Contrato PDF */}
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f3f4f6" }}>
+                        {p.contrato_url ? (
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 11, color: "#065f46", fontWeight: 600 }}>📄 Contrato subido</span>
+                            <Btn small color="#1e40af" onClick={() => verContrato(p.contrato_url)}>👁 Ver</Btn>
+                            <label style={{ cursor: "pointer" }}>
+                              <input type="file" accept="application/pdf" style={{ display: "none" }}
+                                onChange={e => subirContrato(p.id, p.name, e.target.files[0])} />
+                              <span style={{ background: "#f59e0b", color: "#fff", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                                {uploadingContrato === p.id ? "Subiendo..." : "🔄 Actualizar"}
+                              </span>
+                            </label>
+                            {isAdmin && <Btn small color="#dc2626" onClick={() => eliminarContrato(p.id, p.contrato_url)}>🗑️</Btn>}
+                          </div>
+                        ) : (
+                          <label style={{ cursor: "pointer", display: "inline-block" }}>
+                            <input type="file" accept="application/pdf" style={{ display: "none" }}
+                              onChange={e => subirContrato(p.id, p.name, e.target.files[0])} />
+                            <span style={{ background: uploadingContrato === p.id ? "#9ca3af" : "#7c3aed", color: "#fff", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                              {uploadingContrato === p.id ? "⏳ Subiendo..." : "📎 Subir contrato PDF"}
+                            </span>
+                          </label>
+                        )}
                       </div>
                       {gastosPropiedad.length > 0 && (
                         <div style={{ marginTop: 10, borderTop: "1px solid #f3f4f6", paddingTop: 8 }}>
