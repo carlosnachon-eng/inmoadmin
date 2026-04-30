@@ -77,9 +77,9 @@ async function generarPDF(data) {
   // SEMÁFORO
   const dict = data.dictamen || "APROBADO";
   const sems = [
-    {val:"APROBADO", icon:"✓", on:VS, bg:VBG, tc:VC, lbl:"APROBADO"},
+    {val:"APROBADO", icon:"OK", on:VS, bg:VBG, tc:VC, lbl:"APROBADO"},
     {val:"APROBADO CON CONDICIONES", icon:"!", on:AS, bg:ABG, tc:AC, lbl:"CON COND."},
-    {val:"NO APROBADO", icon:"✗", on:RS, bg:RBG, tc:RC, lbl:"NO APROBADO"},
+    {val:"NO APROBADO", icon:"X", on:RS, bg:RBG, tc:RC, lbl:"NO APROBADO"},
   ];
   const semH = 26;
   doc.setFillColor(...GBG);
@@ -181,7 +181,7 @@ async function generarPDF(data) {
   doc.setFillColor(...(sinA?VBG:RBG)); doc.setDrawColor(...(sinA?VC:RC)); doc.setLineWidth(0.8);
   doc.roundedRect(M,y,AW,14,3,3,"FD");
   doc.setTextColor(...(sinA?VC:RC)); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-  doc.text(sinA?"✓  SIN ANTECEDENTES LEGALES RELEVANTES":"⚠  CON ANTECEDENTES — VER OBSERVACIONES", W/2, y+9, {align:"center"});
+  doc.text(sinA?"SIN ANTECEDENTES LEGALES RELEVANTES":"CON ANTECEDENTES — VER OBSERVACIONES", W/2, y+9, {align:"center"});
   y += 18;
   if (data.observaciones_legales) ctxt("Observaciones de antecedentes", data.observaciones_legales);
 
@@ -207,9 +207,9 @@ async function generarPDF(data) {
 
   // VIII. DICTAMEN
   chk(30); st("VIII. DICTAMEN FINAL");
-  const [dbg,dc,dtxt] = dict==="APROBADO" ? [VBG,VC,"✓  APROBADO"]
-    : dict==="APROBADO CON CONDICIONES" ? [ABG,AC,"⚠  APROBADO CON CONDICIONES"]
-    : [RBG,RC,"✗  NO APROBADO"];
+  const [dbg,dc,dtxt] = dict==="APROBADO" ? [VBG,VC,"APROBADO"]
+    : dict==="APROBADO CON CONDICIONES" ? [ABG,AC,"APROBADO CON CONDICIONES"]
+    : [RBG,RC,"NO APROBADO"];
   chk(22);
   doc.setFillColor(...dbg); doc.setDrawColor(...dc); doc.setLineWidth(1.5);
   doc.roundedRect(M,y,AW,20,4,4,"FD");
