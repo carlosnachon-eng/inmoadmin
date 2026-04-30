@@ -80,7 +80,7 @@ export default function Propiedades() {
           <div className="header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <a href="https://emporioinmobiliario.com.mx" style={{ textDecoration: "none", display: "flex", alignItems: "center" }}>
-                <img src="/logo.png" alt="Emporio Inmobiliario" style={{ height: 48, width: "auto", objectFit: "contain" }} />
+                <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio Inmobiliario" style={{ height: 48, width: "auto", objectFit: "contain" }} />
               </a>
               <div style={{ width: 1, height: 32, background: "#e5e7eb" }} />
               <div>
