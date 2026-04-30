@@ -55,11 +55,29 @@ export default function Propiedades() {
   return (
     <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "'Montserrat', 'system-ui', sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+      <style dangerouslySetInnerHTML={{ __html: `
+        * { box-sizing: border-box; }
+        .prop-card { display: flex; flex-direction: row; }
+        .prop-img  { width: 280px; min-width: 280px; height: 200px; }
+        .prop-body { padding: 20px 28px; }
+        .filtros   { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        @media (max-width: 640px) {
+          .prop-card { flex-direction: column !important; }
+          .prop-img  { width: 100% !important; min-width: unset !important; height: 200px !important; }
+          .prop-body { padding: 16px 16px 20px !important; }
+          .filtros   { gap: 8px; }
+          .filtros select, .filtros input { font-size: 13px !important; padding: 8px 10px !important; }
+          .header-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+          .toggle-btns { width: 100%; }
+          .toggle-btn  { flex: 1; text-align: center; }
+        }
+      `}} />
 
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #f0f0f0", padding: "20px 32px", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div className="header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <a href="https://emporioinmobiliario.com.mx">
                 <img src="https://www.emporioinmobiliario.com.mx/wp-content/uploads/2022/03/emporio-1-768x434.png" alt="Emporio" style={{ height: 40, width: "auto" }} />
@@ -80,9 +98,9 @@ export default function Propiedades() {
           </div>
 
           {/* Toggle */}
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="toggle-btns" style={{ display: "flex", gap: 8 }}>
             {[{ label: "🏠 Renta", value: "rental" }, { label: "🏡 Venta", value: "sale" }].map(op => (
-              <button key={op.value} onClick={() => handleOperacion(op.value)} style={{
+              <button key={op.value} className="toggle-btn" onClick={() => handleOperacion(op.value)} style={{
                 padding: "9px 28px", borderRadius: 8, cursor: "pointer",
                 fontWeight: 700, fontSize: 14, fontFamily: "'Montserrat', sans-serif",
                 border: "2px solid",
@@ -101,7 +119,7 @@ export default function Propiedades() {
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
 
         {/* Filtros */}
-        <div style={{ background: "#fff", borderRadius: 16, padding: "20px 24px", marginBottom: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", border: "1px solid #f0f0f0", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div className="filtros" style={{ background: "#fff", borderRadius: 16, padding: "20px 24px", marginBottom: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", border: "1px solid #f0f0f0" }}>
           <div>
             <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#9ca3af", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Tipo</label>
             <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: "9px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 14, background: "#fff", fontFamily: "'Montserrat', sans-serif", color: "#374151" }}>
@@ -175,12 +193,13 @@ export default function Propiedades() {
           return (
             <a key={p.public_id} href={`/propiedad/${p.public_id}`} style={{ textDecoration: "none" }}>
               <div
-                style={{ background: "#fff", borderRadius: 20, overflow: "hidden", marginBottom: 16, border: "1px solid #f0f0f0", display: "flex", cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s" }}
+                className="prop-card"
+                style={{ background: "#fff", borderRadius: 20, overflow: "hidden", marginBottom: 16, border: "1px solid #f0f0f0", cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s" }}
                 onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.1)"; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
               >
                 {/* Imagen */}
-                <div style={{ width: 280, minWidth: 280, height: 200, overflow: "hidden", flexShrink: 0, background: "#f3f4f6", position: "relative" }}>
+                <div className="prop-img" style={{ overflow: "hidden", flexShrink: 0, background: "#f3f4f6", position: "relative" }}>
                   {imgUrl
                     ? <img src={imgUrl} alt={p.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🏠</div>
@@ -193,7 +212,7 @@ export default function Propiedades() {
                 </div>
 
                 {/* Contenido */}
-                <div style={{ padding: "20px 28px", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                <div className="prop-body" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#1a1a2e", lineHeight: 1.3, maxWidth: "65%" }}>{p.title}</h3>
