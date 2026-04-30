@@ -229,10 +229,10 @@ export default function PropiedadDetalle({ propiedad }) {
 
               {/* Mapa */}
               {(() => {
-                const lat = propiedad.location?.lat || propiedad.latitude;
-                const lng = propiedad.location?.lng || propiedad.location?.lon || propiedad.longitude;
-                const direccion = typeof propiedad.location === "string" ? propiedad.location : propiedad.address || propiedad.title || "";
-                if (lat && lng) {
+                const lat = propiedad.location?.latitude;
+                const lng = propiedad.location?.longitude;
+                const direccion = [propiedad.location?.street, propiedad.location?.city_area, propiedad.location?.city, propiedad.location?.region].filter(Boolean).join(", ");
+                if (lat && lng && propiedad.location?.show_exact_location) {
                   return (
                     <div style={{ marginTop: 24 }}>
                       <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>📍 Ubicación</h3>
@@ -241,27 +241,24 @@ export default function PropiedadDetalle({ propiedad }) {
                           src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}&layer=mapnik&marker=${lat},${lng}`}
                         />
                       </div>
-                      <a href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`}
-                        target="_blank" rel="noreferrer"
+                      <a href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noreferrer"
                         style={{ fontSize: 12, color: "#6b7280", display: "block", marginTop: 6, textAlign: "right" }}>
-                        Ver mapa más grande →
+                        Ver en Google Maps →
                       </a>
                     </div>
                   );
                 } else if (direccion) {
                   return (
                     <div style={{ marginTop: 24 }}>
-                      <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>📍 Ubicación</h3>
-                      <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0" }}>
-                        <iframe width="100%" height="260" frameBorder="0" scrolling="no" style={{ display: "block" }}
-                          src={`https://www.openstreetmap.org/export/embed.html?query=${encodeURIComponent(direccion + ", Puebla, México")}&layer=mapnik`}
-                        />
+                      <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>📍 Zona</h3>
+                      <div style={{ background: "#f8f8fa", borderRadius: 12, padding: "14px 16px", border: "1px solid #f0f0f0" }}>
+                        <p style={{ margin: 0, fontSize: 14, color: "#374151" }}>📍 {direccion}</p>
+                        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion + ", Puebla, México")}`}
+                          target="_blank" rel="noreferrer"
+                          style={{ fontSize: 12, color: "#C8102E", fontWeight: 600, display: "inline-block", marginTop: 8 }}>
+                          Ver en Google Maps →
+                        </a>
                       </div>
-                      <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion + ", Puebla, México")}`}
-                        target="_blank" rel="noreferrer"
-                        style={{ fontSize: 12, color: "#6b7280", display: "block", marginTop: 6, textAlign: "right" }}>
-                        Ver en Google Maps →
-                      </a>
                     </div>
                   );
                 }
@@ -347,7 +344,6 @@ export async function getServerSideProps({ params }) {
     });
     const data = await res.json();
     if (!data || data.error) return { props: { propiedad: null } };
-    console.log("LOCATION DATA:", JSON.stringify({ location: data.location, latitude: data.latitude, longitude: data.longitude, loc: data.loc }));
     return { props: { propiedad: data } };
   } catch (e) {
     return { props: { propiedad: null } };
