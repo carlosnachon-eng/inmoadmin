@@ -347,6 +347,7 @@ export async function getServerSideProps({ params }) {
     });
     const data = await res.json();
     if (!data || data.error) return { props: { propiedad: null } };
+    console.log("LOCATION DATA:", JSON.stringify({ location: data.location, latitude: data.latitude, longitude: data.longitude, loc: data.loc }));
     return { props: { propiedad: data } };
   } catch (e) {
     return { props: { propiedad: null } };
