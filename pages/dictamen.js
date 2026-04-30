@@ -133,14 +133,19 @@ async function generarPDF(data) {
   };
   const ctxt = (l,v) => {
     if (!v) return;
-    doc.setTextColor(...GRIS); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
-    const lines = doc.splitTextToSize(v, AW-8);
-    const h = lines.length*5+10;
-    chk(h+10);
-    doc.text((l||"").toUpperCase(), M, y+4); y += 6;
-    doc.setFillColor(...GBG); doc.roundedRect(M,y,AW,h,2,2,"F");
-    doc.setTextColor(...OSC); doc.setFont("helvetica","normal"); doc.setFontSize(8);
-    doc.text(lines, M+4, y+7); y += h+5;
+    doc.setFont("helvetica","normal"); doc.setFontSize(8);
+    const lines = doc.splitTextToSize(v, AW-10);
+    const lineH = 5.5;
+    const h = lines.length * lineH + 12;
+    chk(h + 12);
+    doc.setTextColor(...GRIS); doc.setFontSize(6.5);
+    doc.text((l||"").toUpperCase(), M, y+4); y += 7;
+    doc.setFillColor(...GBG); doc.roundedRect(M, y, AW, h, 2, 2, "F");
+    doc.setTextColor(...OSC); doc.setFontSize(8);
+    lines.forEach((line, i) => {
+      doc.text(line, M+5, y + 7 + i * lineH);
+    });
+    y += h + 5;
   };
 
   // I. DATOS
