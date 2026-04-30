@@ -159,8 +159,21 @@ export default function PropiedadDetalle({ propiedad }) {
         <a href="/propiedades" style={{ color: "#C8102E", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>← Volver a propiedades</a>
       </div>
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 20px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 24, alignItems: "start" }}>
+      <style dangerouslySetInnerHTML={{ __html: `
+        * { box-sizing: border-box; }
+        .det-grid { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 24px; align-items: start; }
+        .det-contacto { position: sticky; top: 20px; }
+        @media (max-width: 768px) {
+          .det-grid { grid-template-columns: 1fr !important; }
+          .det-contacto { position: static !important; }
+          .det-pad { padding: 20px !important; }
+          .det-titulo { font-size: 17px !important; }
+          .det-precio { font-size: 22px !important; }
+        }
+      `}} />
+
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
+        <div className="det-grid">
 
           {/* Columna izquierda */}
           <div>
@@ -235,7 +248,7 @@ export default function PropiedadDetalle({ propiedad }) {
 
           {/* Columna derecha — Contacto */}
           <div>
-            <div style={{ background: "#fff", borderRadius: 20, padding: "24px", border: "1px solid #f0f0f0", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", position: "sticky", top: 20 }}>
+            <div className="det-contacto" style={{ background: "#fff", borderRadius: 20, padding: "24px", border: "1px solid #f0f0f0", boxShadow: "0 4px 24px rgba(0,0,0,0.06)" }}>
               <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: "#1a1a2e" }}>¿Te interesa esta propiedad?</h3>
               <p style={{ margin: "0 0 20px", fontSize: 13, color: "#6b7280" }}>Déjanos tus datos y te contactamos</p>
 
