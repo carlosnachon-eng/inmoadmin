@@ -1168,17 +1168,24 @@ export default function Home() {
                         <td style={{ padding: "12px 16px", fontWeight: 700, color: "#7c3aed" }}>{fmt(comision)}</td>
                         <td style={{ padding: "12px 16px" }}><StatusBadge status={c.rent_receiver || "inmobiliaria"} /></td>
                         <td style={{ padding: "12px 16px" }}>
-                          <StatusBadge status={esPendiente ? "pendiente_cobro" : "cobrada"} />
+                          {c.rent_receiver === "propietario"
+                            ? <StatusBadge status={esPendiente ? "pendiente_cobro" : "cobrada"} />
+                            : <span style={{ fontSize: 11, color: "#9ca3af" }}>—</span>
+                          }
                         </td>
                         <td style={{ padding: "12px 16px" }}>
-                          {esPendiente ? (
-                            <Btn small color="#065f46" onClick={() => marcarComisionCobrada(c)}>
-                              ✓ Marcar cobrada
-                            </Btn>
+                          {c.rent_receiver === "propietario" ? (
+                            esPendiente ? (
+                              <Btn small color="#065f46" onClick={() => marcarComisionCobrada(c)}>
+                                ✓ Marcar cobrada
+                              </Btn>
+                            ) : (
+                              <Btn small color="#6b7280" onClick={() => marcarComisionPendiente(c.id)}>
+                                ↩ Revertir
+                              </Btn>
+                            )
                           ) : (
-                            <Btn small color="#6b7280" onClick={() => marcarComisionPendiente(c.id)}>
-                              ↩ Revertir
-                            </Btn>
+                            <span style={{ fontSize: 11, color: "#9ca3af" }}>Auto — incluida en renta</span>
                           )}
                         </td>
                       </tr>
