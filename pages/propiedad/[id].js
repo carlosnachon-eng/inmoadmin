@@ -162,14 +162,18 @@ export default function PropiedadDetalle({ propiedad }) {
         .det-contacto { position: sticky; top: 20px; }
         @media (max-width: 768px) {
           .det-grid { grid-template-columns: 1fr !important; }
-          .det-contacto { position: static !important; }
+          .det-contacto { position: static !important; order: -1; }
           .det-pad { padding: 20px !important; }
           .det-titulo { font-size: 17px !important; }
           .det-precio { font-size: 22px !important; }
+          h3 { font-size: 15px !important; }
+          p { max-width: 100% !important; overflow-wrap: break-word !important; word-break: break-word !important; }
+          img { max-width: 100% !important; }
+          iframe { max-width: 100% !important; }
         }
       `}} />
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px", overflowX: "hidden" }}>
         <div className="det-grid">
 
           {/* Columna izquierda */}
