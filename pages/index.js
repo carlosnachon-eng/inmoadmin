@@ -24,6 +24,8 @@ const StatusBadge = ({ status }) => {
     salida: { bg: "#fee2e2", color: "#991b1b", label: "Salida" },
     inmobiliaria: { bg: "#d1fae5", color: "#065f46", label: "A nosotros" },
     propietario: { bg: "#e0e7ff", color: "#3730a3", label: "Al propietario" },
+    cobrada: { bg: "#d1fae5", color: "#065f46", label: "Cobrada" },
+    pendiente_cobro: { bg: "#fef3c7", color: "#92400e", label: "Pendiente cobro" },
   };
   const s = map[status] || { bg: "#f3f4f6", color: "#374151", label: status };
   return <span style={{ background: s.bg, color: s.color, padding: "2px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{s.label}</span>;
@@ -190,8 +192,17 @@ export default function Home() {
   const [filterEstatus, setFilterEstatus] = useState("");
   const [filterMes, setFilterMes] = useState("");
 
+  // ── CAMBIO 1: emptyContract con co-responsable y commission_status ──────────
   const emptyProp = { name: "", address: "", property_type: "depto", rent_amount: "", status: "disponible", notes: "", owner_email: "", owner_phone: "" };
-  const emptyContract = { tenant_name: "", tenant_email: "", tenant_phone: "", owner_name: "", property_name: "", monthly_rent: "", start_date: "", end_date: "", payment_day: "5", deposit_amount: "", commission_type: "porcentaje", commission_value: "", commission_who: "propietario_descuento", rent_receiver: "inmobiliaria", notes: "" };
+  const emptyContract = {
+    tenant_name: "", tenant_email: "", tenant_phone: "",
+    co_responsable_nombre: "", co_responsable_telefono: "", // NUEVO
+    owner_name: "", property_name: "", monthly_rent: "",
+    start_date: "", end_date: "", payment_day: "5", deposit_amount: "",
+    commission_type: "porcentaje", commission_value: "",
+    commission_who: "propietario_descuento", commission_status: "pendiente_cobro", // NUEVO
+    rent_receiver: "inmobiliaria", notes: ""
+  };
   const emptyPayment = { tenant_name: "", tenant_email: "", property_name: "", amount: "", due_date: "", status: "pendiente", payment_method: "transferencia", notes: "" };
   const emptyTicket = { property_name: "", tenant_name: "", title: "", description: "", category: "otro", priority: "media", payer: "propietario", provider_cost: "", charged_amount: "", advance_amount: "", advance_paid: false };
   const emptyOwnerPayment = { owner_name: "", owner_email: "", period_description: "", total_rent: "", total_commission: "", total_liquid: "", amount_paid: "", payment_method: "transferencia", payment_date: "", status: "pagado", notes: "" };
@@ -246,10 +257,26 @@ export default function Home() {
 
   useEffect(() => { if (session) loadData(); }, [session]);
 
+  // ── CAMBIO 2: openEdit con co-responsable y commission_status ───────────────
   const openEdit = (type, item) => {
     setEditing({ type, id: item.id });
     if (type === "property") { setPropForm({ name: item.name || "", address: item.address || "", property_type: item.property_type || "depto", rent_amount: item.rent_amount || "", status: item.status || "disponible", notes: item.notes || "", owner_email: item.owner_email || "", owner_phone: item.owner_phone || "" }); setShowModal("property"); }
-    if (type === "contract") { setContractForm({ tenant_name: item.tenant_name || "", tenant_email: item.tenant_email || "", tenant_phone: item.tenant_phone || "", owner_name: item.owner_name || "", property_name: item.property_name || "", monthly_rent: item.monthly_rent || "", start_date: item.start_date || "", end_date: item.end_date || "", payment_day: item.payment_day || "5", deposit_amount: item.deposit_amount || "", commission_type: item.commission_type || "porcentaje", commission_value: item.commission_value || "", commission_who: item.commission_who || "propietario_descuento", rent_receiver: item.rent_receiver || "inmobiliaria", notes: item.notes || "" }); setShowModal("contract"); }
+    if (type === "contract") {
+      setContractForm({
+        tenant_name: item.tenant_name || "", tenant_email: item.tenant_email || "",
+        tenant_phone: item.tenant_phone || "",
+        co_responsable_nombre: item.co_responsable_nombre || "", // NUEVO
+        co_responsable_telefono: item.co_responsable_telefono || "", // NUEVO
+        owner_name: item.owner_name || "", property_name: item.property_name || "",
+        monthly_rent: item.monthly_rent || "", start_date: item.start_date || "",
+        end_date: item.end_date || "", payment_day: item.payment_day || "5",
+        deposit_amount: item.deposit_amount || "", commission_type: item.commission_type || "porcentaje",
+        commission_value: item.commission_value || "", commission_who: item.commission_who || "propietario_descuento",
+        commission_status: item.commission_status || "pendiente_cobro", // NUEVO
+        rent_receiver: item.rent_receiver || "inmobiliaria", notes: item.notes || ""
+      });
+      setShowModal("contract");
+    }
     if (type === "ticket") { setTicketForm({ property_name: item.property_name || "", tenant_name: item.tenant_name || "", title: item.title || "", description: item.description || "", category: item.category || "otro", priority: item.priority || "media", payer: item.payer || "propietario", provider_cost: item.provider_cost || "", charged_amount: item.charged_amount || "", advance_amount: item.advance_amount || "", advance_paid: item.advance_paid || false }); setShowModal("ticket"); }
   };
 
@@ -265,9 +292,25 @@ export default function Home() {
     closeModal(); loadData();
   };
 
+  // ── CAMBIO 3: saveContract con co-responsable y commission_status ───────────
   const saveContract = async () => {
     setSaving(true);
-    const contractData = { tenant_name: contractForm.tenant_name, tenant_email: contractForm.tenant_email, tenant_phone: contractForm.tenant_phone, owner_name: contractForm.owner_name, property_name: contractForm.property_name, monthly_rent: parseFloat(contractForm.monthly_rent) || 0, start_date: contractForm.start_date, end_date: contractForm.end_date, payment_day: parseInt(contractForm.payment_day), deposit_amount: parseFloat(contractForm.deposit_amount) || 0, commission_type: contractForm.commission_type, commission_value: parseFloat(contractForm.commission_value) || 0, commission_who: contractForm.commission_who, rent_receiver: contractForm.rent_receiver, notes: contractForm.notes };
+    const contractData = {
+      tenant_name: contractForm.tenant_name, tenant_email: contractForm.tenant_email,
+      tenant_phone: contractForm.tenant_phone,
+      co_responsable_nombre: contractForm.co_responsable_nombre || null, // NUEVO
+      co_responsable_telefono: contractForm.co_responsable_telefono || null, // NUEVO
+      owner_name: contractForm.owner_name, property_name: contractForm.property_name,
+      monthly_rent: parseFloat(contractForm.monthly_rent) || 0,
+      start_date: contractForm.start_date, end_date: contractForm.end_date,
+      payment_day: parseInt(contractForm.payment_day),
+      deposit_amount: parseFloat(contractForm.deposit_amount) || 0,
+      commission_type: contractForm.commission_type,
+      commission_value: parseFloat(contractForm.commission_value) || 0,
+      commission_who: contractForm.commission_who,
+      commission_status: contractForm.commission_status || "pendiente_cobro", // NUEVO
+      rent_receiver: contractForm.rent_receiver, notes: contractForm.notes
+    };
     if (editing?.type === "contract") {
       const { error } = await supabase.from("contracts").update(contractData).eq("id", editing.id);
       setSaving(false);
@@ -343,6 +386,7 @@ export default function Home() {
     setShowModal("expense");
   };
 
+  // ── CAMBIO 4: updatePaymentStatus — comisión va a caja SOLO si ya está cobrada ─
   const updatePaymentStatus = async (id, status) => {
     const pago = payments.find(p => p.id === id);
     const contrato = pago ? contracts.find(c => c.id === pago.contract_id) : null;
@@ -353,12 +397,33 @@ export default function Home() {
       if (rentReceiver === "inmobiliaria") {
         await addCashMovement({ type: "entrada", category: "renta_cobrada", description: `Renta ${pago.tenant_name} — ${pago.property_name}`, amount: pago.amount, payment_method: "transferencia", date: today, notes: comision > 0 ? `Incluye comisión de ${fmt(comision)}` : "", created_by: profile?.email });
       } else {
-        if (comision > 0 && contrato?.commission_who === "propietario_aparte") {
+        // Renta directa al propietario: la comisión solo entra a caja si ya está marcada como cobrada
+        if (comision > 0 && contrato?.commission_who === "propietario_aparte" && contrato?.commission_status === "cobrada") {
           await addCashMovement({ type: "entrada", category: "comision_cobrada", description: `Comisión ${contrato?.owner_name || pago.property_name} (renta directa)`, amount: comision, payment_method: "transferencia", date: today, created_by: profile?.email });
         }
+        // Si está pendiente, solo se registra el pago de renta pero la comisión queda pendiente
       }
     }
     showToast("Actualizado ✅"); loadData();
+  };
+
+  // ── CAMBIO 5: Nueva función para marcar comisión como cobrada ───────────────
+  const marcarComisionCobrada = async (contrato) => {
+    const comision = calcComision(contrato);
+    await supabase.from("contracts").update({ commission_status: "cobrada" }).eq("id", contrato.id);
+    await addCashMovement({
+      type: "entrada", category: "comision_cobrada",
+      description: `Comisión ${contrato.owner_name || contrato.property_name} — ${contrato.tenant_name}`,
+      amount: comision, payment_method: "transferencia", date: today, created_by: profile?.email
+    });
+    showToast(`✅ Comisión de ${fmt(comision)} registrada en caja`);
+    loadData();
+  };
+
+  const marcarComisionPendiente = async (contratoId) => {
+    await supabase.from("contracts").update({ commission_status: "pendiente_cobro" }).eq("id", contratoId);
+    showToast("Comisión marcada como pendiente");
+    loadData();
   };
 
   const updateTicketStatus = async (id, status) => {
@@ -514,6 +579,7 @@ export default function Home() {
   const overdue = payments.filter(p => p.status === "atrasado").reduce((a, p) => a + (p.amount || 0), 0);
   const pending = payments.filter(p => p.status === "pendiente").reduce((a, p) => a + (p.amount || 0), 0);
   const totalComisiones = contracts.filter(c => c.status === "activo").reduce((a, c) => a + calcComision(c), 0);
+  const comisionesPendientes = contracts.filter(c => c.status === "activo" && (c.commission_status === "pendiente_cobro" || !c.commission_status)).reduce((a, c) => a + calcComision(c), 0);
   const hoy = new Date();
   const pagosMes = payments.filter(p => { if (!p.due_date) return false; const d = new Date(p.due_date); return d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear(); });
   const propietariosUnicos = [...new Map(properties.filter(p => p.owner_email).map(p => [p.owner_email, { name: contracts.find(c => c.property_name === p.name)?.owner_name || p.owner_email.split("@")[0], email: p.owner_email }])).values()];
@@ -575,7 +641,8 @@ export default function Home() {
                 { label: "Cobrado", value: fmt(paid), color: "#065f46" },
                 { label: "Pendiente", value: fmt(pending), color: "#92400e" },
                 { label: "Atrasado", value: fmt(overdue), color: "#991b1b" },
-                { label: "Mis comisiones/mes", value: fmt(totalComisiones), color: "#7c3aed" },
+                { label: "Comisiones/mes", value: fmt(totalComisiones), color: "#7c3aed" },
+                { label: "Comisiones pendientes", value: fmt(comisionesPendientes), color: "#92400e" },
                 { label: "Saldo caja", value: fmt(saldoCaja), color: saldoCaja >= 0 ? "#065f46" : "#dc2626" },
               ].map((s, i) => (
                 <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
@@ -773,7 +840,7 @@ export default function Home() {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#f9fafb" }}>
-                      {["Inquilino", "Teléfono", "Propietario", "Propiedad", "Renta", "Comisión", "Renta a", "Vigencia", "Día", "Cobros", ""].map(h => (
+                      {["Inquilino / Co-resp.", "Teléfono", "Propietario", "Propiedad", "Renta", "Comisión", "Renta a", "Vigencia", "Día", "Cobros", ""].map(h => (
                         <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                       ))}
                     </tr>
@@ -785,8 +852,18 @@ export default function Home() {
                       const cobradoContrato = cobrosContrato.filter(p => p.status === "pagado").length;
                       return (
                         <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                          <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{c.tenant_name}</td>
-                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.tenant_phone || "—"}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 14 }}>
+                            <p style={{ margin: 0, fontWeight: 600 }}>{c.tenant_name}</p>
+                            {c.co_responsable_nombre && (
+                              <p style={{ margin: "2px 0 0", fontSize: 11, color: "#7c3aed", fontWeight: 600 }}>
+                                👥 {c.co_responsable_nombre}
+                              </p>
+                            )}
+                          </td>
+                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>
+                            {c.tenant_phone || "—"}
+                            {c.co_responsable_telefono && <span style={{ display: "block", fontSize: 11, color: "#9ca3af" }}>{c.co_responsable_telefono}</span>}
+                          </td>
                           <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.owner_name || "—"}</td>
                           <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.property_name}</td>
                           <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(c.monthly_rent)}</td>
@@ -1037,6 +1114,7 @@ export default function Home() {
           </div>
         )}
 
+        {/* ── CAMBIO 6: Vista Comisiones con estado cobrado/pendiente ─────────── */}
         {!loading && view === "commissions" && (
           <div>
             <h1 style={{ margin: "0 0 24px", fontSize: 26, fontWeight: 800, color: "#1a1a2e" }}>💼 Mis Comisiones</h1>
@@ -1044,6 +1122,7 @@ export default function Home() {
               {[
                 { label: "Comisión mensual total", value: fmt(totalComisiones), color: "#7c3aed" },
                 { label: "Comisión anual estimada", value: fmt(totalComisiones * 12), color: "#1a1a2e" },
+                { label: "Pendientes de cobro", value: fmt(comisionesPendientes), color: "#92400e" },
                 { label: "Contratos activos", value: contracts.filter(c => c.status === "activo").length, color: "#1e40af" },
               ].map((s, i) => (
                 <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
@@ -1052,11 +1131,22 @@ export default function Home() {
                 </div>
               ))}
             </div>
+
+            {/* Aviso de pendientes */}
+            {comisionesPendientes > 0 && (
+              <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 12, padding: "12px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 20 }}>⚠️</span>
+                <p style={{ margin: 0, fontSize: 14, color: "#92400e", fontWeight: 600 }}>
+                  Tienes {fmt(comisionesPendientes)} en comisiones pendientes de cobro. Márcalas como cobradas cuando el propietario te pague para que entren a caja.
+                </p>
+              </div>
+            )}
+
             <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    {["Inquilino", "Propietario", "Propiedad", "Renta", "Comisión", "Monto/mes", "Renta va a", "Estado"].map(h => (
+                    {["Inquilino", "Propietario", "Propiedad", "Renta", "Comisión", "Monto/mes", "Renta va a", "Cobro", "Acción"].map(h => (
                       <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                     ))}
                   </tr>
@@ -1064,16 +1154,33 @@ export default function Home() {
                 <tbody>
                   {contracts.map(c => {
                     const comision = calcComision(c);
+                    const esPendiente = !c.commission_status || c.commission_status === "pendiente_cobro";
                     return (
-                      <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                        <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{c.tenant_name}</td>
+                      <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6", background: esPendiente ? "#fffdf0" : "#fff" }}>
+                        <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>
+                          {c.tenant_name}
+                          {c.co_responsable_nombre && <span style={{ display: "block", fontSize: 11, color: "#7c3aed" }}>👥 {c.co_responsable_nombre}</span>}
+                        </td>
                         <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.owner_name || "—"}</td>
                         <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.property_name}</td>
                         <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(c.monthly_rent)}</td>
                         <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c3aed" }}>{c.commission_type === "porcentaje" ? `${c.commission_value}%` : "Fijo"}</td>
                         <td style={{ padding: "12px 16px", fontWeight: 700, color: "#7c3aed" }}>{fmt(comision)}</td>
                         <td style={{ padding: "12px 16px" }}><StatusBadge status={c.rent_receiver || "inmobiliaria"} /></td>
-                        <td style={{ padding: "12px 16px" }}><StatusBadge status={c.status} /></td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <StatusBadge status={esPendiente ? "pendiente_cobro" : "cobrada"} />
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          {esPendiente ? (
+                            <Btn small color="#065f46" onClick={() => marcarComisionCobrada(c)}>
+                              ✓ Marcar cobrada
+                            </Btn>
+                          ) : (
+                            <Btn small color="#6b7280" onClick={() => marcarComisionPendiente(c.id)}>
+                              ↩ Revertir
+                            </Btn>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -1184,12 +1291,26 @@ export default function Home() {
         </Modal>
       )}
 
+      {/* ── CAMBIO 7: Modal contrato con co-responsable ─────────────────────── */}
       {showModal === "contract" && (
         <Modal title={editing ? "✏️ Editar Contrato" : "📋 Nuevo Contrato"} onClose={closeModal}>
           {!editing && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginBottom: 20 }}><p style={{ margin: 0, fontSize: 13, color: "#065f46", fontWeight: 600 }}>✨ Al guardar se generan todos los cobros automáticamente</p></div>}
-          <Field label="Inquilino *"><Input value={contractForm.tenant_name} onChange={e => setContractForm({ ...contractForm, tenant_name: e.target.value })} /></Field>
+
+          {/* Titular */}
+          <Field label="Inquilino (Titular) *"><Input value={contractForm.tenant_name} onChange={e => setContractForm({ ...contractForm, tenant_name: e.target.value })} /></Field>
           <Field label="Email del inquilino"><Input type="email" value={contractForm.tenant_email} onChange={e => setContractForm({ ...contractForm, tenant_email: e.target.value })} /></Field>
           <Field label="Teléfono del inquilino" hint="10 dígitos, ej: 2221234567"><Input type="tel" placeholder="2221234567" value={contractForm.tenant_phone} onChange={e => setContractForm({ ...contractForm, tenant_phone: e.target.value })} /></Field>
+
+          {/* Co-responsable — NUEVO */}
+          <div style={{ background: "#f5f3ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+            <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>👥 Responsable de pago adicional (opcional)</p>
+            <p style={{ margin: "0 0 12px", fontSize: 12, color: "#9ca3af" }}>Co-responsable, aval o familiar que también responde por el contrato</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Nombre"><Input placeholder="Nombre completo" value={contractForm.co_responsable_nombre} onChange={e => setContractForm({ ...contractForm, co_responsable_nombre: e.target.value })} /></Field>
+              <Field label="Teléfono"><Input type="tel" placeholder="2221234567" value={contractForm.co_responsable_telefono} onChange={e => setContractForm({ ...contractForm, co_responsable_telefono: e.target.value })} /></Field>
+            </div>
+          </div>
+
           <Field label="Propietario"><Input value={contractForm.owner_name} onChange={e => setContractForm({ ...contractForm, owner_name: e.target.value })} /></Field>
           <Field label="Propiedad *">
             <Sel value={contractForm.property_name} onChange={e => { const sel = properties.find(p => p.name === e.target.value); setContractForm({ ...contractForm, property_name: e.target.value, monthly_rent: sel ? sel.rent_amount : contractForm.monthly_rent }); }}>
