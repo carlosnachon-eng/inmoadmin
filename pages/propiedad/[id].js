@@ -151,7 +151,7 @@ export default function PropiedadDetalle({ propiedad }) {
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #f0f0f0", padding: "16px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
         <a href="https://emporioinmobiliario.com.mx" style={{ textDecoration: "none", display: "flex", alignItems: "center" }}>
-          <img src="/logo.png" alt="Emporio Inmobiliario" style={{ height: 48, width: "auto", objectFit: "contain" }} />
+          <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio Inmobiliario" style={{ height: 48, width: "auto", objectFit: "contain" }} />
         </a>
         <a href="/propiedades" style={{ color: "#C8102E", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>← Volver a propiedades</a>
       </div>
