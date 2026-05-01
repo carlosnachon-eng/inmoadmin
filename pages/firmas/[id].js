@@ -102,12 +102,23 @@ export default function DetalleFirma() {
             <h1 style={{ color: '#fff', fontSize: '1.15rem', margin: 0 }}>{firma.titulo}</h1>
             {firma.direccion && <p style={{ color: '#aac4de', fontSize: '0.85rem', margin: '4px 0 0' }}>{firma.direccion}</p>}
           </div>
-          <span style={{
-            background: firma.status === 'completado' ? '#22c55e' : firma.urgente ? '#ef4444' : '#c8a45a',
-            color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600
-          }}>
-            {firma.status === 'completado' ? 'Completado' : firma.urgente ? 'Urgente' : 'En proceso'}
-          </span>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+  <span style={{
+    background: firma.status === 'completado' ? '#22c55e' : firma.status === 'cancelado' ? '#ef4444' : firma.urgente ? '#f59e0b' : '#c8a45a',
+    color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600
+  }}>
+    {firma.status === 'completado' ? 'Completado' : firma.status === 'cancelado' ? 'Cancelado' : firma.urgente ? 'Urgente' : 'En proceso'}
+  </span>
+  {firma.status === 'activo' && (
+    <button onClick={async () => {
+      if (!confirm('Cancelar este expediente?')) return
+      await supabase.from('firmas').update({ status: 'cancelado' }).eq('id', id)
+      cargarTodo()
+    }} style={{ background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+      Cancelar
+    </button>
+  )}
+</div>
         </div>
 
         <div style={{ marginTop: '1rem' }}>
