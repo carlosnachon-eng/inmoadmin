@@ -107,8 +107,8 @@ export default function FirmasDashboard() {
   )
 
   return (
-    <div style={{ maxWidth: '900px', margin: '2rem auto', padding: '0 1rem', fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+    <div style={{ maxWidth: '900px', margin: '1rem auto', padding: '0 0.75rem', fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.3rem', color: '#1a3c5e', margin: '0 0 4px' }}>Coordinacion de Firmas</h1>
           <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>{session.user.email}</p>
