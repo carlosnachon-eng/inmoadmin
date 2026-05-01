@@ -20,7 +20,6 @@ export default async function handler(req, res) {
 
   const { firma_id, etapa_id, notas, usuario_id, usuario_nombre } = req.body
 
-  // 1. Marcar etapa como completada
   const { data: etapa } = await supabase
     .from('firma_etapas')
     .update({ status: 'completada', notas, completada_por: usuario_id, completada_at: new Date() })
@@ -28,7 +27,6 @@ export default async function handler(req, res) {
     .select()
     .single()
 
-  // 2. Obtener siguiente etapa pendiente
   const { data: siguientes } = await supabase
     .from('firma_etapas')
     .select('*')
@@ -39,21 +37,12 @@ export default async function handler(req, res) {
 
   const siguiente = siguientes?.[0]
 
-  // 3. Actualizar etapa_actual en firma
   if (siguiente) {
-    await supabase
-      .from('firmas')
-      .update({ etapa_actual: siguiente.orden })
-      .eq('id', firma_id)
+    await supabase.from('firmas').update({ etapa_actual: siguiente.orden }).eq('id', firma_id)
   } else {
-    // Todas completadas
-    await supabase
-      .from('firmas')
-      .update({ status: 'completado' })
-      .eq('id', firma_id)
+    await supabase.from('firmas').update({ status: 'completado' }).eq('id', firma_id)
   }
 
-  // 4. Registrar en bitácora
   await supabase.from('firma_comentarios').insert({
     firma_id,
     usuario_nombre,
@@ -61,7 +50,6 @@ export default async function handler(req, res) {
     tipo: 'cambio_etapa'
   })
 
-  // 5. Enviar correo a todos los responsables
   const { data: firma } = await supabase
     .from('firmas')
     .select('titulo, tipo')
@@ -89,15 +77,4 @@ export default async function handler(req, res) {
           }
           ${notas ? `<p style="margin:8px 0 0;color:#666"><em>Nota: ${notas}</em></p>` : ''}
           <div style="margin-top:20px">
-            <a href="https://app.emporioinmobiliario.com.mx/firmas/${firma_id}"
-              style="background:#1a3c5e;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-size:14px">
-              Ver expediente
-            </a>
-          </div>
-        </div>
-      </div>
-    `
-  })
-
-  return res.status(200).json({ ok: true, siguiente })
-}
+            <a href="https://app.emporioinmobiliario.com.m
