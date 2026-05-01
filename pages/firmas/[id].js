@@ -6,8 +6,8 @@ import Link from 'next/link'
 const RESPONSABLE_LABELS = {
   ventas: 'Ventas',
   juridico: 'Juridico',
-  administracion: 'Administracion',
-  coordinacion: 'Coordinacion (Majo)',
+  administracion: 'Administracion (Majo)',
+  coordinacion: 'Administracion (Majo)',
   direccion: 'Direccion',
 }
 
@@ -49,13 +49,15 @@ export default function DetalleFirma() {
   async function completarEtapa(etapa) {
     setAvanzando(true)
     const { data: { user } } = await supabase.auth.getUser()
-    const { data: perfil } = await supabase.from('profiles').select('nombre').eq('id', user.id).single()
     await fetch('/api/firmas/avanzar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        firma_id: id, etapa_id: etapa.id, notas: notaEtapa,
-        usuario_id: user.id, usuario_nombre: perfil?.nombre || user.email,
+        firma_id: id,
+        etapa_id: etapa.id,
+        notas: notaEtapa,
+        usuario_id: user?.id,
+        usuario_nombre: user?.email,
       })
     })
     setNotaEtapa('')
@@ -67,11 +69,12 @@ export default function DetalleFirma() {
   async function enviarComentario() {
     if (!comentario.trim()) return
     const { data: { user } } = await supabase.auth.getUser()
-    const { data: perfil } = await supabase.from('profiles').select('nombre').eq('id', user.id).single()
     await supabase.from('firma_comentarios').insert({
-      firma_id: id, usuario_id: user.id,
-      usuario_nombre: perfil?.nombre || user.email,
-      mensaje: comentario, tipo: 'comentario'
+      firma_id: id,
+      usuario_id: user?.id,
+      usuario_nombre: user?.email,
+      mensaje: comentario,
+      tipo: 'comentario'
     })
     setComentario('')
     cargarTodo()
