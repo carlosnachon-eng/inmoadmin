@@ -88,7 +88,7 @@ function Galeria({ fotos, titulo }) {
         )}
         {fotos.length > 0 && (
           <button onClick={() => setLightbox(true)} style={{ position: "absolute", bottom: 12, left: 14, background: "rgba(255,255,255,0.9)", border: "none", color: "#1a1a2e", padding: "4px 12px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
-            ⛶ Ampliar
+            Ampliar
           </button>
         )}
       </div>
@@ -109,6 +109,14 @@ export default function PropiedadDetalle({ propiedad }) {
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [contacto, setContacto] = useState({ nombre: "", telefono: "", email: "", mensaje: "" });
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   if (!propiedad) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Montserrat', sans-serif", background: "#fafafa" }}>
@@ -145,8 +153,87 @@ export default function PropiedadDetalle({ propiedad }) {
     setEnviando(false);
   };
 
+  const FormularioContacto = () => (
+    <div style={{ background: "#fff", borderRadius: 20, padding: "24px", border: "1px solid #f0f0f0", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", marginBottom: isMobile ? 16 : 0 }}>
+      <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: "#1a1a2e" }}>Te interesa esta propiedad?</h3>
+      <p style={{ margin: "0 0 20px", fontSize: 13, color: "#6b7280" }}>Dejanos tus datos y te contactamos</p>
+      {enviado ? (
+        <div style={{ background: "#f0fdf4", borderRadius: 12, padding: 24, textAlign: "center" }}>
+          <p style={{ fontSize: 40, margin: "0 0 8px" }}>✅</p>
+          <p style={{ margin: 0, fontWeight: 700, color: "#065f46" }}>Recibimos tu mensaje!</p>
+          <p style={{ margin: "8px 0 0", fontSize: 13, color: "#6b7280" }}>Te contactaremos muy pronto</p>
+        </div>
+      ) : (
+        <>
+          {[
+            { label: "Nombre completo", key: "nombre", type: "text", placeholder: "Tu nombre" },
+            { label: "Telefono", key: "telefono", type: "tel", placeholder: "2221234567" },
+            { label: "Email", key: "email", type: "email", placeholder: "tu@email.com" },
+          ].map(f => (
+            <div key={f.key} style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4 }}>{f.label}</label>
+              <input type={f.type} placeholder={f.placeholder} value={contacto[f.key]} onChange={e => setContacto(c => ({ ...c, [f.key]: e.target.value }))}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", fontFamily: "'Montserrat', sans-serif" }} />
+            </div>
+          ))}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4 }}>Mensaje</label>
+            <textarea placeholder={`Hola, me interesa la propiedad ${propiedad.public_id || ""}...`} value={contacto.mensaje} onChange={e => setContacto(c => ({ ...c, mensaje: e.target.value }))}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", minHeight: 80, resize: "vertical", fontFamily: "'Montserrat', sans-serif" }} />
+          </div>
+          <button onClick={handleContacto} disabled={enviando || !contacto.nombre || !contacto.telefono}
+            style={{ width: "100%", background: "#C8102E", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontWeight: 800, fontSize: 15, cursor: enviando ? "not-allowed" : "pointer", opacity: enviando ? 0.7 : 1, marginBottom: 12, fontFamily: "'Montserrat', sans-serif" }}>
+            {enviando ? "Enviando..." : "📩 Enviar mensaje"}
+          </button>
+          <a href={`https://wa.me/522222573237?text=Hola, me interesa la propiedad ${propiedad.public_id || ""} - ${propiedad.title || ""}`} target="_blank" rel="noreferrer"
+            style={{ display: "block", width: "100%", background: "#25d366", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontWeight: 800, fontSize: 15, cursor: "pointer", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>
+            💬 WhatsApp
+          </a>
+        </>
+      )}
+      <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #f3f4f6", textAlign: "center" }}>
+        <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>ID: {propiedad.public_id || ""}</p>
+      </div>
+    </div>
+  );
+
+  const MapaUbicacion = () => {
+    if (lat && lng && propiedad.location?.show_exact_location) {
+      return (
+        <div style={{ marginTop: 24 }}>
+          <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>📍 Ubicacion</h3>
+          <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0" }}>
+            <iframe width="100%" height="220" frameBorder="0" scrolling="no" style={{ display: "block", width: "100%" }}
+              src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}&layer=mapnik&marker=${lat},${lng}`}
+            />
+          </div>
+          <a href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noreferrer"
+            style={{ fontSize: 12, color: "#6b7280", display: "block", marginTop: 6, textAlign: "right" }}>
+            Ver en Google Maps →
+          </a>
+        </div>
+      );
+    }
+    if (direccion) {
+      return (
+        <div style={{ marginTop: 24 }}>
+          <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>📍 Zona</h3>
+          <div style={{ background: "#f8f8fa", borderRadius: 12, padding: "14px 16px", border: "1px solid #f0f0f0" }}>
+            <p style={{ margin: 0, fontSize: 14, color: "#374151" }}>📍 {direccion}</p>
+            <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion + ", Puebla, Mexico")}`}
+              target="_blank" rel="noreferrer"
+              style={{ fontSize: 12, color: "#C8102E", fontWeight: 600, display: "inline-block", marginTop: 8 }}>
+              Ver en Google Maps →
+            </a>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
-    <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "'Montserrat', 'system-ui', sans-serif", overflowX: "hidden", maxWidth: "100vw" }}>
+    <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "'Montserrat', 'system-ui', sans-serif", overflowX: "hidden", maxWidth: "100vw", boxSizing: "border-box" }}>
       <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 
       <div style={{ background: "#fff", borderBottom: "1px solid #f0f0f0", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
@@ -156,182 +243,151 @@ export default function PropiedadDetalle({ propiedad }) {
         <a href="/propiedades" style={{ color: "#C8102E", fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>← Volver</a>
       </div>
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        * { box-sizing: border-box; }
-        html, body { overflow-x: hidden !important; max-width: 100vw !important; }
-        .det-grid { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 24px; align-items: start; }
-        .det-contacto { position: sticky; top: 20px; }
-        .det-mapa-mobile { display: none; }
-        @media (max-width: 768px) {
-          .det-grid { grid-template-columns: 1fr !important; }
-          .det-contacto { position: relative !important; top: auto !important; margin-top: 0; }
-          .det-mapa { display: none !important; }
-          .det-mapa-mobile { display: block; margin: 0 0 16px 0; }
-          * { max-width: 100% !important; overflow-wrap: break-word !important; word-break: break-word !important; }
-          img.det-img { width: 100% !important; height: auto !important; }
-          iframe { width: 100% !important; max-width: 100% !important; height: 200px !important; display: block; }
-        }
-      `}} />
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px", boxSizing: "border-box", width: "100%" }}>
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px", overflowX: "hidden", width: "100%" }}>
-        <div className="det-grid">
-
-          {/* Columna izquierda */}
-          <div>
+        {isMobile ? (
+          /* ── LAYOUT MÓVIL: todo en una columna, orden correcto ── */
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <Galeria fotos={fotos} titulo={propiedad.title} />
 
-            <div style={{ background: "#fff", borderRadius: 20, padding: "24px 28px", marginBottom: 16, border: "1px solid #f0f0f0", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                <div style={{ flex: 1, marginRight: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
-                    <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#1a1a2e", lineHeight: 1.3, wordBreak: "break-word" }}>{propiedad.title || ""}</h1>
-                    <StatusBadge status={status} />
-                  </div>
-                  <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>📍 {typeof propiedad.location === "string" ? propiedad.location : ""}</p>
+            {/* Info principal */}
+            <div style={{ background: "#fff", borderRadius: 20, padding: "20px", border: "1px solid #f0f0f0", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <h1 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 800, color: "#1a1a2e", lineHeight: 1.3 }}>{propiedad.title || ""}</h1>
+                  <StatusBadge status={status} />
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <p style={{ margin: 0, fontSize: 28, fontWeight: 900, color: "#C8102E" }}>{fmt(precio)}</p>
+                  <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#C8102E" }}>{fmt(precio)}</p>
                   <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{op?.currency || "MXN"} / {op?.unit === "total" ? "total" : "mes"}</p>
                 </div>
               </div>
 
               {agente && (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderTop: "1px solid #f3f4f6", marginBottom: 4 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#C8102E", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderTop: "1px solid #f3f4f6" }}>
+                  <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#C8102E", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
                     {agenteInicial}
                   </div>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a1a2e" }}>{agente}</p>
                     {agenteEmail && <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{agenteEmail}</p>}
                   </div>
-                  <span style={{ marginLeft: "auto", fontSize: 11, background: "#fff0f2", color: "#C8102E", padding: "3px 10px", borderRadius: 99, fontWeight: 600 }}>Agente asignado</span>
+                  <span style={{ fontSize: 11, background: "#fff0f2", color: "#C8102E", padding: "3px 8px", borderRadius: 99, fontWeight: 600 }}>Agente</span>
                 </div>
               )}
 
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "14px 0", borderTop: "1px solid #f3f4f6", borderBottom: "1px solid #f3f4f6", marginBottom: 20 }}>
-                {propiedad.property_type && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 600 }}>{propiedad.property_type}</span>}
-                {propiedad.bedrooms > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13 }}>🛏 {propiedad.bedrooms} rec</span>}
-                {propiedad.bathrooms > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13 }}>🚿 {propiedad.bathrooms} baños</span>}
-                {propiedad.parking_spaces > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13 }}>🚗 {propiedad.parking_spaces} est</span>}
-                {propiedad.construction_size > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13 }}>📐 {propiedad.construction_size} m²</span>}
-                {propiedad.lot_size > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13 }}>🌳 {propiedad.lot_size} m² terreno</span>}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "12px 0", borderTop: "1px solid #f3f4f6", borderBottom: "1px solid #f3f4f6", margin: "12px 0" }}>
+                {propiedad.property_type && <span style={{ background: "#f3f4f6", color: "#374151", padding: "5px 12px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{propiedad.property_type}</span>}
+                {propiedad.bedrooms > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "5px 12px", borderRadius: 99, fontSize: 12 }}>🛏 {propiedad.bedrooms} rec</span>}
+                {propiedad.bathrooms > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "5px 12px", borderRadius: 99, fontSize: 12 }}>🚿 {propiedad.bathrooms} baños</span>}
+                {propiedad.parking_spaces > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "5px 12px", borderRadius: 99, fontSize: 12 }}>🚗 {propiedad.parking_spaces} est</span>}
+                {propiedad.construction_size > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "5px 12px", borderRadius: 99, fontSize: 12 }}>📐 {propiedad.construction_size} m²</span>}
+                {propiedad.lot_size > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "5px 12px", borderRadius: 99, fontSize: 12 }}>🌳 {propiedad.lot_size} m² terreno</span>}
               </div>
 
               {propiedad.description && (
                 <div>
-                  <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Descripcion</h3>
-                  <p style={{ margin: 0, fontSize: 14, color: "#374151", lineHeight: 1.8, whiteSpace: "pre-line", wordBreak: "break-word", overflowWrap: "break-word" }}>
+                  <h3 style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>Descripcion</h3>
+                  <p style={{ margin: 0, fontSize: 13, color: "#374151", lineHeight: 1.8, whiteSpace: "pre-line", wordBreak: "break-word" }}>
                     {typeof propiedad.description === "string" ? propiedad.description : ""}
                   </p>
                 </div>
               )}
-
-              {/* Mapa desktop */}
-              {lat && lng && propiedad.location?.show_exact_location && (
-                <div className="det-mapa" style={{ marginTop: 24 }}>
-                  <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Ubicacion</h3>
-                  <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0" }}>
-                    <iframe width="100%" height="220" frameBorder="0" scrolling="no" style={{ display: "block" }}
-                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}&layer=mapnik&marker=${lat},${lng}`}
-                    />
-                  </div>
-                  <a href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noreferrer"
-                    style={{ fontSize: 12, color: "#6b7280", display: "block", marginTop: 6, textAlign: "right" }}>
-                    Ver en Google Maps
-                  </a>
-                </div>
-              )}
-              {!lat && direccion && (
-                <div style={{ marginTop: 24 }}>
-                  <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Zona</h3>
-                  <div style={{ background: "#f8f8fa", borderRadius: 12, padding: "14px 16px", border: "1px solid #f0f0f0" }}>
-                    <p style={{ margin: 0, fontSize: 14, color: "#374151" }}>📍 {direccion}</p>
-                    <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion + ", Puebla, Mexico")}`}
-                      target="_blank" rel="noreferrer"
-                      style={{ fontSize: 12, color: "#C8102E", fontWeight: 600, display: "inline-block", marginTop: 8 }}>
-                      Ver en Google Maps
-                    </a>
-                  </div>
-                </div>
-              )}
             </div>
 
+            {/* Formulario en móvil va DESPUÉS de la descripción */}
+            <FormularioContacto />
+
+            {/* Mapa en móvil */}
+            <MapaUbicacion />
+
+            {/* Amenidades */}
             {amenidades.length > 0 && (
-              <div style={{ background: "#fff", borderRadius: 20, padding: "24px 28px", border: "1px solid #f0f0f0", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Amenidades</h3>
+              <div style={{ background: "#fff", borderRadius: 20, padding: "20px", border: "1px solid #f0f0f0", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
+                <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>Amenidades</h3>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {amenidades.map((a, i) => (
-                    <span key={i} style={{ background: "#f0fdf4", color: "#065f46", padding: "4px 12px", borderRadius: 99, fontSize: 13, fontWeight: 600 }}>
-                      OK {typeof a === "string" ? a : a.name || ""}
+                    <span key={i} style={{ background: "#f0fdf4", color: "#065f46", padding: "4px 12px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>
+                      ✓ {typeof a === "string" ? a : a.name || ""}
                     </span>
                   ))}
                 </div>
               </div>
             )}
           </div>
-
-          {/* Columna derecha — Contacto */}
-          <div>
-            <div className="det-contacto" style={{ background: "#fff", borderRadius: 20, padding: "24px", border: "1px solid #f0f0f0", boxShadow: "0 4px 24px rgba(0,0,0,0.06)" }}>
-              <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: "#1a1a2e" }}>Te interesa esta propiedad?</h3>
-              <p style={{ margin: "0 0 20px", fontSize: 13, color: "#6b7280" }}>Dejanos tus datos y te contactamos</p>
-              {enviado ? (
-                <div style={{ background: "#f0fdf4", borderRadius: 12, padding: 24, textAlign: "center" }}>
-                  <p style={{ fontSize: 40, margin: "0 0 8px" }}>OK</p>
-                  <p style={{ margin: 0, fontWeight: 700, color: "#065f46" }}>Recibimos tu mensaje!</p>
-                  <p style={{ margin: "8px 0 0", fontSize: 13, color: "#6b7280" }}>Te contactaremos muy pronto</p>
-                </div>
-              ) : (
-                <>
-                  {[
-                    { label: "Nombre completo", key: "nombre", type: "text", placeholder: "Tu nombre" },
-                    { label: "Telefono", key: "telefono", type: "tel", placeholder: "2221234567" },
-                    { label: "Email", key: "email", type: "email", placeholder: "tu@email.com" },
-                  ].map(f => (
-                    <div key={f.key} style={{ marginBottom: 14 }}>
-                      <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4 }}>{f.label}</label>
-                      <input type={f.type} placeholder={f.placeholder} value={contacto[f.key]} onChange={e => setContacto(c => ({ ...c, [f.key]: e.target.value }))}
-                        style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", fontFamily: "'Montserrat', sans-serif" }} />
+        ) : (
+          /* ── LAYOUT DESKTOP: dos columnas ── */
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 340px", gap: 24, alignItems: "start" }}>
+            <div>
+              <Galeria fotos={fotos} titulo={propiedad.title} />
+              <div style={{ background: "#fff", borderRadius: 20, padding: "24px 28px", marginBottom: 16, border: "1px solid #f0f0f0", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                  <div style={{ flex: 1, marginRight: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                      <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#1a1a2e", lineHeight: 1.3 }}>{propiedad.title || ""}</h1>
+                      <StatusBadge status={status} />
                     </div>
-                  ))}
-                  <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4 }}>Mensaje</label>
-                    <textarea placeholder={`Hola, me interesa la propiedad ${propiedad.public_id || ""}...`} value={contacto.mensaje} onChange={e => setContacto(c => ({ ...c, mensaje: e.target.value }))}
-                      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", minHeight: 80, resize: "vertical", fontFamily: "'Montserrat', sans-serif" }} />
+                    <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>📍 {typeof propiedad.location === "string" ? propiedad.location : ""}</p>
                   </div>
-                  <button onClick={handleContacto} disabled={enviando || !contacto.nombre || !contacto.telefono}
-                    style={{ width: "100%", background: "#C8102E", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontWeight: 800, fontSize: 15, cursor: enviando ? "not-allowed" : "pointer", opacity: enviando ? 0.7 : 1, marginBottom: 12, fontFamily: "'Montserrat', sans-serif" }}>
-                    {enviando ? "Enviando..." : "Enviar mensaje"}
-                  </button>
-                  <a href={`https://wa.me/522222573237?text=Hola, me interesa la propiedad ${propiedad.public_id || ""} - ${propiedad.title || ""}`} target="_blank" rel="noreferrer"
-                    style={{ display: "block", width: "100%", background: "#25d366", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontWeight: 800, fontSize: 15, cursor: "pointer", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>
-                    WhatsApp
-                  </a>
-                </>
-              )}
-              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #f3f4f6", textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>ID: {propiedad.public_id || ""}</p>
-              </div>
-            </div>
-          </div>
-        </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <p style={{ margin: 0, fontSize: 28, fontWeight: 900, color: "#C8102E" }}>{fmt(precio)}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{op?.currency || "MXN"} / {op?.unit === "total" ? "total" : "mes"}</p>
+                  </div>
+                </div>
 
-        {/* Mapa mobile — fuera del grid */}
-        {lat && lng && propiedad.location?.show_exact_location && (
-          <div className="det-mapa-mobile" style={{ marginTop: 16 }}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Ubicacion</h3>
-            <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0" }}>
-              <iframe width="100%" height="200" frameBorder="0" scrolling="no" style={{ display: "block" }}
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}&layer=mapnik&marker=${lat},${lng}`}
-              />
+                {agente && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderTop: "1px solid #f3f4f6", marginBottom: 4 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#C8102E", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
+                      {agenteInicial}
+                    </div>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a1a2e" }}>{agente}</p>
+                      {agenteEmail && <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{agenteEmail}</p>}
+                    </div>
+                    <span style={{ marginLeft: "auto", fontSize: 11, background: "#fff0f2", color: "#C8102E", padding: "3px 10px", borderRadius: 99, fontWeight: 600 }}>Agente asignado</span>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "14px 0", borderTop: "1px solid #f3f4f6", borderBottom: "1px solid #f3f4f6", marginBottom: 20 }}>
+                  {propiedad.property_type && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 600 }}>{propiedad.property_type}</span>}
+                  {propiedad.bedrooms > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13 }}>🛏 {propiedad.bedrooms} rec</span>}
+                  {propiedad.bathrooms > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13 }}>🚿 {propiedad.bathrooms} baños</span>}
+                  {propiedad.parking_spaces > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13 }}>🚗 {propiedad.parking_spaces} est</span>}
+                  {propiedad.construction_size > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13 }}>📐 {propiedad.construction_size} m²</span>}
+                  {propiedad.lot_size > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13 }}>🌳 {propiedad.lot_size} m² terreno</span>}
+                </div>
+
+                {propiedad.description && (
+                  <div>
+                    <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Descripcion</h3>
+                    <p style={{ margin: 0, fontSize: 14, color: "#374151", lineHeight: 1.8, whiteSpace: "pre-line", wordBreak: "break-word" }}>
+                      {typeof propiedad.description === "string" ? propiedad.description : ""}
+                    </p>
+                  </div>
+                )}
+
+                <MapaUbicacion />
+              </div>
+
+              {amenidades.length > 0 && (
+                <div style={{ background: "#fff", borderRadius: 20, padding: "24px 28px", border: "1px solid #f0f0f0", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
+                  <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Amenidades</h3>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {amenidades.map((a, i) => (
+                      <span key={i} style={{ background: "#f0fdf4", color: "#065f46", padding: "4px 12px", borderRadius: 99, fontSize: 13, fontWeight: 600 }}>
+                        ✓ {typeof a === "string" ? a : a.name || ""}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            <a href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noreferrer"
-              style={{ fontSize: 12, color: "#6b7280", display: "block", marginTop: 6, textAlign: "right" }}>
-              Ver en Google Maps
-            </a>
+
+            <div style={{ position: "sticky", top: 20 }}>
+              <FormularioContacto />
+            </div>
           </div>
         )}
-
       </div>
 
       <a href="https://wa.me/522222573237" target="_blank" rel="noreferrer" style={{ position: "fixed", bottom: 24, right: 24, background: "#25d366", color: "#fff", width: 56, height: 56, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, boxShadow: "0 4px 16px rgba(0,0,0,0.2)", textDecoration: "none", zIndex: 100 }}>
