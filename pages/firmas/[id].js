@@ -88,7 +88,7 @@ export default function DetalleFirma() {
   const pct = total > 0 ? Math.round((progreso / total) * 100) : 0
 
   return (
-    <div style={{ maxWidth: '780px', margin: '2rem auto', padding: '0 1rem', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ maxWidth: '780px', margin: '1rem auto', padding: '0 0.75rem', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ marginBottom: '1rem' }}>
         <Link href="/firmas" style={{ fontSize: '0.85rem', color: '#888', textDecoration: 'none' }}>← Volver a firmas</Link>
       </div>
@@ -146,7 +146,7 @@ export default function DetalleFirma() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: typeof window !== 'undefined' && window.innerWidth < 768 ? '1fr' : '1fr 320px', gap: '1.5rem' }}>
         <div>
           <h2 style={{ fontSize: '1rem', color: '#1a3c5e', marginBottom: '1rem' }}>Etapas del proceso</h2>
           {etapas.map((etapa, i) => {
