@@ -164,11 +164,11 @@ export default function PropiedadDetalle({ propiedad }) {
         .det-mapa-mobile { display: none; }
         @media (max-width: 768px) {
           .det-grid { grid-template-columns: 1fr !important; }
-          .det-contacto { position: static !important; margin-top: 16px; }
+          .det-contacto { position: relative !important; top: auto !important; margin-top: 0; }
           .det-mapa { display: none !important; }
           .det-mapa-mobile { display: block; margin: 0 0 16px 0; }
           * { max-width: 100% !important; overflow-wrap: break-word !important; word-break: break-word !important; }
-          img { width: 100% !important; height: auto !important; }
+          img.det-img { width: 100% !important; height: auto !important; }
           iframe { width: 100% !important; max-width: 100% !important; height: 200px !important; display: block; }
         }
       `}} />
