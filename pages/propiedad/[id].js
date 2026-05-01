@@ -69,7 +69,6 @@ function Galeria({ fotos, titulo }) {
   return (
     <>
       {lightbox && <Lightbox fotos={fotos} index={actual} onClose={() => setLightbox(false)} onPrev={prev} onNext={next} />}
-
       <div style={{ borderRadius: 20, overflow: "hidden", marginBottom: 10, background: "#f3f4f6", height: 260, position: "relative", cursor: fotos.length > 0 ? "zoom-in" : "default", width: "100%" }}>
         {imagenPrincipal ? (
           <img src={imagenPrincipal} alt={titulo || ""} onClick={() => fotos.length > 0 && setLightbox(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -93,7 +92,6 @@ function Galeria({ fotos, titulo }) {
           </button>
         )}
       </div>
-
       {fotos.length > 1 && (
         <div style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 20, paddingBottom: 4 }}>
           {fotos.map((foto, i) => (
@@ -130,6 +128,9 @@ export default function PropiedadDetalle({ propiedad }) {
   const agente = propiedad.agent?.name || propiedad.user?.name || null;
   const agenteEmail = propiedad.agent?.email || propiedad.user?.email || null;
   const agenteInicial = agente ? agente.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() : null;
+  const lat = propiedad.location?.latitude;
+  const lng = propiedad.location?.longitude;
+  const direccion = [propiedad.location?.street, propiedad.location?.city_area, propiedad.location?.city, propiedad.location?.region].filter(Boolean).join(", ");
 
   const handleContacto = async () => {
     setEnviando(true);
@@ -148,7 +149,6 @@ export default function PropiedadDetalle({ propiedad }) {
     <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "'Montserrat', 'system-ui', sans-serif", overflowX: "hidden", maxWidth: "100vw" }}>
       <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 
-      {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #f0f0f0", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
         <a href="https://emporioinmobiliario.com.mx" style={{ textDecoration: "none", display: "flex", alignItems: "center" }}>
           <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio Inmobiliario" style={{ height: 40, width: "auto", objectFit: "contain" }} />
@@ -161,17 +161,16 @@ export default function PropiedadDetalle({ propiedad }) {
         html, body { overflow-x: hidden !important; max-width: 100vw !important; }
         .det-grid { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 24px; align-items: start; }
         .det-contacto { position: sticky; top: 20px; }
+        .det-mapa-mobile { display: none; }
         @media (max-width: 768px) {
-  .det-grid { grid-template-columns: 1fr !important; }
-  .det-contacto { position: static !important; order: 2; }
-  .det-pad { padding: 16px !important; }
-  .det-titulo { font-size: 17px !important; }
-  .det-precio { font-size: 22px !important; }
-  * { max-width: 100% !important; overflow-wrap: break-word !important; word-break: break-word !important; }
-  img { width: 100% !important; height: auto !important; }
-  iframe { width: 100% !important; max-width: 100% !important; height: 200px !important; }
-  .det-mapa { display: block; }
-}
+          .det-grid { grid-template-columns: 1fr !important; }
+          .det-contacto { position: static !important; }
+          .det-mapa { display: none !important; }
+          .det-mapa-mobile { display: block; margin: 0 0 16px 0; }
+          * { max-width: 100% !important; overflow-wrap: break-word !important; word-break: break-word !important; }
+          img { width: 100% !important; height: auto !important; }
+          iframe { width: 100% !important; max-width: 100% !important; height: 200px !important; display: block; }
+        }
       `}} />
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px", overflowX: "hidden", width: "100%" }}>
@@ -181,10 +180,7 @@ export default function PropiedadDetalle({ propiedad }) {
           <div>
             <Galeria fotos={fotos} titulo={propiedad.title} />
 
-            {/* Info principal */}
             <div style={{ background: "#fff", borderRadius: 20, padding: "24px 28px", marginBottom: 16, border: "1px solid #f0f0f0", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
-
-              {/* Título + badge + precio */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div style={{ flex: 1, marginRight: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
@@ -199,7 +195,6 @@ export default function PropiedadDetalle({ propiedad }) {
                 </div>
               </div>
 
-              {/* Agente */}
               {agente && (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderTop: "1px solid #f3f4f6", marginBottom: 4 }}>
                   <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#C8102E", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
@@ -213,7 +208,6 @@ export default function PropiedadDetalle({ propiedad }) {
                 </div>
               )}
 
-              {/* Características */}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "14px 0", borderTop: "1px solid #f3f4f6", borderBottom: "1px solid #f3f4f6", marginBottom: 20 }}>
                 {propiedad.property_type && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 600 }}>{propiedad.property_type}</span>}
                 {propiedad.bedrooms > 0 && <span style={{ background: "#f3f4f6", color: "#374151", padding: "6px 14px", borderRadius: 99, fontSize: 13 }}>🛏 {propiedad.bedrooms} rec</span>}
@@ -225,60 +219,50 @@ export default function PropiedadDetalle({ propiedad }) {
 
               {propiedad.description && (
                 <div>
-                  <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Descripción</h3>
+                  <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Descripcion</h3>
                   <p style={{ margin: 0, fontSize: 14, color: "#374151", lineHeight: 1.8, whiteSpace: "pre-line", wordBreak: "break-word", overflowWrap: "break-word" }}>
                     {typeof propiedad.description === "string" ? propiedad.description : ""}
                   </p>
                 </div>
               )}
 
-              {/* Mapa */}
-              {(() => {
-                const lat = propiedad.location?.latitude;
-                const lng = propiedad.location?.longitude;
-                const direccion = [propiedad.location?.street, propiedad.location?.city_area, propiedad.location?.city, propiedad.location?.region].filter(Boolean).join(", ");
-                if (lat && lng && propiedad.location?.show_exact_location) {
-                  return (
-                    <div className="det-mapa" style={{ marginTop: 24 }}>
-                      <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>📍 Ubicación</h3>
-                      <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0", width: "100%", maxWidth: "100%", marginBottom: 16 }}>
-                        <iframe width="100%" height="220" frameBorder="0" scrolling="no" style={{ display: "block", maxWidth: "100%", minWidth: 0 }}
-                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}&layer=mapnik&marker=${lat},${lng}`}
-                        />
-                      </div>
-                      <a href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noreferrer"
-                        style={{ fontSize: 12, color: "#6b7280", display: "block", marginTop: 6, textAlign: "right" }}>
-                        Ver en Google Maps →
-                      </a>
-                    </div>
-                  );
-                } else if (direccion) {
-                  return (
-                    <div style={{ marginTop: 24 }}>
-                      <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>📍 Zona</h3>
-                      <div style={{ background: "#f8f8fa", borderRadius: 12, padding: "14px 16px", border: "1px solid #f0f0f0" }}>
-                        <p style={{ margin: 0, fontSize: 14, color: "#374151" }}>📍 {direccion}</p>
-                        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion + ", Puebla, México")}`}
-                          target="_blank" rel="noreferrer"
-                          style={{ fontSize: 12, color: "#C8102E", fontWeight: 600, display: "inline-block", marginTop: 8 }}>
-                          Ver en Google Maps →
-                        </a>
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
+              {/* Mapa desktop */}
+              {lat && lng && propiedad.location?.show_exact_location && (
+                <div className="det-mapa" style={{ marginTop: 24 }}>
+                  <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Ubicacion</h3>
+                  <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0" }}>
+                    <iframe width="100%" height="220" frameBorder="0" scrolling="no" style={{ display: "block" }}
+                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}&layer=mapnik&marker=${lat},${lng}`}
+                    />
+                  </div>
+                  <a href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noreferrer"
+                    style={{ fontSize: 12, color: "#6b7280", display: "block", marginTop: 6, textAlign: "right" }}>
+                    Ver en Google Maps
+                  </a>
+                </div>
+              )}
+              {!lat && direccion && (
+                <div style={{ marginTop: 24 }}>
+                  <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Zona</h3>
+                  <div style={{ background: "#f8f8fa", borderRadius: 12, padding: "14px 16px", border: "1px solid #f0f0f0" }}>
+                    <p style={{ margin: 0, fontSize: 14, color: "#374151" }}>📍 {direccion}</p>
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion + ", Puebla, Mexico")}`}
+                      target="_blank" rel="noreferrer"
+                      style={{ fontSize: 12, color: "#C8102E", fontWeight: 600, display: "inline-block", marginTop: 8 }}>
+                      Ver en Google Maps
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Amenidades */}
             {amenidades.length > 0 && (
               <div style={{ background: "#fff", borderRadius: 20, padding: "24px 28px", border: "1px solid #f0f0f0", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
                 <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Amenidades</h3>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {amenidades.map((a, i) => (
                     <span key={i} style={{ background: "#f0fdf4", color: "#065f46", padding: "4px 12px", borderRadius: 99, fontSize: 13, fontWeight: 600 }}>
-                      ✓ {typeof a === "string" ? a : a.name || ""}
+                      OK {typeof a === "string" ? a : a.name || ""}
                     </span>
                   ))}
                 </div>
@@ -289,20 +273,19 @@ export default function PropiedadDetalle({ propiedad }) {
           {/* Columna derecha — Contacto */}
           <div>
             <div className="det-contacto" style={{ background: "#fff", borderRadius: 20, padding: "24px", border: "1px solid #f0f0f0", boxShadow: "0 4px 24px rgba(0,0,0,0.06)" }}>
-              <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: "#1a1a2e" }}>¿Te interesa esta propiedad?</h3>
-              <p style={{ margin: "0 0 20px", fontSize: 13, color: "#6b7280" }}>Déjanos tus datos y te contactamos</p>
-
+              <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: "#1a1a2e" }}>Te interesa esta propiedad?</h3>
+              <p style={{ margin: "0 0 20px", fontSize: 13, color: "#6b7280" }}>Dejanos tus datos y te contactamos</p>
               {enviado ? (
                 <div style={{ background: "#f0fdf4", borderRadius: 12, padding: 24, textAlign: "center" }}>
-                  <p style={{ fontSize: 40, margin: "0 0 8px" }}>✅</p>
-                  <p style={{ margin: 0, fontWeight: 700, color: "#065f46" }}>¡Recibimos tu mensaje!</p>
+                  <p style={{ fontSize: 40, margin: "0 0 8px" }}>OK</p>
+                  <p style={{ margin: 0, fontWeight: 700, color: "#065f46" }}>Recibimos tu mensaje!</p>
                   <p style={{ margin: "8px 0 0", fontSize: 13, color: "#6b7280" }}>Te contactaremos muy pronto</p>
                 </div>
               ) : (
                 <>
                   {[
                     { label: "Nombre completo", key: "nombre", type: "text", placeholder: "Tu nombre" },
-                    { label: "Teléfono", key: "telefono", type: "tel", placeholder: "2221234567" },
+                    { label: "Telefono", key: "telefono", type: "tel", placeholder: "2221234567" },
                     { label: "Email", key: "email", type: "email", placeholder: "tu@email.com" },
                   ].map(f => (
                     <div key={f.key} style={{ marginBottom: 14 }}>
@@ -318,21 +301,37 @@ export default function PropiedadDetalle({ propiedad }) {
                   </div>
                   <button onClick={handleContacto} disabled={enviando || !contacto.nombre || !contacto.telefono}
                     style={{ width: "100%", background: "#C8102E", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontWeight: 800, fontSize: 15, cursor: enviando ? "not-allowed" : "pointer", opacity: enviando ? 0.7 : 1, marginBottom: 12, fontFamily: "'Montserrat', sans-serif" }}>
-                    {enviando ? "Enviando..." : "📩 Enviar mensaje"}
+                    {enviando ? "Enviando..." : "Enviar mensaje"}
                   </button>
                   <a href={`https://wa.me/522222573237?text=Hola, me interesa la propiedad ${propiedad.public_id || ""} - ${propiedad.title || ""}`} target="_blank" rel="noreferrer"
                     style={{ display: "block", width: "100%", background: "#25d366", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontWeight: 800, fontSize: 15, cursor: "pointer", textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>
-                    💬 WhatsApp
+                    WhatsApp
                   </a>
                 </>
               )}
-
               <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #f3f4f6", textAlign: "center" }}>
                 <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>ID: {propiedad.public_id || ""}</p>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Mapa mobile — fuera del grid */}
+        {lat && lng && propiedad.location?.show_exact_location && (
+          <div className="det-mapa-mobile" style={{ marginTop: 16 }}>
+            <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Ubicacion</h3>
+            <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0" }}>
+              <iframe width="100%" height="200" frameBorder="0" scrolling="no" style={{ display: "block" }}
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}&layer=mapnik&marker=${lat},${lng}`}
+              />
+            </div>
+            <a href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noreferrer"
+              style={{ fontSize: 12, color: "#6b7280", display: "block", marginTop: 6, textAlign: "right" }}>
+              Ver en Google Maps
+            </a>
+          </div>
+        )}
+
       </div>
 
       <a href="https://wa.me/522222573237" target="_blank" rel="noreferrer" style={{ position: "fixed", bottom: 24, right: 24, background: "#25d366", color: "#fff", width: 56, height: 56, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, boxShadow: "0 4px 16px rgba(0,0,0,0.2)", textDecoration: "none", zIndex: 100 }}>
