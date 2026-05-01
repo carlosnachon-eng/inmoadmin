@@ -239,8 +239,8 @@ export default function PropiedadDetalle({ propiedad }) {
                   return (
                     <div style={{ marginTop: 24 }}>
                       <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>📍 Ubicación</h3>
-                      <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0" }}>
-                        <iframe width="100%" height="260" frameBorder="0" scrolling="no" style={{ display: "block" }}
+                      <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0", width: "100%", maxWidth: "100%" }}>
+                        <iframe width="100%" height="220" frameBorder="0" scrolling="no" style={{ display: "block", maxWidth: "100%", minWidth: 0 }}
                           src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}&layer=mapnik&marker=${lat},${lng}`}
                         />
                       </div>
