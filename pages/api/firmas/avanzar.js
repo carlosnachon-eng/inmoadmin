@@ -8,11 +8,11 @@ const supabase = createClient(
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 const CORREOS_ROL = {
-  ventas:        'ventas@emporioinmobiliario.com.mx',
-  juridico:      'juridico@emporioinmobiliario.com.mx',
-  administracion:'administracion@emporioinmobiliario.com.mx',
-  coordinacion:  'coordinacion@emporioinmobiliario.com.mx',
-  direccion:     'ventas@emporioinmobiliario.mx',
+  ventas: 'ventas@emporioinmobiliario.com.mx',
+  juridico: 'juridico@emporioinmobiliario.com.mx',
+  administracion: 'administracion@emporioinmobiliario.com.mx',
+  coordinacion: 'coordinacion@emporioinmobiliario.com.mx',
+  direccion: 'ventas@emporioinmobiliario.mx',
 }
 
 export default async function handler(req, res) {
@@ -58,23 +58,16 @@ export default async function handler(req, res) {
 
   const destinatarios = Object.values(CORREOS_ROL)
 
-  await resend.emails.send({
-    from: 'cobros@emporioinmobiliario.com.mx',
-    to: destinatarios,
-    subject: `[Emporio] Avance en expediente: ${firma?.titulo}`,
-    html: `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-        <div style="background:#1a3c5e;padding:20px;border-radius:8px 8px 0 0">
-          <h2 style="color:#fff;margin:0;font-size:16px">Actualizacion de expediente</h2>
-        </div>
-        <div style="background:#f9f9f9;padding:20px;border-radius:0 0 8px 8px;border:1px solid #eee">
-          <p style="margin:0 0 8px"><strong>Expediente:</strong> ${firma?.titulo}</p>
-          <p style="margin:0 0 8px"><strong>Etapa completada:</strong> ${etapa.nombre}</p>
-          <p style="margin:0 0 8px"><strong>Completada por:</strong> ${usuario_nombre}</p>
-          ${siguiente
-            ? `<p style="margin:0 0 8px"><strong>Siguiente paso:</strong> ${siguiente.nombre} (${siguiente.responsable})</p>`
-            : `<p style="margin:0;color:#22c55e"><strong>Expediente completado.</strong></p>`
-          }
-          ${notas ? `<p style="margin:8px 0 0;color:#666"><em>Nota: ${notas}</em></p>` : ''}
-          <div style="margin-top:20px">
-            <a href="https://app.emporioinmobiliario.com.m
+  try {
+    await resend.emails.send({
+      from: 'cobros@emporioinmobiliario.com.mx',
+      to: destinatarios,
+      subject: `[Emporio] Avance en expediente: ${firma?.titulo}`,
+      html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto"><div style="background:#1a3c5e;padding:20px;border-radius:8px 8px 0 0"><h2 style="color:#fff;margin:0;font-size:16px">Actualizacion de expediente</h2></div><div style="background:#f9f9f9;padding:20px;border-radius:0 0 8px 8px;border:1px solid #eee"><p style="margin:0 0 8px"><strong>Expediente:</strong> ${firma?.titulo}</p><p style="margin:0 0 8px"><strong>Etapa completada:</strong> ${etapa.nombre}</p><p style="margin:0 0 8px"><strong>Completada por:</strong> ${usuario_nombre}</p>${siguiente ? `<p style="margin:0 0 8px"><strong>Siguiente paso:</strong> ${siguiente.nombre}</p>` : `<p style="color:#22c55e">Expediente completado.</p>`}${notas ? `<p style="color:#666">Nota: ${notas}</p>` : ''}</div></div>`
+    })
+  } catch (e) {
+    console.error('Error enviando correo:', e)
+  }
+
+  return res.status(200).json({ ok: true, siguiente })
+}
