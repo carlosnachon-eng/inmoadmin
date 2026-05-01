@@ -162,14 +162,16 @@ export default function PropiedadDetalle({ propiedad }) {
         .det-grid { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 24px; align-items: start; }
         .det-contacto { position: sticky; top: 20px; }
         @media (max-width: 768px) {
-          .det-grid { grid-template-columns: 1fr !important; }
-          .det-contacto { position: static !important; order: -1; }
-          .det-pad { padding: 16px !important; }
-          .det-titulo { font-size: 17px !important; }
-          .det-precio { font-size: 22px !important; }
-          * { max-width: 100% !important; overflow-wrap: break-word !important; word-break: break-word !important; }
-          img, iframe { width: 100% !important; height: auto !important; }
-        }
+  .det-grid { grid-template-columns: 1fr !important; }
+  .det-contacto { position: static !important; order: 0; }
+  .det-pad { padding: 16px !important; }
+  .det-titulo { font-size: 17px !important; }
+  .det-precio { font-size: 22px !important; }
+  * { max-width: 100% !important; overflow-wrap: break-word !important; word-break: break-word !important; }
+  img { width: 100% !important; height: auto !important; }
+  iframe { width: 100% !important; max-width: 100% !important; }
+  .det-mapa { display: none; }
+}
       `}} />
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px", overflowX: "hidden", width: "100%" }}>
@@ -237,7 +239,7 @@ export default function PropiedadDetalle({ propiedad }) {
                 const direccion = [propiedad.location?.street, propiedad.location?.city_area, propiedad.location?.city, propiedad.location?.region].filter(Boolean).join(", ");
                 if (lat && lng && propiedad.location?.show_exact_location) {
                   return (
-                    <div style={{ marginTop: 24 }}>
+                    <div className="det-mapa" style={{ marginTop: 24 }}>
                       <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>📍 Ubicación</h3>
                       <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0", width: "100%", maxWidth: "100%" }}>
                         <iframe width="100%" height="220" frameBorder="0" scrolling="no" style={{ display: "block", maxWidth: "100%", minWidth: 0 }}
