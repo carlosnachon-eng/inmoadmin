@@ -22,7 +22,6 @@ const STATUS_COLORS = {
 export default function DetalleFirma() {
   const router = useRouter()
   const { id } = router.query
-  const supabase = createClientComponentClient()
 
   const [firma, setFirma] = useState(null)
   const [etapas, setEtapas] = useState([])
