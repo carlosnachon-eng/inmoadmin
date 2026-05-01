@@ -169,7 +169,7 @@ export default function PropiedadDetalle({ propiedad }) {
   .det-precio { font-size: 22px !important; }
   * { max-width: 100% !important; overflow-wrap: break-word !important; word-break: break-word !important; }
   img { width: 100% !important; height: auto !important; }
-  iframe { width: 100% !important; max-width: 100% !important; }
+  iframe { width: 100% !important; max-width: 100% !important; height: 200px !important; }
   .det-mapa { display: block; }
 }
       `}} />
@@ -241,7 +241,7 @@ export default function PropiedadDetalle({ propiedad }) {
                   return (
                     <div className="det-mapa" style={{ marginTop: 24 }}>
                       <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>📍 Ubicación</h3>
-                      <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0", width: "100%", maxWidth: "100%" }}>
+                      <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #f0f0f0", width: "100%", maxWidth: "100%", marginBottom: 16 }}>
                         <iframe width="100%" height="220" frameBorder="0" scrolling="no" style={{ display: "block", maxWidth: "100%", minWidth: 0 }}
                           src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.005},${lat-0.005},${lng+0.005},${lat+0.005}&layer=mapnik&marker=${lat},${lng}`}
                         />
