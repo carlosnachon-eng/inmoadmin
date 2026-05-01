@@ -43,10 +43,26 @@ export default function FirmasDashboard() {
     e.preventDefault()
     setLoginLoading(true)
     setLoginError('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
     if (error) {
       setLoginError('Correo o contrasena incorrectos')
       setLoginLoading(false)
+      return
+    }
+
+    const { data: usuario } = await supabase
+      .from('firmas_usuarios')
+      .select('email')
+      .eq('email', data.user.email)
+      .maybeSingle()
+
+    if (!usuario) {
+      await supabase.auth.signOut()
+      setLoginError('No tienes acceso a este modulo')
+      setLoginLoading(false)
+      return
     }
   }
 
