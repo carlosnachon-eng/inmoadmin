@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
 
 export default function FirmasDashboard() {
-  const supabase = createClientComponentClient()
   const [firmas, setFirmas] = useState([])
   const [filtro, setFiltro] = useState('activo')
   const [loading, setLoading] = useState(true)
