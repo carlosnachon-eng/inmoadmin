@@ -72,7 +72,7 @@ function Galeria({ fotos, titulo }) {
 
       <div style={{ borderRadius: 20, overflow: "hidden", marginBottom: 10, background: "#f3f4f6", height: 260, position: "relative", cursor: fotos.length > 0 ? "zoom-in" : "default", width: "100%" }}>
         {imagenPrincipal ? (
-          <img src={imagenPrincipal} alt={titulo || ""} onClick={() => fotos.length > 0 && setLightbox(true)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <img src={imagenPrincipal} alt={titulo || ""} onClick={() => fotos.length > 0 && setLightbox(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         ) : (
           <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 60 }}>🏠</div>
         )}
@@ -158,7 +158,7 @@ export default function PropiedadDetalle({ propiedad }) {
 
       <style dangerouslySetInnerHTML={{ __html: `
         * { box-sizing: border-box; }
-        body { overflow-x: hidden; }
+        html, body { overflow-x: hidden !important; max-width: 100vw !important; }
         .det-grid { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 24px; align-items: start; }
         .det-contacto { position: sticky; top: 20px; }
         @media (max-width: 768px) {
@@ -167,6 +167,8 @@ export default function PropiedadDetalle({ propiedad }) {
           .det-pad { padding: 16px !important; }
           .det-titulo { font-size: 17px !important; }
           .det-precio { font-size: 22px !important; }
+          * { max-width: 100% !important; overflow-wrap: break-word !important; word-break: break-word !important; }
+          img, iframe { width: 100% !important; height: auto !important; }
         }
       `}} />
 
