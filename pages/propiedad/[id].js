@@ -70,7 +70,7 @@ function Galeria({ fotos, titulo }) {
     <>
       {lightbox && <Lightbox fotos={fotos} index={actual} onClose={() => setLightbox(false)} onPrev={prev} onNext={next} />}
 
-      <div style={{ borderRadius: 20, overflow: "hidden", marginBottom: 10, background: "#f3f4f6", height: 260, position: "relative", cursor: fotos.length > 0 ? "zoom-in" : "default" }}>
+      <div style={{ borderRadius: 20, overflow: "hidden", marginBottom: 10, background: "#f3f4f6", height: 260, position: "relative", cursor: fotos.length > 0 ? "zoom-in" : "default", width: "100%" }}>
         {imagenPrincipal ? (
           <img src={imagenPrincipal} alt={titulo || ""} onClick={() => fotos.length > 0 && setLightbox(true)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         ) : (
@@ -149,31 +149,28 @@ export default function PropiedadDetalle({ propiedad }) {
       <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 
       {/* Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #f0f0f0", padding: "16px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #f0f0f0", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
         <a href="https://emporioinmobiliario.com.mx" style={{ textDecoration: "none", display: "flex", alignItems: "center" }}>
-          <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio Inmobiliario" style={{ height: 48, width: "auto", objectFit: "contain" }} />
+          <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio Inmobiliario" style={{ height: 40, width: "auto", objectFit: "contain" }} />
         </a>
-        <a href="/propiedades" style={{ color: "#C8102E", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>← Volver a propiedades</a>
+        <a href="/propiedades" style={{ color: "#C8102E", fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>← Volver</a>
       </div>
 
       <style dangerouslySetInnerHTML={{ __html: `
         * { box-sizing: border-box; }
+        body { overflow-x: hidden; }
         .det-grid { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 24px; align-items: start; }
         .det-contacto { position: sticky; top: 20px; }
         @media (max-width: 768px) {
           .det-grid { grid-template-columns: 1fr !important; }
           .det-contacto { position: static !important; order: -1; }
-          .det-pad { padding: 20px !important; }
+          .det-pad { padding: 16px !important; }
           .det-titulo { font-size: 17px !important; }
           .det-precio { font-size: 22px !important; }
-          h3 { font-size: 15px !important; }
-          p { max-width: 100% !important; overflow-wrap: break-word !important; word-break: break-word !important; }
-          img { max-width: 100% !important; }
-          iframe { max-width: 100% !important; }
         }
       `}} />
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px", overflowX: "hidden" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px", overflowX: "hidden", width: "100%" }}>
         <div className="det-grid">
 
           {/* Columna izquierda */}
