@@ -3,11 +3,30 @@ import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
 
 export default function FirmasDashboard() {
+  const [session, setSession] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loginError, setLoginError] = useState('')
+  const [loginLoading, setLoginLoading] = useState(false)
   const [firmas, setFirmas] = useState([])
   const [filtro, setFiltro] = useState('activo')
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { cargarFirmas() }, [filtro])
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setAuthLoading(false)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      setSession(session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    if (session) cargarFirmas()
+  }, [session, filtro])
 
   async function cargarFirmas() {
     setLoading(true)
@@ -20,24 +39,72 @@ export default function FirmasDashboard() {
     setLoading(false)
   }
 
+  async function handleLogin(e) {
+    e.preventDefault()
+    setLoginLoading(true)
+    setLoginError('')
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) {
+      setLoginError('Correo o contrasena incorrectos')
+      setLoginLoading(false)
+    }
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setSession(null)
+  }
+
   const RESPONSABLE_LABELS = {
     ventas: 'Ventas',
     juridico: 'Juridico',
-    administracion: 'Administracion',
-    coordinacion: 'Coordinacion (Majo)',
+    administracion: 'Administracion (Majo)',
     direccion: 'Direccion',
   }
+
+  if (authLoading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui' }}>
+      <p style={{ color: '#888' }}>Cargando...</p>
+    </div>
+  )
+
+  if (!session) return (
+    <div style={{ minHeight: '100vh', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui' }}>
+      <div style={{ background: '#fff', borderRadius: '12px', padding: '2rem', width: '100%', maxWidth: '380px', boxShadow: '0 2px 12px rgba(0,0,0,0.1)' }}>
+        <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ width: '160px', display: 'block', margin: '0 auto 1.5rem' }} />
+        <h2 style={{ textAlign: 'center', color: '#1a3c5e', fontSize: '1.1rem', marginBottom: '1.5rem' }}>Coordinacion de Firmas</h2>
+        <form onSubmit={handleLogin}>
+          <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', color: '#555' }}>Correo</label>
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
+            style={{ width: '100%', padding: '0.6rem', marginBottom: '1rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '1rem', boxSizing: 'border-box' }} />
+          <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', color: '#555' }}>Contrasena</label>
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
+            style={{ width: '100%', padding: '0.6rem', marginBottom: '1rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '1rem', boxSizing: 'border-box' }} />
+          {loginError && <p style={{ color: '#dc2626', fontSize: '0.85rem', marginBottom: '1rem' }}>{loginError}</p>}
+          <button type="submit" disabled={loginLoading}
+            style={{ width: '100%', padding: '0.75rem', background: '#1a3c5e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer' }}>
+            {loginLoading ? 'Entrando...' : 'Entrar'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
 
   return (
     <div style={{ maxWidth: '900px', margin: '2rem auto', padding: '0 1rem', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.3rem', color: '#1a3c5e', margin: '0 0 4px' }}>Coordinacion de Firmas</h1>
-          <Link href="/" style={{ fontSize: '0.85rem', color: '#888', textDecoration: 'none' }}>← Volver al panel</Link>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>{session.user.email}</p>
         </div>
-        <Link href="/firmas/nueva" style={{ background: '#1a3c5e', color: '#fff', padding: '0.6rem 1.25rem', borderRadius: '8px', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>
-          + Nuevo expediente
-        </Link>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <Link href="/firmas/nueva" style={{ background: '#1a3c5e', color: '#fff', padding: '0.6rem 1.25rem', borderRadius: '8px', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>
+            + Nuevo expediente
+          </Link>
+          <button onClick={handleLogout} style={{ background: '#f3f4f6', color: '#555', border: 'none', padding: '0.6rem 1rem', borderRadius: '8px', fontSize: '0.9rem', cursor: 'pointer' }}>
+            Salir
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
