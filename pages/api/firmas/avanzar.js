@@ -7,14 +7,12 @@ const supabase = createClient(
 )
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-const CORREOS_ROL = {
-  ventas: 'ventas@emporioinmobiliario.com.mx',
-  juridico: 'juridico@emporioinmobiliario.com.mx',
-  administracion: 'administracion@emporioinmobiliario.com.mx',
-  coordinacion: 'coordinacion@emporioinmobiliario.com.mx',
-  direccion: 'ventas@emporioinmobiliario.mx',
-}
-
+const CORREOS_NOTIFICACION = [
+  'carlos.nachon@emporioinmobiliario.mx',
+  'administracion@emporioinmobiliario.com.mx',
+  'guillermo@emporioinmobiliario.com.mx',
+  'juridico@emporioinmobiliario.mx',
+]
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
@@ -56,8 +54,7 @@ export default async function handler(req, res) {
     .eq('id', firma_id)
     .single()
 
-  const destinatarios = Object.values(CORREOS_ROL)
-
+  const destinatarios = CORREOS_NOTIFICACION
   try {
     await resend.emails.send({
       from: 'cobros@emporioinmobiliario.com.mx',
