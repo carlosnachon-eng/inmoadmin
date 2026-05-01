@@ -12,6 +12,8 @@
     "react": "^18",
     "react-dom": "^18",
     "@supabase/supabase-js": "^2.0.0",
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
+    "resend": "^3.0.0",
     "jspdf": "^2.5.1",
     "jspdf-autotable": "^3.8.2",
     "googleapis": "^140.0.0"
