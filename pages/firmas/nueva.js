@@ -27,8 +27,8 @@ export default function NuevaFirma() {
     e.preventDefault()
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    const { data: perfil } = await supabase.from('profiles').select('nombre').eq('id', user.id).single()
-
+if (!user) { setLoading(false); return; }
+const { data: perfil } = await supabase.from('profiles').select('nombre').eq('id', user.id).maybeSingle()
     const res = await fetch('/api/firmas/crear', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
