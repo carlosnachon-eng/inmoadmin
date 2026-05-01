@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { useRouter } from 'next/router'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
 
 export default function NuevaFirma() {
   const router = useRouter()
-  const supabase = createClientComponentClient()
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
     tipo: 'arrendamiento',
