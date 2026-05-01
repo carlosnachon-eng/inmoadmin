@@ -145,7 +145,7 @@ export default function PropiedadDetalle({ propiedad }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "'Montserrat', 'system-ui', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "'Montserrat', 'system-ui', sans-serif", overflowX: "hidden", maxWidth: "100vw" }}>
       <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 
       {/* Header */}
@@ -184,7 +184,7 @@ export default function PropiedadDetalle({ propiedad }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div style={{ flex: 1, marginRight: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
-                    <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#1a1a2e", lineHeight: 1.3 }}>{propiedad.title || ""}</h1>
+                    <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#1a1a2e", lineHeight: 1.3, wordBreak: "break-word" }}>{propiedad.title || ""}</h1>
                     <StatusBadge status={status} />
                   </div>
                   <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>📍 {typeof propiedad.location === "string" ? propiedad.location : ""}</p>
@@ -222,7 +222,7 @@ export default function PropiedadDetalle({ propiedad }) {
               {propiedad.description && (
                 <div>
                   <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Descripción</h3>
-                  <p style={{ margin: 0, fontSize: 14, color: "#374151", lineHeight: 1.8, whiteSpace: "pre-line" }}>
+                  <p style={{ margin: 0, fontSize: 14, color: "#374151", lineHeight: 1.8, whiteSpace: "pre-line", wordBreak: "break-word", overflowWrap: "break-word" }}>
                     {typeof propiedad.description === "string" ? propiedad.description : ""}
                   </p>
                 </div>
