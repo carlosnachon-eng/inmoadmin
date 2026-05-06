@@ -267,7 +267,7 @@ export default function Cierres() {
   const getMesInfo = (anio, mes) => {
     const total = cierres
       .filter(c => c.anio === anio && c.mes === mes && !esRenovacion(c.propiedad))
-      .reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0);
+      .reduce((a, c) => a + (c.comision || 0), 0);
     return { total, pct: total >= META_GERENTE ? PCT_ALTO : PCT_BAJO, alcanzaMeta: total >= META_GERENTE };
   };
   const mesInfo = filtroMes ? getMesInfo(filtroAnio, filtroMes) : null;
