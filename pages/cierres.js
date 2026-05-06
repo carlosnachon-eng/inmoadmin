@@ -148,7 +148,7 @@ export default function Cierres() {
       pct_vendedor: pctVend,
       com_vendedor: c.com_vendedor || "", pag_vendedor: c.pag_vendedor || "0",
       pend_vend: c.pend_vend || "0", comision_inmobiliaria: c.comision_inmobiliaria || "0",
-      monto_gerente: esRenovacion(c.propiedad) ? "0" : (c.monto_gerente > 0 ? c.monto_gerente : montoGer).toFixed(2),
+      monto_gerente: esRenovacion(c.propiedad) ? "0" : ((c.comision || 0) * getPctGerente(c.anio, c.mes, cierres)).toFixed(2),
       gerente_pagado_monto: c.gerente_pagado_monto || "0",
       notas: c.notas || "", anio: c.anio || new Date().getFullYear(),
       mes: c.mes || new Date().getMonth() + 1, mes_nombre: c.mes_nombre || "",
