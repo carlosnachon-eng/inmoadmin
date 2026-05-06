@@ -80,7 +80,7 @@ export default function Cierres() {
     if (esRenovacion(c.propiedad)) return 0;
     if (c.monto_gerente > 0) return c.monto_gerente;
     const pct = getPctGerente(c.anio, c.mes, allCierres);
-    return (c.comision_inmobiliaria || 0) * pct;
+    return (c.comision || 0) * pct;
   };
 
   const saveCierre = async () => {
@@ -131,7 +131,7 @@ export default function Cierres() {
   const calcGerenteParaForm = (comInmob, propiedad, anio, mes) => {
     if (esRenovacion(propiedad)) return "0";
     const pct = getPctGerente(anio, mes, cierres);
-    return (comInmob * pct).toFixed(2);
+    return ((parseFloat(form?.comision) || comInmob) * pct).toFixed(2);
   };
 
   const openEdit = (c) => {
