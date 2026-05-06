@@ -508,7 +508,7 @@ export default function Cierres() {
                   const cm = cieresFiltrados.filter(c => c.mes === mesNum);
                   if (cm.length === 0) return null;
                   const totalMes = cm.reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0);
-                  const totalMesSinRenov = cm.filter(c => !esRenovacion(c.propiedad)).reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0);
+                  const totalMesSinRenov = cm.filter(c => !esRenovacion(c.propiedad)).reduce((a, c) => a + (c.comision || 0), 0);
                   const pct = totalMesSinRenov >= META_GERENTE ? PCT_ALTO : PCT_BAJO;
                   return (
                     <div key={mes} style={{ padding: "6px 0", borderBottom: "1px solid #f3f4f6" }}>
