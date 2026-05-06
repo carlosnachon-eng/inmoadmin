@@ -9,7 +9,8 @@ const MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 const VENDEDORES = ["Carlos", "Ivonne", "Rubi", "Miguel", "Ari", "Andrea",
-  "Guillermo", "Rosario", "Angelica", "Fabiola", "Majo", "Ivan", "Oficina", "Direccion", "Otro"];
+  "Guillermo", "Rosario", "Angelica", "Fabiola", "Majo", "Oficina", "Direccion", "Otro"];
+
 const META_GERENTE = 380000;
 const PCT_ALTO = 0.05;
 const PCT_BAJO = 0.03;
@@ -33,6 +34,14 @@ export default function Cierres() {
   const [filtroVendedor, setFiltroVendedor] = useState("Todos");
   const [busqueda, setBusqueda] = useState("");
   const [filtroPendiente, setFiltroPendiente] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const emptyForm = {
     propiedad: "", fecha_cierre: new Date().toISOString().split("T")[0],
@@ -54,7 +63,7 @@ export default function Cierres() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session && session.user.email === "carlos.nachon@emporioinmobiliario.mx") loadCierres();
+      if (session) loadCierres();
       else setLoading(false);
     });
   }, []);
@@ -70,17 +79,17 @@ export default function Cierres() {
   const getPctGerente = (anio, mes, allCierres) => {
     const totalMes = allCierres
       .filter(c => c.anio === anio && c.mes === mes && !esRenovacion(c.propiedad))
-      .reduce((a, c) => a + (c.comision || 0), 0);
+      .reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0);
     return totalMes >= META_GERENTE ? PCT_ALTO : PCT_BAJO;
   };
 
   // Monto gerente por cierre — 0 si es renovacion
   const getMontoGerente = (c, allCierres) => {
     if (esRenovacion(c.propiedad)) return 0;
-    if (c.anio < 2025 || (c.anio === 2025 && c.mes < 9)) return 0;
     const pct = getPctGerente(c.anio, c.mes, allCierres);
-    return (c.comision || 0) * pct;
+    return (c.comision_inmobiliaria || 0) * pct;
   };
+
   const saveCierre = async () => {
     setSaving(true);
     const comision = parseFloat(form.comision) || 0;
@@ -129,7 +138,7 @@ export default function Cierres() {
   const calcGerenteParaForm = (comInmob, propiedad, anio, mes) => {
     if (esRenovacion(propiedad)) return "0";
     const pct = getPctGerente(anio, mes, cierres);
-    return ((parseFloat(form.comision) || 0) * pct).toFixed(2);
+    return (comInmob * pct).toFixed(2);
   };
 
   const openEdit = (c) => {
@@ -146,7 +155,7 @@ export default function Cierres() {
       pct_vendedor: pctVend,
       com_vendedor: c.com_vendedor || "", pag_vendedor: c.pag_vendedor || "0",
       pend_vend: c.pend_vend || "0", comision_inmobiliaria: c.comision_inmobiliaria || "0",
-      monto_gerente: esRenovacion(c.propiedad) ? "0" : ((c.comision || 0) * getPctGerente(c.anio, c.mes, cierres)).toFixed(2),
+      monto_gerente: esRenovacion(c.propiedad) ? "0" : (c.monto_gerente > 0 ? c.monto_gerente : montoGer).toFixed(2),
       gerente_pagado_monto: c.gerente_pagado_monto || "0",
       notas: c.notas || "", anio: c.anio || new Date().getFullYear(),
       mes: c.mes || new Date().getMonth() + 1, mes_nombre: c.mes_nombre || "",
@@ -266,7 +275,7 @@ export default function Cierres() {
   const getMesInfo = (anio, mes) => {
     const total = cierres
       .filter(c => c.anio === anio && c.mes === mes && !esRenovacion(c.propiedad))
-      .reduce((a, c) => a + (c.comision || 0), 0);
+      .reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0);
     return { total, pct: total >= META_GERENTE ? PCT_ALTO : PCT_BAJO, alcanzaMeta: total >= META_GERENTE };
   };
   const mesInfo = filtroMes ? getMesInfo(filtroAnio, filtroMes) : null;
@@ -281,7 +290,7 @@ export default function Cierres() {
   });
   const vendedoresRanking = Object.entries(porVendedor).sort((a, b) => b[1].cierres - a[1].cierres).slice(0, 8);
 
-  if (!session || session.user.email !== "carlos.nachon@emporioinmobiliario.mx") {
+  if (!session) {
     return (
       <div style={{ minHeight: "100vh", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 40, textAlign: "center" }}>
@@ -322,7 +331,7 @@ export default function Cierres() {
       <div style={{ maxWidth: 1500, margin: "0 auto", padding: "20px" }}>
 
         {/* Filtros */}
-        <div style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", marginBottom: 14, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ background: "#fff", borderRadius: 14, padding: isMobile ? "12px 14px" : "14px 18px", marginBottom: 14, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <select value={filtroAnio} onChange={e => setFiltroAnio(parseInt(e.target.value))} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, fontWeight: 700 }}>
             {aniosDisponibles.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
@@ -398,9 +407,91 @@ export default function Cierres() {
           ))}
         </div>
 
+        {/* Vista mobile — tarjetas */}
+        {isMobile ? (
+          <div>
+            {loading ? (
+              <div style={{ padding: 48, textAlign: "center", color: "#6b7280" }}>Cargando...</div>
+            ) : cieresFiltrados.length === 0 ? (
+              <div style={{ padding: 48, textAlign: "center", color: "#6b7280" }}>No hay registros</div>
+            ) : (
+              cieresFiltrados.map(c => {
+                const montoGer = getMontoGerente(c, cierres);
+                const gerPagado = c.gerente_pagado_monto || 0;
+                const gerPend = Math.max(0, montoGer - gerPagado);
+                const empNeto = (c.comision_inmobiliaria || 0) - montoGer;
+                const hayPend = c.pendiente > 0 || c.pend_vend > 0 || gerPend > 0;
+                const esRenov = esRenovacion(c.propiedad);
+                return (
+                  <div key={c.id} style={{ background: "#fff", borderRadius: 14, padding: 16, marginBottom: 10, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", borderLeft: `4px solid ${hayPend ? "#f59e0b" : "#10b981"}` }}>
+                    {/* Header tarjeta */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                      <div>
+                        <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#1a1a2e" }}>{c.propiedad}</p>
+                        <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center" }}>
+                          <span style={{ background: c.operacion === "VENTA" ? "#fff0f2" : "#f0fdf4", color: c.operacion === "VENTA" ? "#C8102E" : "#065f46", padding: "2px 8px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{c.operacion}</span>
+                          {esRenov && <span style={{ fontSize: 11, color: "#9ca3af" }}>renovacion</span>}
+                          <span style={{ fontSize: 11, color: "#9ca3af" }}>{c.fecha_cierre || ""}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button onClick={() => openEdit(c)} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Editar</button>
+                        <button onClick={() => deleteCierre(c.id, c.propiedad)} style={{ background: "#fee2e2", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#991b1b" }}>X</button>
+                      </div>
+                    </div>
+
+                    {/* Fila comision */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+                      <div style={{ background: "#f9fafb", borderRadius: 8, padding: "8px 10px" }}>
+                        <p style={{ margin: 0, fontSize: 9, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Comision</p>
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>{fmt(c.comision)}</p>
+                      </div>
+                      <div style={{ background: "#f0fdf4", borderRadius: 8, padding: "8px 10px" }}>
+                        <p style={{ margin: 0, fontSize: 9, color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>Cobrado</p>
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#065f46" }}>{fmt(c.cobrado)}</p>
+                      </div>
+                      <div style={{ background: c.pendiente > 0 ? "#fff7ed" : "#f9fafb", borderRadius: 8, padding: "8px 10px" }}>
+                        <p style={{ margin: 0, fontSize: 9, color: c.pendiente > 0 ? "#92400e" : "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Pendiente</p>
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: c.pendiente > 0 ? "#dc2626" : "#9ca3af" }}>{fmt(c.pendiente)}</p>
+                      </div>
+                    </div>
+
+                    {/* Vendedor */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#faf5ff", borderRadius: 8, padding: "8px 12px", marginBottom: 8 }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 10, color: "#7c3aed", fontWeight: 700, textTransform: "uppercase" }}>Vendedor — {c.vendedor}</p>
+                        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>{fmt(c.com_vendedor)}</p>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <p style={{ margin: 0, fontSize: 10, color: "#6b7280", fontWeight: 600 }}>Pagado: {fmt(c.pag_vendedor)}</p>
+                        {c.pend_vend > 0 && <p style={{ margin: 0, fontSize: 11, color: "#dc2626", fontWeight: 700 }}>Pend: {fmt(c.pend_vend)}</p>}
+                      </div>
+                    </div>
+
+                    {/* Gerente + Emporio */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      {!esRenov && (
+                        <div style={{ background: "#eff6ff", borderRadius: 8, padding: "8px 10px" }}>
+                          <p style={{ margin: 0, fontSize: 9, color: "#1e40af", fontWeight: 700, textTransform: "uppercase" }}>Gerente</p>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#0369a1" }}>{fmt(montoGer)}</p>
+                          {gerPend > 0 && <p style={{ margin: 0, fontSize: 10, color: "#dc2626", fontWeight: 700 }}>Pend: {fmt(gerPend)}</p>}
+                          {gerPend === 0 && montoGer > 0 && <p style={{ margin: 0, fontSize: 10, color: "#065f46" }}>✅ Pagado</p>}
+                        </div>
+                      )}
+                      <div style={{ background: "#f0fdf4", borderRadius: 8, padding: "8px 10px", gridColumn: esRenov ? "1 / -1" : "auto", border: "1px solid #86efac" }}>
+                        <p style={{ margin: 0, fontSize: 9, color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>Emporio neto</p>
+                        <p style={{ margin: 0, fontSize: 16, fontWeight: 900, color: "#065f46" }}>{fmt(empNeto)}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 250px", gap: 16 }}>
 
-          {/* Tabla */}
+          {/* Tabla desktop */}
           <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
             {loading ? (
               <div style={{ padding: 48, textAlign: "center", color: "#6b7280" }}>Cargando...</div>
@@ -508,7 +599,7 @@ export default function Cierres() {
                   const cm = cieresFiltrados.filter(c => c.mes === mesNum);
                   if (cm.length === 0) return null;
                   const totalMes = cm.reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0);
-                  const totalMesSinRenov = cm.filter(c => !esRenovacion(c.propiedad)).reduce((a, c) => a + (c.comision || 0), 0);
+                  const totalMesSinRenov = cm.filter(c => !esRenovacion(c.propiedad)).reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0);
                   const pct = totalMesSinRenov >= META_GERENTE ? PCT_ALTO : PCT_BAJO;
                   return (
                     <div key={mes} style={{ padding: "6px 0", borderBottom: "1px solid #f3f4f6" }}>
@@ -526,6 +617,7 @@ export default function Cierres() {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Modal */}
