@@ -77,10 +77,10 @@ export default function Cierres() {
   // Monto gerente por cierre — 0 si es renovacion
   const getMontoGerente = (c, allCierres) => {
     if (esRenovacion(c.propiedad)) return 0;
+    if (c.anio < 2025 || (c.anio === 2025 && c.mes < 9)) return 0;
     const pct = getPctGerente(c.anio, c.mes, allCierres);
     return (c.comision || 0) * pct;
   };
-
   const saveCierre = async () => {
     setSaving(true);
     const comision = parseFloat(form.comision) || 0;
