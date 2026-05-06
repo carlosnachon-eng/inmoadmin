@@ -591,7 +591,10 @@ const pagosProp = pagosFrescos || [];
     const costoMantProp = (ticketsProp || []).filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
     const gastosOpProp = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
     const totalLiqProp = totalRentaProp - totalComProp - costoMantProp - gastosOpProp;
-    const totalPagadoProp = (liqProp || []).filter(l => l.status === "pagado").reduce((a, l) => a + (l.amount_paid || 0), 0);
+    const esDirecto = contratosProp.some(c => c.rent_receiver === "propietario");
+const comisionesCobradas = contratosProp.filter(c => c.commission_status === "cobrada").reduce((a, c) => a + calcComision(c), 0);
+const comisionesPendientes2 = contratosProp.filter(c => c.commission_status !== "cobrada").reduce((a, c) => a + calcComision(c), 0);
+const totalPagadoProp = esDirecto ? comisionesCobradas : (liqProp || []).filter(l => l.status === "pagado").reduce((a, l) => a + (l.amount_paid || 0), 0);
 
     doc.setFillColor(26, 26, 46); doc.rect(0, 0, 210, 40, "F");
     doc.setTextColor(200, 169, 110); doc.setFontSize(20); doc.setFont("helvetica", "bold");
@@ -614,12 +617,12 @@ const pagosProp = pagosFrescos || [];
     doc.text(`Renta mensual total: ${fmt(totalRentaProp)}`, 20, y + 16);
     doc.text(`Comision administracion: -${fmt(totalComProp)}`, 20, y + 23);
     doc.setTextColor(30, 64, 175);
-    doc.text(`Total liquidado: ${fmt(totalPagadoProp)}`, 110, y + 16);
+doc.text(esDirecto ? `Comision cobrada: ${fmt(totalPagadoProp)}` : `Total liquidado: ${fmt(totalPagadoProp)}`, 110, y + 16);
     let lineY = y + 30;
     if (costoMantProp > 0) { doc.setTextColor(153, 27, 27); doc.text(`Mantenimiento: -${fmt(costoMantProp)}`, 20, lineY); lineY += 7; }
     if (gastosOpProp > 0) { doc.setTextColor(153, 27, 27); doc.text(`Gastos operativos: -${fmt(gastosOpProp)}`, 20, lineY); lineY += 7; }
     doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
-    doc.text(`Liquido a recibir: ${fmt(totalLiqProp)}`, 20, lineY);
+doc.text(esDirecto ? `Comision pendiente de cobro: ${fmt(comisionesPendientes2)}` : `Liquido a recibir: ${fmt(totalLiqProp)}`, 20, lineY);
     y += boxH + 10;
 
     doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
