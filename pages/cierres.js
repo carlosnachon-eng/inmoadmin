@@ -54,7 +54,7 @@ export default function Cierres() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) loadCierres();
+      if (session && session.user.email === "carlos.nachon@emporioinmobiliario.mx") loadCierres();
       else setLoading(false);
     });
   }, []);
@@ -281,7 +281,7 @@ export default function Cierres() {
   });
   const vendedoresRanking = Object.entries(porVendedor).sort((a, b) => b[1].cierres - a[1].cierres).slice(0, 8);
 
-  if (!session) {
+  if (!session || session.user.email !== "carlos.nachon@emporioinmobiliario.mx") {
     return (
       <div style={{ minHeight: "100vh", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 40, textAlign: "center" }}>
