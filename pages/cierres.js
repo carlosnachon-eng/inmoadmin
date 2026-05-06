@@ -14,6 +14,10 @@ const VENDEDORES = ["Carlos", "Ivonne", "Rubi", "Miguel", "Ari", "Andrea",
 const META_GERENTE = 380000;
 const PCT_ALTO = 0.05;
 const PCT_BAJO = 0.03;
+const PCT_VENDEDOR_DEFAULT = 20;
+
+// Renovaciones: no aplica gerente y no cuentan para la meta mensual
+const esRenovacion = (propiedad) => (propiedad || "").toLowerCase().startsWith("renov");
 
 export default function Cierres() {
   const [session, setSession] = useState(null);
@@ -34,7 +38,8 @@ export default function Cierres() {
   const emptyForm = {
     propiedad: "", fecha_cierre: new Date().toISOString().split("T")[0],
     operacion: "RENTA", precio: "", comision: "", cobrado: "", pendiente: "0",
-    vendedor: "Carlos", com_vendedor: "", pag_vendedor: "0", pend_vend: "0",
+    vendedor: "Carlos", pct_vendedor: PCT_VENDEDOR_DEFAULT.toString(),
+    com_vendedor: "", pag_vendedor: "0", pend_vend: "0",
     comision_inmobiliaria: "0", monto_gerente: "0", gerente_pagado_monto: "0",
     notas: "", anio: new Date().getFullYear(),
     mes: new Date().getMonth() + 1,
@@ -62,14 +67,17 @@ export default function Cierres() {
     setLoading(false);
   };
 
+  // Calcula % gerente excluyendo renovaciones
   const getPctGerente = (anio, mes, allCierres) => {
     const totalMes = allCierres
-      .filter(c => c.anio === anio && c.mes === mes)
+      .filter(c => c.anio === anio && c.mes === mes && !esRenovacion(c.propiedad))
       .reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0);
     return totalMes >= META_GERENTE ? PCT_ALTO : PCT_BAJO;
   };
 
+  // Monto gerente por cierre — 0 si es renovacion
   const getMontoGerente = (c, allCierres) => {
+    if (esRenovacion(c.propiedad)) return 0;
     const pct = getPctGerente(c.anio, c.mes, allCierres);
     return (c.comision_inmobiliaria || 0) * pct;
   };
@@ -83,7 +91,7 @@ export default function Cierres() {
     const comInmob = Math.max(0, comision - comVend);
     const pendiente = Math.max(0, comision - cobrado);
     const pendVend = Math.max(0, comVend - pagVend);
-    const montoGer = parseFloat(form.monto_gerente) || 0;
+    const montoGer = esRenovacion(form.propiedad) ? 0 : (parseFloat(form.monto_gerente) || 0);
     const gerPagado = parseFloat(form.gerente_pagado_monto) || 0;
 
     const data = {
@@ -119,18 +127,27 @@ export default function Cierres() {
     showToast("Eliminado"); loadCierres();
   };
 
+  const calcGerenteParaForm = (comInmob, propiedad, anio, mes) => {
+    if (esRenovacion(propiedad)) return "0";
+    const pct = getPctGerente(anio, mes, cierres);
+    return (comInmob * pct).toFixed(2);
+  };
+
   const openEdit = (c) => {
-    const pct = getPctGerente(c.anio, c.mes, cierres);
-    const montoGer = (c.comision_inmobiliaria || 0) * pct;
+    const montoGer = getMontoGerente(c, cierres);
+    const comVend = c.com_vendedor || 0;
+    const comision = c.comision || 0;
+    const pctVend = comision > 0 && comVend > 0 ? ((comVend / comision) * 100).toFixed(0) : PCT_VENDEDOR_DEFAULT.toString();
     setEditando(c.id);
     setForm({
       propiedad: c.propiedad || "", fecha_cierre: c.fecha_cierre || "",
       operacion: c.operacion || "RENTA", precio: c.precio || "",
       comision: c.comision || "", cobrado: c.cobrado || "",
       pendiente: c.pendiente || "0", vendedor: c.vendedor || "Carlos",
+      pct_vendedor: pctVend,
       com_vendedor: c.com_vendedor || "", pag_vendedor: c.pag_vendedor || "0",
       pend_vend: c.pend_vend || "0", comision_inmobiliaria: c.comision_inmobiliaria || "0",
-      monto_gerente: (c.monto_gerente > 0 ? c.monto_gerente : montoGer).toFixed(2),
+      monto_gerente: esRenovacion(c.propiedad) ? "0" : (c.monto_gerente > 0 ? c.monto_gerente : montoGer).toFixed(2),
       gerente_pagado_monto: c.gerente_pagado_monto || "0",
       notas: c.notas || "", anio: c.anio || new Date().getFullYear(),
       mes: c.mes || new Date().getMonth() + 1, mes_nombre: c.mes_nombre || "",
@@ -142,21 +159,66 @@ export default function Cierres() {
     set("fecha_cierre", v);
     if (v) {
       const d = new Date(v + "T12:00:00");
-      set("anio", d.getFullYear()); set("mes", d.getMonth() + 1);
-      set("mes_nombre", MESES[d.getMonth() + 1]);
+      const anio = d.getFullYear();
+      const mes = d.getMonth() + 1;
+      set("anio", anio); set("mes", mes); set("mes_nombre", MESES[mes]);
+      // Recalcular gerente con nuevo mes
+      const comInmob = parseFloat(form.comision_inmobiliaria) || 0;
+      set("monto_gerente", calcGerenteParaForm(comInmob, form.propiedad, anio, mes));
     }
+  };
+
+  const handlePropiedadChange = (v) => {
+    const comInmob = parseFloat(form.comision_inmobiliaria) || 0;
+    const comVend = esRenovacion(v) ? form.com_vendedor : ((parseFloat(form.comision) || 0) * (parseFloat(form.pct_vendedor) || PCT_VENDEDOR_DEFAULT) / 100).toFixed(2);
+    const newComInmob = Math.max(0, (parseFloat(form.comision) || 0) - (parseFloat(comVend) || 0));
+    setForm(f => ({
+      ...f,
+      propiedad: v,
+      monto_gerente: calcGerenteParaForm(newComInmob, v, f.anio, f.mes),
+    }));
   };
 
   const handleComisionChange = (v) => {
     const com = parseFloat(v) || 0;
-    const comVend = parseFloat(form.com_vendedor) || 0;
+    const pct = parseFloat(form.pct_vendedor) || PCT_VENDEDOR_DEFAULT;
+    const comVend = esRenovacion(form.propiedad) ? (parseFloat(form.com_vendedor) || 0) : com * pct / 100;
     const cobrado = parseFloat(form.cobrado) || 0;
     const comInmob = Math.max(0, com - comVend);
-    const pct = getPctGerente(form.anio, form.mes, cierres);
     setForm(f => ({
-      ...f, comision: v, comision_inmobiliaria: comInmob.toFixed(2),
+      ...f, comision: v,
+      com_vendedor: esRenovacion(form.propiedad) ? f.com_vendedor : comVend.toFixed(2),
+      comision_inmobiliaria: comInmob.toFixed(2),
       pendiente: Math.max(0, com - cobrado).toFixed(2),
-      monto_gerente: (comInmob * pct).toFixed(2),
+      pend_vend: Math.max(0, comVend - (parseFloat(f.pag_vendedor) || 0)).toFixed(2),
+      monto_gerente: calcGerenteParaForm(comInmob, f.propiedad, f.anio, f.mes),
+    }));
+  };
+
+  const handlePctVendedorChange = (v) => {
+    const pct = parseFloat(v) || 0;
+    const com = parseFloat(form.comision) || 0;
+    const comVend = com * pct / 100;
+    const comInmob = Math.max(0, com - comVend);
+    setForm(f => ({
+      ...f, pct_vendedor: v,
+      com_vendedor: comVend.toFixed(2),
+      comision_inmobiliaria: comInmob.toFixed(2),
+      pend_vend: Math.max(0, comVend - (parseFloat(f.pag_vendedor) || 0)).toFixed(2),
+      monto_gerente: calcGerenteParaForm(comInmob, f.propiedad, f.anio, f.mes),
+    }));
+  };
+
+  const handleComVendedorChange = (v) => {
+    const comVend = parseFloat(v) || 0;
+    const com = parseFloat(form.comision) || 0;
+    const pagVend = parseFloat(form.pag_vendedor) || 0;
+    const comInmob = Math.max(0, com - comVend);
+    setForm(f => ({
+      ...f, com_vendedor: v,
+      comision_inmobiliaria: comInmob.toFixed(2),
+      pend_vend: Math.max(0, comVend - pagVend).toFixed(2),
+      monto_gerente: calcGerenteParaForm(comInmob, f.propiedad, f.anio, f.mes),
     }));
   };
 
@@ -166,27 +228,10 @@ export default function Cierres() {
     setForm(f => ({ ...f, cobrado: v, pendiente: Math.max(0, com - cob).toFixed(2) }));
   };
 
-  const handleComVendedorChange = (v) => {
-    const comVend = parseFloat(v) || 0;
-    const com = parseFloat(form.comision) || 0;
-    const pagVend = parseFloat(form.pag_vendedor) || 0;
-    const comInmob = Math.max(0, com - comVend);
-    const pct = getPctGerente(form.anio, form.mes, cierres);
-    setForm(f => ({
-      ...f, com_vendedor: v, comision_inmobiliaria: comInmob.toFixed(2),
-      pend_vend: Math.max(0, comVend - pagVend).toFixed(2),
-      monto_gerente: (comInmob * pct).toFixed(2),
-    }));
-  };
-
   const handlePagVendedorChange = (v) => {
     const pagVend = parseFloat(v) || 0;
     const comVend = parseFloat(form.com_vendedor) || 0;
     setForm(f => ({ ...f, pag_vendedor: v, pend_vend: Math.max(0, comVend - pagVend).toFixed(2) }));
-  };
-
-  const handleGerentePagadoChange = (v) => {
-    set("gerente_pagado_monto", v);
   };
 
   // Filtrado
@@ -218,8 +263,10 @@ export default function Cierres() {
 
   const aniosDisponibles = [...new Set(cierres.map(c => c.anio))].sort((a, b) => b - a);
 
+  // Info mes para gerente — excluye renovaciones
   const getMesInfo = (anio, mes) => {
-    const total = cierres.filter(c => c.anio === anio && c.mes === mes)
+    const total = cierres
+      .filter(c => c.anio === anio && c.mes === mes && !esRenovacion(c.propiedad))
       .reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0);
     return { total, pct: total >= META_GERENTE ? PCT_ALTO : PCT_BAJO, alcanzaMeta: total >= META_GERENTE };
   };
@@ -251,6 +298,7 @@ export default function Cierres() {
   const montoGerenteForm = parseFloat(form.monto_gerente) || 0;
   const gerentePagadoForm = parseFloat(form.gerente_pagado_monto) || 0;
   const emporioPuroForm = comInmobForm - montoGerenteForm;
+  const esRenov = esRenovacion(form.propiedad);
 
   const inp = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" };
   const inpGreen = { ...inp, border: "1.5px solid #86efac" };
@@ -260,6 +308,7 @@ export default function Cierres() {
     <div style={{ minHeight: "100vh", background: "#f4f5f7", fontFamily: "system-ui, sans-serif" }}>
       {toast && <div style={{ position: "fixed", top: 20, right: 20, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 3000 }}>{toast.msg}</div>}
 
+      {/* Header */}
       <div style={{ background: "#1a1a2e", padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <p style={{ margin: 0, fontSize: 11, color: "#C8102E", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>Emporio Inmobiliario</p>
@@ -301,17 +350,20 @@ export default function Cierres() {
           <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>{cieresFiltrados.length} registros</span>
         </div>
 
-        {/* Banner gerente del mes */}
+        {/* Banner gerente del mes — excluye renovaciones */}
         {mesInfo && (
           <div style={{ background: mesInfo.alcanzaMeta ? "#f0fdf4" : "#fffbeb", border: `1px solid ${mesInfo.alcanzaMeta ? "#86efac" : "#fcd34d"}`, borderRadius: 12, padding: "12px 18px", marginBottom: 14, display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}>
             <div>
-              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: mesInfo.alcanzaMeta ? "#065f46" : "#92400e", textTransform: "uppercase" }}>Gerente (Guillermo) — {MESES[filtroMes]} {filtroAnio}</p>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: mesInfo.alcanzaMeta ? "#065f46" : "#92400e", textTransform: "uppercase" }}>
+                Gerente (Guillermo) — {MESES[filtroMes]} {filtroAnio}
+              </p>
               <p style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: mesInfo.alcanzaMeta ? "#065f46" : "#92400e" }}>
                 {mesInfo.pct * 100}% {mesInfo.alcanzaMeta ? "✅ Meta alcanzada" : `— Faltan ${fmt(META_GERENTE - mesInfo.total)} para el 5%`}
               </p>
+              <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>Solo cierres nuevos (sin renovaciones)</p>
             </div>
             {[
-              { label: "Com. inmob. mes", value: fmt(mesInfo.total) },
+              { label: "Com. inmob. mes (sin renov)", value: fmt(mesInfo.total) },
               { label: "Total gerente", value: fmt(totalMontoGerente), color: "#7c3aed" },
               { label: "Pagado gerente", value: fmt(totalGerentePagado), color: "#065f46" },
               { label: "Pendiente gerente", value: fmt(totalGerentePendiente), color: totalGerentePendiente > 0 ? "#dc2626" : "#9ca3af" },
@@ -360,7 +412,7 @@ export default function Cierres() {
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
                   <thead>
                     <tr style={{ background: "#f9fafb" }}>
-                      {["Fecha", "Propiedad", "Tipo", "Comision", "Cobrado", "Pend. cobro", "Vendedor", "Com.Vend", "Pag.Vend", "Pend.Vend", "Gerente", "Pag.Ger", "Emporio neto", ""].map(h => (
+                      {["Fecha", "Propiedad", "Tipo", "Comision", "Cobrado", "Pend.cobro", "Vendedor", "Com.Vend", "Pag.Vend", "Pend.Vend", "Gerente", "Pag.Ger", "Emporio neto", ""].map(h => (
                         <th key={h} style={{ padding: "10px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                       ))}
                     </tr>
@@ -372,10 +424,14 @@ export default function Cierres() {
                       const gerPend = Math.max(0, montoGer - gerPagado);
                       const empNeto = (c.comision_inmobiliaria || 0) - montoGer;
                       const hayPend = c.pendiente > 0 || c.pend_vend > 0 || gerPend > 0;
+                      const esRenov = esRenovacion(c.propiedad);
                       return (
                         <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6", background: hayPend ? "#fffdf5" : "#fff" }}>
                           <td style={{ padding: "9px 10px", fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>{c.fecha_cierre || "-"}</td>
-                          <td style={{ padding: "9px 10px", fontWeight: 600, fontSize: 12, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.propiedad}</td>
+                          <td style={{ padding: "9px 10px", fontWeight: 600, fontSize: 12, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {c.propiedad}
+                            {esRenov && <span style={{ display: "block", fontSize: 9, color: "#9ca3af", fontWeight: 400 }}>renovacion</span>}
+                          </td>
                           <td style={{ padding: "9px 10px" }}>
                             <span style={{ background: c.operacion === "VENTA" ? "#fff0f2" : "#f0fdf4", color: c.operacion === "VENTA" ? "#C8102E" : "#065f46", padding: "2px 6px", borderRadius: 99, fontSize: 10, fontWeight: 700 }}>{c.operacion}</span>
                           </td>
@@ -386,10 +442,14 @@ export default function Cierres() {
                           <td style={{ padding: "9px 10px", fontSize: 12, color: "#7c3aed" }}>{fmt(c.com_vendedor)}</td>
                           <td style={{ padding: "9px 10px", fontSize: 12, color: "#065f46" }}>{fmt(c.pag_vendedor)}</td>
                           <td style={{ padding: "9px 10px", fontSize: 12, color: c.pend_vend > 0 ? "#dc2626" : "#9ca3af", fontWeight: c.pend_vend > 0 ? 700 : 400 }}>{fmt(c.pend_vend)}</td>
-                          <td style={{ padding: "9px 10px", fontSize: 12, color: "#0369a1" }}>{fmt(montoGer)}</td>
+                          <td style={{ padding: "9px 10px", fontSize: 12, color: esRenov ? "#9ca3af" : "#0369a1" }}>{esRenov ? "—" : fmt(montoGer)}</td>
                           <td style={{ padding: "9px 10px", fontSize: 12 }}>
-                            <span style={{ color: gerPend > 0 ? "#dc2626" : "#065f46", fontWeight: 600 }}>{fmt(gerPagado)}</span>
-                            {gerPend > 0 && <span style={{ fontSize: 10, color: "#dc2626", display: "block" }}>Pend: {fmt(gerPend)}</span>}
+                            {esRenov ? <span style={{ color: "#9ca3af" }}>—</span> : (
+                              <>
+                                <span style={{ color: gerPend > 0 ? "#dc2626" : "#065f46", fontWeight: 600 }}>{fmt(gerPagado)}</span>
+                                {gerPend > 0 && <span style={{ fontSize: 9, color: "#dc2626", display: "block" }}>Pend: {fmt(gerPend)}</span>}
+                              </>
+                            )}
                           </td>
                           <td style={{ padding: "9px 10px", fontSize: 12, fontWeight: 800, color: "#065f46" }}>{fmt(empNeto)}</td>
                           <td style={{ padding: "9px 10px" }}>
@@ -449,15 +509,16 @@ export default function Cierres() {
                   const cm = cieresFiltrados.filter(c => c.mes === mesNum);
                   if (cm.length === 0) return null;
                   const totalMes = cm.reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0);
-                  const pct = totalMes >= META_GERENTE ? PCT_ALTO : PCT_BAJO;
+                  const totalMesSinRenov = cm.filter(c => !esRenovacion(c.propiedad)).reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0);
+                  const pct = totalMesSinRenov >= META_GERENTE ? PCT_ALTO : PCT_BAJO;
                   return (
                     <div key={mes} style={{ padding: "6px 0", borderBottom: "1px solid #f3f4f6" }}>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <span style={{ fontSize: 12, fontWeight: 600 }}>{mes}</span>
                         <span style={{ fontSize: 12, fontWeight: 700, color: "#065f46" }}>{fmt(totalMes)}</span>
                       </div>
-                      <div style={{ fontSize: 10, color: totalMes >= META_GERENTE ? "#065f46" : "#92400e", fontWeight: 600 }}>
-                        Ger {pct * 100}% = {fmt(totalMes * pct)} · {cm.length} cierres
+                      <div style={{ fontSize: 10, color: totalMesSinRenov >= META_GERENTE ? "#065f46" : "#92400e", fontWeight: 600 }}>
+                        Ger {pct * 100}% = {fmt(totalMesSinRenov * pct)} · {cm.length} cierres
                       </div>
                     </div>
                   );
@@ -471,12 +532,13 @@ export default function Cierres() {
       {/* Modal */}
       {showModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 620, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 640, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#1a1a2e" }}>{editando ? "Editar cierre" : "Nuevo cierre"}</h2>
               <button onClick={() => { setShowModal(false); setEditando(null); setForm(emptyForm); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 16 }}>✕</button>
             </div>
 
+            {/* Tipo */}
             <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
               {["RENTA", "VENTA"].map(op => (
                 <button key={op} onClick={() => set("operacion", op)} style={{
@@ -494,7 +556,8 @@ export default function Cierres() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 3, textTransform: "uppercase" }}>Propiedad *</label>
-                  <input value={form.propiedad} onChange={e => set("propiedad", e.target.value)} placeholder="Nombre de la propiedad" style={inp} />
+                  <input value={form.propiedad} onChange={e => handlePropiedadChange(e.target.value)} placeholder="Nombre de la propiedad (Renov... para renovacion)" style={inp} />
+                  {esRenov && <p style={{ margin: "4px 0 0", fontSize: 11, color: "#0369a1", fontWeight: 600 }}>Renovacion — gerente no aplica</p>}
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 3, textTransform: "uppercase" }}>Fecha de cierre</label>
@@ -534,10 +597,19 @@ export default function Cierres() {
 
             {/* Vendedor */}
             <div style={{ background: "#faf5ff", borderRadius: 10, padding: 14, marginBottom: 12 }}>
-              <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 800, color: "#7c3aed", textTransform: "uppercase" }}>Comision vendedor — {form.vendedor}</p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 800, color: "#7c3aed", textTransform: "uppercase" }}>
+                Comision vendedor — {form.vendedor}
+                {esRenov && <span style={{ marginLeft: 8, fontWeight: 400, color: "#9ca3af" }}>(administracion 10%)</span>}
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+                {!esRenov && (
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 3, textTransform: "uppercase" }}>% comision</label>
+                    <input type="number" value={form.pct_vendedor} onChange={e => handlePctVendedorChange(e.target.value)} placeholder="20" style={inp} />
+                  </div>
+                )}
                 <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 3, textTransform: "uppercase" }}>Com. vendedor</label>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 3, textTransform: "uppercase" }}>Monto</label>
                   <input type="number" value={form.com_vendedor} onChange={e => handleComVendedorChange(e.target.value)} placeholder="0" style={inp} />
                 </div>
                 <div>
@@ -551,25 +623,30 @@ export default function Cierres() {
               </div>
             </div>
 
-            {/* Gerente */}
-            <div style={{ background: "#eff6ff", borderRadius: 10, padding: 14, marginBottom: 12 }}>
-              <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 800, color: "#1e40af", textTransform: "uppercase" }}>Gerente — Guillermo</p>
-              <p style={{ margin: "0 0 10px", fontSize: 11, color: "#6b7280" }}>Calculado automatico segun total del mes. Com. inmob. de este cierre: <strong>{fmt(comInmobForm)}</strong></p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 3, textTransform: "uppercase" }}>Monto gerente</label>
-                  <input type="number" value={form.monto_gerente} onChange={e => set("monto_gerente", e.target.value)} style={{ ...inp, border: "1px solid #bfdbfe" }} />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#065f46", marginBottom: 3, textTransform: "uppercase" }}>Ya pagado</label>
-                  <input type="number" value={form.gerente_pagado_monto} onChange={e => handleGerentePagadoChange(e.target.value)} placeholder="0" style={inpGreen} />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#92400e", marginBottom: 3, textTransform: "uppercase" }}>Pendiente</label>
-                  <input type="number" value={Math.max(0, montoGerenteForm - gerentePagadoForm).toFixed(2)} readOnly style={{ ...inpRO, color: montoGerenteForm - gerentePagadoForm > 0 ? "#92400e" : "#9ca3af", fontWeight: 700 }} />
+            {/* Gerente — solo si NO es renovacion */}
+            {!esRenov && (
+              <div style={{ background: "#eff6ff", borderRadius: 10, padding: 14, marginBottom: 12 }}>
+                <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 800, color: "#1e40af", textTransform: "uppercase" }}>Gerente — Guillermo</p>
+                <p style={{ margin: "0 0 10px", fontSize: 11, color: "#6b7280" }}>
+                  {getPctGerente(form.anio, form.mes, cierres) * 100}% segun meta del mes.
+                  Com. inmob. de este cierre: <strong>{fmt(comInmobForm)}</strong>
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 3, textTransform: "uppercase" }}>Monto gerente</label>
+                    <input type="number" value={form.monto_gerente} onChange={e => set("monto_gerente", e.target.value)} style={{ ...inp, border: "1px solid #bfdbfe" }} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#065f46", marginBottom: 3, textTransform: "uppercase" }}>Ya pagado</label>
+                    <input type="number" value={form.gerente_pagado_monto} onChange={e => set("gerente_pagado_monto", e.target.value)} placeholder="0" style={inpGreen} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#92400e", marginBottom: 3, textTransform: "uppercase" }}>Pendiente</label>
+                    <input type="number" value={Math.max(0, montoGerenteForm - gerentePagadoForm).toFixed(2)} readOnly style={{ ...inpRO, color: montoGerenteForm - gerentePagadoForm > 0 ? "#92400e" : "#9ca3af", fontWeight: 700 }} />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Resumen Emporio */}
             <div style={{ background: "#f0fdf4", borderRadius: 10, padding: 14, marginBottom: 14, border: "1px solid #86efac" }}>
@@ -577,7 +654,7 @@ export default function Cierres() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                 {[
                   { label: "Com. inmobiliaria", value: fmt(comInmobForm), color: "#1a1a2e" },
-                  { label: "- Gerente", value: fmt(montoGerenteForm), color: "#0369a1" },
+                  { label: esRenov ? "Gerente (N/A)" : "- Gerente", value: esRenov ? "—" : fmt(montoGerenteForm), color: "#0369a1" },
                   { label: "= Emporio neto", value: fmt(emporioPuroForm), color: "#065f46", big: true },
                 ].map(s => (
                   <div key={s.label}>
