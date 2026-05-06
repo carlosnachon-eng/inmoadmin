@@ -629,7 +629,7 @@ const pagosProp = pagosFrescos || [];
 
     doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
     doc.text("Pagos del Mes", 20, y); y += 6;
-    const pagosMesPDF = pagosProp.filter(p => { if (!p.due_date) return false; const d = new Date(p.due_date); const h = new Date(); return d.getMonth() === h.getMonth() && d.getFullYear() === h.getFullYear(); });
+    const pagosMesPDF = pagosProp.filter(p => { if (!p.due_date) return false; const d = new Date(p.due_date); const h = new Date(); return (d.getMonth() === h.getMonth() && d.getFullYear() === h.getFullYear()) || p.status === "pagado"; });
     autoTable(doc, { startY: y, head: [["Inquilino", "Propiedad", "Monto", "Vencimiento", "Estado"]], body: pagosMesPDF.length > 0 ? pagosMesPDF.map(p => [p.tenant_name || "-", p.property_name || "-", fmt(p.amount), p.due_date || "-", p.status === "pagado" ? "Pagado" : p.status === "atrasado" ? "Atrasado" : "Pendiente"]) : [["-", "", "", "", ""]], styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" }, alternateRowStyles: { fillColor: [249, 250, 251] }, margin: { left: 15, right: 15 } });
     y = doc.lastAutoTable.finalY + 12; if (y > 220) { doc.addPage(); y = 20; }
 
