@@ -711,6 +711,7 @@ doc.text(esDirecto ? `Comision pendiente de cobro: ${fmt(comisionesPendientes2)}
     { id: "tickets", label: "Mantenimiento", icon: "🔧" },
     { id: "reports", label: "Reportes", icon: "📈" },
     { id: "commissions", label: "Comisiones", icon: "💼" },
+    { id: "cierres", label: "Cierres", icon: "📊", link: "/cierres" },
     { id: "firmas", label: "Firmas", icon: "📝", link: "/firmas" },
   ];
 
