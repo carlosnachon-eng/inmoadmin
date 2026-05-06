@@ -581,7 +581,8 @@ export default function Home() {
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
     const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
     const contractIds = contratosProp.map(c => c.id);
-    const pagosProp = payments.filter(p => contractIds.includes(p.contract_id));
+    const { data: pagosFrescos } = await supabase.from("payments").select("*").in("contract_id", contractIds);
+const pagosProp = pagosFrescos || [];
     const { data: liqProp } = await supabase.from("owner_payments").select("*").eq("owner_email", ownerEmail).order("created_at", { ascending: false });
     const { data: ticketsProp } = await supabase.from("maintenance_tickets").select("*").in("property_name", propsProp.map(p => p.name)).order("created_at", { ascending: false });
     const gastosProp = propertyExpenses.filter(e => propsProp.some(p => p.name === e.property_name) && e.paid_by === "propietario");
