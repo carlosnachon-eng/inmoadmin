@@ -956,7 +956,8 @@ const pagosProp = pagosFrescos || [];
                       const propsProp = properties.filter(p => p.owner_email === owner.email);
                       const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
                       const liquidoProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0) - calcComision(c), 0);
-                      const totalPagado = ownerPayments.filter(op => op.owner_email === owner.email).reduce((a, op) => a + (op.amount_paid || 0), 0);
+                      const pagosDelPropietario = payments.filter(p => propsProp.some(pr => pr.name === p.property_name) && p.status === "pagado");
+const totalPagado = pagosDelPropietario.reduce((a, p) => a + (p.amount || 0), 0);
                       return (
                         <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
