@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
-import { supabase } from '../../../lib/supabase'
+import { supabase } from '../../lib/supabase'
 
 const C = {
   bg: '#0F0F0F', card: '#161616', border: '#222', border2: '#2E2E2E',
@@ -140,6 +140,12 @@ export default function FichaSolicitud() {
           </div>
           <button onClick={handlePrint} style={{ background: '#1A1A1A', border: `1px solid ${C.border2}`, borderRadius: 8, padding: '8px 16px', color: C.muted, fontSize: 13, cursor: 'pointer' }}>
             🖨️ Imprimir
+          </button>
+          <button
+            onClick={() => window.open(`/dictamen?solicitud_id=${id}`, '_blank')}
+            style={{ background: '#2A1A1A', border: '1px solid #8B3A3A', borderRadius: 8, padding: '8px 16px', color: '#E07070', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}
+          >
+            📋 Generar dictamen
           </button>
         </div>
 
