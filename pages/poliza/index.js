@@ -3,6 +3,8 @@ import { generarContratoArrendamiento } from '../../lib/generarContrato'
 import { generarPagares } from '../../lib/generarPagares'
 import { generarPolizaJuridica } from '../../lib/generarPoliza'
 import { generarReciboPoliza } from '../../lib/generarRecibo'
+import { generarContratoPromocion } from '../../lib/generarContratoPromocion'
+import { generarContratoAdministracion } from '../../lib/generarContratoAdministracion'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 
@@ -136,7 +138,7 @@ export default function PolizaPanel() {
   useEffect(() => {
     const verificarAcceso = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/'); return }
+      if (!session) { router.replace('/login'); return }
       const email = session.user.email
       if (CORREOS_PERMITIDOS.includes(email)) {
         setAcceso(true)
@@ -848,6 +850,8 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
       if (tipo === 'pagares') await generarPagares(merged)
       if (tipo === 'poliza') await generarPolizaJuridica(merged)
       if (tipo === 'recibo') await generarReciboPoliza(merged)
+      if (tipo === 'promocion') await generarContratoPromocion(merged)
+      if (tipo === 'administracion') await generarContratoAdministracion(merged)
     } catch(e) {
       alert('Error generando documento: ' + e.message)
     } finally {
@@ -1056,6 +1060,20 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
             style={{ ...st.btn, background: '#1A2A1A', color: '#5EC98A', border: '1px solid #2A5C3F', opacity: generando ? 0.6 : 1 }}
           >
             {generando === 'recibo' ? 'Generando...' : '🧾 Recibo de póliza'}
+          </button>
+          <button
+            onClick={() => handleGenerar('promocion')}
+            disabled={!!generando}
+            style={{ ...st.btn, background: '#1A1A2E', color: '#A070E0', border: '1px solid #3A2A5C', opacity: generando ? 0.6 : 1 }}
+          >
+            {generando === 'promocion' ? 'Generando...' : '📄 Contrato promoción'}
+          </button>
+          <button
+            onClick={() => handleGenerar('administracion')}
+            disabled={!!generando}
+            style={{ ...st.btn, background: '#1A2E1A', color: '#70C870', border: '1px solid #2A5C2A', opacity: generando ? 0.6 : 1 }}
+          >
+            {generando === 'administracion' ? 'Generando...' : '📄 Contrato administración'}
           </button>
         </div>
 
