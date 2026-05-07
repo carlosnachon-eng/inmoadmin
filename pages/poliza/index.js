@@ -115,6 +115,11 @@ const st = {
 }
 
 // ═══════════════════════════════════════════════════════════
+const CORREOS_PERMITIDOS = [
+  'juridico@emporioinmobiliario.mx',
+  'carlos.nachon@emporioinmobiliario.mx',
+]
+
 export default function PolizaPanel() {
   const router = useRouter()
   const [tab, setTab] = useState('expedientes')
@@ -122,12 +127,26 @@ export default function PolizaPanel() {
   const [propietarios, setPropietarios] = useState([])
   const [solicitudes, setSolicitudes] = useState([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(null) // 'nuevo' | 'expediente' | 'propietario' | 'solicitud'
+  const [modal, setModal] = useState(null)
   const [selected, setSelected] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
+  const [acceso, setAcceso] = useState(null) // null=verificando, true=ok, false=denegado
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => {
+    const verificarAcceso = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.replace('/login'); return }
+      const email = session.user.email
+      if (CORREOS_PERMITIDOS.includes(email)) {
+        setAcceso(true)
+        loadAll()
+      } else {
+        setAcceso(false)
+      }
+    }
+    verificarAcceso()
+  }, [])
 
   const loadAll = async () => {
     setLoading(true)
