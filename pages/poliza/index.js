@@ -26,10 +26,10 @@ const STATUS_LABELS = {
 }
 
 const Badge = ({ status }) => {
-  const s = STATUS_LABELS[status] || { label: status, color: C.muted, bg: '#1A1A1A' }
+  const bs = STATUS_LABELS[status] || { label: status, color: C.muted, bg: '#1A1A1A' }
   return (
-    <span style={{ background: s.bg, color: s.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, letterSpacing: '0.3px' }}>
-      {s.label}
+    <span style={{ background: bs.bg, color: bs.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, letterSpacing: '0.3px' }}>
+      {bs.label}
     </span>
   )
 }
@@ -78,7 +78,7 @@ function calcularPagares(fechaInicio) {
 }
 
 // ─── Estilos base ─────────────────────────────────────────
-const s = {
+const st = {
   page: { minHeight: '100vh', background: C.bg, fontFamily: "'DM Sans', system-ui, sans-serif", color: C.text },
   header: { background: C.card, borderBottom: `1px solid ${C.border}`, padding: '0 28px', display: 'flex', alignItems: 'center', gap: 20, height: 60 },
   logo: { height: 32, objectFit: 'contain' },
@@ -146,33 +146,33 @@ export default function PolizaPanel() {
   ]
 
   return (
-    <div style={s.page}>
+    <div style={st.page}>
       {/* Header */}
-      <header style={s.header}>
-        <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={s.logo} />
+      <header style={st.header}>
+        <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={st.logo} />
         <div>
-          <p style={s.headerTitle}>Panel Jurídico</p>
-          <p style={s.headerSub}>Pólizas · Contratos · Expedientes</p>
+          <p style={st.headerTitle}>Panel Jurídico</p>
+          <p style={st.headerSub}>Pólizas · Contratos · Expedientes</p>
         </div>
-        <nav style={s.nav}>
+        <nav style={st.nav}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ ...s.navBtn, ...(tab === t.id ? s.navBtnActive : {}) }}>
+              style={{ ...st.navBtn, ...(tab === t.id ? st.navBtnActive : {}) }}>
               {t.label}
             </button>
           ))}
         </nav>
         <div style={{ marginLeft: 'auto' }}>
           <button onClick={() => { setSelected(null); setModal('nuevo') }}
-            style={{ ...s.btn, ...s.btnGold }}>
+            style={{ ...st.btn, ...st.btnGold }}>
             + Nuevo expediente
           </button>
         </div>
       </header>
 
-      <main style={s.main}>
+      <main style={st.main}>
         {loading ? (
-          <div style={s.emptyState}><p>Cargando...</p></div>
+          <div style={st.emptyState}><p>Cargando...</p></div>
         ) : (
           <>
             {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={e => { setSelected(e); setModal('expediente') }} />}
@@ -226,7 +226,7 @@ export default function PolizaPanel() {
 // ═══════════════════════════════════════════════════════════
 function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect }) {
   if (expedientes.length === 0) return (
-    <div style={s.emptyState}>
+    <div style={st.emptyState}>
       <p style={{ fontSize: 40, margin: '0 0 12px' }}>📁</p>
       <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin expedientes aún</p>
       <p>Crea el primer expediente con el botón de arriba</p>
@@ -234,41 +234,41 @@ function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect }) {
   )
 
   const getProp = (id) => propietarios.find(p => p.id === id)
-  const getSol = (id) => solicitudes.find(s => s.id === id)
+  const getSol = (id) => solicitudes.find(s => st.id === id)
 
   return (
     <div>
-      <p style={s.sectionTitle}>Expedientes de póliza</p>
-      <p style={s.sectionSub}>Haz clic en un expediente para editarlo o generar documentos</p>
-      <div style={s.card}>
+      <p style={st.sectionTitle}>Expedientes de póliza</p>
+      <p style={st.sectionSub}>Haz clic en un expediente para editarlo o generar documentos</p>
+      <div style={st.card}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={s.tableHead}>
+          <thead style={st.tableHead}>
             <tr>
-              <th style={s.th}>Arrendatario</th>
-              <th style={s.th}>Inmueble</th>
-              <th style={s.th}>Renta</th>
-              <th style={s.th}>Inicio</th>
-              <th style={s.th}>Tipo</th>
-              <th style={s.th}>Status</th>
+              <th style={st.th}>Arrendatario</th>
+              <th style={st.th}>Inmueble</th>
+              <th style={st.th}>Renta</th>
+              <th style={st.th}>Inicio</th>
+              <th style={st.th}>Tipo</th>
+              <th style={st.th}>Status</th>
             </tr>
           </thead>
           <tbody>
             {expedientes.map(e => (
               <tr key={e.id} onClick={() => onSelect(e)}
-                style={s.trHover}
+                style={st.trHover}
                 onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
                 onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
-                <td style={s.td}>
+                <td style={st.td}>
                   <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{e.nombre_arrendatario || '—'}</p>
                   <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{e.nombre_arrendador || '—'}</p>
                 </td>
-                <td style={s.td}>
+                <td style={st.td}>
                   <p style={{ margin: 0, fontSize: 12, color: C.muted, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.direccion_inmueble || '—'}</p>
                 </td>
-                <td style={s.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(e.renta_mensual)}</span></td>
-                <td style={s.td}><span style={{ color: C.muted, fontSize: 12 }}>{fmtDate(e.fecha_inicio)}</span></td>
-                <td style={s.td}><span style={{ fontSize: 11, color: C.muted }}>{e.tipo_contrato?.replace(/_/g, ' ') || '—'}</span></td>
-                <td style={s.td}><Badge status={e.status} /></td>
+                <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(e.renta_mensual)}</span></td>
+                <td style={st.td}><span style={{ color: C.muted, fontSize: 12 }}>{fmtDate(e.fecha_inicio)}</span></td>
+                <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{e.tipo_contrato?.replace(/_/g, ' ') || '—'}</span></td>
+                <td style={st.td}><Badge status={e.status} /></td>
               </tr>
             ))}
           </tbody>
@@ -283,7 +283,7 @@ function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect }) {
 // ═══════════════════════════════════════════════════════════
 function TabPropietarios({ propietarios, onSelect }) {
   if (propietarios.length === 0) return (
-    <div style={s.emptyState}>
+    <div style={st.emptyState}>
       <p style={{ fontSize: 40, margin: '0 0 12px' }}>🏠</p>
       <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin propietarios registrados</p>
       <p>Comparte el link de registro con los propietarios</p>
@@ -295,35 +295,35 @@ function TabPropietarios({ propietarios, onSelect }) {
 
   return (
     <div>
-      <p style={s.sectionTitle}>Propietarios e inmuebles</p>
-      <p style={s.sectionSub}>Registros enviados por los propietarios</p>
-      <div style={s.card}>
+      <p style={st.sectionTitle}>Propietarios e inmuebles</p>
+      <p style={st.sectionSub}>Registros enviados por los propietarios</p>
+      <div style={st.card}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={s.tableHead}>
+          <thead style={st.tableHead}>
             <tr>
-              <th style={s.th}>Propietario</th>
-              <th style={s.th}>Inmueble</th>
-              <th style={s.th}>Renta</th>
-              <th style={s.th}>Tipo</th>
-              <th style={s.th}>Fecha</th>
-              <th style={s.th}>Admin</th>
+              <th style={st.th}>Propietario</th>
+              <th style={st.th}>Inmueble</th>
+              <th style={st.th}>Renta</th>
+              <th style={st.th}>Tipo</th>
+              <th style={st.th}>Fecha</th>
+              <th style={st.th}>Admin</th>
             </tr>
           </thead>
           <tbody>
             {propietarios.map(p => (
               <tr key={p.id} onClick={() => onSelect(p)}
-                style={s.trHover}
+                style={st.trHover}
                 onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
                 onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
-                <td style={s.td}>
+                <td style={st.td}>
                   <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{p.nombre_propietario}</p>
                   <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{p.telefono_propietario}</p>
                 </td>
-                <td style={s.td}><span style={{ fontSize: 12, color: C.muted }}>{p.direccion_inmueble}</span></td>
-                <td style={s.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(p.monto_renta)}</span></td>
-                <td style={s.td}><span style={{ fontSize: 11, color: C.muted }}>{p.tipo_inmueble?.replace(/_/g, ' ') || '—'}</span></td>
-                <td style={s.td}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(p.created_at?.split('T')[0])}</span></td>
-                <td style={s.td}>{p.contrato_administracion ? <Badge status="activo" /> : <span style={{ color: C.faint, fontSize: 11 }}>Solo renta</span>}</td>
+                <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{p.direccion_inmueble}</span></td>
+                <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(p.monto_renta)}</span></td>
+                <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{p.tipo_inmueble?.replace(/_/g, ' ') || '—'}</span></td>
+                <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(p.created_at?.split('T')[0])}</span></td>
+                <td style={st.td}>{p.contrato_administracion ? <Badge status="activo" /> : <span style={{ color: C.faint, fontSize: 11 }}>Solo renta</span>}</td>
               </tr>
             ))}
           </tbody>
@@ -338,7 +338,7 @@ function TabPropietarios({ propietarios, onSelect }) {
 // ═══════════════════════════════════════════════════════════
 function TabSolicitudes({ solicitudes, onSelect, onNuevoExp }) {
   if (solicitudes.length === 0) return (
-    <div style={s.emptyState}>
+    <div style={st.emptyState}>
       <p style={{ fontSize: 40, margin: '0 0 12px' }}>📋</p>
       <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin solicitudes aún</p>
       <p>Comparte el link con los inquilinos interesados</p>
@@ -350,37 +350,37 @@ function TabSolicitudes({ solicitudes, onSelect, onNuevoExp }) {
 
   return (
     <div>
-      <p style={s.sectionTitle}>Solicitudes de investigación</p>
-      <p style={s.sectionSub}>Solicitudes enviadas por inquilinos interesados</p>
-      <div style={s.card}>
+      <p style={st.sectionTitle}>Solicitudes de investigación</p>
+      <p style={st.sectionSub}>Solicitudes enviadas por inquilinos interesados</p>
+      <div style={st.card}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={s.tableHead}>
+          <thead style={st.tableHead}>
             <tr>
-              <th style={s.th}>Solicitante</th>
-              <th style={s.th}>Inmueble de interés</th>
-              <th style={s.th}>Ingresos</th>
-              <th style={s.th}>Fecha</th>
-              <th style={s.th}>Status</th>
-              <th style={s.th}></th>
+              <th style={st.th}>Solicitante</th>
+              <th style={st.th}>Inmueble de interés</th>
+              <th style={st.th}>Ingresos</th>
+              <th style={st.th}>Fecha</th>
+              <th style={st.th}>Status</th>
+              <th style={st.th}></th>
             </tr>
           </thead>
           <tbody>
             {solicitudes.map(sol => (
               <tr key={sol.id}
-                style={s.trHover}
+                style={st.trHover}
                 onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
                 onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
-                <td style={s.td} onClick={() => onSelect(sol)}>
+                <td style={st.td} onClick={() => onSelect(sol)}>
                   <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{sol.nombre_completo || sol.razon_social || '—'}</p>
                   <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{sol.telefono}</p>
                 </td>
-                <td style={s.td} onClick={() => onSelect(sol)}><span style={{ fontSize: 12, color: C.muted }}>{sol.inmueble_interes || '—'}</span></td>
-                <td style={s.td} onClick={() => onSelect(sol)}><span style={{ color: C.goldText }}>{fmt(sol.ingresos_mensuales || sol.ingresos_empresa)}</span></td>
-                <td style={s.td} onClick={() => onSelect(sol)}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(sol.created_at?.split('T')[0])}</span></td>
-                <td style={s.td} onClick={() => onSelect(sol)}><Badge status={sol.status} /></td>
-                <td style={s.td}>
+                <td style={st.td} onClick={() => onSelect(sol)}><span style={{ fontSize: 12, color: C.muted }}>{sol.inmueble_interes || '—'}</span></td>
+                <td style={st.td} onClick={() => onSelect(sol)}><span style={{ color: C.goldText }}>{fmt(sol.ingresos_mensuales || sol.ingresos_empresa)}</span></td>
+                <td style={st.td} onClick={() => onSelect(sol)}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(sol.created_at?.split('T')[0])}</span></td>
+                <td style={st.td} onClick={() => onSelect(sol)}><Badge status={sol.status} /></td>
+                <td style={st.td}>
                   {sol.status === 'aprobado' && (
-                    <button onClick={() => onNuevoExp(sol)} style={{ ...s.btn, ...s.btnGold, padding: '6px 12px', fontSize: 11 }}>
+                    <button onClick={() => onNuevoExp(sol)} style={{ ...st.btn, ...st.btnGold, padding: '6px 12px', fontSize: 11 }}>
                       + Expediente
                     </button>
                   )}
@@ -413,7 +413,7 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
     // Inmueble
     direccion_inmueble: '', ciudad_estado_inmueble: 'San Andrés Cholula, Puebla',
     // Económico
-    renta_mensual: '', deposito_garantia: '', forma_pago: 'efectivo',
+    renta_mensual: '', cuota_mantenimiento: '', deposito_garantia: '', forma_pago: 'efectivo',
     banco_receptor: '', clabe_interbancaria: '', dia_limite_pago: '5',
     // Fechas
     fecha_inicio: '', fecha_firma: '',
@@ -505,6 +505,7 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         propietario_id: propId || null,
         inquilino_id: solId || null,
         renta_mensual: r,
+        cuota_mantenimiento: mant,
         renta_mensual_letra: numeroALetra(r),
         deposito_garantia: dep,
         deposito_garantia_letra: numeroALetra(dep),
@@ -529,36 +530,36 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
   }
 
   return (
-    <div style={s.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={s.modalCard}>
+    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={st.modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>Nuevo expediente</h2>
-          <button onClick={onClose} style={{ ...s.btn, ...s.btnGhost }}>✕</button>
+          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
 
         {/* Selector propietario / solicitud */}
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <div>
-            <label style={s.label}>Propietario registrado</label>
-            <select value={propId} onChange={e => setPropId(e.target.value)} style={s.input}>
+            <label style={st.label}>Propietario registrado</label>
+            <select value={propId} onChange={e => setPropId(e.target.value)} style={st.input}>
               <option value="">— Seleccionar o capturar abajo —</option>
               {propietarios.map(p => <option key={p.id} value={p.id}>{p.nombre_propietario} · {p.direccion_inmueble?.slice(0, 30)}...</option>)}
             </select>
           </div>
           <div>
-            <label style={s.label}>Solicitud de inquilino</label>
-            <select value={solId} onChange={e => setSolId(e.target.value)} style={s.input}>
+            <label style={st.label}>Solicitud de inquilino</label>
+            <select value={solId} onChange={e => setSolId(e.target.value)} style={st.input}>
               <option value="">— Seleccionar o capturar abajo —</option>
               {solicitudes.map(sol => <option key={sol.id} value={sol.id}>{sol.nombre_completo || sol.razon_social} · {sol.status}</option>)}
             </select>
           </div>
         </div>
 
-        <div style={{ ...s.divider, margin: '20px 0' }} />
+        <div style={{ ...st.divider, margin: '20px 0' }} />
 
         {/* Tipo de contrato */}
         <div style={{ marginBottom: 20 }}>
-          <label style={s.label}>Tipo de contrato</label>
+          <label style={st.label}>Tipo de contrato</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {[
               { v: 'habitacional_sin_muebles', l: 'Casa sin muebles' },
@@ -566,7 +567,7 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
               { v: 'comercial', l: 'Comercial' },
             ].map(opt => (
               <button key={opt.v} type="button" onClick={() => set('tipo_contrato', opt.v)}
-                style={{ ...s.btn, ...(form.tipo_contrato === opt.v ? s.btnGold : s.btnGhost), padding: '7px 14px', fontSize: 12 }}>
+                style={{ ...st.btn, ...(form.tipo_contrato === opt.v ? st.btnGold : st.btnGhost), padding: '7px 14px', fontSize: 12 }}>
                 {opt.l}
               </button>
             ))}
@@ -575,57 +576,58 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
 
         {/* ARRENDADOR */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Arrendador (Dueño)</p>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Nombre completo" value={form.nombre_arrendador} onChange={v => set('nombre_arrendador', v)} />
           <FField label="RFC" value={form.rfc_arrendador} onChange={v => set('rfc_arrendador', v)} />
         </div>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Clave de elector" value={form.clave_elector_arrendador} onChange={v => set('clave_elector_arrendador', v)} />
           <FField label="Teléfono" value={form.telefono_arrendador} onChange={v => set('telefono_arrendador', v)} />
         </div>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Correo" value={form.correo_arrendador} onChange={v => set('correo_arrendador', v)} />
           <FField label="Domicilio" value={form.domicilio_arrendador} onChange={v => set('domicilio_arrendador', v)} />
         </div>
 
-        <div style={{ ...s.divider, margin: '16px 0' }} />
+        <div style={{ ...st.divider, margin: '16px 0' }} />
 
         {/* ARRENDATARIO */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Arrendatario (Inquilino)</p>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Nombre completo" value={form.nombre_arrendatario} onChange={v => set('nombre_arrendatario', v)} />
           <FField label="RFC" value={form.rfc_arrendatario} onChange={v => set('rfc_arrendatario', v)} />
         </div>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Clave de elector" value={form.clave_elector_arrendatario} onChange={v => set('clave_elector_arrendatario', v)} />
           <FField label="Teléfono" value={form.telefono_arrendatario} onChange={v => set('telefono_arrendatario', v)} />
         </div>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Correo" value={form.correo_arrendatario} onChange={v => set('correo_arrendatario', v)} />
           <FField label="Ocupación / Actividad" value={form.ocupacion_arrendatario} onChange={v => set('ocupacion_arrendatario', v)} />
         </div>
         <FField label="Comprobante de ingresos presentado" value={form.comprobante_ingresos} onChange={v => set('comprobante_ingresos', v)} placeholder="Ej: Estados de cuenta, Recibos de nómina..." />
 
-        <div style={{ ...s.divider, margin: '16px 0' }} />
+        <div style={{ ...st.divider, margin: '16px 0' }} />
 
         {/* INMUEBLE */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inmueble</p>
         <FField label="Dirección completa" value={form.direccion_inmueble} onChange={v => set('direccion_inmueble', v)} />
         <FField label="Ciudad y estado" value={form.ciudad_estado_inmueble} onChange={v => set('ciudad_estado_inmueble', v)} />
 
-        <div style={{ ...s.divider, margin: '16px 0' }} />
+        <div style={{ ...st.divider, margin: '16px 0' }} />
 
         {/* CONDICIONES ECONÓMICAS */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Condiciones económicas</p>
-        <div style={s.grid3}>
+        <div style={st.grid3}>
           <FField label="Renta mensual $" value={form.renta_mensual} onChange={v => set('renta_mensual', v)} type="number" />
+          <FField label="Cuota mantenimiento $" value={form.cuota_mantenimiento} onChange={v => set('cuota_mantenimiento', v)} type="number" placeholder="0 si no aplica" />
           <FField label="Depósito en garantía $" value={form.deposito_garantia} onChange={v => set('deposito_garantia', v)} type="number" />
-          <FField label="Mora diaria 1% $" value={form.mora_diaria || (parseFloat(form.renta_mensual) * 0.01).toFixed(2) || ''} onChange={v => set('mora_diaria', v)} type="number" />
         </div>
-        <div style={s.grid3}>
+        <div style={st.grid3}>
+          <FField label="Mora diaria 1% $" value={form.mora_diaria || (parseFloat(form.renta_mensual) * 0.01).toFixed(2) || ''} onChange={v => set('mora_diaria', v)} type="number" />
           <div>
-            <label style={s.label}>Forma de pago</label>
-            <select value={form.forma_pago} onChange={e => set('forma_pago', e.target.value)} style={s.input}>
+            <label style={st.label}>Forma de pago</label>
+            <select value={form.forma_pago} onChange={e => set('forma_pago', e.target.value)} style={st.input}>
               <option value="efectivo">Efectivo</option>
               <option value="transferencia">Transferencia</option>
               <option value="deposito">Depósito</option>
@@ -639,15 +641,15 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         )}
         <FField label="Monto de póliza $" value={form.monto_poliza} onChange={v => set('monto_poliza', v)} type="number" placeholder="Costo del servicio de póliza jurídica" />
 
-        <div style={{ ...s.divider, margin: '16px 0' }} />
+        <div style={{ ...st.divider, margin: '16px 0' }} />
 
         {/* FECHAS */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Fechas</p>
-        <div style={s.grid3}>
+        <div style={st.grid3}>
           <FField label="Fecha de inicio" value={form.fecha_inicio} onChange={v => set('fecha_inicio', v)} type="date" />
           <div>
-            <label style={s.label}>Fecha de término</label>
-            <input value={fechaTermino} readOnly style={{ ...s.input, color: C.muted, cursor: 'not-allowed' }} />
+            <label style={st.label}>Fecha de término</label>
+            <input value={fechaTermino} readOnly style={{ ...st.input, color: C.muted, cursor: 'not-allowed' }} />
             <p style={{ margin: '4px 0 0', fontSize: 10, color: C.faint }}>Se calcula automáticamente (1 año)</p>
           </div>
           <FField label="Entrega de posesión" value={form.fecha_entrega_posesion} onChange={v => set('fecha_entrega_posesion', v)} type="date" />
@@ -667,13 +669,13 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
           </div>
         )}
 
-        <div style={{ ...s.divider, margin: '16px 0' }} />
+        <div style={{ ...st.divider, margin: '16px 0' }} />
 
         {/* MASCOTAS */}
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <div>
-            <label style={s.label}>Mascotas permitidas</label>
-            <select value={form.mascotas_permitidas} onChange={e => set('mascotas_permitidas', e.target.value)} style={s.input}>
+            <label style={st.label}>Mascotas permitidas</label>
+            <select value={form.mascotas_permitidas} onChange={e => set('mascotas_permitidas', e.target.value)} style={st.input}>
               <option value="no">No</option>
               <option value="si">Sí</option>
               <option value="condicionado">Condicionado</option>
@@ -693,8 +695,8 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         {msg && <p style={{ color: C.redText, fontSize: 13, margin: '16px 0 0' }}>{msg}</p>}
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 28 }}>
-          <button onClick={onClose} style={{ ...s.btn, ...s.btnGhost }}>Cancelar</button>
-          <button onClick={handleSave} disabled={saving} style={{ ...s.btn, ...s.btnGold, opacity: saving ? 0.6 : 1 }}>
+          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cancelar</button>
+          <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGold, opacity: saving ? 0.6 : 1 }}>
             {saving ? 'Guardando...' : 'Crear expediente'}
           </button>
         </div>
@@ -747,8 +749,8 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
   }
 
   return (
-    <div style={s.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={s.modalCard}>
+    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={st.modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>
@@ -757,55 +759,56 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
             <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>ID: {expediente.id.slice(0, 8).toUpperCase()}</p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select value={form.status} onChange={e => set('status', e.target.value)} style={{ ...s.input, width: 'auto', fontSize: 12 }}>
+            <select value={form.status} onChange={e => set('status', e.target.value)} style={{ ...st.input, width: 'auto', fontSize: 12 }}>
               {['borrador', 'completo', 'firmado', 'activo', 'vencido', 'cancelado'].map(st => (
                 <option key={st} value={st}>{st}</option>
               ))}
             </select>
-            <button onClick={onClose} style={{ ...s.btn, ...s.btnGhost }}>✕</button>
+            <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
           </div>
         </div>
 
         {/* Mismos campos que nuevo pero con datos pre-llenados */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Arrendador</p>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Nombre" value={form.nombre_arrendador} onChange={v => set('nombre_arrendador', v)} />
           <FField label="RFC" value={form.rfc_arrendador} onChange={v => set('rfc_arrendador', v)} />
         </div>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Clave de elector" value={form.clave_elector_arrendador} onChange={v => set('clave_elector_arrendador', v)} />
           <FField label="Teléfono" value={form.telefono_arrendador} onChange={v => set('telefono_arrendador', v)} />
         </div>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Correo" value={form.correo_arrendador} onChange={v => set('correo_arrendador', v)} />
           <FField label="Domicilio" value={form.domicilio_arrendador} onChange={v => set('domicilio_arrendador', v)} />
         </div>
 
-        <div style={s.divider} />
+        <div style={st.divider} />
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Arrendatario</p>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Nombre" value={form.nombre_arrendatario} onChange={v => set('nombre_arrendatario', v)} />
           <FField label="RFC" value={form.rfc_arrendatario} onChange={v => set('rfc_arrendatario', v)} />
         </div>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Clave de elector" value={form.clave_elector_arrendatario} onChange={v => set('clave_elector_arrendatario', v)} />
           <FField label="Teléfono" value={form.telefono_arrendatario} onChange={v => set('telefono_arrendatario', v)} />
         </div>
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <FField label="Correo" value={form.correo_arrendatario} onChange={v => set('correo_arrendatario', v)} />
           <FField label="Ocupación" value={form.ocupacion_arrendatario} onChange={v => set('ocupacion_arrendatario', v)} />
         </div>
         <FField label="Comprobante de ingresos" value={form.comprobante_ingresos} onChange={v => set('comprobante_ingresos', v)} />
 
-        <div style={s.divider} />
+        <div style={st.divider} />
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Inmueble y condiciones</p>
         <FField label="Dirección" value={form.direccion_inmueble} onChange={v => set('direccion_inmueble', v)} />
-        <div style={s.grid3}>
+        <div style={st.grid3}>
           <FField label="Renta mensual $" value={form.renta_mensual} onChange={v => set('renta_mensual', v)} type="number" />
+          <FField label="Cuota mantenimiento $" value={form.cuota_mantenimiento} onChange={v => set('cuota_mantenimiento', v)} type="number" placeholder="0 si no aplica" />
           <FField label="Depósito $" value={form.deposito_garantia} onChange={v => set('deposito_garantia', v)} type="number" />
           <FField label="Monto póliza $" value={form.monto_poliza} onChange={v => set('monto_poliza', v)} type="number" />
         </div>
-        <div style={s.grid3}>
+        <div style={st.grid3}>
           <FField label="Fecha inicio" value={form.fecha_inicio} onChange={v => set('fecha_inicio', v)} type="date" />
           <FField label="Fecha firma" value={form.fecha_firma} onChange={v => set('fecha_firma', v)} type="date" />
           <FField label="Entrega posesión" value={form.fecha_entrega_posesion} onChange={v => set('fecha_entrega_posesion', v)} type="date" />
@@ -815,8 +818,8 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
         {msg && <p style={{ color: C.redText, fontSize: 13, margin: '12px 0 0' }}>{msg}</p>}
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 28 }}>
-          <button onClick={onClose} style={{ ...s.btn, ...s.btnGhost }}>Cancelar</button>
-          <button onClick={handleSave} disabled={saving} style={{ ...s.btn, ...s.btnGold, opacity: saving ? 0.6 : 1 }}>
+          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cancelar</button>
+          <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGold, opacity: saving ? 0.6 : 1 }}>
             {saving ? 'Guardando...' : 'Guardar cambios'}
           </button>
         </div>
@@ -840,14 +843,14 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
   }
 
   return (
-    <div style={s.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={s.modalCard}>
+    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={st.modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{p.nombre_propietario}</h2>
-          <button onClick={onClose} style={{ ...s.btn, ...s.btnGhost }}>✕</button>
+          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
 
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <InfoRow label="Teléfono" value={p.telefono_propietario} />
           <InfoRow label="Correo" value={p.correo_propietario} />
           <InfoRow label="RFC" value={p.rfc_propietario} />
@@ -859,18 +862,18 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
         <InfoRow label="Inmueble" value={p.direccion_inmueble} />
         <InfoRow label="Domicilio propietario" value={p.domicilio_propietario} />
 
-        <div style={{ ...s.divider, margin: '16px 0' }} />
+        <div style={{ ...st.divider, margin: '16px 0' }} />
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <div style={{ flex: 1 }}>
-            <label style={s.label}>Status</label>
-            <select value={status} onChange={e => setStatus(e.target.value)} style={s.input}>
+            <label style={st.label}>Status</label>
+            <select value={status} onChange={e => setStatus(e.target.value)} style={st.input}>
               <option value="activo">Activo</option>
               <option value="rentado">Rentado</option>
               <option value="inactivo">Inactivo</option>
             </select>
           </div>
           <div style={{ paddingTop: 18 }}>
-            <button onClick={handleSave} disabled={saving} style={{ ...s.btn, ...s.btnGold }}>
+            <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGold }}>
               {saving ? 'Guardando...' : 'Actualizar'}
             </button>
           </div>
@@ -879,7 +882,7 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
         {/* Documentos */}
         {(p.doc_identificacion || p.doc_comprobante_domicilio || p.doc_predial) && (
           <>
-            <div style={{ ...s.divider, margin: '16px 0' }} />
+            <div style={{ ...st.divider, margin: '16px 0' }} />
             <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Documentos</p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {p.doc_identificacion && <DocChip label="Identificación" path={p.doc_identificacion} />}
@@ -890,7 +893,7 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
         )}
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
-          <button onClick={onNuevoExp} style={{ ...s.btn, ...s.btnGold }}>+ Crear expediente</button>
+          <button onClick={onNuevoExp} style={{ ...st.btn, ...st.btnGold }}>+ Crear expediente</button>
         </div>
       </div>
     </div>
@@ -913,14 +916,14 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
   }
 
   return (
-    <div style={s.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={s.modalCard}>
+    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={st.modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{sol.nombre_completo || sol.razon_social}</h2>
-          <button onClick={onClose} style={{ ...s.btn, ...s.btnGhost }}>✕</button>
+          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
 
-        <div style={s.grid2}>
+        <div style={st.grid2}>
           <InfoRow label="Teléfono" value={sol.telefono} />
           <InfoRow label="Correo" value={sol.correo} />
           <InfoRow label="RFC" value={sol.rfc || sol.rfc_empresa} />
@@ -934,11 +937,11 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
         <InfoRow label="Inmueble de interés" value={sol.inmueble_interes} />
         <InfoRow label="Uso del inmueble" value={sol.uso_inmueble} />
 
-        <div style={{ ...s.divider, margin: '16px 0' }} />
-        <div style={s.grid2}>
+        <div style={{ ...st.divider, margin: '16px 0' }} />
+        <div style={st.grid2}>
           <div>
-            <label style={s.label}>Status de la solicitud</label>
-            <select value={status} onChange={e => setStatus(e.target.value)} style={s.input}>
+            <label style={st.label}>Status de la solicitud</label>
+            <select value={status} onChange={e => setStatus(e.target.value)} style={st.input}>
               <option value="pendiente">Pendiente</option>
               <option value="en_revision">En revisión</option>
               <option value="aprobado">Aprobado</option>
@@ -947,16 +950,16 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
           </div>
         </div>
         <div style={{ marginTop: 16 }}>
-          <label style={s.label}>Notas jurídicas internas</label>
+          <label style={st.label}>Notas jurídicas internas</label>
           <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={3}
-            style={{ ...s.input, resize: 'vertical' }}
+            style={{ ...st.input, resize: 'vertical' }}
             placeholder="Observaciones del dictamen, notas de investigación..." />
         </div>
 
         {/* Documentos */}
         {(sol.doc_identificacion || sol.doc_comprobante_ingresos) && (
           <>
-            <div style={{ ...s.divider, margin: '16px 0' }} />
+            <div style={{ ...st.divider, margin: '16px 0' }} />
             <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Documentos</p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {sol.doc_identificacion && <DocChip label="Identificación" path={sol.doc_identificacion} />}
@@ -966,12 +969,12 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
         )}
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
-          <button onClick={onClose} style={{ ...s.btn, ...s.btnGhost }}>Cancelar</button>
-          <button onClick={handleSave} disabled={saving} style={{ ...s.btn, ...s.btnGreen }}>
+          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cancelar</button>
+          <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGreen }}>
             {saving ? 'Guardando...' : 'Guardar notas'}
           </button>
           {status === 'aprobado' && (
-            <button onClick={onNuevoExp} style={{ ...s.btn, ...s.btnGold }}>+ Crear expediente</button>
+            <button onClick={onNuevoExp} style={{ ...st.btn, ...st.btnGold }}>+ Crear expediente</button>
           )}
         </div>
       </div>
@@ -982,10 +985,10 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
 // ─── Componentes helper ───────────────────────────────────
 const FField = ({ label, value, onChange, type = 'text', placeholder }) => (
   <div style={{ marginBottom: 14 }}>
-    <label style={s.label}>{label}</label>
+    <label style={st.label}>{label}</label>
     <input type={type} value={value || ''} onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
-      style={s.input} />
+      style={st.input} />
   </div>
 )
 
@@ -1002,7 +1005,7 @@ const DocChip = ({ label, path }) => {
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
   return (
-    <button onClick={handleView} style={{ ...s.btn, ...s.btnGhost, fontSize: 12, padding: '6px 12px' }}>
+    <button onClick={handleView} style={{ ...st.btn, ...st.btnGhost, fontSize: 12, padding: '6px 12px' }}>
       📄 {label}
     </button>
   )
