@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 
@@ -426,6 +426,16 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
   })
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  const formRef = useRef(null)
+
+  // Helper to read all uncontrolled inputs from DOM
+  const getFormValues = () => {
+    if (!formRef.current) return {}
+    const inputs = formRef.current.querySelectorAll('[data-field]')
+    const vals = {}
+    inputs.forEach(el => { vals[el.dataset.field] = el.value })
+    return vals
+  }
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -488,20 +498,22 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
     : ''
 
   const handleSave = async () => {
-    if (!form.nombre_arrendador || !form.nombre_arrendatario || !form.fecha_inicio) {
+    const domVals = getFormValues()
+    const merged = { ...form, ...domVals }
+    if (!merged.nombre_arrendador || !merged.nombre_arrendatario || !merged.fecha_inicio) {
       setMsg('Completa al menos: arrendador, arrendatario y fecha de inicio')
       return
     }
     setSaving(true)
     setMsg('')
     try {
-      const r = parseFloat(form.renta_mensual) || 0
-      const dep = parseFloat(form.deposito_garantia) || 0
+      const r = parseFloat(merged.renta_mensual) || 0
+      const dep = parseFloat(merged.deposito_garantia) || 0
       const mora = parseFloat((r * 0.01).toFixed(2))
-      const pagares = calcularPagares(form.fecha_inicio)
+      const pagares = calcularPagares(merged.fecha_inicio)
 
       const payload = {
-        ...form,
+        ...merged,
         propietario_id: propId || null,
         inquilino_id: solId || null,
         renta_mensual: r,
@@ -511,8 +523,8 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         deposito_garantia_letra: numeroALetra(dep),
         mora_diaria: mora,
         mora_diaria_letra: numeroALetra(mora),
-        monto_poliza: parseFloat(form.monto_poliza) || null,
-        monto_poliza_letra: form.monto_poliza ? numeroALetra(parseFloat(form.monto_poliza)) : null,
+        monto_poliza: parseFloat(merged.monto_poliza) || null,
+        monto_poliza_letra: merged.monto_poliza ? numeroALetra(parseFloat(merged.monto_poliza)) : null,
         dia_limite_pago: parseInt(form.dia_limite_pago) || 5,
         fecha_termino: fechaTermino || null,
         ...pagares,
@@ -531,7 +543,7 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
 
   return (
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={st.modalCard}>
+      <div style={st.modalCard} ref={formRef}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>Nuevo expediente</h2>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
@@ -579,31 +591,31 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Nombre completo</label>
-    <input type="text" value={form.nombre_arrendador || ''} onChange={e => set('nombre_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.nombre_arrendador || ''} data-field='nombre_arrendador' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>RFC</label>
-    <input type="text" value={form.rfc_arrendador || ''} onChange={e => set('rfc_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.rfc_arrendador || ''} data-field='rfc_arrendador' style={st.input} />
   </div>
         </div>
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Clave de elector</label>
-    <input type="text" value={form.clave_elector_arrendador || ''} onChange={e => set('clave_elector_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.clave_elector_arrendador || ''} data-field='clave_elector_arrendador' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Teléfono</label>
-    <input type="text" value={form.telefono_arrendador || ''} onChange={e => set('telefono_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.telefono_arrendador || ''} data-field='telefono_arrendador' style={st.input} />
   </div>
         </div>
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Correo</label>
-    <input type="text" value={form.correo_arrendador || ''} onChange={e => set('correo_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.correo_arrendador || ''} data-field='correo_arrendador' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Domicilio</label>
-    <input type="text" value={form.domicilio_arrendador || ''} onChange={e => set('domicilio_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.domicilio_arrendador || ''} data-field='domicilio_arrendador' style={st.input} />
   </div>
         </div>
 
@@ -614,36 +626,36 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Nombre completo</label>
-    <input type="text" value={form.nombre_arrendatario || ''} onChange={e => set('nombre_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.nombre_arrendatario || ''} data-field='nombre_arrendatario' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>RFC</label>
-    <input type="text" value={form.rfc_arrendatario || ''} onChange={e => set('rfc_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.rfc_arrendatario || ''} data-field='rfc_arrendatario' style={st.input} />
   </div>
         </div>
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Clave de elector</label>
-    <input type="text" value={form.clave_elector_arrendatario || ''} onChange={e => set('clave_elector_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.clave_elector_arrendatario || ''} data-field='clave_elector_arrendatario' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Teléfono</label>
-    <input type="text" value={form.telefono_arrendatario || ''} onChange={e => set('telefono_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.telefono_arrendatario || ''} data-field='telefono_arrendatario' style={st.input} />
   </div>
         </div>
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Correo</label>
-    <input type="text" value={form.correo_arrendatario || ''} onChange={e => set('correo_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.correo_arrendatario || ''} data-field='correo_arrendatario' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Ocupación / Actividad</label>
-    <input type="text" value={form.ocupacion_arrendatario || ''} onChange={e => set('ocupacion_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.ocupacion_arrendatario || ''} data-field='ocupacion_arrendatario' style={st.input} />
   </div>
         </div>
         <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Comprobante de ingresos presentado</label>
-    <input type="text" value={form.comprobante_ingresos || ''} onChange={e => set('comprobante_ingresos', e.target.value)} placeholder="Ej: Estados de cuenta, Recibos de nómina..." style={st.input} />
+    <input type="text" defaultValue={form.comprobante_ingresos || ''} data-field='comprobante_ingresos' placeholder="Ej: Estados de cuenta, Recibos de nómina..." style={st.input} />
   </div>
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
@@ -652,11 +664,11 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inmueble</p>
         <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Dirección completa</label>
-    <input type="text" value={form.direccion_inmueble || ''} onChange={e => set('direccion_inmueble', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.direccion_inmueble || ''} data-field='direccion_inmueble' style={st.input} />
   </div>
         <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Ciudad y estado</label>
-    <input type="text" value={form.ciudad_estado_inmueble || ''} onChange={e => set('ciudad_estado_inmueble', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.ciudad_estado_inmueble || ''} data-field='ciudad_estado_inmueble' style={st.input} />
   </div>
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
@@ -666,15 +678,15 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         <div style={st.grid3}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Renta mensual $</label>
-    <input type="number" value={form.renta_mensual || ''} onChange={e => set('renta_mensual', e.target.value)} style={st.input} />
+    <input type="number" defaultValue={form.renta_mensual || ''} data-field='renta_mensual' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Cuota mantenimiento $</label>
-    <input type="number" value={form.cuota_mantenimiento || ''} onChange={e => set('cuota_mantenimiento', e.target.value)} placeholder="0 si no aplica" style={st.input} />
+    <input type="number" defaultValue={form.cuota_mantenimiento || ''} data-field='cuota_mantenimiento' placeholder="0 si no aplica" style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Depósito en garantía $</label>
-    <input type="number" value={form.deposito_garantia || ''} onChange={e => set('deposito_garantia', e.target.value)} style={st.input} />
+    <input type="number" defaultValue={form.deposito_garantia || ''} data-field='deposito_garantia' style={st.input} />
   </div>
         </div>
         <div style={st.grid3}>
@@ -692,22 +704,22 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
           </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Banco receptor</label>
-    <input type="text" value={form.banco_receptor || ''} onChange={e => set('banco_receptor', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.banco_receptor || ''} data-field='banco_receptor' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Día límite de pago</label>
-    <input type="number" value={form.dia_limite_pago || ''} onChange={e => set('dia_limite_pago', e.target.value)} placeholder="Ej: 5" style={st.input} />
+    <input type="number" defaultValue={form.dia_limite_pago || ''} data-field='dia_limite_pago' placeholder="Ej: 5" style={st.input} />
   </div>
         </div>
         {(form.forma_pago === 'transferencia' || form.forma_pago === 'deposito') && (
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>CLABE interbancaria</label>
-    <input type="text" value={form.clabe_interbancaria || ''} onChange={e => set('clabe_interbancaria', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.clabe_interbancaria || ''} data-field='clabe_interbancaria' style={st.input} />
   </div>
         )}
         <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Monto de póliza $</label>
-    <input type="number" value={form.monto_poliza || ''} onChange={e => set('monto_poliza', e.target.value)} placeholder="Costo del servicio de póliza jurídica" style={st.input} />
+    <input type="number" defaultValue={form.monto_poliza || ''} data-field='monto_poliza' placeholder="Costo del servicio de póliza jurídica" style={st.input} />
   </div>
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
@@ -717,7 +729,7 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         <div style={st.grid3}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Fecha de inicio</label>
-    <input type="date" value={form.fecha_inicio || ''} onChange={e => set('fecha_inicio', e.target.value)} style={st.input} />
+    <input type="date" defaultValue={form.fecha_inicio || ''} data-field='fecha_inicio' style={st.input} />
   </div>
           <div>
             <label style={st.label}>Fecha de término</label>
@@ -726,12 +738,12 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
           </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Entrega de posesión</label>
-    <input type="date" value={form.fecha_entrega_posesion || ''} onChange={e => set('fecha_entrega_posesion', e.target.value)} style={st.input} />
+    <input type="date" defaultValue={form.fecha_entrega_posesion || ''} data-field='fecha_entrega_posesion' style={st.input} />
   </div>
         </div>
         <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Fecha de firma del contrato</label>
-    <input type="date" value={form.fecha_firma || ''} onChange={e => set('fecha_firma', e.target.value)} style={st.input} />
+    <input type="date" defaultValue={form.fecha_firma || ''} data-field='fecha_firma' style={st.input} />
   </div>
 
         {form.fecha_inicio && (
@@ -762,7 +774,7 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
           {form.mascotas_permitidas !== 'no' && (
             <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Detalle mascotas</label>
-    <input type="text" value={form.detalle_mascotas || ''} onChange={e => set('detalle_mascotas', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.detalle_mascotas || ''} data-field='detalle_mascotas' style={st.input} />
   </div>
           )}
         </div>
@@ -793,30 +805,40 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
   const [form, setForm] = useState({ ...expediente })
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  const formRef = useRef(null)
+  const getFormValues = () => {
+    if (!formRef.current) return {}
+    const inputs = formRef.current.querySelectorAll('[data-field]')
+    const vals = {}
+    inputs.forEach(el => { vals[el.dataset.field] = el.value })
+    return vals
+  }
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSave = async () => {
     setSaving(true)
     setMsg('')
     try {
-      const r = parseFloat(form.renta_mensual) || 0
-      const dep = parseFloat(form.deposito_garantia) || 0
+      const domVals = getFormValues()
+      const merged = { ...form, ...domVals }
+      const r = parseFloat(merged.renta_mensual) || 0
+      const dep = parseFloat(merged.deposito_garantia) || 0
       const mora = parseFloat((r * 0.01).toFixed(2))
-      const pagares = form.fecha_inicio ? calcularPagares(form.fecha_inicio) : {}
-      const fechaTermino = form.fecha_inicio
-        ? (() => { const d = new Date(form.fecha_inicio + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0] })()
-        : form.fecha_termino
+      const pagares = merged.fecha_inicio ? calcularPagares(merged.fecha_inicio) : {}
+      const fechaTermino = merged.fecha_inicio
+        ? (() => { const d = new Date(merged.fecha_inicio + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0] })()
+        : merged.fecha_termino
 
       const { error } = await supabase.from('poliza_expedientes').update({
-        ...form,
+        ...merged,
         renta_mensual: r,
         renta_mensual_letra: numeroALetra(r),
         deposito_garantia: dep,
         deposito_garantia_letra: numeroALetra(dep),
         mora_diaria: mora,
         mora_diaria_letra: numeroALetra(mora),
-        monto_poliza: parseFloat(form.monto_poliza) || null,
-        monto_poliza_letra: form.monto_poliza ? numeroALetra(parseFloat(form.monto_poliza)) : null,
+        monto_poliza: parseFloat(merged.monto_poliza) || null,
+        monto_poliza_letra: merged.monto_poliza ? numeroALetra(parseFloat(merged.monto_poliza)) : null,
         fecha_termino: fechaTermino,
         ...pagares,
       }).eq('id', expediente.id)
@@ -831,7 +853,7 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
 
   return (
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={st.modalCard}>
+      <div style={st.modalCard} ref={formRef}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>
@@ -854,31 +876,31 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Nombre</label>
-    <input type="text" value={form.nombre_arrendador || ''} onChange={e => set('nombre_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.nombre_arrendador || ''} data-field='nombre_arrendador' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>RFC</label>
-    <input type="text" value={form.rfc_arrendador || ''} onChange={e => set('rfc_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.rfc_arrendador || ''} data-field='rfc_arrendador' style={st.input} />
   </div>
         </div>
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Clave de elector</label>
-    <input type="text" value={form.clave_elector_arrendador || ''} onChange={e => set('clave_elector_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.clave_elector_arrendador || ''} data-field='clave_elector_arrendador' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Teléfono</label>
-    <input type="text" value={form.telefono_arrendador || ''} onChange={e => set('telefono_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.telefono_arrendador || ''} data-field='telefono_arrendador' style={st.input} />
   </div>
         </div>
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Correo</label>
-    <input type="text" value={form.correo_arrendador || ''} onChange={e => set('correo_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.correo_arrendador || ''} data-field='correo_arrendador' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Domicilio</label>
-    <input type="text" value={form.domicilio_arrendador || ''} onChange={e => set('domicilio_arrendador', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.domicilio_arrendador || ''} data-field='domicilio_arrendador' style={st.input} />
   </div>
         </div>
 
@@ -887,79 +909,79 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Nombre</label>
-    <input type="text" value={form.nombre_arrendatario || ''} onChange={e => set('nombre_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.nombre_arrendatario || ''} data-field='nombre_arrendatario' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>RFC</label>
-    <input type="text" value={form.rfc_arrendatario || ''} onChange={e => set('rfc_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.rfc_arrendatario || ''} data-field='rfc_arrendatario' style={st.input} />
   </div>
         </div>
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Clave de elector</label>
-    <input type="text" value={form.clave_elector_arrendatario || ''} onChange={e => set('clave_elector_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.clave_elector_arrendatario || ''} data-field='clave_elector_arrendatario' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Teléfono</label>
-    <input type="text" value={form.telefono_arrendatario || ''} onChange={e => set('telefono_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.telefono_arrendatario || ''} data-field='telefono_arrendatario' style={st.input} />
   </div>
         </div>
         <div style={st.grid2}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Correo</label>
-    <input type="text" value={form.correo_arrendatario || ''} onChange={e => set('correo_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.correo_arrendatario || ''} data-field='correo_arrendatario' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Ocupación</label>
-    <input type="text" value={form.ocupacion_arrendatario || ''} onChange={e => set('ocupacion_arrendatario', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.ocupacion_arrendatario || ''} data-field='ocupacion_arrendatario' style={st.input} />
   </div>
         </div>
         <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Comprobante de ingresos</label>
-    <input type="text" value={form.comprobante_ingresos || ''} onChange={e => set('comprobante_ingresos', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.comprobante_ingresos || ''} data-field='comprobante_ingresos' style={st.input} />
   </div>
 
         <div style={st.divider} />
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Inmueble y condiciones</p>
         <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Dirección</label>
-    <input type="text" value={form.direccion_inmueble || ''} onChange={e => set('direccion_inmueble', e.target.value)} style={st.input} />
+    <input type="text" defaultValue={form.direccion_inmueble || ''} data-field='direccion_inmueble' style={st.input} />
   </div>
         <div style={st.grid3}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Renta mensual $</label>
-    <input type="number" value={form.renta_mensual || ''} onChange={e => set('renta_mensual', e.target.value)} style={st.input} />
+    <input type="number" defaultValue={form.renta_mensual || ''} data-field='renta_mensual' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Cuota mantenimiento $</label>
-    <input type="number" value={form.cuota_mantenimiento || ''} onChange={e => set('cuota_mantenimiento', e.target.value)} placeholder="0 si no aplica" style={st.input} />
+    <input type="number" defaultValue={form.cuota_mantenimiento || ''} data-field='cuota_mantenimiento' placeholder="0 si no aplica" style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Depósito $</label>
-    <input type="number" value={form.deposito_garantia || ''} onChange={e => set('deposito_garantia', e.target.value)} style={st.input} />
+    <input type="number" defaultValue={form.deposito_garantia || ''} data-field='deposito_garantia' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Monto póliza $</label>
-    <input type="number" value={form.monto_poliza || ''} onChange={e => set('monto_poliza', e.target.value)} style={st.input} />
+    <input type="number" defaultValue={form.monto_poliza || ''} data-field='monto_poliza' style={st.input} />
   </div>
         </div>
         <div style={st.grid3}>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Fecha inicio</label>
-    <input type="date" value={form.fecha_inicio || ''} onChange={e => set('fecha_inicio', e.target.value)} style={st.input} />
+    <input type="date" defaultValue={form.fecha_inicio || ''} data-field='fecha_inicio' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Fecha firma</label>
-    <input type="date" value={form.fecha_firma || ''} onChange={e => set('fecha_firma', e.target.value)} style={st.input} />
+    <input type="date" defaultValue={form.fecha_firma || ''} data-field='fecha_firma' style={st.input} />
   </div>
           <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Entrega posesión</label>
-    <input type="date" value={form.fecha_entrega_posesion || ''} onChange={e => set('fecha_entrega_posesion', e.target.value)} style={st.input} />
+    <input type="date" defaultValue={form.fecha_entrega_posesion || ''} data-field='fecha_entrega_posesion' style={st.input} />
   </div>
         </div>
         <div style={{ marginBottom: 14 }}>
     <label style={st.label}>Notas</label>
-    <input type="text" value={form.notas || ''} onChange={e => set('notas', e.target.value)} placeholder="Observaciones internas..." style={st.input} />
+    <input type="text" defaultValue={form.notas || ''} data-field='notas' placeholder="Observaciones internas..." style={st.input} />
   </div>
 
         {msg && <p style={{ color: C.redText, fontSize: 13, margin: '12px 0 0' }}>{msg}</p>}
