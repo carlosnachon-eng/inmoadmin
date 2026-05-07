@@ -1030,10 +1030,10 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
         monto_poliza_letra: merged.monto_poliza ? numeroALetra(parseFloat(merged.monto_poliza)) : null,
         fecha_termino: fechaTermino,
         status_expediente: merged.status_expediente || 'pendiente_firma',
-        anticipo_poliza: parseFloat(merged.anticipo_poliza) || 0,
-        anticipo_pagado: merged.anticipo_pagado,
-        saldo_pagado: merged.saldo_pagado,
-        metodo_pago_completo: merged.metodo_pago_completo || 'efectivo',
+anticipo_poliza: parseFloat(merged.anticipo_poliza) || null,
+anticipo_pagado: merged.anticipo_pagado || false,
+saldo_pagado: merged.saldo_pagado || false,
+metodo_pago_completo: merged.metodo_pago_completo || 'efectivo',
         ...pagares,
       }).eq('id', expediente.id)
       if (error) throw error
