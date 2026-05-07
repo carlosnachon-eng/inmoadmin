@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { generarContratoArrendamiento } from '../../lib/generarContrato'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 
@@ -806,6 +807,7 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const formRef = useRef(null)
+  const [generando, setGenerando] = useState('')
   const getFormValues = () => {
     if (!formRef.current) return {}
     const inputs = formRef.current.querySelectorAll('[data-field]')
@@ -814,6 +816,19 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
     return vals
   }
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleGenerar = async (tipo) => {
+    const domVals = getFormValues()
+    const merged = { ...form, ...domVals }
+    setGenerando(tipo)
+    try {
+      if (tipo === 'contrato') await generarContratoArrendamiento(merged)
+    } catch(e) {
+      alert('Error generando documento: ' + e.message)
+    } finally {
+      setGenerando('')
+    }
+  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -986,7 +1001,19 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
 
         {msg && <p style={{ color: C.redText, fontSize: 13, margin: '12px 0 0' }}>{msg}</p>}
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 28 }}>
+        <div style={{ ...st.divider, margin: '20px 0' }} />
+        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 12px' }}>Generar documentos</p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 }}>
+          <button
+            onClick={() => handleGenerar('contrato')}
+            disabled={!!generando}
+            style={{ ...st.btn, background: '#1A3A1A', color: '#5EC98A', border: '1px solid #2A5C3F', opacity: generando ? 0.6 : 1 }}
+          >
+            {generando === 'contrato' ? 'Generando...' : '📄 Contrato de arrendamiento'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cancelar</button>
           <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGold, opacity: saving ? 0.6 : 1 }}>
             {saving ? 'Guardando...' : 'Guardar cambios'}
