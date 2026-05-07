@@ -169,13 +169,12 @@ export default function RegistroPropietario() {
     setStep(s => s + 1)
   }
 
-  const uploadFile = async (field, file, id) => {
-    const ext = file.name.split('.').pop()
-    const path = `propietarios/${id}/${field}.${ext}`
-    const { error } = await supabase.storage.from('poliza-docs').upload(path, file, { upsert: true })
-    if (error) throw error
-    return path
-  }
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result) // incluye el data:mime;base64, prefix
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 
   const handleSubmit = async () => {
     if (!validateStep3()) return
@@ -213,12 +212,16 @@ export default function RegistroPropietario() {
       if (error) throw error
 
       const id = data.id
-      const urls = {}
-      for (const field of Object.keys(files)) {
-        if (files[field]) urls[field] = await uploadFile(field, files[field], id)
-      }
-      if (Object.keys(urls).length > 0) {
-        await supabase.from('propietarios_inmuebles').update(urls).eq('id', id)
+      // Convertir archivos a base64 y guardar en la tabla
+      const docUpdates = {}
+      if (files.doc_identificacion)
+        docUpdates.doc_identificacion_b64 = await fileToBase64(files.doc_identificacion)
+      if (files.doc_comprobante_domicilio)
+        docUpdates.doc_comprobante_domicilio_b64 = await fileToBase64(files.doc_comprobante_domicilio)
+      if (files.doc_predial)
+        docUpdates.doc_predial_b64 = await fileToBase64(files.doc_predial)
+      if (Object.keys(docUpdates).length > 0) {
+        await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', id)
       }
 
       setSubmitId(id)
