@@ -1010,30 +1010,45 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
     try {
       const domVals = getFormValues()
       const merged = { ...form, ...domVals }
-      const r = parseFloat(merged.renta_mensual) || 0
-      const dep = parseFloat(merged.deposito_garantia) || 0
+
+      // Limpieza de campos numéricos — string vacío → null
+      const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n }
+
+      const r   = num(merged.renta_mensual) || 0
+      const dep = num(merged.deposito_garantia) || 0
       const mora = parseFloat((r * 0.01).toFixed(2))
       const pagares = merged.fecha_inicio ? calcularPagares(merged.fecha_inicio) : {}
       const fechaTermino = merged.fecha_inicio
         ? (() => { const d = new Date(merged.fecha_inicio + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0] })()
-        : merged.fecha_termino
+        : merged.fecha_termino || null
+
+      // Limpiar todos los campos numéricos del merged antes de enviar
+      const camposNumericos = [
+        'cuota_mantenimiento', 'mora_diaria', 'monto_poliza', 'anticipo_poliza',
+        'deposito_garantia', 'renta_mensual', 'precio_venta', 'anticipo', 'monto_adeudo',
+      ]
+      const cleanMerged = { ...merged }
+      camposNumericos.forEach(k => {
+        if (cleanMerged[k] === '' || cleanMerged[k] === undefined) cleanMerged[k] = null
+        else if (cleanMerged[k] !== null) cleanMerged[k] = num(cleanMerged[k])
+      })
 
       const { error } = await supabase.from('poliza_expedientes').update({
-        ...merged,
+        ...cleanMerged,
         renta_mensual: r,
         renta_mensual_letra: numeroALetra(r),
         deposito_garantia: dep,
         deposito_garantia_letra: numeroALetra(dep),
         mora_diaria: mora,
         mora_diaria_letra: numeroALetra(mora),
-        monto_poliza: parseFloat(merged.monto_poliza) || null,
-        monto_poliza_letra: merged.monto_poliza ? numeroALetra(parseFloat(merged.monto_poliza)) : null,
+        monto_poliza: num(merged.monto_poliza),
+        monto_poliza_letra: num(merged.monto_poliza) ? numeroALetra(num(merged.monto_poliza)) : null,
         fecha_termino: fechaTermino,
         status_expediente: merged.status_expediente || 'pendiente_firma',
-anticipo_poliza: parseFloat(merged.anticipo_poliza) || null,
-anticipo_pagado: merged.anticipo_pagado || false,
-saldo_pagado: merged.saldo_pagado || false,
-metodo_pago_completo: merged.metodo_pago_completo || 'efectivo',
+        anticipo_poliza: num(merged.anticipo_poliza),
+        anticipo_pagado: merged.anticipo_pagado || false,
+        saldo_pagado: merged.saldo_pagado || false,
+        metodo_pago_completo: merged.metodo_pago_completo || 'efectivo',
         ...pagares,
       }).eq('id', expediente.id)
       if (error) throw error
