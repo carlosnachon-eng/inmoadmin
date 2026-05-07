@@ -577,16 +577,34 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         {/* ARRENDADOR */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Arrendador (Dueño)</p>
         <div style={st.grid2}>
-          <FField label="Nombre completo" value={form.nombre_arrendador} onChange={v => set('nombre_arrendador', v)} />
-          <FField label="RFC" value={form.rfc_arrendador} onChange={v => set('rfc_arrendador', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Nombre completo</label>
+    <input type="text" value={form.nombre_arrendador || ''} onChange={e => set('nombre_arrendador', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>RFC</label>
+    <input type="text" value={form.rfc_arrendador || ''} onChange={e => set('rfc_arrendador', e.target.value)} style={st.input} />
+  </div>
         </div>
         <div style={st.grid2}>
-          <FField label="Clave de elector" value={form.clave_elector_arrendador} onChange={v => set('clave_elector_arrendador', v)} />
-          <FField label="Teléfono" value={form.telefono_arrendador} onChange={v => set('telefono_arrendador', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Clave de elector</label>
+    <input type="text" value={form.clave_elector_arrendador || ''} onChange={e => set('clave_elector_arrendador', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Teléfono</label>
+    <input type="text" value={form.telefono_arrendador || ''} onChange={e => set('telefono_arrendador', e.target.value)} style={st.input} />
+  </div>
         </div>
         <div style={st.grid2}>
-          <FField label="Correo" value={form.correo_arrendador} onChange={v => set('correo_arrendador', v)} />
-          <FField label="Domicilio" value={form.domicilio_arrendador} onChange={v => set('domicilio_arrendador', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Correo</label>
+    <input type="text" value={form.correo_arrendador || ''} onChange={e => set('correo_arrendador', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Domicilio</label>
+    <input type="text" value={form.domicilio_arrendador || ''} onChange={e => set('domicilio_arrendador', e.target.value)} style={st.input} />
+  </div>
         </div>
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
@@ -594,37 +612,76 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         {/* ARRENDATARIO */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Arrendatario (Inquilino)</p>
         <div style={st.grid2}>
-          <FField label="Nombre completo" value={form.nombre_arrendatario} onChange={v => set('nombre_arrendatario', v)} />
-          <FField label="RFC" value={form.rfc_arrendatario} onChange={v => set('rfc_arrendatario', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Nombre completo</label>
+    <input type="text" value={form.nombre_arrendatario || ''} onChange={e => set('nombre_arrendatario', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>RFC</label>
+    <input type="text" value={form.rfc_arrendatario || ''} onChange={e => set('rfc_arrendatario', e.target.value)} style={st.input} />
+  </div>
         </div>
         <div style={st.grid2}>
-          <FField label="Clave de elector" value={form.clave_elector_arrendatario} onChange={v => set('clave_elector_arrendatario', v)} />
-          <FField label="Teléfono" value={form.telefono_arrendatario} onChange={v => set('telefono_arrendatario', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Clave de elector</label>
+    <input type="text" value={form.clave_elector_arrendatario || ''} onChange={e => set('clave_elector_arrendatario', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Teléfono</label>
+    <input type="text" value={form.telefono_arrendatario || ''} onChange={e => set('telefono_arrendatario', e.target.value)} style={st.input} />
+  </div>
         </div>
         <div style={st.grid2}>
-          <FField label="Correo" value={form.correo_arrendatario} onChange={v => set('correo_arrendatario', v)} />
-          <FField label="Ocupación / Actividad" value={form.ocupacion_arrendatario} onChange={v => set('ocupacion_arrendatario', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Correo</label>
+    <input type="text" value={form.correo_arrendatario || ''} onChange={e => set('correo_arrendatario', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Ocupación / Actividad</label>
+    <input type="text" value={form.ocupacion_arrendatario || ''} onChange={e => set('ocupacion_arrendatario', e.target.value)} style={st.input} />
+  </div>
         </div>
-        <FField label="Comprobante de ingresos presentado" value={form.comprobante_ingresos} onChange={v => set('comprobante_ingresos', v)} placeholder="Ej: Estados de cuenta, Recibos de nómina..." />
+        <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Comprobante de ingresos presentado</label>
+    <input type="text" value={form.comprobante_ingresos || ''} onChange={e => set('comprobante_ingresos', e.target.value)} placeholder="Ej: Estados de cuenta, Recibos de nómina..." style={st.input} />
+  </div>
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
 
         {/* INMUEBLE */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inmueble</p>
-        <FField label="Dirección completa" value={form.direccion_inmueble} onChange={v => set('direccion_inmueble', v)} />
-        <FField label="Ciudad y estado" value={form.ciudad_estado_inmueble} onChange={v => set('ciudad_estado_inmueble', v)} />
+        <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Dirección completa</label>
+    <input type="text" value={form.direccion_inmueble || ''} onChange={e => set('direccion_inmueble', e.target.value)} style={st.input} />
+  </div>
+        <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Ciudad y estado</label>
+    <input type="text" value={form.ciudad_estado_inmueble || ''} onChange={e => set('ciudad_estado_inmueble', e.target.value)} style={st.input} />
+  </div>
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
 
         {/* CONDICIONES ECONÓMICAS */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Condiciones económicas</p>
         <div style={st.grid3}>
-          <FField label="Renta mensual $" value={form.renta_mensual} onChange={v => set('renta_mensual', v)} type="number" />
-          <FField label="Cuota mantenimiento $" value={form.cuota_mantenimiento} onChange={v => set('cuota_mantenimiento', v)} type="number" placeholder="0 si no aplica" />
-          <FField label="Depósito en garantía $" value={form.deposito_garantia} onChange={v => set('deposito_garantia', v)} type="number" />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Renta mensual $</label>
+    <input type="number" value={form.renta_mensual || ''} onChange={e => set('renta_mensual', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Cuota mantenimiento $</label>
+    <input type="number" value={form.cuota_mantenimiento || ''} onChange={e => set('cuota_mantenimiento', e.target.value)} placeholder="0 si no aplica" style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Depósito en garantía $</label>
+    <input type="number" value={form.deposito_garantia || ''} onChange={e => set('deposito_garantia', e.target.value)} style={st.input} />
+  </div>
         </div>
         <div style={st.grid3}>
-          <FField label="Mora diaria 1% $" value={form.mora_diaria || (parseFloat(form.renta_mensual) * 0.01).toFixed(2) || ''} onChange={v => set('mora_diaria', v)} type="number" />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Mora diaria 1% $</label>
+    <input type="number" value={form.mora_diaria || (parseFloat(form.renta_mensual) * 0.01).toFixed(2) || '' || ''} onChange={e => set('mora_diaria', e.target.value)} style={st.input} />
+  </div>
           <div>
             <label style={st.label}>Forma de pago</label>
             <select value={form.forma_pago} onChange={e => set('forma_pago', e.target.value)} style={st.input}>
@@ -633,28 +690,49 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
               <option value="deposito">Depósito</option>
             </select>
           </div>
-          <FField label="Banco receptor" value={form.banco_receptor} onChange={v => set('banco_receptor', v)} />
-          <FField label="Día límite de pago" value={form.dia_limite_pago} onChange={v => set('dia_limite_pago', v)} type="number" placeholder="Ej: 5" />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Banco receptor</label>
+    <input type="text" value={form.banco_receptor || ''} onChange={e => set('banco_receptor', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Día límite de pago</label>
+    <input type="number" value={form.dia_limite_pago || ''} onChange={e => set('dia_limite_pago', e.target.value)} placeholder="Ej: 5" style={st.input} />
+  </div>
         </div>
         {(form.forma_pago === 'transferencia' || form.forma_pago === 'deposito') && (
-          <FField label="CLABE interbancaria" value={form.clabe_interbancaria} onChange={v => set('clabe_interbancaria', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>CLABE interbancaria</label>
+    <input type="text" value={form.clabe_interbancaria || ''} onChange={e => set('clabe_interbancaria', e.target.value)} style={st.input} />
+  </div>
         )}
-        <FField label="Monto de póliza $" value={form.monto_poliza} onChange={v => set('monto_poliza', v)} type="number" placeholder="Costo del servicio de póliza jurídica" />
+        <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Monto de póliza $</label>
+    <input type="number" value={form.monto_poliza || ''} onChange={e => set('monto_poliza', e.target.value)} placeholder="Costo del servicio de póliza jurídica" style={st.input} />
+  </div>
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
 
         {/* FECHAS */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Fechas</p>
         <div style={st.grid3}>
-          <FField label="Fecha de inicio" value={form.fecha_inicio} onChange={v => set('fecha_inicio', v)} type="date" />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Fecha de inicio</label>
+    <input type="date" value={form.fecha_inicio || ''} onChange={e => set('fecha_inicio', e.target.value)} style={st.input} />
+  </div>
           <div>
             <label style={st.label}>Fecha de término</label>
             <input value={fechaTermino} readOnly style={{ ...st.input, color: C.muted, cursor: 'not-allowed' }} />
             <p style={{ margin: '4px 0 0', fontSize: 10, color: C.faint }}>Se calcula automáticamente (1 año)</p>
           </div>
-          <FField label="Entrega de posesión" value={form.fecha_entrega_posesion} onChange={v => set('fecha_entrega_posesion', v)} type="date" />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Entrega de posesión</label>
+    <input type="date" value={form.fecha_entrega_posesion || ''} onChange={e => set('fecha_entrega_posesion', e.target.value)} style={st.input} />
+  </div>
         </div>
-        <FField label="Fecha de firma del contrato" value={form.fecha_firma} onChange={v => set('fecha_firma', v)} type="date" />
+        <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Fecha de firma del contrato</label>
+    <input type="date" value={form.fecha_firma || ''} onChange={e => set('fecha_firma', e.target.value)} style={st.input} />
+  </div>
 
         {form.fecha_inicio && (
           <div style={{ background: '#111', borderRadius: 8, padding: '12px 16px', marginTop: 8 }}>
@@ -682,7 +760,10 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
             </select>
           </div>
           {form.mascotas_permitidas !== 'no' && (
-            <FField label="Detalle mascotas" value={form.detalle_mascotas} onChange={v => set('detalle_mascotas', v)} />
+            <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Detalle mascotas</label>
+    <input type="text" value={form.detalle_mascotas || ''} onChange={e => set('detalle_mascotas', e.target.value)} style={st.input} />
+  </div>
           )}
         </div>
 
@@ -771,49 +852,115 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
         {/* Mismos campos que nuevo pero con datos pre-llenados */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Arrendador</p>
         <div style={st.grid2}>
-          <FField label="Nombre" value={form.nombre_arrendador} onChange={v => set('nombre_arrendador', v)} />
-          <FField label="RFC" value={form.rfc_arrendador} onChange={v => set('rfc_arrendador', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Nombre</label>
+    <input type="text" value={form.nombre_arrendador || ''} onChange={e => set('nombre_arrendador', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>RFC</label>
+    <input type="text" value={form.rfc_arrendador || ''} onChange={e => set('rfc_arrendador', e.target.value)} style={st.input} />
+  </div>
         </div>
         <div style={st.grid2}>
-          <FField label="Clave de elector" value={form.clave_elector_arrendador} onChange={v => set('clave_elector_arrendador', v)} />
-          <FField label="Teléfono" value={form.telefono_arrendador} onChange={v => set('telefono_arrendador', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Clave de elector</label>
+    <input type="text" value={form.clave_elector_arrendador || ''} onChange={e => set('clave_elector_arrendador', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Teléfono</label>
+    <input type="text" value={form.telefono_arrendador || ''} onChange={e => set('telefono_arrendador', e.target.value)} style={st.input} />
+  </div>
         </div>
         <div style={st.grid2}>
-          <FField label="Correo" value={form.correo_arrendador} onChange={v => set('correo_arrendador', v)} />
-          <FField label="Domicilio" value={form.domicilio_arrendador} onChange={v => set('domicilio_arrendador', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Correo</label>
+    <input type="text" value={form.correo_arrendador || ''} onChange={e => set('correo_arrendador', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Domicilio</label>
+    <input type="text" value={form.domicilio_arrendador || ''} onChange={e => set('domicilio_arrendador', e.target.value)} style={st.input} />
+  </div>
         </div>
 
         <div style={st.divider} />
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Arrendatario</p>
         <div style={st.grid2}>
-          <FField label="Nombre" value={form.nombre_arrendatario} onChange={v => set('nombre_arrendatario', v)} />
-          <FField label="RFC" value={form.rfc_arrendatario} onChange={v => set('rfc_arrendatario', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Nombre</label>
+    <input type="text" value={form.nombre_arrendatario || ''} onChange={e => set('nombre_arrendatario', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>RFC</label>
+    <input type="text" value={form.rfc_arrendatario || ''} onChange={e => set('rfc_arrendatario', e.target.value)} style={st.input} />
+  </div>
         </div>
         <div style={st.grid2}>
-          <FField label="Clave de elector" value={form.clave_elector_arrendatario} onChange={v => set('clave_elector_arrendatario', v)} />
-          <FField label="Teléfono" value={form.telefono_arrendatario} onChange={v => set('telefono_arrendatario', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Clave de elector</label>
+    <input type="text" value={form.clave_elector_arrendatario || ''} onChange={e => set('clave_elector_arrendatario', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Teléfono</label>
+    <input type="text" value={form.telefono_arrendatario || ''} onChange={e => set('telefono_arrendatario', e.target.value)} style={st.input} />
+  </div>
         </div>
         <div style={st.grid2}>
-          <FField label="Correo" value={form.correo_arrendatario} onChange={v => set('correo_arrendatario', v)} />
-          <FField label="Ocupación" value={form.ocupacion_arrendatario} onChange={v => set('ocupacion_arrendatario', v)} />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Correo</label>
+    <input type="text" value={form.correo_arrendatario || ''} onChange={e => set('correo_arrendatario', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Ocupación</label>
+    <input type="text" value={form.ocupacion_arrendatario || ''} onChange={e => set('ocupacion_arrendatario', e.target.value)} style={st.input} />
+  </div>
         </div>
-        <FField label="Comprobante de ingresos" value={form.comprobante_ingresos} onChange={v => set('comprobante_ingresos', v)} />
+        <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Comprobante de ingresos</label>
+    <input type="text" value={form.comprobante_ingresos || ''} onChange={e => set('comprobante_ingresos', e.target.value)} style={st.input} />
+  </div>
 
         <div style={st.divider} />
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Inmueble y condiciones</p>
-        <FField label="Dirección" value={form.direccion_inmueble} onChange={v => set('direccion_inmueble', v)} />
+        <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Dirección</label>
+    <input type="text" value={form.direccion_inmueble || ''} onChange={e => set('direccion_inmueble', e.target.value)} style={st.input} />
+  </div>
         <div style={st.grid3}>
-          <FField label="Renta mensual $" value={form.renta_mensual} onChange={v => set('renta_mensual', v)} type="number" />
-          <FField label="Cuota mantenimiento $" value={form.cuota_mantenimiento} onChange={v => set('cuota_mantenimiento', v)} type="number" placeholder="0 si no aplica" />
-          <FField label="Depósito $" value={form.deposito_garantia} onChange={v => set('deposito_garantia', v)} type="number" />
-          <FField label="Monto póliza $" value={form.monto_poliza} onChange={v => set('monto_poliza', v)} type="number" />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Renta mensual $</label>
+    <input type="number" value={form.renta_mensual || ''} onChange={e => set('renta_mensual', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Cuota mantenimiento $</label>
+    <input type="number" value={form.cuota_mantenimiento || ''} onChange={e => set('cuota_mantenimiento', e.target.value)} placeholder="0 si no aplica" style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Depósito $</label>
+    <input type="number" value={form.deposito_garantia || ''} onChange={e => set('deposito_garantia', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Monto póliza $</label>
+    <input type="number" value={form.monto_poliza || ''} onChange={e => set('monto_poliza', e.target.value)} style={st.input} />
+  </div>
         </div>
         <div style={st.grid3}>
-          <FField label="Fecha inicio" value={form.fecha_inicio} onChange={v => set('fecha_inicio', v)} type="date" />
-          <FField label="Fecha firma" value={form.fecha_firma} onChange={v => set('fecha_firma', v)} type="date" />
-          <FField label="Entrega posesión" value={form.fecha_entrega_posesion} onChange={v => set('fecha_entrega_posesion', v)} type="date" />
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Fecha inicio</label>
+    <input type="date" value={form.fecha_inicio || ''} onChange={e => set('fecha_inicio', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Fecha firma</label>
+    <input type="date" value={form.fecha_firma || ''} onChange={e => set('fecha_firma', e.target.value)} style={st.input} />
+  </div>
+          <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Entrega posesión</label>
+    <input type="date" value={form.fecha_entrega_posesion || ''} onChange={e => set('fecha_entrega_posesion', e.target.value)} style={st.input} />
+  </div>
         </div>
-        <FField label="Notas" value={form.notas} onChange={v => set('notas', v)} placeholder="Observaciones internas..." />
+        <div style={{ marginBottom: 14 }}>
+    <label style={st.label}>Notas</label>
+    <input type="text" value={form.notas || ''} onChange={e => set('notas', e.target.value)} placeholder="Observaciones internas..." style={st.input} />
+  </div>
 
         {msg && <p style={{ color: C.redText, fontSize: 13, margin: '12px 0 0' }}>{msg}</p>}
 
