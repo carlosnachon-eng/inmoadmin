@@ -136,6 +136,14 @@ export default function SolicitudInquilino() {
     return path;
   };
 
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    if (!file) { resolve(null); return; }
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
   const handleSubmit = async () => {
     if (!aceptaPrivacidad) {
       setError("Debes aceptar el Aviso de Privacidad para continuar.");
