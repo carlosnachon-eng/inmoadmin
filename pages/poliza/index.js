@@ -1062,13 +1062,6 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
             {generando === 'recibo' ? 'Generando...' : '🧾 Recibo de póliza'}
           </button>
           <button
-            onClick={() => handleGenerar('promocion')}
-            disabled={!!generando}
-            style={{ ...st.btn, background: '#1A1A2E', color: '#A070E0', border: '1px solid #3A2A5C', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando === 'promocion' ? 'Generando...' : '📄 Contrato promoción'}
-          </button>
-          <button
             onClick={() => handleGenerar('administracion')}
             disabled={!!generando}
             style={{ ...st.btn, background: '#1A2E1A', color: '#70C870', border: '1px solid #2A5C2A', opacity: generando ? 0.6 : 1 }}
@@ -1094,12 +1087,28 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
 function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
   const [status, setStatus] = useState(p.status || 'activo')
   const [saving, setSaving] = useState(false)
+  const [generando, setGenerando] = useState(false)
 
   const handleSave = async () => {
     setSaving(true)
     await supabase.from('propietarios_inmuebles').update({ status }).eq('id', p.id)
     setSaving(false)
     onSaved()
+  }
+
+  const handleGenerarPromocion = async () => {
+    setGenerando(true)
+    try {
+      await generarContratoPromocion({
+        nombre_arrendador:    p.nombre_propietario,
+        domicilio_arrendador: p.domicilio_propietario,
+        telefono_arrendador:  p.telefono_propietario,
+        direccion_inmueble:   p.direccion_inmueble,
+        renta_mensual:        p.monto_renta,
+        renta_mensual_letra:  p.monto_renta_letra,
+      })
+    } catch(e) { alert('Error: ' + e.message) }
+    setGenerando(false)
   }
 
   return (
@@ -1152,7 +1161,14 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
           </>
         )}
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24, flexWrap: 'wrap' }}>
+          <button
+            onClick={handleGenerarPromocion}
+            disabled={generando}
+            style={{ ...st.btn, background: '#1A1A3A', color: '#A070E0', border: '1px solid #3A2A5C', opacity: generando ? 0.6 : 1 }}
+          >
+            {generando ? 'Generando...' : '📄 Contrato promoción'}
+          </button>
           <button onClick={onNuevoExp} style={{ ...st.btn, ...st.btnGold }}>+ Crear expediente</button>
         </div>
       </div>
