@@ -241,19 +241,19 @@ export default function SolicitudInquilino() {
       const solicitudId = data.id;
 
       // 2. Subir archivos y actualizar URLs
-      const [pathIdentFisica, pathIdentMoral, pathIngresos, pathEmpresa] =
+      const [b64IdentFisica, b64IdentMoral, b64Ingresos, b64Empresa] =
         await Promise.all([
-          subirArchivo(files.identidad_fisica, nombreCarpeta, "identidad_fisica"),
-          subirArchivo(files.identidad_moral, nombreCarpeta, "identidad_moral"),
-          subirArchivo(files.ingresos, nombreCarpeta, "ingresos"),
-          subirArchivo(files.empresa, nombreCarpeta, "empresa"),
+          fileToBase64(files.identidad_fisica),
+          fileToBase64(files.identidad_moral),
+          fileToBase64(files.ingresos),
+          fileToBase64(files.empresa),
         ]);
 
       await supabase
         .from("solicitudes_inquilino")
         .update({
-          doc_identificacion: pathIdentFisica || pathIdentMoral,
-          doc_comprobante_ingresos: pathIngresos || pathEmpresa,
+          doc_identificacion_b64: b64IdentFisica || b64IdentMoral,
+          doc_comprobante_ingresos_b64: b64Ingresos || b64Empresa,
         })
         .eq("id", solicitudId);
 
