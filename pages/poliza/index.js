@@ -1033,8 +1033,11 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
         else if (cleanMerged[k] !== null) cleanMerged[k] = num(cleanMerged[k])
       })
 
+      // Eliminar campos que no existen en la tabla
+      const { anticipo, precio, precio_venta: pv, monto_adeudo: ma, ...restMerged } = cleanMerged
+
       const { error } = await supabase.from('poliza_expedientes').update({
-        ...cleanMerged,
+        ...restMerged,
         renta_mensual: r,
         renta_mensual_letra: numeroALetra(r),
         deposito_garantia: dep,
