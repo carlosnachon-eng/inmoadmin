@@ -134,6 +134,7 @@ export default function PolizaPanel() {
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
   const [acceso, setAcceso] = useState(null) // null=verificando, true=ok, false=denegado
+  const [caja, setCaja] = useState([])
 
   useEffect(() => {
     const verificarAcceso = async () => {
@@ -152,14 +153,16 @@ export default function PolizaPanel() {
 
   const loadAll = async () => {
     setLoading(true)
-    const [{ data: exp }, { data: prop }, { data: sol }] = await Promise.all([
+    const [{ data: exp }, { data: prop }, { data: sol }, { data: caj }] = await Promise.all([
       supabase.from('poliza_expedientes').select('*').order('created_at', { ascending: false }),
       supabase.from('propietarios_inmuebles').select('*').order('created_at', { ascending: false }),
       supabase.from('solicitudes_inquilino').select('*').order('created_at', { ascending: false }),
+      supabase.from('poliza_caja').select('*').order('fecha', { ascending: false }),
     ])
     setExpedientes(exp || [])
     setPropietarios(prop || [])
     setSolicitudes(sol || [])
+    setCaja(caj || [])
     setLoading(false)
   }
 
@@ -168,6 +171,7 @@ export default function PolizaPanel() {
     { id: 'expedientes', label: `Expedientes (${expedientes.length})` },
     { id: 'propietarios', label: `Propietarios (${propietarios.length})` },
     { id: 'solicitudes', label: `Solicitudes (${solicitudes.length})` },
+    { id: 'caja', label: '💰 Caja Póliza' },
   ]
 
   return (
@@ -203,6 +207,7 @@ export default function PolizaPanel() {
             {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={e => { setSelected(e); setModal('expediente') }} />}
             {tab === 'propietarios' && <TabPropietarios propietarios={propietarios} onSelect={p => { setSelected(p); setModal('propietario') }} />}
             {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected({ _solicitud: sol }); setModal('nuevo') }} />}
+            {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} />}
           </>
         )}
       </main>
@@ -422,6 +427,146 @@ function TabSolicitudes({ solicitudes, onSelect, onNuevoExp }) {
 // ═══════════════════════════════════════════════════════════
 // MODAL NUEVO EXPEDIENTE
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// TAB CAJA PÓLIZA
+// ═══════════════════════════════════════════════════════════
+function TabCajaPoliza({ movimientos, onReload }) {
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ tipo: 'ingreso', concepto: 'pago_poliza', descripcion: '', monto: '', metodo_pago: 'efectivo' })
+  const [saving, setSaving] = useState(false)
+
+  const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + (m.monto || 0), 0)
+  const egresos  = movimientos.filter(m => m.tipo === 'egreso').reduce((a, m) => a + (m.monto || 0), 0)
+  const saldo    = ingresos - egresos
+
+  const CONCEPTOS = {
+    investigacion: 'Investigación',
+    anticipo_poliza: 'Anticipo póliza',
+    pago_poliza: 'Pago póliza',
+    saldo_poliza: 'Saldo póliza',
+    otro: 'Otro',
+  }
+
+  const handleSave = async () => {
+    if (!form.monto || !form.descripcion) return
+    setSaving(true)
+    await supabase.from('poliza_caja').insert({
+      ...form,
+      monto: parseFloat(form.monto),
+      fecha: new Date().toISOString().split('T')[0],
+    })
+    setSaving(false)
+    setShowForm(false)
+    setForm({ tipo: 'ingreso', concepto: 'pago_poliza', descripcion: '', monto: '', metodo_pago: 'efectivo' })
+    onReload()
+  }
+
+  return (
+    <div>
+      <p style={st.sectionTitle}>Caja — Póliza Jurídica</p>
+      <p style={st.sectionSub}>Registro de cobros y pagos del área jurídica</p>
+
+      {/* Resumen */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+        {[
+          { label: 'Total ingresos', value: fmt(ingresos), color: C.greenText, bg: C.greenBg },
+          { label: 'Total egresos', value: fmt(egresos), color: C.redText, bg: C.redBg },
+          { label: 'Saldo', value: fmt(saldo), color: saldo >= 0 ? C.greenText : C.redText, bg: saldo >= 0 ? C.greenBg : C.redBg },
+        ].map((s, i) => (
+          <div key={i} style={{ background: s.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '16px 20px' }}>
+            <p style={{ margin: 0, fontSize: 11, color: C.muted, textTransform: 'uppercase', fontWeight: 700 }}>{s.label}</p>
+            <p style={{ margin: '6px 0 0', fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Botón nuevo movimiento */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <button onClick={() => setShowForm(!showForm)} style={{ ...st.btn, ...st.btnGold }}>
+          {showForm ? 'Cancelar' : '+ Movimiento manual'}
+        </button>
+      </div>
+
+      {/* Formulario manual */}
+      {showForm && (
+        <div style={{ ...st.card, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div>
+              <label style={st.label}>Tipo</label>
+              <select value={form.tipo} onChange={e => setForm(f => ({...f, tipo: e.target.value}))} style={st.input}>
+                <option value="ingreso">Ingreso</option>
+                <option value="egreso">Egreso</option>
+              </select>
+            </div>
+            <div>
+              <label style={st.label}>Concepto</label>
+              <select value={form.concepto} onChange={e => setForm(f => ({...f, concepto: e.target.value}))} style={st.input}>
+                {Object.entries(CONCEPTOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={st.label}>Método de pago</label>
+              <select value={form.metodo_pago} onChange={e => setForm(f => ({...f, metodo_pago: e.target.value}))} style={st.input}>
+                <option value="efectivo">Efectivo</option>
+                <option value="transferencia">Transferencia</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div>
+              <label style={st.label}>Descripción</label>
+              <input value={form.descripcion} onChange={e => setForm(f => ({...f, descripcion: e.target.value}))}
+                placeholder="Ej: Pago póliza — Juan Pérez" style={st.input} />
+            </div>
+            <div>
+              <label style={st.label}>Monto</label>
+              <input type="number" value={form.monto} onChange={e => setForm(f => ({...f, monto: e.target.value}))}
+                placeholder="0.00" style={st.input} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGold, opacity: saving ? 0.6 : 1 }}>
+              {saving ? 'Guardando...' : 'Registrar'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tabla de movimientos */}
+      <div style={st.card}>
+        {movimientos.length === 0 ? (
+          <p style={{ color: C.faint, textAlign: 'center', padding: 32 }}>Sin movimientos registrados</p>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={st.tableHead}>
+              <tr>
+                <th style={st.th}>Fecha</th>
+                <th style={st.th}>Tipo</th>
+                <th style={st.th}>Concepto</th>
+                <th style={st.th}>Descripción</th>
+                <th style={st.th}>Método</th>
+                <th style={st.th}>Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {movimientos.map(m => (
+                <tr key={m.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                  <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.fecha}</span></td>
+                  <td style={st.td}><Badge status={m.tipo === 'ingreso' ? 'activo' : 'rechazado'} label={m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} /></td>
+                  <td style={st.td}><span style={{ fontSize: 12 }}>{CONCEPTOS[m.concepto] || m.concepto}</span></td>
+                  <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.descripcion}</span></td>
+                  <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.metodo_pago}</span></td>
+                  <td style={st.td}><span style={{ fontWeight: 700, color: m.tipo === 'ingreso' ? C.greenText : C.redText }}>{m.tipo === 'ingreso' ? '+' : '-'}{fmt(m.monto)}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onSaved }) {
   const [propId, setPropId] = useState(prefill ? '' : '')
   const [solId, setSolId] = useState(prefill?.id || '')
@@ -884,9 +1029,46 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
         monto_poliza: parseFloat(merged.monto_poliza) || null,
         monto_poliza_letra: merged.monto_poliza ? numeroALetra(parseFloat(merged.monto_poliza)) : null,
         fecha_termino: fechaTermino,
+        status_expediente: merged.status_expediente || 'pendiente_firma',
+        anticipo_poliza: parseFloat(merged.anticipo_poliza) || 0,
+        anticipo_pagado: merged.anticipo_pagado,
+        saldo_pagado: merged.saldo_pagado,
+        metodo_pago_completo: merged.metodo_pago_completo || 'efectivo',
         ...pagares,
       }).eq('id', expediente.id)
       if (error) throw error
+
+      // Registrar anticipo en caja si se acaba de marcar
+      if (merged.anticipo_pagado && !expediente.anticipo_pagado && parseFloat(merged.anticipo_poliza) > 0) {
+        await supabase.from('poliza_caja').insert({
+          tipo: 'ingreso',
+          concepto: 'anticipo_poliza',
+          descripcion: `Anticipo póliza — ${merged.nombre_arrendatario || ''}`,
+          monto: parseFloat(merged.anticipo_poliza),
+          metodo_pago: merged.metodo_pago_completo || 'efectivo',
+          expediente_id: expediente.id,
+          nombre_cliente: merged.nombre_arrendatario || '',
+          fecha: new Date().toISOString().split('T')[0],
+        })
+      }
+
+      // Registrar pago completo en caja si se acaba de marcar
+      if (merged.saldo_pagado && !expediente.saldo_pagado) {
+        const montoPoliza = parseFloat(merged.monto_poliza) || 0
+        const anticipo = parseFloat(merged.anticipo_poliza) || 0
+        const saldo = montoPoliza - anticipo
+        await supabase.from('poliza_caja').insert({
+          tipo: 'ingreso',
+          concepto: anticipo > 0 ? 'saldo_poliza' : 'pago_poliza',
+          descripcion: `${anticipo > 0 ? 'Saldo' : 'Pago'} póliza — ${merged.nombre_arrendatario || ''}`,
+          monto: anticipo > 0 ? saldo : montoPoliza,
+          metodo_pago: merged.metodo_pago_completo || 'efectivo',
+          expediente_id: expediente.id,
+          nombre_cliente: merged.nombre_arrendatario || '',
+          fecha: new Date().toISOString().split('T')[0],
+        })
+      }
+
       onSaved()
     } catch (e) {
       setMsg('Error: ' + e.message)
@@ -1027,6 +1209,57 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
     <label style={st.label}>Notas</label>
     <input type="text" defaultValue={form.notas || ''} data-field='notas' placeholder="Observaciones internas..." style={st.input} />
   </div>
+
+        {/* Status y cobros de póliza */}
+        <div style={{ ...st.divider, margin: '16px 0' }} />
+        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 12px' }}>Status y cobros</p>
+        <div style={st.grid3}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={st.label}>Status del expediente</label>
+            <select value={form.status_expediente || 'pendiente_firma'} onChange={e => set('status_expediente', e.target.value)} style={st.input}>
+              <option value="pendiente_firma">Pendiente de firma</option>
+              <option value="firmado">Firmado</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={st.label}>Anticipo póliza $</label>
+            <input type="number" value={form.anticipo_poliza || ''} onChange={e => set('anticipo_poliza', e.target.value)}
+              placeholder="0 si no hay anticipo" style={st.input} />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={st.label}>¿Anticipo cobrado?</label>
+            <select value={form.anticipo_pagado ? 'si' : 'no'} onChange={e => set('anticipo_pagado', e.target.value === 'si')} style={st.input}>
+              <option value="no">No</option>
+              <option value="si">Sí</option>
+            </select>
+          </div>
+        </div>
+        <div style={st.grid2}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={st.label}>¿Póliza pagada completa?</label>
+            <select value={form.saldo_pagado ? 'si' : 'no'} onChange={e => set('saldo_pagado', e.target.value === 'si')} style={st.input}>
+              <option value="no">No</option>
+              <option value="si">Sí — póliza liquidada</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={st.label}>Método de pago póliza</label>
+            <select value={form.metodo_pago_completo || 'efectivo'} onChange={e => set('metodo_pago_completo', e.target.value)} style={st.input}>
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Botón registrar cobro en caja */}
+        {form.saldo_pagado && !expediente.saldo_pagado && (
+          <div style={{ background: C.greenBg, border: `1px solid ${C.green}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
+            <p style={{ margin: 0, fontSize: 12, color: C.greenText }}>
+              💰 Al guardar, se registrará el cobro de la póliza en Caja Póliza automáticamente.
+            </p>
+          </div>
+        )}
 
         {msg && <p style={{ color: C.redText, fontSize: 13, margin: '12px 0 0' }}>{msg}</p>}
 
@@ -1183,11 +1416,36 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
   const [status, setStatus] = useState(sol.status || 'pendiente')
   const [notas, setNotas] = useState(sol.notas_juridico || '')
   const [saving, setSaving] = useState(false)
+  const [cobrando, setCobrando] = useState(false)
+  const [metodoInv, setMetodoInv] = useState('efectivo')
 
   const handleSave = async () => {
     setSaving(true)
     await supabase.from('solicitudes_inquilino').update({ status, notas_juridico: notas }).eq('id', sol.id)
     setSaving(false)
+    onSaved()
+  }
+
+  const handleCobrarInvestigacion = async () => {
+    setCobrando(true)
+    const monto = 1000
+    await supabase.from('poliza_caja').insert({
+      tipo: 'ingreso',
+      concepto: 'investigacion',
+      descripcion: `Cobro de investigación — ${sol.nombre_completo || sol.razon_social}`,
+      monto,
+      metodo_pago: metodoInv,
+      solicitud_id: sol.id,
+      nombre_cliente: sol.nombre_completo || sol.razon_social,
+      fecha: new Date().toISOString().split('T')[0],
+    })
+    await supabase.from('solicitudes_inquilino').update({
+      cobro_investigacion: true,
+      fecha_cobro_investigacion: new Date().toISOString().split('T')[0],
+      monto_investigacion: monto,
+      metodo_cobro_investigacion: metodoInv,
+    }).eq('id', sol.id)
+    setCobrando(false)
     onSaved()
   }
 
@@ -1242,6 +1500,29 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
               {sol.doc_comprobante_ingresos && <DocChip label="Comprobante ingresos" path={sol.doc_comprobante_ingresos} />}
             </div>
           </>
+        )}
+
+        {/* Cobro investigación cuando es rechazado */}
+        {status === 'rechazado' && !sol.cobro_investigacion && (
+          <div style={{ background: '#2A1A1A', border: '1px solid #8B3A3A', borderRadius: 8, padding: '14px 16px', marginTop: 16 }}>
+            <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700, color: C.redText }}>💰 Cobrar investigación ($1,000)</p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select value={metodoInv} onChange={e => setMetodoInv(e.target.value)}
+                style={{ ...st.input, width: 'auto', fontSize: 12, padding: '6px 10px' }}>
+                <option value="efectivo">Efectivo</option>
+                <option value="transferencia">Transferencia</option>
+              </select>
+              <button onClick={handleCobrarInvestigacion} disabled={cobrando}
+                style={{ ...st.btn, background: C.red, color: C.redText, border: `1px solid ${C.red}`, opacity: cobrando ? 0.6 : 1 }}>
+                {cobrando ? 'Registrando...' : 'Registrar cobro $1,000'}
+              </button>
+            </div>
+          </div>
+        )}
+        {sol.cobro_investigacion && (
+          <div style={{ background: '#1A2E1A', border: '1px solid #2A5C3F', borderRadius: 8, padding: '10px 14px', marginTop: 16 }}>
+            <p style={{ margin: 0, fontSize: 12, color: C.greenText }}>✅ Cobro de investigación registrado — $1,000</p>
+          </div>
         )}
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24, flexWrap: 'wrap' }}>
