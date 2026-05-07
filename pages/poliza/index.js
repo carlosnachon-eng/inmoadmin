@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { generarContratoArrendamiento } from '../../lib/generarContrato'
+import { generarPagares } from '../../lib/generarPagares'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 
@@ -823,6 +824,7 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
     setGenerando(tipo)
     try {
       if (tipo === 'contrato') await generarContratoArrendamiento(merged)
+      if (tipo === 'pagares') await generarPagares(merged)
     } catch(e) {
       alert('Error generando documento: ' + e.message)
     } finally {
@@ -1010,6 +1012,13 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
             style={{ ...st.btn, background: '#1A3A1A', color: '#5EC98A', border: '1px solid #2A5C3F', opacity: generando ? 0.6 : 1 }}
           >
             {generando === 'contrato' ? 'Generando...' : '📄 Contrato de arrendamiento'}
+          </button>
+          <button
+            onClick={() => handleGenerar('pagares')}
+            disabled={!!generando}
+            style={{ ...st.btn, background: '#1A1A3A', color: '#70A8E0', border: '1px solid #1A3A5C', opacity: generando ? 0.6 : 1 }}
+          >
+            {generando === 'pagares' ? 'Generando...' : '📄 Pagarés (12)'}
           </button>
         </div>
 
