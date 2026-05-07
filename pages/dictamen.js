@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import { supabase } from "../lib/supabase";
 
 const inp = {
   width: "100%", padding: "10px 14px", borderRadius: 8,
@@ -48,7 +50,6 @@ async function generarPDF(data) {
   const addPg = () => { doc.addPage(); y = 16; };
   const chk = (n) => { if (y + n > 265) addPg(); };
 
-  // HEADER
   doc.setFillColor(...OSC);
   doc.rect(0, 0, W, 36, "F");
   doc.setTextColor(...ROJO); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
@@ -74,7 +75,6 @@ async function generarPDF(data) {
   doc.setDrawColor(...BRD); doc.setLineWidth(0.3);
   doc.line(M, y, W - M, y); y += 7;
 
-  // SEMAFORO
   const dict = data.dictamen || "APROBADO";
   const sems = [
     { val: "APROBADO", icon: "OK", on: VS, bg: VBG, tc: VC, lbl: "APROBADO" },
@@ -100,7 +100,6 @@ async function generarPDF(data) {
   });
   y += semH + 8;
 
-  // helpers
   const st = (t) => {
     chk(14);
     doc.setFillColor(...ROJO); doc.rect(M, y, 3, 6, "F");
@@ -142,13 +141,10 @@ async function generarPDF(data) {
     doc.text((l || "").toUpperCase(), M, y + 4); y += 7;
     doc.setFillColor(...GBG); doc.roundedRect(M, y, AW, h, 2, 2, "F");
     doc.setTextColor(...OSC); doc.setFontSize(8);
-    lines.forEach((line, i) => {
-      doc.text(line, M + 5, y + 7 + i * lineH);
-    });
+    lines.forEach((line, i) => { doc.text(line, M + 5, y + 7 + i * lineH); });
     y += h + 5;
   };
 
-  // I. DATOS
   st("I. DATOS GENERALES");
   c2("Nombre del solicitante", data.nombre_solicitante, "Tipo de solicitante", data.tipo_solicitante);
   c3("Tipo de identificacion", data.tipo_identificacion, "Num. de identificacion", data.num_identificacion, "Fecha de nacimiento", data.fecha_nacimiento);
@@ -156,33 +152,23 @@ async function generarPDF(data) {
   c2("Domicilio anterior", data.domicilio_anterior, "Direccion del inmueble", data.direccion_inmueble);
   c3("Monto de renta", data.monto_renta, "Fecha de inicio", data.fecha_inicio, "Tipo de solicitud", data.tipo_solicitante);
 
-  // II. ACTIVIDAD
   st("II. ACTIVIDAD Y FUENTE DE INGRESOS");
-  // Si fuente es OTRA, mostrar el detalle
-  const fuenteDisplay = data.fuente_ingresos === "OTRA"
-    ? `Otra: ${data.fuente_ingresos_otro || "—"}`
-    : data.fuente_ingresos;
+  const fuenteDisplay = data.fuente_ingresos === "OTRA" ? `Otra: ${data.fuente_ingresos_otro || "—"}` : data.fuente_ingresos;
   c2("Actividad principal", data.actividad_principal, "Fuente de ingresos", fuenteDisplay);
   c3("Empresa / Empleador", data.empresa, "Telefono RRHH", data.tel_empresa, "Ingreso mensual", data.ingreso_mensual);
   c3("Relacion ingreso-renta", data.relacion_ingreso_renta, "Comprobante de ingresos", data.comprobante_ingresos, "Evaluacion financiera", "Completada");
 
-  // III. USO
   st("III. USO DEL INMUEBLE / OCUPANTES");
-  // Si mascotas es especificar, mostrar el detalle
-  const mascotasDisplay = data.mascotas === "Si — especificar"
-    ? `Si — ${data.mascotas_detalle || "por especificar"}`
-    : data.mascotas;
+  const mascotasDisplay = data.mascotas === "Si — especificar" ? `Si — ${data.mascotas_detalle || "por especificar"}` : data.mascotas;
   c3("Uso declarado", data.uso_declarado, "Descripcion", data.descripcion_uso, "Num. de ocupantes", data.num_ocupantes);
   c3("Mascotas", mascotasDisplay, "Personal de servicio", data.personal_servicio, "Modalidad", data.modalidad_servicio || "—");
 
-  // IV. REFERENCIAS
   if (data.ref1_nombre || data.ref2_nombre) {
     st("IV. REFERENCIAS PERSONALES");
     if (data.ref1_nombre) c3("Referencia 1 — Nombre", data.ref1_nombre, "Telefono", data.ref1_telefono, "Relacion", data.ref1_relacion);
     if (data.ref2_nombre) c3("Referencia 2 — Nombre", data.ref2_nombre, "Telefono", data.ref2_telefono, "Relacion", data.ref2_relacion);
   }
 
-  // V. ANTECEDENTES
   st("V. ANTECEDENTES LEGALES — BUROMEXICO");
   chk(18);
   const sinA = data.resultado_legal === "Sin antecedentes";
@@ -193,12 +179,10 @@ async function generarPDF(data) {
   y += 18;
   if (data.observaciones_legales) ctxt("Observaciones de antecedentes", data.observaciones_legales);
 
-  // VI. REVISION
   st("VI. REFERENCIAS E HISTORIAL / REVISION LEGAL");
   ctxt("Historial de referencias", data.referencias);
   ctxt("Revision legal", data.revision_legal);
 
-  // VII. CONCLUSION
   st("VII. CONCLUSION Y RECOMENDACION");
   ctxt("Conclusion", data.conclusion);
   if (data.observaciones_analista) {
@@ -213,7 +197,6 @@ async function generarPDF(data) {
     doc.text(ol, M + 6, y + 12); y += oh + 6;
   }
 
-  // VIII. DICTAMEN
   chk(30); st("VIII. DICTAMEN FINAL");
   const [dbg, dc, dtxt] = dict === "APROBADO" ? [VBG, VC, "APROBADO"]
     : dict === "APROBADO CON CONDICIONES" ? [ABG, AC, "APROBADO CON CONDICIONES"]
@@ -228,7 +211,6 @@ async function generarPDF(data) {
     doc.text(`Condiciones: ${data.condiciones}`, W / 2, y + 5, { align: "center" }); y += 10;
   }
 
-  // IX. DESLINDE
   chk(20);
   doc.setDrawColor(...BRD); doc.setLineWidth(0.3); doc.line(M, y, W - M, y); y += 6;
   doc.setFillColor(...ROJO); doc.rect(M, y, 3, 5, "F");
@@ -238,7 +220,6 @@ async function generarPDF(data) {
   const dl = doc.splitTextToSize("El presente reporte y dictamen se emite con base en la informacion proporcionada por el solicitante y bajo un estandar de diligencia razonable, sin constituir garantia de pago ni sustituir resoluciones judiciales.", AW);
   doc.text(dl, M, y); y += dl.length * 4 + 6;
 
-  // X. FIRMA
   chk(35);
   doc.setFillColor(...ROJO); doc.rect(M, y, 3, 5, "F");
   doc.setTextColor(...ROJO); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
@@ -254,15 +235,11 @@ async function generarPDF(data) {
     doc.setTextColor(isEmp ? ROJO[0] : OSC[0], isEmp ? ROJO[1] : OSC[1], isEmp ? ROJO[2] : OSC[2]);
     doc.setFont("helvetica", "bold"); doc.setFontSize(isEmp ? 9 : 8.5);
     doc.text(v || "—", x, y + 6);
-    if (sub) {
-      doc.setTextColor(...GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
-      doc.text(sub, x, y + 11);
-    }
+    if (sub) { doc.setTextColor(...GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.text(sub, x, y + 11); }
   });
   doc.setDrawColor(...OSC); doc.setLineWidth(0.5);
   doc.line(M, y + 22, M + t3 - 6, y + 22); y += 32;
 
-  // FOOTER en todas las paginas
   const np = doc.internal.getNumberOfPages();
   for (let i = 1; i <= np; i++) {
     doc.setPage(i);
@@ -272,13 +249,14 @@ async function generarPDF(data) {
     doc.text("EMPORIO INMOBILIARIO  ·  Reserva Territorial Atlixcayotl, San Andres Cholula, Puebla  ·  222 257 3237  ·  ventas@emporioinmobiliario.mx", W / 2, ph - 3.5, { align: "center" });
     if (np > 1) doc.text(`${i}/${np}`, W - M, ph - 3.5, { align: "right" });
   }
-
   return doc;
 }
 
 export default function Dictamen() {
+  const router = useRouter();
   const [generando, setGenerando] = useState(false);
   const [guardado, setGuardado] = useState(false);
+  const [cargando, setCargando] = useState(false);
   const [form, setForm] = useState({
     folio: "", fecha: new Date().toLocaleDateString("es-MX"),
     nombre_solicitante: "", tipo_solicitante: "PERSONA FÍSICA",
@@ -304,6 +282,73 @@ export default function Dictamen() {
     analista: "LIC. ZAYETZY MONTES LUNA",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Pre-llenar desde solicitud si viene el query param
+  useEffect(() => {
+    const { solicitud_id } = router.query;
+    if (!solicitud_id) return;
+    setCargando(true);
+    supabase.from("solicitudes_inquilino").select("*").eq("id", solicitud_id).single()
+      .then(({ data: s }) => {
+        if (!s) { setCargando(false); return; }
+        const fmt = (n) => n ? `$${Number(n).toLocaleString("es-MX", { minimumFractionDigits: 2 })}` : "";
+        const fmtFecha = (d) => {
+          if (!d) return "";
+          if (d.includes("/")) return d;
+          return new Date(d + "T12:00:00").toLocaleDateString("es-MX");
+        };
+        // Calcular relacion ingreso/renta
+        const ingresos = Number(s.ingresos_mensuales) || 0;
+        const renta = Number(s.monto_renta_solicitada) || 0;
+        let relacionIngresoRenta = "Adecuada";
+        if (ingresos && renta) {
+          const ratio = ingresos / renta;
+          if (ratio >= 3) relacionIngresoRenta = "Adecuada — ingresos 3x el monto";
+          else if (ratio >= 2.5) relacionIngresoRenta = "Adecuada — ingresos 2.5x el monto";
+          else if (ratio >= 2) relacionIngresoRenta = "Adecuada — ingresos 2x el monto";
+          else if (ratio >= 1.5) relacionIngresoRenta = "Ajustada";
+          else relacionIngresoRenta = "Insuficiente";
+        }
+        // Mascotas
+        let mascotas = "No";
+        if (s.tiene_mascotas) mascotas = s.detalle_mascotas ? "Sí — especificar" : "Sí — perro";
+        // Personal servicio
+        let personalServicio = "No";
+        if (s.personal_servicio) personalServicio = s.personal_servicio_detalle?.includes("planta") ? "Sí — de planta" : "Sí — entrada y salida";
+
+        setForm(f => ({
+          ...f,
+          folio: solicitud_id.slice(0, 8).toUpperCase(),
+          nombre_solicitante: s.nombre_completo || s.razon_social || "",
+          tipo_solicitante: s.tipo_solicitante === "Persona moral" ? "PERSONA MORAL" : "PERSONA FÍSICA",
+          num_identificacion: s.clave_elector || s.rfc || "",
+          telefono_inquilino: s.telefono || s.telefono_representante || "",
+          correo_inquilino: s.correo || s.email_representante || "",
+          domicilio_anterior: s.domicilio_actual || "",
+          direccion_inmueble: s.inmueble_interes || "",
+          monto_renta: fmt(s.monto_renta_solicitada),
+          fecha_inicio: fmtFecha(s.fecha_inicio_deseada),
+          actividad_principal: s.ocupacion_arrendatario || s.giro_empresa_labora || "",
+          empresa: s.empresa_labora || s.razon_social || "",
+          tel_empresa: s.telefono_trabajo || "",
+          ingreso_mensual: fmt(s.ingresos_mensuales || s.ingresos_empresa),
+          relacion_ingreso_renta: relacionIngresoRenta,
+          uso_declarado: s.uso_inmueble?.toUpperCase() || "HABITACIONAL",
+          descripcion_uso: s.descripcion_uso || "",
+          num_ocupantes: s.num_habitantes ? String(s.num_habitantes) + " personas" : "",
+          mascotas,
+          mascotas_detalle: s.detalle_mascotas || "",
+          personal_servicio: personalServicio,
+          ref1_nombre: s.ref_per1_nombre || s.ref_fam1_nombre || "",
+          ref1_telefono: s.ref_per1_telefono || s.ref_fam1_telefono || "",
+          ref1_relacion: s.ref_per1_relacion || s.ref_fam1_parentesco || "",
+          ref2_nombre: s.ref_per2_nombre || s.ref_fam2_nombre || "",
+          ref2_telefono: s.ref_per2_telefono || s.ref_fam2_telefono || "",
+          ref2_relacion: s.ref_per2_relacion || s.ref_fam2_parentesco || "",
+        }));
+        setCargando(false);
+      });
+  }, [router.query]);
 
   const handleGenerar = async () => {
     if (!form.folio || !form.nombre_solicitante) { alert("Completa el Folio y Nombre del solicitante."); return; }
@@ -335,9 +380,20 @@ export default function Dictamen() {
         <a href="/" style={{ color: "#c8a96e", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>← Panel admin</a>
       </div>
 
+      {cargando && (
+        <div style={{ background: "#c8a96e", color: "#000", padding: "12px 32px", textAlign: "center", fontWeight: 700, fontSize: 14 }}>
+          ⏳ Cargando datos de la solicitud...
+        </div>
+      )}
+
+      {router.query.solicitud_id && !cargando && (
+        <div style={{ background: "#dcfce7", color: "#166534", padding: "12px 32px", textAlign: "center", fontWeight: 700, fontSize: 14 }}>
+          ✅ Datos pre-llenados desde la solicitud — revisa y completa los campos necesarios
+        </div>
+      )}
+
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "32px 20px" }}>
 
-        {/* Dictamen */}
         <div style={{ background: "#fff", borderRadius: 20, padding: "28px 32px", marginBottom: 20, border: "1px solid #f0f0f0", boxShadow: "0 2px 16px rgba(0,0,0,0.04)" }}>
           <p style={{ margin: "0 0 20px", fontSize: 11, fontWeight: 800, color: "#C8102E", letterSpacing: "0.15em", textTransform: "uppercase" }}>Dictamen Final</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
@@ -368,7 +424,6 @@ export default function Dictamen() {
           )}
         </div>
 
-        {/* Formulario */}
         <div style={{ background: "#fff", borderRadius: 20, padding: "28px 32px", border: "1px solid #f0f0f0", boxShadow: "0 2px 16px rgba(0,0,0,0.04)" }}>
 
           <SecTitle>I. Datos Generales</SecTitle>
@@ -393,7 +448,7 @@ export default function Dictamen() {
           </div>
           <Campo label="Direccion del inmueble a rentar" required><input value={form.direccion_inmueble} onChange={e => set("direccion_inmueble", e.target.value)} placeholder="Direccion completa" style={inp} /></Campo>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <Campo label="Monto de renta mensual" required><input value={form.monto_renta} onChange={e => set("monto_renta", e.target.value)} placeholder="$16,000.00 (DIECISEIS MIL 00/100 M.N)" style={inp} /></Campo>
+            <Campo label="Monto de renta mensual" required><input value={form.monto_renta} onChange={e => set("monto_renta", e.target.value)} placeholder="$16,000.00" style={inp} /></Campo>
             <Campo label="Fecha de inicio del contrato"><input value={form.fecha_inicio} onChange={e => set("fecha_inicio", e.target.value)} placeholder="01/05/2026" style={inp} /></Campo>
           </div>
 
@@ -402,46 +457,31 @@ export default function Dictamen() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
             <Campo label="Fuente de ingresos">
               <select value={form.fuente_ingresos} onChange={e => set("fuente_ingresos", e.target.value)} style={sel}>
-                <option>NÓMINA</option>
-                <option>HONORARIOS</option>
-                <option>NEGOCIO PROPIO</option>
-                <option>PENSIÓN</option>
-                <option>INVERSIONES</option>
-                <option>OTRA</option>
+                <option>NÓMINA</option><option>HONORARIOS</option><option>NEGOCIO PROPIO</option>
+                <option>PENSIÓN</option><option>INVERSIONES</option><option>OTRA</option>
               </select>
             </Campo>
             <Campo label="Empresa / Empleador"><input value={form.empresa} onChange={e => set("empresa", e.target.value)} placeholder="Nombre de la empresa" style={inp} /></Campo>
             <Campo label="Telefono RRHH"><input value={form.tel_empresa} onChange={e => set("tel_empresa", e.target.value)} placeholder="222 000 0000" style={inp} /></Campo>
           </div>
-          {/* Campo adicional si fuente es OTRA */}
           {form.fuente_ingresos === "OTRA" && (
             <Campo label="Especifica la fuente de ingresos">
-              <input
-                value={form.fuente_ingresos_otro}
-                onChange={e => set("fuente_ingresos_otro", e.target.value)}
-                placeholder="Describe la fuente de ingresos..."
-                style={{ ...inp, borderColor: "#C8102E" }}
-              />
+              <input value={form.fuente_ingresos_otro} onChange={e => set("fuente_ingresos_otro", e.target.value)} placeholder="Describe la fuente de ingresos..." style={{ ...inp, borderColor: "#C8102E" }} />
             </Campo>
           )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
             <Campo label="Ingreso mensual"><input value={form.ingreso_mensual} onChange={e => set("ingreso_mensual", e.target.value)} placeholder="$36,000.00" style={inp} /></Campo>
             <Campo label="Relacion ingreso-renta">
               <select value={form.relacion_ingreso_renta} onChange={e => set("relacion_ingreso_renta", e.target.value)} style={sel}>
-                <option>Adecuada</option>
-                <option>Adecuada — ingresos 2x el monto</option>
-                <option>Adecuada — ingresos 2.5x el monto</option>
-                <option>Adecuada — ingresos 3x el monto</option>
-                <option>Ajustada</option>
-                <option>Insuficiente</option>
+                <option>Adecuada</option><option>Adecuada — ingresos 2x el monto</option>
+                <option>Adecuada — ingresos 2.5x el monto</option><option>Adecuada — ingresos 3x el monto</option>
+                <option>Ajustada</option><option>Insuficiente</option>
               </select>
             </Campo>
             <Campo label="Comprobante de ingresos">
               <select value={form.comprobante_ingresos} onChange={e => set("comprobante_ingresos", e.target.value)} style={sel}>
-                <option>Sí — 3 recibos de nómina presentados</option>
-                <option>Sí — estados de cuenta</option>
-                <option>Sí — declaracion fiscal</option>
-                <option>Parcial — documentacion incompleta</option>
+                <option>Sí — 3 recibos de nómina presentados</option><option>Sí — estados de cuenta</option>
+                <option>Sí — declaracion fiscal</option><option>Parcial — documentacion incompleta</option>
                 <option>No presentado</option>
               </select>
             </Campo>
@@ -451,9 +491,7 @@ export default function Dictamen() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <Campo label="Uso declarado">
               <select value={form.uso_declarado} onChange={e => set("uso_declarado", e.target.value)} style={sel}>
-                <option>HABITACIONAL</option>
-                <option>COMERCIAL</option>
-                <option>MIXTO</option>
+                <option>HABITACIONAL</option><option>COMERCIAL</option><option>MIXTO</option>
               </select>
             </Campo>
             <Campo label="Descripcion del uso"><input value={form.descripcion_uso} onChange={e => set("descripcion_uso", e.target.value)} placeholder="Ej. Casa familiar..." style={inp} /></Campo>
@@ -462,29 +500,18 @@ export default function Dictamen() {
             <Campo label="Numero de ocupantes"><input value={form.num_ocupantes} onChange={e => set("num_ocupantes", e.target.value)} placeholder="Ej. 2 personas" style={inp} /></Campo>
             <Campo label="Mascotas">
               <select value={form.mascotas} onChange={e => set("mascotas", e.target.value)} style={sel}>
-                <option>No</option>
-                <option>Sí — perro</option>
-                <option>Sí — gato</option>
-                <option>Sí — especificar</option>
+                <option>No</option><option>Sí — perro</option><option>Sí — gato</option><option>Sí — especificar</option>
               </select>
             </Campo>
             <Campo label="Personal de servicio">
               <select value={form.personal_servicio} onChange={e => set("personal_servicio", e.target.value)} style={sel}>
-                <option>No</option>
-                <option>Sí — entrada y salida</option>
-                <option>Sí — de planta</option>
+                <option>No</option><option>Sí — entrada y salida</option><option>Sí — de planta</option>
               </select>
             </Campo>
           </div>
-          {/* Campo adicional si mascotas es especificar */}
           {form.mascotas === "Sí — especificar" && (
             <Campo label="Especifica las mascotas">
-              <input
-                value={form.mascotas_detalle}
-                onChange={e => set("mascotas_detalle", e.target.value)}
-                placeholder="Ej. 1 perro mediano, 2 gatos..."
-                style={{ ...inp, borderColor: "#C8102E" }}
-              />
+              <input value={form.mascotas_detalle} onChange={e => set("mascotas_detalle", e.target.value)} placeholder="Ej. 1 perro mediano, 2 gatos..." style={{ ...inp, borderColor: "#C8102E" }} />
             </Campo>
           )}
 
@@ -535,7 +562,6 @@ export default function Dictamen() {
             </select>
           </Campo>
 
-          {/* Boton */}
           <div style={{ marginTop: 32, paddingTop: 24, borderTop: "2px solid #f3f4f6" }}>
             <button onClick={handleGenerar} disabled={generando} style={{
               width: "100%",
