@@ -102,6 +102,7 @@ export default function RegistroPropietario() {
 
   // Un solo ref apunta al card — todos los inputs viven adentro
   const formRef = useRef(null)
+  const savedValues = useRef({}) // persiste valores entre pasos
   const fileRef1 = useRef()
   const fileRef2 = useRef()
   const fileRef3 = useRef()
@@ -109,12 +110,20 @@ export default function RegistroPropietario() {
 
   // Leer todos los inputs por name al momento de validar/guardar
   const getValues = () => {
-    const data = {}
-    if (!formRef.current) return data
-    formRef.current.querySelectorAll('input[name], textarea[name]').forEach(el => {
-      data[el.name] = el.value
-    })
+    const data = { ...savedValues.current }
+    if (formRef.current) {
+      formRef.current.querySelectorAll('input[name], textarea[name]').forEach(el => {
+        data[el.name] = el.value
+      })
+    }
     return data
+  }
+
+  const saveCurrentStep = () => {
+    if (!formRef.current) return
+    formRef.current.querySelectorAll('input[name], textarea[name]').forEach(el => {
+      savedValues.current[el.name] = el.value
+    })
   }
 
   const handleFile = (field, file) => {
@@ -156,6 +165,7 @@ export default function RegistroPropietario() {
     if (step === 1 && !validateStep1()) return
     if (step === 2 && !validateStep2()) return
     if (step === 3) { handleSubmit(); return }
+    saveCurrentStep()
     setStep(s => s + 1)
   }
 
