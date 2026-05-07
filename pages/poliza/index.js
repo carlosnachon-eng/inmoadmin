@@ -136,7 +136,7 @@ export default function PolizaPanel() {
   useEffect(() => {
     const verificarAcceso = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
+      if (!session) { router.replace('/'); return }
       const email = session.user.email
       if (CORREOS_PERMITIDOS.includes(email)) {
         setAcceso(true)
