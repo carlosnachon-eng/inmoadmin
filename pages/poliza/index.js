@@ -1164,8 +1164,14 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
           </>
         )}
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24, flexWrap: 'wrap' }}>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cancelar</button>
+          <button
+            onClick={() => { onClose(); window.open('/poliza/solicitud/' + sol.id, '_blank') }}
+            style={{ ...st.btn, background: '#1A2A3A', border: '1px solid #1A3A5C', color: '#70A8E0' }}
+          >
+            📋 Ver ficha completa
+          </button>
           <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGreen }}>
             {saving ? 'Guardando...' : 'Guardar notas'}
           </button>
