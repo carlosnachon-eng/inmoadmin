@@ -517,7 +517,7 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         propietario_id: propId || null,
         inquilino_id: solId || null,
         renta_mensual: r,
-        cuota_mantenimiento: mant,
+        cuota_mantenimiento: parseFloat(merged.cuota_mantenimiento) || 0,
         renta_mensual_letra: numeroALetra(r),
         deposito_garantia: dep,
         deposito_garantia_letra: numeroALetra(dep),
