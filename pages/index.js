@@ -5,7 +5,8 @@ import { generarPolizaJuridica } from '../../lib/generarPoliza'
 import { generarReciboPoliza } from '../../lib/generarRecibo'
 import { generarContratoPromocion } from '../../lib/generarContratoPromocion'
 import { generarContratoCompraventa } from '../../lib/generarContratoCompraventa'
-import { generarContratoAdministracion } from '../../lib/generarContratoAdministracion'import { useRouter } from 'next/router'
+import { generarContratoAdministracion } from '../../lib/generarContratoAdministracion'
+  import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 
 // ─── Colores ───────────────────────────────────────────────
