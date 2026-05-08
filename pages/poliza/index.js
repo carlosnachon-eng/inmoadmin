@@ -7,7 +7,7 @@ import { generarContratoPromocion } from '../../lib/generarContratoPromocion'
 import { generarContratoAdministracion } from '../../lib/generarContratoAdministracion'
 import { generarContratoCompraventa } from '../../lib/generarContratoCompraventa'
 import { useRouter } from 'next/router'
-import { supabase } from '../../lib/supabase'
+  import { supabase } from '../../lib/supabase'
 
 // ─── Colores ───────────────────────────────────────────────
 const C = {
