@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { generarContratoArrendamiento } from '../../lib/generarContrato'
+import { generarContratoArrendamiento } from '../lib/generarContrato'
 import { generarPagares } from '../lib/generarPagares'
 import { generarPolizaJuridica } from '../lib/generarPoliza'
 import { generarReciboPoliza } from '../lib/generarRecibo'
