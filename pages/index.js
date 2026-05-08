@@ -820,10 +820,10 @@ function ModalVendedorCV({ vendedor: v, onClose, onSaved }) {
             style={{ ...st.btn, background: '#1A1A3A', color: '#A070E0', border: '1px solid #3A2A5C', opacity: generando ? 0.6 : 1 }}>
             {generando === 'promocion' ? 'Generando...' : '📄 Contrato de promoción'}
           </button>
-          <button onClick={handleGenerarContratoCV} disabled={!!generando}
-            style={{ ...st.btn, background: '#1A2A1A', color: C.greenText, border: `1px solid ${C.green}`, opacity: generando ? 0.6 : 1 }}>
-            {generando === 'cv' ? 'Generando...' : '📄 Contrato prestación servicios'}
-          </button>
+          <button onClick={handleGenerarPromesaCV} disabled={!!generando}
+  style={{ ...st.btn, background: '#1A2A1A', color: C.greenText, border: `1px solid ${C.green}`, opacity: generando ? 0.6 : 1 }}>
+  {generando === 'promesacv' ? 'Generando...' : '🖹 Promesa de compraventa'}
+</button>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
