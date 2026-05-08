@@ -4,10 +4,10 @@ import { generarPagares } from '../../lib/generarPagares'
 import { generarPolizaJuridica } from '../../lib/generarPoliza'
 import { generarReciboPoliza } from '../../lib/generarRecibo'
 import { generarContratoPromocion } from '../../lib/generarContratoPromocion'
-import { generarContratoAdministracion } from '../../lib/generarContratoAdministracion'
 import { generarContratoCompraventa } from '../../lib/generarContratoCompraventa'
+import { generarContratoAdministracion } from '../../lib/generarContratoAdministracion'
 import { useRouter } from 'next/router'
-  import { supabase } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
 
 // ─── Colores ───────────────────────────────────────────────
 const C = {
@@ -136,6 +136,8 @@ export default function PolizaPanel() {
   const [saveMsg, setSaveMsg] = useState('')
   const [acceso, setAcceso] = useState(null) // null=verificando, true=ok, false=denegado
   const [caja, setCaja] = useState([])
+  const [compradores, setCompradores] = useState([])
+  const [subTabCV, setSubTabCV] = useState('vendedores') // vendedores | compradores | expedientes_cv
 
   useEffect(() => {
     const verificarAcceso = async () => {
@@ -154,16 +156,18 @@ export default function PolizaPanel() {
 
   const loadAll = async () => {
     setLoading(true)
-    const [{ data: exp }, { data: prop }, { data: sol }, { data: caj }] = await Promise.all([
+    const [{ data: exp }, { data: prop }, { data: sol }, { data: caj }, { data: comp }] = await Promise.all([
       supabase.from('poliza_expedientes').select('*').order('created_at', { ascending: false }),
       supabase.from('propietarios_inmuebles').select('*').order('created_at', { ascending: false }),
       supabase.from('solicitudes_inquilino').select('*').order('created_at', { ascending: false }),
       supabase.from('poliza_caja').select('*').order('fecha', { ascending: false }),
+      supabase.from('compradores').select('*').order('created_at', { ascending: false }),
     ])
     setExpedientes(exp || [])
     setPropietarios(prop || [])
     setSolicitudes(sol || [])
     setCaja(caj || [])
+    setCompradores(comp || [])
     setLoading(false)
   }
 
@@ -173,6 +177,7 @@ export default function PolizaPanel() {
     { id: 'propietarios', label: `Propietarios (${propietarios.length})` },
     { id: 'solicitudes', label: `Solicitudes (${solicitudes.length})` },
     { id: 'caja', label: '💰 Caja Póliza' },
+    { id: 'compraventa', label: '🔑 Compraventa' },
   ]
 
   return (
@@ -209,11 +214,28 @@ export default function PolizaPanel() {
             {tab === 'propietarios' && <TabPropietarios propietarios={propietarios} onSelect={p => { setSelected(p); setModal('propietario') }} />}
             {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected({ _solicitud: sol }); setModal('nuevo') }} />}
             {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} />}
+            {tab === 'compraventa' && (
+              <TabCompraventa
+                vendedores={propietarios.filter(p => p.tipo_operacion === 'venta')}
+                compradores={compradores}
+                subTab={subTabCV}
+                onSubTab={setSubTabCV}
+                onSelectVendedor={p => { setSelected(p); setModal('vendedor_cv') }}
+                onSelectComprador={comp => { setSelected(comp); setModal('comprador_cv') }}
+                onReload={loadAll}
+              />
+            )}
           </>
         )}
       </main>
 
       {/* Modales */}
+      {modal === 'vendedor_cv' && selected && (
+        <ModalVendedorCV vendedor={selected} onClose={() => { setModal(null); setSelected(null) }} onSaved={() => { setModal(null); setSelected(null); loadAll() }} />
+      )}
+      {modal === 'comprador_cv' && selected && (
+        <ModalCompradorCV comprador={selected} onClose={() => { setModal(null); setSelected(null) }} onSaved={() => { setModal(null); setSelected(null); loadAll() }} />
+      )}
       {modal === 'nuevo' && (
         <ModalNuevoExpediente
           propietarios={propietarios}
@@ -567,6 +589,330 @@ function TabCajaPoliza({ movimientos, onReload }) {
     </div>
   )
 }
+
+
+// ═══════════════════════════════════════════════════════════
+// TAB COMPRAVENTA
+// ═══════════════════════════════════════════════════════════
+function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVendedor, onSelectComprador, onReload }) {
+  const subTabs = [
+    { id: 'vendedores', label: `🏠 Vendedores (${vendedores.length})` },
+    { id: 'compradores', label: `👤 Compradores (${compradores.length})` },
+  ]
+
+  return (
+    <div>
+      <p style={st.sectionTitle}>Compraventa</p>
+      <p style={st.sectionSub}>Vendedores, compradores y expedientes de compraventa</p>
+
+      {/* Sub-tabs */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: `1px solid ${C.border}`, paddingBottom: 0 }}>
+        {subTabs.map(t => (
+          <button key={t.id} onClick={() => onSubTab(t.id)}
+            style={{ padding: '10px 18px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
+              background: subTab === t.id ? C.gold : 'transparent',
+              color: subTab === t.id ? '#000' : C.muted,
+              borderBottom: subTab === t.id ? `2px solid ${C.gold}` : '2px solid transparent',
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Vendedores */}
+      {subTab === 'vendedores' && (
+        vendedores.length === 0 ? (
+          <div style={st.emptyState}>
+            <p style={{ fontSize: 40, margin: '0 0 12px' }}>🏠</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin vendedores registrados</p>
+            <p>Comparte el link con los propietarios que quieran vender</p>
+            <div style={{ marginTop: 16, background: '#1A1A1A', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
+              <code style={{ color: C.goldText, fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-vendedor</code>
+            </div>
+          </div>
+        ) : (
+          <div style={st.card}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={st.tableHead}>
+                <tr>
+                  <th style={st.th}>Propietario</th>
+                  <th style={st.th}>Inmueble</th>
+                  <th style={st.th}>Precio</th>
+                  <th style={st.th}>Gravamen</th>
+                  <th style={st.th}>Copropietarios</th>
+                  <th style={st.th}>Fecha</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vendedores.map(v => (
+                  <tr key={v.id} onClick={() => onSelectVendedor(v)}
+                    style={st.trHover}
+                    onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
+                    onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
+                    <td style={st.td}>
+                      <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{v.nombre_propietario}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{v.telefono_propietario}</p>
+                      {v.tipo_persona_propietario === 'moral' && (
+                        <span style={{ fontSize: 10, background: '#1A2A3A', color: C.blueText, padding: '2px 6px', borderRadius: 4 }}>Persona moral</span>
+                      )}
+                    </td>
+                    <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{v.direccion_inmueble}</span></td>
+                    <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(v.precio_venta)}</span></td>
+                    <td style={st.td}>
+                      <Badge status={v.libre_gravamen ? 'activo' : 'rechazado'} label={v.libre_gravamen ? 'Libre' : 'Con gravamen'} />
+                    </td>
+                    <td style={st.td}>
+                      {v.tipo_copropiedad && v.tipo_copropiedad !== 'no'
+                        ? <Badge status="pendiente" label={v.tipo_copropiedad === 'conyuge' ? 'Cónyuge' : 'Copropietario'} />
+                        : <span style={{ color: C.faint, fontSize: 11 }}>Solo propietario</span>}
+                    </td>
+                    <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(v.created_at?.split('T')[0])}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+
+      {/* Compradores */}
+      {subTab === 'compradores' && (
+        compradores.length === 0 ? (
+          <div style={st.emptyState}>
+            <p style={{ fontSize: 40, margin: '0 0 12px' }}>👤</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin compradores registrados</p>
+            <p>Comparte el link con los compradores interesados</p>
+            <div style={{ marginTop: 16, background: '#1A1A1A', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
+              <code style={{ color: C.goldText, fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-comprador</code>
+            </div>
+          </div>
+        ) : (
+          <div style={st.card}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={st.tableHead}>
+                <tr>
+                  <th style={st.th}>Comprador</th>
+                  <th style={st.th}>Inmueble de interés</th>
+                  <th style={st.th}>Precio pactado</th>
+                  <th style={st.th}>Forma de pago</th>
+                  <th style={st.th}>Cónyuge</th>
+                  <th style={st.th}>Fecha</th>
+                </tr>
+              </thead>
+              <tbody>
+                {compradores.map(comp => (
+                  <tr key={comp.id} onClick={() => onSelectComprador(comp)}
+                    style={st.trHover}
+                    onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
+                    onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
+                    <td style={st.td}>
+                      <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{comp.nombre_comprador}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{comp.celular_comprador}</p>
+                    </td>
+                    <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{comp.inmueble_interes || '—'}</span></td>
+                    <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(comp.precio_pactado)}</span></td>
+                    <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{comp.forma_pago_compra || '—'}</span></td>
+                    <td style={st.td}>
+                      {comp.tiene_conyuge
+                        ? <Badge status="pendiente" label="Con cónyuge" />
+                        : <span style={{ color: C.faint, fontSize: 11 }}>No</span>}
+                    </td>
+                    <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(comp.created_at?.split('T')[0])}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODAL VENDEDOR CV
+// ═══════════════════════════════════════════════════════════
+function ModalVendedorCV({ vendedor: v, onClose, onSaved }) {
+  const [generando, setGenerando] = useState(false)
+
+  const handleGenerarPromocion = async () => {
+    setGenerando(true)
+    try {
+      await generarContratoPromocion({
+        nombre_arrendador: v.nombre_propietario,
+        domicilio_arrendador: v.domicilio_propietario,
+        telefono_arrendador: v.telefono_propietario,
+        direccion_inmueble: v.direccion_inmueble,
+        renta_mensual: v.precio_venta,
+      })
+    } catch(e) { alert('Error: ' + e.message) }
+    setGenerando(false)
+  }
+
+  const handleGenerarContratoCV = async () => {
+    setGenerando(true)
+    try {
+      await generarContratoCompraventa({
+        nombre_propietario: v.nombre_propietario,
+        domicilio_propietario: v.domicilio_propietario,
+        telefono_propietario: v.telefono_propietario,
+        direccion_inmueble: v.direccion_inmueble,
+        precio_venta: v.precio_venta,
+      })
+    } catch(e) { alert('Error: ' + e.message) }
+    setGenerando(false)
+  }
+
+  return (
+    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={st.modalCard}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{v.nombre_propietario}</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>{v.tipo_persona_propietario === 'moral' ? `Persona moral — ${v.razon_social_propietario}` : 'Persona física'}</p>
+          </div>
+          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
+        </div>
+
+        <div style={st.grid2}>
+          <InfoRow label="Teléfono" value={v.telefono_propietario} />
+          <InfoRow label="Correo" value={v.correo_propietario} />
+          <InfoRow label="RFC" value={v.rfc_propietario} />
+          <InfoRow label="Precio de venta" value={fmt(v.precio_venta)} />
+        </div>
+        <InfoRow label="Dirección del inmueble" value={v.direccion_inmueble} />
+        <InfoRow label="Domicilio del propietario" value={v.domicilio_propietario} />
+        <InfoRow label="Descripción" value={v.descripcion_inmueble} />
+        <div style={st.grid2}>
+          <InfoRow label="Gravamen" value={v.libre_gravamen ? 'Libre de gravamen' : `Con gravamen — ${v.institucion_gravamen || ''}`} />
+          <InfoRow label="Copropietarios" value={v.tipo_copropiedad === 'no' || !v.tipo_copropiedad ? 'Solo propietario' : v.tipo_copropiedad === 'conyuge' ? `Cónyuge: ${v.copropietario_1_nombre}` : `Copropietario: ${v.copropietario_1_nombre}`} />
+        </div>
+
+        {/* Copropietarios detalle */}
+        {v.tipo_copropiedad && v.tipo_copropiedad !== 'no' && (
+          <>
+            <div style={{ ...st.divider, margin: '16px 0' }} />
+            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>
+              {v.tipo_copropiedad === 'conyuge' ? 'Cónyuge' : 'Copropietarios'}
+            </p>
+            {[1, 2, 3].map(i => v[`copropietario_${i}_nombre`] ? (
+              <div key={i} style={{ background: '#1A1A1A', borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
+                <p style={{ margin: 0, fontWeight: 600, color: C.white, fontSize: 13 }}>{v[`copropietario_${i}_nombre`]}</p>
+                <p style={{ margin: '4px 0 0', fontSize: 11, color: C.muted }}>{v[`copropietario_${i}_telefono`]} · {v[`copropietario_${i}_correo`]} · RFC: {v[`copropietario_${i}_rfc`]}</p>
+              </div>
+            ) : null)}
+          </>
+        )}
+
+        <div style={{ ...st.divider, margin: '16px 0' }} />
+        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 12px' }}>Documentos</p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+          {v.doc_identificacion_b64 && <DocChipB64 label="Identificación" data={v.doc_identificacion_b64} />}
+          {v.doc_comprobante_domicilio_b64 && <DocChipB64 label="Comprobante domicilio" data={v.doc_comprobante_domicilio_b64} />}
+          {v.doc_predial_b64 && <DocChipB64 label="Predial" data={v.doc_predial_b64} />}
+          {v.doc_escritura_b64 && <DocChipB64 label="Escritura" data={v.doc_escritura_b64} />}
+        </div>
+
+        <div style={{ ...st.divider, margin: '16px 0' }} />
+        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 12px' }}>Generar documentos</p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={handleGenerarPromocion} disabled={!!generando}
+            style={{ ...st.btn, background: '#1A1A3A', color: '#A070E0', border: '1px solid #3A2A5C', opacity: generando ? 0.6 : 1 }}>
+            {generando === 'promocion' ? 'Generando...' : '📄 Contrato de promoción'}
+          </button>
+          <button onClick={handleGenerarContratoCV} disabled={!!generando}
+            style={{ ...st.btn, background: '#1A2A1A', color: C.greenText, border: `1px solid ${C.green}`, opacity: generando ? 0.6 : 1 }}>
+            {generando === 'cv' ? 'Generando...' : '📄 Contrato prestación servicios'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
+          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODAL COMPRADOR CV
+// ═══════════════════════════════════════════════════════════
+function ModalCompradorCV({ comprador: comp, onClose, onSaved }) {
+  return (
+    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={st.modalCard}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{comp.nombre_comprador}</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>{comp.ocupacion_comprador} — {comp.empresa_comprador}</p>
+          </div>
+          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
+        </div>
+
+        <div style={st.grid2}>
+          <InfoRow label="Celular" value={comp.celular_comprador} />
+          <InfoRow label="Teléfono fijo" value={comp.telefono_fijo_comprador} />
+          <InfoRow label="Correo" value={comp.correo_comprador} />
+          <InfoRow label="RFC" value={comp.rfc_comprador} />
+          <InfoRow label="CURP" value={comp.curp_comprador} />
+          <InfoRow label="NSS" value={comp.nss_comprador} />
+          <InfoRow label="Fecha de nacimiento" value={comp.fecha_nacimiento_comprador} />
+          <InfoRow label="Lugar de nacimiento" value={comp.lugar_nacimiento_comprador} />
+          <InfoRow label="Estado civil" value={comp.estado_civil_comprador} />
+          <InfoRow label="Régimen conyugal" value={comp.regimen_conyugal} />
+          <InfoRow label="Identificación" value={`${comp.tipo_identificacion_comprador} — ${comp.folio_identificacion_comprador}`} />
+          <InfoRow label="Asesor" value={comp.asesor_ventas} />
+        </div>
+
+        <div style={{ ...st.divider, margin: '16px 0' }} />
+        <div style={st.grid2}>
+          <InfoRow label="Inmueble de interés" value={comp.inmueble_interes} />
+          <InfoRow label="Precio pactado" value={fmt(comp.precio_pactado)} />
+          <InfoRow label="Forma de pago" value={comp.forma_pago_compra} />
+          <InfoRow label="Notaría" value={comp.notaria} />
+          <InfoRow label="Fecha de apartado" value={comp.fecha_apartado} />
+        </div>
+
+        {comp.tiene_conyuge && (
+          <>
+            <div style={{ ...st.divider, margin: '16px 0' }} />
+            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Cónyuge</p>
+            <div style={{ background: '#1A1A1A', borderRadius: 8, padding: '10px 14px' }}>
+              <p style={{ margin: 0, fontWeight: 600, color: C.white, fontSize: 13 }}>{comp.conyuge_nombre}</p>
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: C.muted }}>{comp.conyuge_telefono} · {comp.conyuge_correo} · RFC: {comp.conyuge_rfc}</p>
+            </div>
+          </>
+        )}
+
+        {comp.doc_identificacion_b64 && (
+          <>
+            <div style={{ ...st.divider, margin: '16px 0' }} />
+            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Documentos</p>
+            <DocChipB64 label="Identificación" data={comp.doc_identificacion_b64} />
+          </>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
+          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Helper para documentos base64
+const DocChipB64 = ({ label, data }) => {
+  const handleView = () => {
+    const win = window.open()
+    win.document.write(`<iframe src="${data}" width="100%" height="100%" style="border:none"></iframe>`)
+  }
+  return (
+    <button onClick={handleView} style={{ ...st.btn, ...st.btnGhost, fontSize: 12, padding: '6px 12px', marginRight: 6, marginBottom: 6 }}>
+      📄 {label}
+    </button>
+  )
+}
+
 
 function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onSaved }) {
   const [propId, setPropId] = useState(prefill ? '' : '')
