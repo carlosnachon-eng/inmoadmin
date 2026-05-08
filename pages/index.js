@@ -749,21 +749,8 @@ function ModalVendedorCV({ vendedor: v, onClose, onSaved }) {
     } catch(e) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
-  const handleGenerarPromesaCV = async () => {
-  setGenerando('promesacv')
-  try {
-    await generarPromesaCompraventa({
-      nombre_vendedor:    v.nombre_propietario,
-      domicilio_vendedor: v.domicilio_propietario,
-      telefono_vendedor:  v.telefono_propietario,
-      direccion_inmueble: v.direccion_inmueble,
-      precio_total:       v.precio_venta,
-      gravamen:           v.gravamen,
-      tipo_credito:       'contado',
-    })
-  } catch(e) { alert('Error: ' + e.message) }
-  setGenerando(false)
-}
+  
+
 
   const handleGenerarContratoCV = async () => {
     setGenerando(true)
