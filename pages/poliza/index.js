@@ -1033,11 +1033,8 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
         else if (cleanMerged[k] !== null) cleanMerged[k] = num(cleanMerged[k])
       })
 
-      // Eliminar campos que no existen en la tabla
-      const { anticipo, precio, precio_venta: pv, monto_adeudo: ma, ...restMerged } = cleanMerged
-
       const { error } = await supabase.from('poliza_expedientes').update({
-        ...restMerged,
+        ...cleanMerged,
         renta_mensual: r,
         renta_mensual_letra: numeroALetra(r),
         deposito_garantia: dep,
@@ -1227,6 +1224,44 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
     <label style={st.label}>Notas</label>
     <input type="text" defaultValue={form.notas || ''} data-field='notas' placeholder="Observaciones internas..." style={st.input} />
   </div>
+        <div style={{ ...st.divider, margin: '16px 0' }} />
+        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 12px' }}>Tipo de contrato</p>
+        <div style={st.grid3}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={st.label}>Tipo de inmueble</label>
+            <select value={form.tipo_contrato || 'habitacional'} onChange={e => set('tipo_contrato', e.target.value)} style={st.input}>
+              <option value="habitacional">Habitacional</option>
+              <option value="amueblado">Amueblado</option>
+              <option value="comercial">Comercial</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={st.label}>Tipo de arrendatario</label>
+            <select value={form.tipo_arrendatario || 'fisica'} onChange={e => set('tipo_arrendatario', e.target.value)} style={st.input}>
+              <option value="fisica">Persona física</option>
+              <option value="moral">Persona moral</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={st.label}>Giro comercial</label>
+            <input type="text" value={form.giro_comercial || ''} onChange={e => set('giro_comercial', e.target.value)}
+              placeholder="Solo si es comercial" style={st.input} />
+          </div>
+        </div>
+        {form.tipo_arrendatario === 'moral' && (
+          <div style={st.grid2}>
+            <div style={{ marginBottom: 14 }}>
+              <label style={st.label}>Razón social</label>
+              <input type="text" value={form.razon_social_arrendatario || ''} onChange={e => set('razon_social_arrendatario', e.target.value)}
+                placeholder="Nombre de la empresa" style={st.input} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={st.label}>Representante legal</label>
+              <input type="text" value={form.representante_legal_arrendatario || ''} onChange={e => set('representante_legal_arrendatario', e.target.value)}
+                placeholder="Nombre del representante" style={st.input} />
+            </div>
+          </div>
+        )}
 
         {/* Status y cobros de póliza */}
         <div style={{ ...st.divider, margin: '16px 0' }} />
