@@ -5,6 +5,7 @@ import { generarPolizaJuridica } from '../lib/generarPoliza'
 import { generarReciboPoliza } from '../lib/generarRecibo'
 import { generarContratoPromocion } from '../lib/generarContratoPromocion'
 import { generarContratoCompraventa } from '../lib/generarContratoCompraventa'
+import { generarPromesaCompraventa } from '../lib/generarPromesaCompraventa'
 import { generarContratoAdministracion } from '../lib/generarContratoAdministracion'
   import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
@@ -762,7 +763,21 @@ function ModalVendedorCV({ vendedor: v, onClose, onSaved }) {
     } catch(e) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
-
+const handleGenerarPromesaCV = async () => {
+  setGenerando('promesacv')
+  try {
+    await generarPromesaCompraventa({
+      nombre_vendedor:    v.nombre_propietario,
+      domicilio_vendedor: v.domicilio_propietario,
+      telefono_vendedor:  v.telefono_propietario,
+      direccion_inmueble: v.direccion_inmueble,
+      precio_total:       v.precio_venta,
+      gravamen:           v.gravamen,
+      tipo_credito:       'contado',
+    })
+  } catch(e) { alert('Error: ' + e.message) }
+  setGenerando(false)
+}
   return (
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={st.modalCard}>
