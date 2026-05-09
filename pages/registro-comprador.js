@@ -106,6 +106,11 @@ export default function RegistroComprador() {
     const v = getVals()
     const e = {}
     if (!v.nombre_comprador?.trim()) e.nombre_comprador = 'Requerido'
+    <Field label="Domicilio">
+  <textarea name="domicilio_comprador" rows={2} placeholder="Calle, número, colonia, municipio, estado"
+    defaultValue={saved.current.domicilio_comprador || ''}
+    style={{ ...S.input, resize: 'vertical' }} />
+</Field>
     if (!v.celular?.trim()) e.celular = 'Requerido'
     if (!v.correo?.trim()) e.correo = 'Requerido'
     if (!v.rfc?.trim()) e.rfc = 'Requerido'
@@ -137,6 +142,7 @@ export default function RegistroComprador() {
       const v = getVals()
       const payload = {
         nombre_comprador: v.nombre_comprador,
+        domicilio_comprador: v.domicilio_comprador,
         ocupacion_comprador: v.ocupacion,
         empresa_comprador: v.empresa_labora,
         estado_civil_comprador: v.estado_civil,
