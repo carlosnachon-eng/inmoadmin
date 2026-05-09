@@ -881,10 +881,11 @@ const generarPromesaFinal = async (formData) => {
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
         </div>
       </div>
-    </div>
-{showPromesaForm && <ModalPromesaCV vendedor={v} onClose={() => setShowPromesaForm(false)} onGenerar={generarPromesaFinal} />}
+ {showPromesaForm && <ModalPromesaCV vendedor={v} onClose={() => setShowPromesaForm(false)} onGenerar={generarPromesaFinal} />}
+   </div>
+ 
   )
-}
+ }
 
 // ═══════════════════════════════════════════════════════════
 // MODAL COMPRADOR CV
