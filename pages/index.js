@@ -1,1992 +1,1723 @@
-import { useState, useEffect, useRef } from 'react'
-import { generarContratoArrendamiento } from '../lib/generarContrato'
-import { generarPagares } from '../lib/generarPagares'
-import { generarPolizaJuridica } from '../lib/generarPoliza'
-import { generarReciboPoliza } from '../lib/generarRecibo'
-import { generarContratoPromocion } from '../lib/generarContratoPromocion'
-import { generarContratoCompraventa } from '../lib/generarContratoCompraventa'
-import { generarPromesaCompraventa } from '../lib/generarPromesaCompraventa'
-import { generarContratoAdministracion } from '../lib/generarContratoAdministracion'
-  import { useRouter } from 'next/router'
-import { supabase } from '../lib/supabase'
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import { supabase } from "../lib/supabase";
 
-// ─── Colores ───────────────────────────────────────────────
-const C = {
-  bg: '#0F0F0F', card: '#161616', border: '#222', border2: '#2E2E2E',
-  gold: '#C8973A', goldLight: '#C8973A20', goldText: '#E8B86D',
-  green: '#2A5C3F', greenText: '#5EC98A', greenBg: '#1A2E20',
-  red: '#8B3A3A', redText: '#E07070', redBg: '#2A1A1A',
-  blue: '#1A3A5C', blueText: '#70A8E0', blueBg: '#1A2A3A',
-  text: '#E8E8E8', muted: '#888', faint: '#444',
-  white: '#FFFFFF',
-}
+const fmt = (n) => new Intl.NumberFormat("es-MX", {
+  style: "currency", currency: "MXN", minimumFractionDigits: 0
+}).format(n || 0);
 
-const STATUS_LABELS = {
-  pendiente:   { label: 'Pendiente',   color: C.goldText,  bg: C.goldLight },
-  en_revision: { label: 'En revisión', color: C.blueText,  bg: C.blueBg },
-  aprobado:    { label: 'Aprobado',    color: C.greenText, bg: C.greenBg },
-  rechazado:   { label: 'Rechazado',   color: C.redText,   bg: C.redBg },
-  borrador:    { label: 'Borrador',    color: C.muted,     bg: '#1A1A1A' },
-  completo:    { label: 'Completo',    color: C.blueText,  bg: C.blueBg },
-  firmado:     { label: 'Firmado',     color: C.greenText, bg: C.greenBg },
-  activo:      { label: 'Activo',      color: C.greenText, bg: C.greenBg },
-  vencido:     { label: 'Vencido',     color: C.redText,   bg: C.redBg },
-}
+const StatusBadge = ({ status }) => {
+  const map = {
+    pagado: { bg: "#d1fae5", color: "#065f46", label: "Pagado" },
+    pagado_parcial: { bg: "#dbeafe", color: "#1e40af", label: "Pagado parcial" },
+    atrasado: { bg: "#fee2e2", color: "#991b1b", label: "Atrasado" },
+    pendiente: { bg: "#fef3c7", color: "#92400e", label: "Pendiente" },
+    en_revision: { bg: "#dbeafe", color: "#1e40af", label: "En revision" },
+    ocupada: { bg: "#d1fae5", color: "#065f46", label: "Ocupada" },
+    disponible: { bg: "#e0e7ff", color: "#3730a3", label: "Disponible" },
+    activo: { bg: "#d1fae5", color: "#065f46", label: "Activo" },
+    vencido: { bg: "#fee2e2", color: "#991b1b", label: "Vencido" },
+    nuevo: { bg: "#fef3c7", color: "#92400e", label: "Nuevo" },
+    en_proceso: { bg: "#dbeafe", color: "#1e40af", label: "En proceso" },
+    resuelto: { bg: "#d1fae5", color: "#065f46", label: "Resuelto" },
+    mantenimiento: { bg: "#fce7f3", color: "#9d174d", label: "Mantenimiento" },
+    entrada: { bg: "#d1fae5", color: "#065f46", label: "Entrada" },
+    salida: { bg: "#fee2e2", color: "#991b1b", label: "Salida" },
+    inmobiliaria: { bg: "#d1fae5", color: "#065f46", label: "A nosotros" },
+    propietario: { bg: "#e0e7ff", color: "#3730a3", label: "Al propietario" },
+    cobrada: { bg: "#d1fae5", color: "#065f46", label: "Cobrada" },
+    pendiente_cobro: { bg: "#fef3c7", color: "#92400e", label: "Pendiente cobro" },
+  };
+  const s = map[status] || { bg: "#f3f4f6", color: "#374151", label: status };
+  return <span style={{ background: s.bg, color: s.color, padding: "2px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{s.label}</span>;
+};
 
-const Badge = ({ status }) => {
-  const bs = STATUS_LABELS[status] || { label: status, color: C.muted, bg: '#1A1A1A' }
-  return (
-    <span style={{ background: bs.bg, color: bs.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, letterSpacing: '0.3px' }}>
-      {bs.label}
-    </span>
-  )
-}
+const Modal = ({ title, onClose, children }) => (
+  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "16px" }}>
+    <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 520, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#1a1a2e" }}>{title}</h2>
+        <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
 
-const fmt = (n) => n ? `$${Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '—'
-const fmtDate = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+const ConfirmModal = ({ message, onConfirm, onCancel }) => (
+  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: "16px" }}>
+    <div style={{ background: "#fff", borderRadius: 16, padding: 32, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+      <p style={{ fontSize: 16, fontWeight: 700, color: "#1a1a2e", margin: "0 0 8px" }}>Esta seguro?</p>
+      <p style={{ fontSize: 14, color: "#6b7280", margin: "0 0 24px" }}>{message}</p>
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+        <button onClick={onCancel} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "10px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+        <button onClick={onConfirm} style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", cursor: "pointer", fontWeight: 700 }}>Si, eliminar</button>
+      </div>
+    </div>
+  </div>
+);
 
-// ─── Número a letra (básico para montos) ──────────────────
-const UNIDADES = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE',
-  'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE']
-const DECENAS = ['', '', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA']
-const CENTENAS = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS']
+const Field = ({ label, hint, children }) => (
+  <div style={{ marginBottom: 16 }}>
+    <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 4 }}>{label}</label>
+    {hint && <p style={{ margin: "0 0 6px", fontSize: 11, color: "#9ca3af" }}>{hint}</p>}
+    {children}
+  </div>
+);
 
-function cientos(n) {
-  if (n === 100) return 'CIEN'
-  const c = Math.floor(n / 100), d = Math.floor((n % 100) / 10), u = n % 10
-  let r = CENTENAS[c] ? CENTENAS[c] + ' ' : ''
-  if (d === 1 && u > 0) r += UNIDADES[10 + u]
-  else if (d === 2 && u > 0) r += 'VEINTI' + UNIDADES[u]
-  else { if (d > 0) r += DECENAS[d]; if (d > 0 && u > 0) r += ' Y '; if (u > 0) r += UNIDADES[u] }
-  return r.trim()
-}
+const Input = (props) => (
+  <input {...props} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", ...props.style }} />
+);
 
-function numeroALetra(n) {
-  if (!n || isNaN(n)) return ''
-  const entero = Math.floor(n), cents = Math.round((n - entero) * 100)
-  let r = ''
-  if (entero === 0) r = 'CERO'
-  else if (entero < 1000) r = cientos(entero)
-  else if (entero < 2000) r = 'MIL ' + (entero % 1000 > 0 ? cientos(entero % 1000) : '')
-  else r = cientos(Math.floor(entero / 1000)) + ' MIL ' + (entero % 1000 > 0 ? cientos(entero % 1000) : '')
-  return r.trim() + ' ' + String(cents).padStart(2, '0') + '/100 M.N.'
-}
+const Sel = ({ children, ...props }) => (
+  <select {...props} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", background: "#fff", ...props.style }}>
+    {children}
+  </select>
+);
 
-// ─── Calcular 12 fechas de pagarés ───────────────────────
-function calcularPagares(fechaInicio) {
-  if (!fechaInicio) return {}
-  const dates = {}
-  const base = new Date(fechaInicio + 'T12:00:00')
-  for (let i = 1; i <= 12; i++) {
-    const d = new Date(base)
-    d.setMonth(d.getMonth() + i)
-    dates[`fecha_pagare_${i}`] = d.toISOString().split('T')[0]
+const Btn = ({ children, onClick, color = "#1a1a2e", disabled, small }) => (
+  <button onClick={onClick} disabled={disabled} style={{
+    background: color, color: "#fff", border: "none", borderRadius: small ? 6 : 10,
+    padding: small ? "5px 10px" : "11px 20px", fontWeight: 700,
+    cursor: disabled ? "not-allowed" : "pointer", fontSize: small ? 12 : 14,
+    opacity: disabled ? 0.6 : 1, whiteSpace: "nowrap"
+  }}>
+    {children}
+  </button>
+);
+
+const calcComision = (contrato) => {
+  if (!contrato.commission_value) return 0;
+  if (contrato.commission_type === "porcentaje") return (contrato.monthly_rent * contrato.commission_value) / 100;
+  return contrato.commission_value;
+};
+
+const generarPagos = (contrato) => {
+  const pagos = [];
+  const inicio = new Date(contrato.start_date);
+  const fin = new Date(contrato.end_date);
+  const diaCorte = parseInt(contrato.payment_day);
+  const finMenosUnMes = new Date(fin);
+  finMenosUnMes.setMonth(finMenosUnMes.getMonth() - 1);
+  let fecha = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
+  while (fecha <= finMenosUnMes) {
+    const year = fecha.getFullYear();
+    const month = fecha.getMonth() + 1;
+    const diasEnMes = new Date(year, month, 0).getDate();
+    const diaReal = Math.min(diaCorte, diasEnMes);
+    const vencimiento = `${year}-${String(month).padStart(2, "0")}-${String(diaReal).padStart(2, "0")}`;
+    pagos.push({ contract_id: contrato.id, tenant_name: contrato.tenant_name, tenant_email: contrato.tenant_email || null, property_name: contrato.property_name, period_month: month, period_year: year, amount: contrato.monthly_rent, due_date: vencimiento, status: "pendiente" });
+    fecha.setMonth(fecha.getMonth() + 1);
   }
-  return dates
-}
+  return pagos;
+};
 
-// ─── Estilos base ─────────────────────────────────────────
-const st = {
-  page: { minHeight: '100vh', background: C.bg, fontFamily: "'DM Sans', system-ui, sans-serif", color: C.text },
-  header: { background: C.card, borderBottom: `1px solid ${C.border}`, padding: '0 28px', display: 'flex', alignItems: 'center', gap: 20, height: 60 },
-  logo: { height: 32, objectFit: 'contain' },
-  headerTitle: { fontSize: 15, fontWeight: 700, color: C.white },
-  headerSub: { fontSize: 12, color: C.muted },
-  nav: { display: 'flex', gap: 4, marginLeft: 32 },
-  navBtn: { padding: '6px 16px', borderRadius: 8, border: 'none', background: 'transparent', color: C.muted, fontSize: 13, cursor: 'pointer', fontWeight: 500 },
-  navBtnActive: { background: C.goldLight, color: C.goldText },
-  main: { maxWidth: 1100, margin: '0 auto', padding: '28px 20px' },
-  sectionTitle: { fontSize: 20, fontWeight: 700, color: C.white, margin: '0 0 4px', fontFamily: 'Georgia, serif' },
-  sectionSub: { fontSize: 13, color: C.muted, margin: '0 0 24px' },
-  card: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden' },
-  tableHead: { background: '#111', borderBottom: `1px solid ${C.border}` },
-  th: { padding: '12px 16px', fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'left' },
-  td: { padding: '14px 16px', fontSize: 13, borderBottom: `1px solid ${C.border}`, verticalAlign: 'middle' },
-  trHover: { cursor: 'pointer', transition: 'background 0.15s' },
-  btn: { padding: '9px 18px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'opacity 0.15s' },
-  btnGold: { background: C.gold, color: '#000' },
-  btnGhost: { background: 'transparent', border: `1px solid ${C.border2}`, color: C.muted },
-  btnGreen: { background: C.green, color: C.greenText },
-  btnRed: { background: C.red, color: C.redText },
-  input: { width: '100%', background: '#1E1E1E', border: `1px solid ${C.border2}`, borderRadius: 8, padding: '10px 14px', color: C.text, fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' },
-  label: { display: 'block', fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 6, letterSpacing: '0.3px' },
-  modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, overflowY: 'auto', padding: '40px 16px' },
-  modalCard: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, width: '100%', maxWidth: 720, padding: 32 },
-  divider: { height: 1, background: C.border, margin: '24px 0' },
-  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 },
-  grid3: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 },
-  emptyState: { textAlign: 'center', padding: '60px 20px', color: C.muted },
-}
+const addCashMovement = async (data) => {
+  await supabase.from("cash_movements").insert([{ ...data, created_at: new Date().toISOString() }]);
+};
 
-// ═══════════════════════════════════════════════════════════
-const CORREOS_PERMITIDOS = [
-  'juridico@emporioinmobiliario.mx',
-  'carlos.nachon@emporioinmobiliario.mx',
-]
+const expenseCategoryLabels = {
+  condominio: "Condominio", predial: "Predial", agua: "Agua", luz: "Luz",
+  gas: "Gas", seguro: "Seguro", mantenimiento_comun: "Mantenimiento comun", otro: "Otro",
+};
 
-export default function PolizaPanel() {
-  const router = useRouter()
-  const [tab, setTab] = useState('expedientes')
-  const [expedientes, setExpedientes] = useState([])
-  const [propietarios, setPropietarios] = useState([])
-  const [solicitudes, setSolicitudes] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(null)
-  const [selected, setSelected] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [saveMsg, setSaveMsg] = useState('')
-  const [acceso, setAcceso] = useState(null) // null=verificando, true=ok, false=denegado
-  const [caja, setCaja] = useState([])
-  const [compradores, setCompradores] = useState([])
-  const [subTabCV, setSubTabCV] = useState('vendedores') // vendedores | compradores | expedientes_cv
+const categoryLabels = {
+  renta_cobrada: "Renta cobrada", comision_cobrada: "Comision cobrada",
+  mantenimiento_cobrado: "Mantenimiento cobrado", anticipo_mantenimiento: "Anticipo mantenimiento",
+  liquidacion_propietario: "Liquidacion propietario", gasto_mantenimiento: "Gasto mantenimiento",
+  gasto_operativo: "Gasto operativo", pago_proveedor: "Pago proveedor",
+  material: "Material/Refaccion", otro: "Otro",
+};
+
+const LoginScreen = ({ onLogin }) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const handleLogin = async () => {
+    setLoading(true); setError("");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+    if (error) setError("Email o contrasena incorrectos");
+    else onLogin();
+  };
+  return (
+    <div style={{ minHeight: "100vh", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 16 }}>
+      <div style={{ background: "#fff", borderRadius: 20, padding: 40, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🏢</div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#1a1a2e" }}>InmoAdmin</h1>
+          <p style={{ margin: "8px 0 0", fontSize: 14, color: "#6b7280" }}>Emporio Inmobiliario</p>
+        </div>
+        {error && <div style={{ background: "#fee2e2", color: "#991b1b", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 14, fontWeight: 600 }}>{error}</div>}
+        <Field label="Email"><Input type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} /></Field>
+        <Field label="Contrasena"><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} /></Field>
+        <button onClick={handleLogin} disabled={loading || !email || !password} style={{ width: "100%", background: "#c8a96e", color: "#fff", border: "none", borderRadius: 10, padding: "14px", fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", fontSize: 16, marginTop: 8, opacity: loading ? 0.7 : 1 }}>
+          {loading ? "Entrando..." : "Entrar"}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default function Home() {
+  const router = useRouter();
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [view, setView] = useState("dashboard");
+  const [isMobile, setIsMobile] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [properties, setProperties] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [tickets, setTickets] = useState([]);
+  const [contracts, setContracts] = useState([]);
+  const [ownerPayments, setOwnerPayments] = useState([]);
+  const [cashMovements, setCashMovements] = useState([]);
+  const [propertyExpenses, setPropertyExpenses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [confirm, setConfirm] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [searchPago, setSearchPago] = useState("");
+  const [filterEstatus, setFilterEstatus] = useState("");
+  const [filterMes, setFilterMes] = useState("");
 
   useEffect(() => {
-    const verificarAcceso = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      const email = session.user.email
-      if (CORREOS_PERMITIDOS.includes(email)) {
-        setAcceso(true)
-        loadAll()
-      } else {
-        setAcceso(false)
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const emptyProp = { name: "", address: "", property_type: "depto", rent_amount: "", status: "disponible", notes: "", owner_email: "", owner_phone: "" };
+  const emptyContract = {
+    tenant_name: "", tenant_email: "", tenant_phone: "",
+    co_responsable_nombre: "", co_responsable_telefono: "",
+    owner_name: "", property_name: "", monthly_rent: "",
+    start_date: "", end_date: "", payment_day: "5", deposit_amount: "",
+    commission_type: "porcentaje", commission_value: "",
+    commission_who: "propietario_descuento", commission_status: "pendiente_cobro",
+    rent_receiver: "inmobiliaria", notes: ""
+  };
+  const emptyPayment = { tenant_name: "", tenant_email: "", property_name: "", amount: "", due_date: "", status: "pendiente", payment_method: "transferencia", notes: "" };
+  const emptyTicket = { property_name: "", tenant_name: "", title: "", description: "", category: "otro", priority: "media", payer: "propietario", provider_cost: "", charged_amount: "", advance_amount: "", advance_paid: false };
+  const emptyOwnerPayment = { owner_name: "", owner_email: "", period_description: "", total_rent: "", total_commission: "", total_liquid: "", amount_paid: "", payment_method: "transferencia", payment_date: "", status: "pagado", notes: "", rent_receiver: "inmobiliaria" };
+  const emptyCash = { type: "entrada", category: "renta_cobrada", description: "", amount: "", payment_method: "transferencia", date: new Date().toISOString().split("T")[0], notes: "" };
+  const emptyExpense = { property_name: "", category: "condominio", description: "", amount: "", paid_by: "propietario", payment_method: "transferencia", date: new Date().toISOString().split("T")[0], notes: "" };
+
+  const [propForm, setPropForm] = useState(emptyProp);
+  const [contractForm, setContractForm] = useState(emptyContract);
+  const [payForm, setPayForm] = useState(emptyPayment);
+  const [ticketForm, setTicketForm] = useState(emptyTicket);
+  const [ownerPayForm, setOwnerPayForm] = useState(emptyOwnerPayment);
+  const [cashForm, setCashForm] = useState(emptyCash);
+  const [expenseForm, setExpenseForm] = useState(emptyExpense);
+
+  const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
+  const isAdmin = profile?.role === "admin";
+  const today = new Date().toISOString().split("T")[0];
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session); if (session) loadProfile(session.user.id); else setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session); if (session) loadProfile(session.user.id); else { setProfile(null); setAuthLoading(false); }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const loadProfile = async (userId) => {
+    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    setProfile(data); setAuthLoading(false);
+  };
+
+  const logout = async () => { await supabase.auth.signOut(); setSession(null); setProfile(null); };
+
+  const loadData = async () => {
+    setLoading(true);
+    const [p, pay, t, c, op, cm, pe] = await Promise.all([
+      supabase.from("properties").select("*").order("created_at", { ascending: false }),
+      supabase.from("payments").select("*").order("due_date", { ascending: true }),
+      supabase.from("maintenance_tickets").select("*").order("created_at", { ascending: false }),
+      supabase.from("contracts").select("*").order("created_at", { ascending: false }),
+      supabase.from("owner_payments").select("*").order("created_at", { ascending: false }),
+      supabase.from("cash_movements").select("*").order("date", { ascending: false }),
+      supabase.from("property_expenses").select("*").order("date", { ascending: false }),
+    ]);
+    setProperties(p.data || []); setPayments(pay.data || []); setTickets(t.data || []);
+    setContracts(c.data || []); setOwnerPayments(op.data || []); setCashMovements(cm.data || []);
+    setPropertyExpenses(pe.data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { if (session) loadData(); }, [session]);
+
+  const openEdit = (type, item) => {
+    setEditing({ type, id: item.id });
+    if (type === "property") {
+      setPropForm({ name: item.name || "", address: item.address || "", property_type: item.property_type || "depto", rent_amount: item.rent_amount || "", status: item.status || "disponible", notes: item.notes || "", owner_email: item.owner_email || "", owner_phone: item.owner_phone || "" });
+      setShowModal("property");
+    }
+    if (type === "contract") {
+      setContractForm({
+        tenant_name: item.tenant_name || "", tenant_email: item.tenant_email || "",
+        tenant_phone: item.tenant_phone || "",
+        co_responsable_nombre: item.co_responsable_nombre || "",
+        co_responsable_telefono: item.co_responsable_telefono || "",
+        owner_name: item.owner_name || "", property_name: item.property_name || "",
+        monthly_rent: item.monthly_rent || "", start_date: item.start_date || "",
+        end_date: item.end_date || "", payment_day: item.payment_day || "5",
+        deposit_amount: item.deposit_amount || "", commission_type: item.commission_type || "porcentaje",
+        commission_value: item.commission_value || "", commission_who: item.commission_who || "propietario_descuento",
+        commission_status: item.commission_status || "pendiente_cobro",
+        rent_receiver: item.rent_receiver || "inmobiliaria", notes: item.notes || ""
+      });
+      setShowModal("contract");
+    }
+    if (type === "ticket") {
+      setTicketForm({ property_name: item.property_name || "", tenant_name: item.tenant_name || "", title: item.title || "", description: item.description || "", category: item.category || "otro", priority: item.priority || "media", payer: item.payer || "propietario", provider_cost: item.provider_cost || "", charged_amount: item.charged_amount || "", advance_amount: item.advance_amount || "", advance_paid: item.advance_paid || false });
+      setShowModal("ticket");
+    }
+  };
+
+  const closeModal = () => {
+    setShowModal(null); setEditing(null); setPropForm(emptyProp); setContractForm(emptyContract);
+    setPayForm(emptyPayment); setTicketForm(emptyTicket); setOwnerPayForm(emptyOwnerPayment);
+    setCashForm(emptyCash); setExpenseForm(emptyExpense);
+  };
+
+  const saveProperty = async () => {
+    setSaving(true);
+    const data = { ...propForm, rent_amount: parseFloat(propForm.rent_amount) || 0 };
+    const { error } = editing?.type === "property"
+      ? await supabase.from("properties").update(data).eq("id", editing.id)
+      : await supabase.from("properties").insert([data]);
+    setSaving(false);
+    if (error) { showToast("Error: " + error.message, false); return; }
+    showToast(editing ? "Propiedad actualizada" : "Propiedad guardada");
+    closeModal(); loadData();
+  };
+
+  const saveContract = async () => {
+    setSaving(true);
+    const contractData = {
+      tenant_name: contractForm.tenant_name, tenant_email: contractForm.tenant_email,
+      tenant_phone: contractForm.tenant_phone,
+      co_responsable_nombre: contractForm.co_responsable_nombre || null,
+      co_responsable_telefono: contractForm.co_responsable_telefono || null,
+      owner_name: contractForm.owner_name, property_name: contractForm.property_name,
+      monthly_rent: parseFloat(contractForm.monthly_rent) || 0,
+      start_date: contractForm.start_date, end_date: contractForm.end_date,
+      payment_day: parseInt(contractForm.payment_day),
+      deposit_amount: parseFloat(contractForm.deposit_amount) || 0,
+      commission_type: contractForm.commission_type,
+      commission_value: parseFloat(contractForm.commission_value) || 0,
+      commission_who: contractForm.commission_who,
+      commission_status: contractForm.commission_status || "pendiente_cobro",
+      rent_receiver: contractForm.rent_receiver, notes: contractForm.notes
+    };
+    if (editing?.type === "contract") {
+      const { error } = await supabase.from("contracts").update(contractData).eq("id", editing.id);
+      setSaving(false);
+      if (error) { showToast("Error: " + error.message, false); return; }
+      showToast("Contrato actualizado"); closeModal(); loadData(); return;
+    }
+    const { data: newContract, error } = await supabase.from("contracts").insert([{ ...contractData, status: "activo" }]).select().single();
+    if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
+    const pagos = generarPagos(newContract);
+    const { error: ep } = await supabase.from("payments").insert(pagos);
+    setSaving(false);
+    if (ep) { showToast("Contrato creado pero error en pagos: " + ep.message, false); return; }
+    showToast(`Contrato creado con ${pagos.length} cobros generados`);
+    closeModal(); loadData();
+  };
+
+  const savePayment = async () => {
+    setSaving(true);
+    const { error } = await supabase.from("payments").insert([{ ...payForm, amount: parseFloat(payForm.amount) || 0 }]);
+    setSaving(false);
+    if (error) { showToast("Error: " + error.message, false); return; }
+    showToast("Pago registrado"); closeModal(); loadData();
+  };
+
+  const saveTicket = async () => {
+    setSaving(true);
+    const ticketData = {
+      ...ticketForm, status: editing ? ticketForm.status || "nuevo" : "nuevo",
+      provider_cost: parseFloat(ticketForm.provider_cost) || 0,
+      charged_amount: parseFloat(ticketForm.charged_amount) || 0,
+      advance_amount: parseFloat(ticketForm.advance_amount) || 0
+    };
+    const { error } = editing?.type === "ticket"
+      ? await supabase.from("maintenance_tickets").update(ticketData).eq("id", editing.id)
+      : await supabase.from("maintenance_tickets").insert([ticketData]);
+    if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
+    if (!editing && ticketData.advance_amount > 0 && ticketData.advance_paid) {
+      await addCashMovement({ type: "entrada", category: "anticipo_mantenimiento", description: `Anticipo: ${ticketData.title} - ${ticketData.property_name}`, amount: ticketData.advance_amount, payment_method: "transferencia", date: today, created_by: profile?.email });
+    }
+    setSaving(false);
+    showToast(editing ? "Ticket actualizado" : "Ticket creado"); closeModal(); loadData();
+  };
+
+  // ── LIQUIDACIONES ──────────────────────────────────────────────────────────
+  // LOGICA CORRECTA:
+  // - rent_receiver = "inmobiliaria": la renta entra a nuestra caja.
+  //   Al liquidar al propietario, sale de caja solo el liquido (renta - comision).
+  //   La comision se queda en nuestra caja automaticamente.
+  // - rent_receiver = "propietario": la renta NO pasa por nuestra caja.
+  //   La liquidacion es solo un registro informativo, NO mueve caja.
+  //   La comision entra a caja cuando se marca como cobrada en el modulo de Comisiones.
+  const saveOwnerPayment = async () => {
+    setSaving(true);
+    const data = {
+      ...ownerPayForm,
+      total_rent: parseFloat(ownerPayForm.total_rent) || 0,
+      total_commission: parseFloat(ownerPayForm.total_commission) || 0,
+      total_liquid: parseFloat(ownerPayForm.total_liquid) || 0,
+      amount_paid: parseFloat(ownerPayForm.amount_paid) || 0
+    };
+    const { error } = await supabase.from("owner_payments").insert([data]);
+    if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
+
+    // Solo registra salida de caja si la renta pasaba por nosotros
+    if (ownerPayForm.rent_receiver === "inmobiliaria") {
+      await addCashMovement({
+        type: "salida",
+        category: "liquidacion_propietario",
+        description: `Liquidacion ${ownerPayForm.owner_name} - ${ownerPayForm.period_description} (liquido sin comision)`,
+        amount: parseFloat(ownerPayForm.amount_paid) || 0,
+        payment_method: ownerPayForm.payment_method,
+        date: ownerPayForm.payment_date || today,
+        notes: `Comision retenida: ${fmt(parseFloat(ownerPayForm.total_commission) || 0)}`,
+        created_by: profile?.email
+      });
+    }
+    // Si rent_receiver = "propietario", NO registra nada en caja.
+    // La comision se registra por separado en el modulo de Comisiones.
+
+    setSaving(false);
+    showToast("Liquidacion registrada"); closeModal(); loadData();
+  };
+
+  const saveCashMovement = async () => {
+    setSaving(true);
+    const data = { ...cashForm, amount: parseFloat(cashForm.amount) || 0, created_by: profile?.email };
+    const { error } = await supabase.from("cash_movements").insert([data]);
+    setSaving(false);
+    if (error) { showToast("Error: " + error.message, false); return; }
+    showToast("Movimiento registrado"); closeModal(); loadData();
+  };
+
+  const saveExpense = async () => {
+    setSaving(true);
+    const amount = parseFloat(expenseForm.amount) || 0;
+    const data = { ...expenseForm, amount, created_by: profile?.email };
+    const { error } = await supabase.from("property_expenses").insert([data]);
+    if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
+    if (expenseForm.paid_by === "inmobiliaria") {
+      await addCashMovement({ type: "salida", category: "gasto_operativo", description: `${expenseCategoryLabels[expenseForm.category] || expenseForm.category}: ${expenseForm.description} - ${expenseForm.property_name}`, amount, payment_method: expenseForm.payment_method, date: expenseForm.date, created_by: profile?.email });
+    }
+    setSaving(false);
+    showToast("Gasto registrado"); closeModal(); loadData();
+  };
+
+  const [uploadingContrato, setUploadingContrato] = useState(null);
+
+  const openExpenseModal = (propertyName) => {
+    setExpenseForm({ ...emptyExpense, property_name: propertyName });
+    setShowModal("expense");
+  };
+
+  const subirContrato = async (propertyId, propertyName, file) => {
+    if (!file) return;
+    if (file.type !== "application/pdf") { showToast("Solo se permiten archivos PDF", false); return; }
+    if (file.size > 10 * 1024 * 1024) { showToast("El archivo es muy grande (max 10MB)", false); return; }
+    setUploadingContrato(propertyId);
+    try {
+      const fileName = `${propertyId}_${Date.now()}.pdf`;
+      const { error: uploadError } = await supabase.storage.from("contratos").upload(fileName, file, { upsert: true, contentType: "application/pdf" });
+      if (uploadError) throw uploadError;
+      const { error: updateError } = await supabase.from("properties").update({ contrato_url: fileName }).eq("id", propertyId);
+      if (updateError) throw updateError;
+      showToast(`Contrato subido para ${propertyName}`);
+      loadData();
+    } catch (e) { showToast("Error al subir: " + e.message, false); }
+    setUploadingContrato(null);
+  };
+
+  const verContrato = async (contratoUrl) => {
+    try {
+      const { data, error } = await supabase.storage.from("contratos").createSignedUrl(contratoUrl, 60);
+      if (error) throw error;
+      window.open(data.signedUrl, "_blank");
+    } catch (e) { showToast("Error al abrir contrato: " + e.message, false); }
+  };
+
+  const eliminarContrato = async (propertyId, contratoUrl) => {
+    try {
+      await supabase.storage.from("contratos").remove([contratoUrl]);
+      await supabase.from("properties").update({ contrato_url: null }).eq("id", propertyId);
+      showToast("Contrato eliminado"); loadData();
+    } catch (e) { showToast("Error: " + e.message, false); }
+  };
+
+  // ── PAGOS ─────────────────────────────────────────────────────────────────
+  // Solo entra a caja si la renta va a nosotros (inmobiliaria).
+  // Si va al propietario directamente, NO registra en caja.
+  const updatePaymentStatus = async (id, status) => {
+    const pago = payments.find(p => p.id === id);
+    const contrato = pago ? contracts.find(c => c.id === pago.contract_id) : null;
+    await supabase.from("payments").update({ status }).eq("id", id);
+    if (status === "pagado" && pago) {
+      const rentReceiver = contrato?.rent_receiver || "inmobiliaria";
+      if (rentReceiver === "inmobiliaria") {
+        // La renta entra completa a nuestra caja.
+        // La comision se queda al liquidar al propietario.
+        const comision = contrato ? calcComision(contrato) : 0;
+        await addCashMovement({
+          type: "entrada", category: "renta_cobrada",
+          description: `Renta ${pago.tenant_name} - ${pago.property_name}`,
+          amount: pago.amount, payment_method: "transferencia", date: today,
+          notes: comision > 0 ? `Comision incluida: ${fmt(comision)} (se retiene al liquidar)` : "",
+          created_by: profile?.email
+        });
+      }
+      // Si rent_receiver = "propietario", NO entra a caja.
+      // La comision se registra por separado cuando el propietario nos la paga.
+    }
+    showToast("Actualizado"); loadData();
+  };
+
+  // ── COMISIONES ────────────────────────────────────────────────────────────
+  // Esta funcion aplica SOLO para contratos donde rent_receiver = "propietario".
+  // El propietario recibe la renta y nos paga la comision aparte.
+  // Cuando la recibimos, la marcamos aqui y entra a caja.
+  const marcarComisionCobrada = async (contrato) => {
+    const comision = calcComision(contrato);
+    await supabase.from("contracts").update({ commission_status: "cobrada" }).eq("id", contrato.id);
+    await addCashMovement({
+      type: "entrada", category: "comision_cobrada",
+      description: `Comision de ${contrato.owner_name || contrato.property_name} - ${contrato.tenant_name}`,
+      amount: comision, payment_method: "transferencia", date: today, created_by: profile?.email
+    });
+    showToast(`Comision de ${fmt(comision)} registrada en caja`);
+    loadData();
+  };
+
+  const marcarComisionPendiente = async (contratoId) => {
+    await supabase.from("contracts").update({ commission_status: "pendiente_cobro" }).eq("id", contratoId);
+    showToast("Comision marcada como pendiente");
+    loadData();
+  };
+
+  const updateTicketStatus = async (id, status) => {
+    await supabase.from("maintenance_tickets").update({ status }).eq("id", id);
+    if (status === "resuelto") {
+      const ticket = tickets.find(t => t.id === id);
+      if (ticket && ticket.provider_cost > 0) {
+        await addCashMovement({ type: "salida", category: "pago_proveedor", description: `Proveedor: ${ticket.title} - ${ticket.property_name}`, amount: ticket.provider_cost, payment_method: "transferencia", date: today, created_by: profile?.email });
+      }
+      if (ticket && ticket.charged_amount > 0 && ticket.payer !== "inmobiliaria") {
+        await addCashMovement({ type: "entrada", category: "mantenimiento_cobrado", description: `Cobro mant: ${ticket.title} - ${ticket.property_name}`, amount: ticket.charged_amount, payment_method: "transferencia", date: today, created_by: profile?.email });
       }
     }
-    verificarAcceso()
-  }, [])
+    showToast("Actualizado"); loadData();
+  };
 
-  const loadAll = async () => {
-    setLoading(true)
-    const [{ data: exp }, { data: prop }, { data: sol }, { data: caj }, { data: comp }] = await Promise.all([
-      supabase.from('poliza_expedientes').select('*').order('created_at', { ascending: false }),
-      supabase.from('propietarios_inmuebles').select('*').order('created_at', { ascending: false }),
-      supabase.from('solicitudes_inquilino').select('*').order('created_at', { ascending: false }),
-      supabase.from('poliza_caja').select('*').order('fecha', { ascending: false }),
-      supabase.from('compradores').select('*').order('created_at', { ascending: false }),
-    ])
-    setExpedientes(exp || [])
-    setPropietarios(prop || [])
-    setSolicitudes(sol || [])
-    setCaja(caj || [])
-    setCompradores(comp || [])
-    setLoading(false)
-  }
+  const sendReminder = async (payment) => {
+    if (!payment.tenant_email) { showToast("Sin email - edita el contrato para agregarlo", false); return; }
+    try {
+      const res = await fetch("/api/send-email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: payment.tenant_email, subject: `Recordatorio de pago - ${payment.property_name}`, html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px;"><h2 style="color:#1a1a2e;">Recordatorio de pago de renta</h2><p>Hola <strong>${payment.tenant_name}</strong>,</p><p>Te recordamos que tienes un pago pendiente:</p><div style="background:#f9fafb;border-radius:12px;padding:20px;margin:20px 0;"><p style="margin:0 0 8px;"><strong>Propiedad:</strong> ${payment.property_name}</p><p style="margin:0 0 8px;"><strong>Monto:</strong> ${Number(payment.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}</p><p style="margin:0;"><strong>Fecha limite:</strong> ${payment.due_date}</p></div><p>Por favor realiza tu pago a tiempo.</p></div>` })
+      });
+      const data = await res.json();
+      if (data.success) showToast("Recordatorio enviado");
+      else showToast("Error: " + data.error, false);
+    } catch (e) { showToast("Error: " + e.message, false); }
+  };
 
-  // ── Tabs ──────────────────────────────────────────────────
-  const tabs = [
-    { id: 'expedientes', label: `Expedientes (${expedientes.length})` },
-    { id: 'propietarios', label: `Propietarios (${propietarios.length})` },
-    { id: 'solicitudes', label: `Solicitudes (${solicitudes.length})` },
-    { id: 'caja', label: '💰 Caja Póliza' },
-    { id: 'compraventa', label: '🔑 Compraventa' },
-  ]
+  const sendWhatsApp = (payment) => {
+    const contrato = contracts.find(c => c.id === payment.contract_id);
+    const phone = contrato?.tenant_phone || "";
+    if (!phone) { showToast("Sin telefono - edita el contrato para agregarlo", false); return; }
+    const phoneClean = phone.replace(/\D/g, "");
+    const msg = encodeURIComponent(`Hola ${payment.tenant_name}, te recordamos que tienes un pago pendiente de ${fmt(payment.amount)} correspondiente a ${payment.property_name} con fecha limite ${payment.due_date}. Por favor regulariza tu pago. Gracias, Emporio Inmobiliario.`);
+    window.open(`https://wa.me/52${phoneClean}?text=${msg}`, "_blank");
+  };
 
+  const openOwnerPayment = (ownerName, ownerEmail) => {
+    const propsPropietario = properties.filter(p => p.owner_email === ownerEmail);
+    const contratosPropietario = contracts.filter(c => propsPropietario.some(p => p.name === c.property_name) && c.status === "activo");
+    const totalRent = contratosPropietario.reduce((a, c) => a + (c.monthly_rent || 0), 0);
+    const totalComision = contratosPropietario.reduce((a, c) => a + calcComision(c), 0);
+    const totalLiquido = totalRent - totalComision;
+    const propNames = propsPropietario.map(p => p.name).join(", ");
+    // Detectar si todos los contratos son rent_receiver = "inmobiliaria"
+    const rentReceivers = [...new Set(contratosPropietario.map(c => c.rent_receiver || "inmobiliaria"))];
+    const dominantReceiver = rentReceivers.length === 1 ? rentReceivers[0] : "inmobiliaria";
+    setOwnerPayForm({
+      owner_name: ownerName, owner_email: ownerEmail,
+      period_description: `${new Date().toLocaleDateString("es-MX", { month: "long", year: "numeric" })}`,
+      total_rent: totalRent.toString(), total_commission: totalComision.toString(),
+      total_liquid: totalLiquido.toString(), amount_paid: totalLiquido.toString(),
+      payment_method: "transferencia", payment_date: today, status: "pagado",
+      notes: `Propiedades: ${propNames}`,
+      rent_receiver: dominantReceiver
+    });
+    setShowModal("owner_payment");
+  };
+
+  const descargarPDFPropietario = async (ownerName, ownerEmail) => {
+    const { default: jsPDF } = await import("jspdf");
+    const { default: autoTable } = await import("jspdf-autotable");
+    const doc = new jsPDF();
+    const hoy = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
+    const mes = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long" });
+    const propsProp = properties.filter(p => p.owner_email === ownerEmail);
+    const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
+    const contractIds = contratosProp.map(c => c.id);
+    const { data: pagosFrescos } = await supabase.from("payments").select("*").in("contract_id", contractIds);
+const pagosProp = pagosFrescos || [];
+    const { data: liqProp } = await supabase.from("owner_payments").select("*").eq("owner_email", ownerEmail).order("created_at", { ascending: false });
+    const { data: ticketsProp } = await supabase.from("maintenance_tickets").select("*").in("property_name", propsProp.map(p => p.name)).order("created_at", { ascending: false });
+    const gastosProp = propertyExpenses.filter(e => propsProp.some(p => p.name === e.property_name) && e.paid_by === "propietario");
+    const totalRentaProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0), 0);
+    const totalComProp = contratosProp.reduce((a, c) => a + calcComision(c), 0);
+    const costoMantProp = (ticketsProp || []).filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
+    const gastosOpProp = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
+    const totalLiqProp = totalRentaProp - totalComProp - costoMantProp - gastosOpProp;
+    const esDirecto = contratosProp.some(c => c.rent_receiver === "propietario");
+const comisionesCobradas = contratosProp.filter(c => c.commission_status === "cobrada").reduce((a, c) => a + calcComision(c), 0);
+const comisionesPendientes2 = contratosProp.filter(c => c.commission_status !== "cobrada").reduce((a, c) => a + calcComision(c), 0);
+const totalPagadoProp = esDirecto ? comisionesCobradas : (liqProp || []).filter(l => l.status === "pagado").reduce((a, l) => a + (l.amount_paid || 0), 0);
+
+    doc.setFillColor(26, 26, 46); doc.rect(0, 0, 210, 40, "F");
+    doc.setTextColor(200, 169, 110); doc.setFontSize(20); doc.setFont("helvetica", "bold");
+    doc.text("Emporio Inmobiliario", 20, 18);
+    doc.setFontSize(11); doc.setTextColor(200, 200, 200);
+    doc.text("Reporte de Propietario", 20, 28); doc.text(`Generado: ${hoy}`, 20, 35);
+    doc.setTextColor(26, 26, 46); doc.setFontSize(16); doc.setFont("helvetica", "bold");
+    doc.text(ownerName, 20, 55);
+    doc.setFontSize(11); doc.setFont("helvetica", "normal"); doc.setTextColor(100, 100, 100);
+    doc.text(`Periodo: ${mes}`, 20, 63);
+
+    let y = 75;
+    const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0);
+    const boxH = 38 + extraLines * 7;
+    doc.setFillColor(240, 253, 244); doc.rect(15, y, 180, boxH, "F");
+    doc.setDrawColor(200, 169, 110); doc.rect(15, y, 180, boxH, "S");
+    doc.setTextColor(26, 26, 46); doc.setFontSize(10); doc.setFont("helvetica", "bold");
+    doc.text("RESUMEN FINANCIERO", 20, y + 8);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+    doc.text(`Renta mensual total: ${fmt(totalRentaProp)}`, 20, y + 16);
+    doc.text(`Comision administracion: -${fmt(totalComProp)}`, 20, y + 23);
+    doc.setTextColor(30, 64, 175);
+doc.text(esDirecto ? `Comision cobrada: ${fmt(totalPagadoProp)}` : `Total liquidado: ${fmt(totalPagadoProp)}`, 110, y + 16);
+    let lineY = y + 30;
+    if (costoMantProp > 0) { doc.setTextColor(153, 27, 27); doc.text(`Mantenimiento: -${fmt(costoMantProp)}`, 20, lineY); lineY += 7; }
+    if (gastosOpProp > 0) { doc.setTextColor(153, 27, 27); doc.text(`Gastos operativos: -${fmt(gastosOpProp)}`, 20, lineY); lineY += 7; }
+    doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
+doc.text(esDirecto ? `Comision pendiente de cobro: ${fmt(comisionesPendientes2)}` : `Liquido a recibir: ${fmt(totalLiqProp)}`, 20, lineY);
+    y += boxH + 10;
+
+    doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+    doc.text("Propiedades", 20, y); y += 6;
+    autoTable(doc, { startY: y, head: [["Propiedad", "Inquilino", "Renta", "Comision", "Liquido", "Dia pago"]], body: propsProp.map(prop => { const c = contratosProp.find(c => c.property_name === prop.name); const com = c ? calcComision(c) : 0; return [prop.name, c?.tenant_name || "-", fmt(prop.rent_amount), fmt(com), fmt((prop.rent_amount || 0) - com), c ? `Dia ${c.payment_day}` : "-"]; }), styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" }, alternateRowStyles: { fillColor: [249, 250, 251] }, margin: { left: 15, right: 15 } });
+    y = doc.lastAutoTable.finalY + 12; if (y > 220) { doc.addPage(); y = 20; }
+
+    doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+    doc.text("Pagos del Mes", 20, y); y += 6;
+    const pagosMesPDF = pagosProp.filter(p => {
+  if (!p.due_date) return false;
+  const d = new Date(p.due_date + "T12:00:00");
+  const h = new Date();
+  return d.getMonth() === h.getMonth() && d.getFullYear() === h.getFullYear();
+});
+    autoTable(doc, { startY: y, head: [["Inquilino", "Propiedad", "Monto", "Vencimiento", "Estado"]], body: pagosMesPDF.length > 0 ? pagosMesPDF.map(p => [p.tenant_name || "-", p.property_name || "-", fmt(p.amount), p.due_date || "-", p.status === "pagado" ? "Pagado" : p.status === "atrasado" ? "Atrasado" : "Pendiente"]) : [["-", "", "", "", ""]], styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" }, alternateRowStyles: { fillColor: [249, 250, 251] }, margin: { left: 15, right: 15 } });
+    y = doc.lastAutoTable.finalY + 12; if (y > 220) { doc.addPage(); y = 20; }
+
+    doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+    doc.text("Liquidaciones", 20, y); y += 6;
+    autoTable(doc, { startY: y, head: [["Periodo", "Renta", "Comision", "Te pagamos", "Fecha", "Estado"]], body: (liqProp || []).length > 0 ? (liqProp || []).map(l => [l.period_description || "-", fmt(l.total_rent), fmt(l.total_commission), fmt(l.amount_paid), l.payment_date || "-", l.status === "pagado" ? "Pagado" : "Pendiente"]) : [["-", "", "", "", "", ""]], styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" }, alternateRowStyles: { fillColor: [249, 250, 251] }, margin: { left: 15, right: 15 } });
+    y = doc.lastAutoTable.finalY + 12; if (y > 220) { doc.addPage(); y = 20; }
+
+    doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+    doc.text("Mantenimiento", 20, y); y += 6;
+    autoTable(doc, { startY: y, head: [["Titulo", "Propiedad", "Quien paga", "Costo", "Estado", "Fecha"]], body: (ticketsProp || []).length > 0 ? (ticketsProp || []).map(t => [t.title || "-", t.property_name || "-", t.payer === "propietario" ? "Propietario" : t.payer === "inquilino" ? "Inquilino" : "Inmobiliaria", t.payer === "propietario" && t.charged_amount > 0 ? fmt(t.charged_amount) : "-", t.status === "resuelto" ? "Resuelto" : t.status === "en_proceso" ? "En proceso" : "Nuevo", new Date(t.created_at).toLocaleDateString("es-MX")]) : [["-", "", "", "", "", ""]], styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" }, alternateRowStyles: { fillColor: [249, 250, 251] }, margin: { left: 15, right: 15 } });
+
+    const totalPaginas = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPaginas; i++) {
+      doc.setPage(i); doc.setFillColor(26, 26, 46); doc.rect(0, 285, 210, 15, "F");
+      doc.setTextColor(200, 169, 110); doc.setFontSize(8);
+      doc.text("Emporio Inmobiliario - app.emporioinmobiliario.com.mx", 20, 293);
+      doc.setTextColor(150, 150, 150); doc.text(`Pagina ${i} de ${totalPaginas}`, 175, 293);
+    }
+    doc.save(`Reporte_${ownerName.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`);
+  };
+
+  const deleteItem = (type, id, msg) => {
+    if (!isAdmin) { showToast("Solo el admin puede eliminar", false); return; }
+    setConfirm({
+      message: msg,
+      onConfirm: async () => {
+        setConfirm(null);
+        if (type === "property") await supabase.from("properties").delete().eq("id", id);
+        if (type === "contract") { await supabase.from("payments").delete().eq("contract_id", id); await supabase.from("contracts").delete().eq("id", id); }
+        if (type === "payment") await supabase.from("payments").delete().eq("id", id);
+        if (type === "ticket") await supabase.from("maintenance_tickets").delete().eq("id", id);
+        if (type === "owner_payment") await supabase.from("owner_payments").delete().eq("id", id);
+        if (type === "cash") await supabase.from("cash_movements").delete().eq("id", id);
+        if (type === "expense") await supabase.from("property_expenses").delete().eq("id", id);
+        showToast("Eliminado"); loadData();
+      }
+    });
+  };
+
+  // ── CALCULOS DASHBOARD ────────────────────────────────────────────────────
+  const totalEntradas = cashMovements.filter(m => m.type === "entrada").reduce((a, m) => a + (m.amount || 0), 0);
+  const totalSalidas = cashMovements.filter(m => m.type === "salida").reduce((a, m) => a + (m.amount || 0), 0);
+  const saldoCaja = totalEntradas - totalSalidas;
+  const entradasEfectivo = cashMovements.filter(m => m.type === "entrada" && m.payment_method === "efectivo").reduce((a, m) => a + (m.amount || 0), 0);
+  const entradasBanco = cashMovements.filter(m => m.type === "entrada" && m.payment_method === "transferencia").reduce((a, m) => a + (m.amount || 0), 0);
+  const totalRent = properties.filter(p => p.status === "ocupada").reduce((a, p) => a + (p.rent_amount || 0), 0);
+  const paid = payments.filter(p => p.status === "pagado").reduce((a, p) => a + (p.amount || 0), 0);
+  const overdue = payments.filter(p => p.status === "atrasado").reduce((a, p) => a + (p.amount || 0), 0);
+  const pending = payments.filter(p => p.status === "pendiente").reduce((a, p) => a + (p.amount || 0), 0);
+  const totalComisiones = contracts.filter(c => c.status === "activo").reduce((a, c) => a + calcComision(c), 0);
+  const comisionesPendientes = contracts.filter(c => c.status === "activo" && c.rent_receiver === "propietario" && (c.commission_status === "pendiente_cobro" || !c.commission_status)).reduce((a, c) => a + calcComision(c), 0);
+  const hoy = new Date();
+  const pagosMes = payments.filter(p => { if (!p.due_date) return false; const d = new Date(p.due_date); return d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear(); });
+  const propietariosUnicos = [...new Map(properties.filter(p => p.owner_email).map(p => [p.owner_email, { name: contracts.find(c => c.property_name === p.name)?.owner_name || p.owner_email.split("@")[0], email: p.owner_email }])).values()];
+
+  const pagosFiltrados = payments.filter(p => {
+    const matchSearch = !searchPago || (p.tenant_name || "").toLowerCase().includes(searchPago.toLowerCase()) || (p.property_name || "").toLowerCase().includes(searchPago.toLowerCase());
+    const matchEstatus = !filterEstatus || p.status === filterEstatus;
+    const matchMes = !filterMes || (p.due_date && new Date(p.due_date).getMonth() + 1 === parseInt(filterMes));
+    return matchSearch && matchEstatus && matchMes;
+  });
+
+  const nav = [
+    { id: "dashboard", label: "Panel", icon: "📊" },
+    { id: "caja", label: "Caja", icon: "💵" },
+    { id: "contracts", label: "Contratos", icon: "📋" },
+    { id: "properties", label: "Propiedades", icon: "🏠" },
+    { id: "payments", label: "Cobranza", icon: "💰" },
+    { id: "owner_payments", label: "Liquidaciones", icon: "🏦" },
+    { id: "tickets", label: "Mantenimiento", icon: "🔧" },
+    { id: "reports", label: "Reportes", icon: "📈" },
+    { id: "commissions", label: "Comisiones", icon: "💼" },
+    { id: "cierres", label: "Cierres", icon: "📊", link: "/cierres" },
+    { id: "firmas", label: "Firmas", icon: "📝", link: "/firmas" },
+    { id: "poliza", label: "Póliza", icon: "⚖️", link: "/poliza" },
+  ];
+
+  const handleNavClick = (n) => {
+    if (n.link) { window.location.href = n.link; }
+    else { setView(n.id); setSidebarOpen(false); }
+  };
+
+  if (authLoading) return (
+    <div style={{ minHeight: "100vh", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <p style={{ color: "#c8a96e", fontSize: 18, fontWeight: 700 }}>Cargando...</p>
+    </div>
+  );
+  if (!session) return <LoginScreen onLogin={() => loadData()} />;
+
+  const currentNavLabel = nav.find(n => n.id === view)?.label || "Panel";
+
+  // ── RENDER ────────────────────────────────────────────────────────────────
   return (
-    <div style={st.page}>
-      {/* Header */}
-      <header style={st.header}>
-        <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={st.logo} />
-        <div>
-          <p style={st.headerTitle}>Panel Jurídico</p>
-          <p style={st.headerSub}>Pólizas · Contratos · Expedientes</p>
+    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif", background: "#f4f5f7" }}>
+      {toast && (
+        <div style={{ position: "fixed", top: 24, right: 16, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 3000, boxShadow: "0 4px 20px rgba(0,0,0,0.2)", maxWidth: 300 }}>
+          {toast.msg}
         </div>
-        <nav style={st.nav}>
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ ...st.navBtn, ...(tab === t.id ? st.navBtnActive : {}) }}>
-              {t.label}
+      )}
+      {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
+
+      {/* Overlay mobile */}
+      {isMobile && sidebarOpen && (
+        <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 150 }} />
+      )}
+
+      {/* ── SIDEBAR ── */}
+      <div style={{
+        width: 220, background: "#1a1a2e", display: "flex", flexDirection: "column", flexShrink: 0,
+        position: isMobile ? "fixed" : "relative",
+        top: 0, left: 0, height: "100vh",
+        transform: isMobile ? (sidebarOpen ? "translateX(0)" : "translateX(-220px)") : "none",
+        transition: "transform 0.25s ease",
+        zIndex: 200,
+      }}>
+        <div style={{ padding: "20px 16px", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ color: "#c8a96e", fontWeight: 800, fontSize: 16 }}>🏢 InmoAdmin</span>
+          {isMobile && (
+            <button onClick={() => setSidebarOpen(false)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.6)", fontSize: 20, cursor: "pointer", padding: 4 }}>✕</button>
+          )}
+        </div>
+        <nav style={{ padding: "12px", flex: 1, overflowY: "auto" }}>
+          {nav.map(n => (
+            <button key={n.id} onClick={() => handleNavClick(n)} style={{
+              width: "100%", textAlign: "left", padding: "10px 12px",
+              borderRadius: 8, border: "none", cursor: "pointer", marginBottom: 2,
+              fontSize: 14, fontWeight: 600,
+              background: view === n.id ? "rgba(200,169,110,0.15)" : "transparent",
+              color: view === n.id ? "#c8a96e" : "rgba(255,255,255,0.6)",
+            }}>
+              {n.icon} {n.label}
             </button>
           ))}
         </nav>
-        <div style={{ marginLeft: 'auto' }}>
-          <button onClick={() => { setSelected(null); setModal('nuevo') }}
-            style={{ ...st.btn, ...st.btnGold }}>
-            + Nuevo expediente
-          </button>
+        <div style={{ padding: 14, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+          <p style={{ margin: "0 0 2px", color: "#fff", fontSize: 12, fontWeight: 600 }}>{profile?.email?.split("@")[0]}</p>
+          <p style={{ margin: "0 0 8px", color: "rgba(255,255,255,0.4)", fontSize: 10, textTransform: "uppercase" }}>{profile?.role === "admin" ? "Admin" : "Staff"}</p>
+          <button onClick={logout} style={{ width: "100%", background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", border: "none", borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Cerrar sesion</button>
         </div>
-      </header>
+      </div>
 
-      <main style={st.main}>
-        {loading ? (
-          <div style={st.emptyState}><p>Cargando...</p></div>
-        ) : (
-          <>
-            {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={e => { setSelected(e); setModal('expediente') }} />}
-            {tab === 'propietarios' && <TabPropietarios propietarios={propietarios} onSelect={p => { setSelected(p); setModal('propietario') }} />}
-            {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected({ _solicitud: sol }); setModal('nuevo') }} />}
-            {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} />}
-            {tab === 'compraventa' && (
-              <TabCompraventa
-                vendedores={propietarios.filter(p => p.tipo_operacion === 'venta')}
-                compradores={compradores}
-                subTab={subTabCV}
-                onSubTab={setSubTabCV}
-                onSelectVendedor={p => { setSelected(p); setModal('vendedor_cv') }}
-                onSelectComprador={comp => { setSelected(comp); setModal('comprador_cv') }}
-                onReload={loadAll}
-              />
-            )}
-          </>
+      {/* ── CONTENIDO ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
+
+        {/* Topbar mobile */}
+        {isMobile && (
+          <div style={{ background: "#1a1a2e", padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0, position: "sticky", top: 0, zIndex: 100 }}>
+            <button onClick={() => setSidebarOpen(true)} style={{ background: "none", border: "none", color: "#c8a96e", fontSize: 24, cursor: "pointer", padding: 0, lineHeight: 1 }}>☰</button>
+            <span style={{ color: "#c8a96e", fontWeight: 700, fontSize: 15 }}>🏢 {currentNavLabel}</span>
+          </div>
         )}
-      </main>
 
-      {/* Modales */}
-      {modal === 'vendedor_cv' && selected && (
-        <ModalVendedorCV vendedor={selected} onClose={() => { setModal(null); setSelected(null) }} onSaved={() => { setModal(null); setSelected(null); loadAll() }} />
-      )}
-      {modal === 'comprador_cv' && selected && (
-        <ModalCompradorCV comprador={selected} onClose={() => { setModal(null); setSelected(null) }} onSaved={() => { setModal(null); setSelected(null); loadAll() }} />
-      )}
-      {modal === 'nuevo' && (
-        <ModalNuevoExpediente
-          propietarios={propietarios}
-          solicitudes={solicitudes}
-          prefill={selected?._solicitud}
-          onClose={() => { setModal(null); setSelected(null) }}
-          onSaved={() => { setModal(null); setSelected(null); loadAll() }}
-        />
-      )}
-      {modal === 'expediente' && selected && (
-        <ModalExpediente
-          expediente={selected}
-          propietarios={propietarios}
-          solicitudes={solicitudes}
-          onClose={() => { setModal(null); setSelected(null) }}
-          onSaved={() => { setModal(null); setSelected(null); loadAll() }}
-        />
-      )}
-      {modal === 'propietario' && selected && (
-        <ModalPropietario
-          propietario={selected}
-          onClose={() => { setModal(null); setSelected(null) }}
-          onSaved={() => { setModal(null); setSelected(null); loadAll() }}
-          onNuevoExp={() => { setModal('nuevo') }}
-        />
-      )}
-      {modal === 'solicitud' && selected && (
-        <ModalSolicitud
-          solicitud={selected}
-          onClose={() => { setModal(null); setSelected(null) }}
-          onSaved={() => { setModal(null); setSelected(null); loadAll() }}
-          onNuevoExp={() => { setSelected({ _solicitud: selected }); setModal('nuevo') }}
-        />
-      )}
-    </div>
-  )
-}
+        <div style={{ flex: 1, padding: isMobile ? 14 : 32, overflowY: "auto" }}>
+          {loading && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200 }}>
+              <p style={{ color: "#6b7280" }}>Cargando...</p>
+            </div>
+          )}
 
-// ═══════════════════════════════════════════════════════════
-// TAB EXPEDIENTES
-// ═══════════════════════════════════════════════════════════
-function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect }) {
-  if (expedientes.length === 0) return (
-    <div style={st.emptyState}>
-      <p style={{ fontSize: 40, margin: '0 0 12px' }}>📁</p>
-      <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin expedientes aún</p>
-      <p>Crea el primer expediente con el botón de arriba</p>
-    </div>
-  )
-
-  const getProp = (id) => propietarios.find(p => p.id === id)
-  const getSol = (id) => solicitudes.find(s => st.id === id)
-
-  return (
-    <div>
-      <p style={st.sectionTitle}>Expedientes de póliza</p>
-      <p style={st.sectionSub}>Haz clic en un expediente para editarlo o generar documentos</p>
-      <div style={st.card}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={st.tableHead}>
-            <tr>
-              <th style={st.th}>Arrendatario</th>
-              <th style={st.th}>Inmueble</th>
-              <th style={st.th}>Renta</th>
-              <th style={st.th}>Inicio</th>
-              <th style={st.th}>Tipo</th>
-              <th style={st.th}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {expedientes.map(e => (
-              <tr key={e.id} onClick={() => onSelect(e)}
-                style={st.trHover}
-                onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
-                onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
-                <td style={st.td}>
-                  <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{e.nombre_arrendatario || '—'}</p>
-                  <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{e.nombre_arrendador || '—'}</p>
-                </td>
-                <td style={st.td}>
-                  <p style={{ margin: 0, fontSize: 12, color: C.muted, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.direccion_inmueble || '—'}</p>
-                </td>
-                <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(e.renta_mensual)}</span></td>
-                <td style={st.td}><span style={{ color: C.muted, fontSize: 12 }}>{fmtDate(e.fecha_inicio)}</span></td>
-                <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{e.tipo_contrato?.replace(/_/g, ' ') || '—'}</span></td>
-                <td style={st.td}><Badge status={e.status} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// TAB PROPIETARIOS
-// ═══════════════════════════════════════════════════════════
-function TabPropietarios({ propietarios, onSelect }) {
-  if (propietarios.length === 0) return (
-    <div style={st.emptyState}>
-      <p style={{ fontSize: 40, margin: '0 0 12px' }}>🏠</p>
-      <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin propietarios registrados</p>
-      <p>Comparte el link de registro con los propietarios</p>
-      <div style={{ marginTop: 16, background: '#1A1A1A', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
-        <code style={{ color: C.goldText, fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-propietario</code>
-      </div>
-    </div>
-  )
-
-  return (
-    <div>
-      <p style={st.sectionTitle}>Propietarios e inmuebles</p>
-      <p style={st.sectionSub}>Registros enviados por los propietarios</p>
-      <div style={st.card}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={st.tableHead}>
-            <tr>
-              <th style={st.th}>Propietario</th>
-              <th style={st.th}>Inmueble</th>
-              <th style={st.th}>Renta</th>
-              <th style={st.th}>Tipo</th>
-              <th style={st.th}>Fecha</th>
-              <th style={st.th}>Admin</th>
-            </tr>
-          </thead>
-          <tbody>
-            {propietarios.map(p => (
-              <tr key={p.id} onClick={() => onSelect(p)}
-                style={st.trHover}
-                onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
-                onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
-                <td style={st.td}>
-                  <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{p.nombre_propietario}</p>
-                  <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{p.telefono_propietario}</p>
-                </td>
-                <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{p.direccion_inmueble}</span></td>
-                <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(p.monto_renta)}</span></td>
-                <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{p.tipo_inmueble?.replace(/_/g, ' ') || '—'}</span></td>
-                <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(p.created_at?.split('T')[0])}</span></td>
-                <td style={st.td}>{p.contrato_administracion ? <Badge status="activo" /> : <span style={{ color: C.faint, fontSize: 11 }}>Solo renta</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// TAB SOLICITUDES
-// ═══════════════════════════════════════════════════════════
-function TabSolicitudes({ solicitudes, onSelect, onNuevoExp }) {
-  if (solicitudes.length === 0) return (
-    <div style={st.emptyState}>
-      <p style={{ fontSize: 40, margin: '0 0 12px' }}>📋</p>
-      <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin solicitudes aún</p>
-      <p>Comparte el link con los inquilinos interesados</p>
-      <div style={{ marginTop: 16, background: '#1A1A1A', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
-        <code style={{ color: C.goldText, fontSize: 13 }}>app.emporioinmobiliario.com.mx/solicitud-inquilino</code>
-      </div>
-    </div>
-  )
-
-  return (
-    <div>
-      <p style={st.sectionTitle}>Solicitudes de investigación</p>
-      <p style={st.sectionSub}>Solicitudes enviadas por inquilinos interesados</p>
-      <div style={st.card}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={st.tableHead}>
-            <tr>
-              <th style={st.th}>Solicitante</th>
-              <th style={st.th}>Inmueble de interés</th>
-              <th style={st.th}>Ingresos</th>
-              <th style={st.th}>Fecha</th>
-              <th style={st.th}>Status</th>
-              <th style={st.th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {solicitudes.map(sol => (
-              <tr key={sol.id}
-                style={st.trHover}
-                onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
-                onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
-                <td style={st.td} onClick={() => onSelect(sol)}>
-                  <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{sol.nombre_completo || sol.razon_social || '—'}</p>
-                  <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{sol.telefono}</p>
-                </td>
-                <td style={st.td} onClick={() => onSelect(sol)}><span style={{ fontSize: 12, color: C.muted }}>{sol.inmueble_interes || '—'}</span></td>
-                <td style={st.td} onClick={() => onSelect(sol)}><span style={{ color: C.goldText }}>{fmt(sol.ingresos_mensuales || sol.ingresos_empresa)}</span></td>
-                <td style={st.td} onClick={() => onSelect(sol)}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(sol.created_at?.split('T')[0])}</span></td>
-                <td style={st.td} onClick={() => onSelect(sol)}><Badge status={sol.status} /></td>
-                <td style={st.td}>
-                  {sol.status === 'aprobado' && (
-                    <button onClick={() => onNuevoExp(sol)} style={{ ...st.btn, ...st.btnGold, padding: '6px 12px', fontSize: 11 }}>
-                      + Expediente
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// MODAL NUEVO EXPEDIENTE
-// ═══════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════
-// TAB CAJA PÓLIZA
-// ═══════════════════════════════════════════════════════════
-function TabCajaPoliza({ movimientos, onReload }) {
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ tipo: 'ingreso', concepto: 'pago_poliza', descripcion: '', monto: '', metodo_pago: 'efectivo' })
-  const [saving, setSaving] = useState(false)
-
-  const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + (m.monto || 0), 0)
-  const egresos  = movimientos.filter(m => m.tipo === 'egreso').reduce((a, m) => a + (m.monto || 0), 0)
-  const saldo    = ingresos - egresos
-
-  const CONCEPTOS = {
-    investigacion: 'Investigación',
-    anticipo_poliza: 'Anticipo póliza',
-    pago_poliza: 'Pago póliza',
-    saldo_poliza: 'Saldo póliza',
-    otro: 'Otro',
-  }
-
-  const handleSave = async () => {
-    if (!form.monto || !form.descripcion) return
-    setSaving(true)
-    await supabase.from('poliza_caja').insert({
-      ...form,
-      monto: parseFloat(form.monto),
-      fecha: new Date().toISOString().split('T')[0],
-    })
-    setSaving(false)
-    setShowForm(false)
-    setForm({ tipo: 'ingreso', concepto: 'pago_poliza', descripcion: '', monto: '', metodo_pago: 'efectivo' })
-    onReload()
-  }
-
-  return (
-    <div>
-      <p style={st.sectionTitle}>Caja — Póliza Jurídica</p>
-      <p style={st.sectionSub}>Registro de cobros y pagos del área jurídica</p>
-
-      {/* Resumen */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-        {[
-          { label: 'Total ingresos', value: fmt(ingresos), color: C.greenText, bg: C.greenBg },
-          { label: 'Total egresos', value: fmt(egresos), color: C.redText, bg: C.redBg },
-          { label: 'Saldo', value: fmt(saldo), color: saldo >= 0 ? C.greenText : C.redText, bg: saldo >= 0 ? C.greenBg : C.redBg },
-        ].map((s, i) => (
-          <div key={i} style={{ background: s.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '16px 20px' }}>
-            <p style={{ margin: 0, fontSize: 11, color: C.muted, textTransform: 'uppercase', fontWeight: 700 }}>{s.label}</p>
-            <p style={{ margin: '6px 0 0', fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Botón nuevo movimiento */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <button onClick={() => setShowForm(!showForm)} style={{ ...st.btn, ...st.btnGold }}>
-          {showForm ? 'Cancelar' : '+ Movimiento manual'}
-        </button>
-      </div>
-
-      {/* Formulario manual */}
-      {showForm && (
-        <div style={{ ...st.card, marginBottom: 20 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+          {/* ── DASHBOARD ── */}
+          {!loading && view === "dashboard" && (
             <div>
-              <label style={st.label}>Tipo</label>
-              <select value={form.tipo} onChange={e => setForm(f => ({...f, tipo: e.target.value}))} style={st.input}>
-                <option value="ingreso">Ingreso</option>
-                <option value="egreso">Egreso</option>
-              </select>
-            </div>
-            <div>
-              <label style={st.label}>Concepto</label>
-              <select value={form.concepto} onChange={e => setForm(f => ({...f, concepto: e.target.value}))} style={st.input}>
-                {Object.entries(CONCEPTOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={st.label}>Método de pago</label>
-              <select value={form.metodo_pago} onChange={e => setForm(f => ({...f, metodo_pago: e.target.value}))} style={st.input}>
-                <option value="efectivo">Efectivo</option>
-                <option value="transferencia">Transferencia</option>
-              </select>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
-            <div>
-              <label style={st.label}>Descripción</label>
-              <input value={form.descripcion} onChange={e => setForm(f => ({...f, descripcion: e.target.value}))}
-                placeholder="Ej: Pago póliza — Juan Pérez" style={st.input} />
-            </div>
-            <div>
-              <label style={st.label}>Monto</label>
-              <input type="number" value={form.monto} onChange={e => setForm(f => ({...f, monto: e.target.value}))}
-                placeholder="0.00" style={st.input} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGold, opacity: saving ? 0.6 : 1 }}>
-              {saving ? 'Guardando...' : 'Registrar'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Tabla de movimientos */}
-      <div style={st.card}>
-        {movimientos.length === 0 ? (
-          <p style={{ color: C.faint, textAlign: 'center', padding: 32 }}>Sin movimientos registrados</p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead style={st.tableHead}>
-              <tr>
-                <th style={st.th}>Fecha</th>
-                <th style={st.th}>Tipo</th>
-                <th style={st.th}>Concepto</th>
-                <th style={st.th}>Descripción</th>
-                <th style={st.th}>Método</th>
-                <th style={st.th}>Monto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {movimientos.map(m => (
-                <tr key={m.id} style={{ borderTop: `1px solid ${C.border}` }}>
-                  <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.fecha}</span></td>
-                  <td style={st.td}><Badge status={m.tipo === 'ingreso' ? 'activo' : 'rechazado'} label={m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} /></td>
-                  <td style={st.td}><span style={{ fontSize: 12 }}>{CONCEPTOS[m.concepto] || m.concepto}</span></td>
-                  <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.descripcion}</span></td>
-                  <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.metodo_pago}</span></td>
-                  <td style={st.td}><span style={{ fontWeight: 700, color: m.tipo === 'ingreso' ? C.greenText : C.redText }}>{m.tipo === 'ingreso' ? '+' : '-'}{fmt(m.monto)}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  )
-}
-
-
-// ═══════════════════════════════════════════════════════════
-// TAB COMPRAVENTA
-// ═══════════════════════════════════════════════════════════
-function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVendedor, onSelectComprador, onReload }) {
-  const subTabs = [
-    { id: 'vendedores', label: `🏠 Vendedores (${vendedores.length})` },
-    { id: 'compradores', label: `👤 Compradores (${compradores.length})` },
-  ]
-
-  return (
-    <div>
-      <p style={st.sectionTitle}>Compraventa</p>
-      <p style={st.sectionSub}>Vendedores, compradores y expedientes de compraventa</p>
-
-      {/* Sub-tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: `1px solid ${C.border}`, paddingBottom: 0 }}>
-        {subTabs.map(t => (
-          <button key={t.id} onClick={() => onSubTab(t.id)}
-            style={{ padding: '10px 18px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
-              background: subTab === t.id ? C.gold : 'transparent',
-              color: subTab === t.id ? '#000' : C.muted,
-              borderBottom: subTab === t.id ? `2px solid ${C.gold}` : '2px solid transparent',
-            }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Vendedores */}
-      {subTab === 'vendedores' && (
-        vendedores.length === 0 ? (
-          <div style={st.emptyState}>
-            <p style={{ fontSize: 40, margin: '0 0 12px' }}>🏠</p>
-            <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin vendedores registrados</p>
-            <p>Comparte el link con los propietarios que quieran vender</p>
-            <div style={{ marginTop: 16, background: '#1A1A1A', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
-              <code style={{ color: C.goldText, fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-vendedor</code>
-            </div>
-          </div>
-        ) : (
-          <div style={st.card}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead style={st.tableHead}>
-                <tr>
-                  <th style={st.th}>Propietario</th>
-                  <th style={st.th}>Inmueble</th>
-                  <th style={st.th}>Precio</th>
-                  <th style={st.th}>Gravamen</th>
-                  <th style={st.th}>Copropietarios</th>
-                  <th style={st.th}>Fecha</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vendedores.map(v => (
-                  <tr key={v.id} onClick={() => onSelectVendedor(v)}
-                    style={st.trHover}
-                    onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
-                    onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
-                    <td style={st.td}>
-                      <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{v.nombre_propietario}</p>
-                      <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{v.telefono_propietario}</p>
-                      {v.tipo_persona_propietario === 'moral' && (
-                        <span style={{ fontSize: 10, background: '#1A2A3A', color: C.blueText, padding: '2px 6px', borderRadius: 4 }}>Persona moral</span>
-                      )}
-                    </td>
-                    <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{v.direccion_inmueble}</span></td>
-                    <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(v.precio_venta)}</span></td>
-                    <td style={st.td}>
-                      <Badge status={v.libre_gravamen ? 'activo' : 'rechazado'} label={v.libre_gravamen ? 'Libre' : 'Con gravamen'} />
-                    </td>
-                    <td style={st.td}>
-                      {v.tipo_copropiedad && v.tipo_copropiedad !== 'no'
-                        ? <Badge status="pendiente" label={v.tipo_copropiedad === 'conyuge' ? 'Cónyuge' : 'Copropietario'} />
-                        : <span style={{ color: C.faint, fontSize: 11 }}>Solo propietario</span>}
-                    </td>
-                    <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(v.created_at?.split('T')[0])}</span></td>
-                  </tr>
+              <h1 style={{ margin: "0 0 20px", fontSize: isMobile ? 20 : 26, fontWeight: 800, color: "#1a1a2e" }}>Panel de Control</h1>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 20 }}>
+                {[
+                  { label: "Renta mensual", value: fmt(totalRent), color: "#1a1a2e" },
+                  { label: "Cobrado", value: fmt(paid), color: "#065f46" },
+                  { label: "Pendiente", value: fmt(pending), color: "#92400e" },
+                  { label: "Atrasado", value: fmt(overdue), color: "#991b1b" },
+                  { label: "Comisiones/mes", value: fmt(totalComisiones), color: "#7c3aed" },
+                  { label: "Com. pendientes", value: fmt(comisionesPendientes), color: "#92400e" },
+                  { label: "Saldo caja", value: fmt(saldoCaja), color: saldoCaja >= 0 ? "#065f46" : "#dc2626" },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                    <p style={{ margin: "0 0 6px", fontSize: 10, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
+                    <p style={{ margin: 0, fontSize: isMobile ? 18 : 22, fontWeight: 800, color: s.color }}>{s.value}</p>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      )}
-
-      {/* Compradores */}
-      {subTab === 'compradores' && (
-        compradores.length === 0 ? (
-          <div style={st.emptyState}>
-            <p style={{ fontSize: 40, margin: '0 0 12px' }}>👤</p>
-            <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin compradores registrados</p>
-            <p>Comparte el link con los compradores interesados</p>
-            <div style={{ marginTop: 16, background: '#1A1A1A', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
-              <code style={{ color: C.goldText, fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-comprador</code>
-            </div>
-          </div>
-        ) : (
-          <div style={st.card}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead style={st.tableHead}>
-                <tr>
-                  <th style={st.th}>Comprador</th>
-                  <th style={st.th}>Inmueble de interés</th>
-                  <th style={st.th}>Precio pactado</th>
-                  <th style={st.th}>Forma de pago</th>
-                  <th style={st.th}>Cónyuge</th>
-                  <th style={st.th}>Fecha</th>
-                </tr>
-              </thead>
-              <tbody>
-                {compradores.map(comp => (
-                  <tr key={comp.id} onClick={() => onSelectComprador(comp)}
-                    style={st.trHover}
-                    onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
-                    onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
-                    <td style={st.td}>
-                      <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{comp.nombre_comprador}</p>
-                      <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{comp.celular_comprador}</p>
-                    </td>
-                    <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{comp.inmueble_interes || '—'}</span></td>
-                    <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(comp.precio_pactado)}</span></td>
-                    <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{comp.forma_pago_compra || '—'}</span></td>
-                    <td style={st.td}>
-                      {comp.tiene_conyuge
-                        ? <Badge status="pendiente" label="Con cónyuge" />
-                        : <span style={{ color: C.faint, fontSize: 11 }}>No</span>}
-                    </td>
-                    <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(comp.created_at?.split('T')[0])}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      )}
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// MODAL VENDEDOR CV
-// ═══════════════════════════════════════════════════════════
-function ModalVendedorCV({ vendedor: v, onClose, onSaved }) {
-  const [generando, setGenerando] = useState(false)
-
-  const handleGenerarPromocion = async () => {
-    setGenerando(true)
-    try {
-      await generarContratoPromocion({
-        nombre_arrendador: v.nombre_propietario,
-        domicilio_arrendador: v.domicilio_propietario,
-        telefono_arrendador: v.telefono_propietario,
-        direccion_inmueble: v.direccion_inmueble,
-        renta_mensual: v.precio_venta,
-      })
-    } catch(e) { alert('Error: ' + e.message) }
-    setGenerando(false)
-  }
-  
-
-
-  const handleGenerarContratoCV = async () => {
-    setGenerando(true)
-    try {
-      await generarContratoCompraventa({
-        nombre_propietario: v.nombre_propietario,
-        domicilio_propietario: v.domicilio_propietario,
-        telefono_propietario: v.telefono_propietario,
-        direccion_inmueble: v.direccion_inmueble,
-        precio_venta: v.precio_venta,
-      })
-    } catch(e) { alert('Error: ' + e.message) }
-    setGenerando(false)
-  }
-const handleGenerarPromesaCV = async () => {
-  setGenerando('promesacv')
-  try {
-    await generarPromesaCompraventa({
-      nombre_vendedor:    v.nombre_propietario,
-      domicilio_vendedor: v.domicilio_propietario,
-      telefono_vendedor:  v.telefono_propietario,
-      direccion_inmueble: v.direccion_inmueble,
-      precio_total:       v.precio_venta,
-      gravamen:           v.gravamen,
-      tipo_credito:       'contado',
-    })
-  } catch(e) { alert('Error: ' + e.message) }
-  setGenerando(false)
-}
-  return (
-    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={st.modalCard}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{v.nombre_propietario}</h2>
-            <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>{v.tipo_persona_propietario === 'moral' ? `Persona moral — ${v.razon_social_propietario}` : 'Persona física'}</p>
-          </div>
-          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
-        </div>
-
-        <div style={st.grid2}>
-          <InfoRow label="Teléfono" value={v.telefono_propietario} />
-          <InfoRow label="Correo" value={v.correo_propietario} />
-          <InfoRow label="RFC" value={v.rfc_propietario} />
-          <InfoRow label="Precio de venta" value={fmt(v.precio_venta)} />
-        </div>
-        <InfoRow label="Dirección del inmueble" value={v.direccion_inmueble} />
-        <InfoRow label="Domicilio del propietario" value={v.domicilio_propietario} />
-        <InfoRow label="Descripción" value={v.descripcion_inmueble} />
-        <div style={st.grid2}>
-          <InfoRow label="Gravamen" value={v.libre_gravamen ? 'Libre de gravamen' : `Con gravamen — ${v.institucion_gravamen || ''}`} />
-          <InfoRow label="Copropietarios" value={v.tipo_copropiedad === 'no' || !v.tipo_copropiedad ? 'Solo propietario' : v.tipo_copropiedad === 'conyuge' ? `Cónyuge: ${v.copropietario_1_nombre}` : `Copropietario: ${v.copropietario_1_nombre}`} />
-        </div>
-
-        {/* Copropietarios detalle */}
-        {v.tipo_copropiedad && v.tipo_copropiedad !== 'no' && (
-          <>
-            <div style={{ ...st.divider, margin: '16px 0' }} />
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>
-              {v.tipo_copropiedad === 'conyuge' ? 'Cónyuge' : 'Copropietarios'}
-            </p>
-            {[1, 2, 3].map(i => v[`copropietario_${i}_nombre`] ? (
-              <div key={i} style={{ background: '#1A1A1A', borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
-                <p style={{ margin: 0, fontWeight: 600, color: C.white, fontSize: 13 }}>{v[`copropietario_${i}_nombre`]}</p>
-                <p style={{ margin: '4px 0 0', fontSize: 11, color: C.muted }}>{v[`copropietario_${i}_telefono`]} · {v[`copropietario_${i}_correo`]} · RFC: {v[`copropietario_${i}_rfc`]}</p>
               </div>
-            ) : null)}
-          </>
-        )}
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 12px' }}>Documentos</p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-          {v.doc_identificacion_b64 && <DocChipB64 label="Identificación" data={v.doc_identificacion_b64} />}
-          {v.doc_comprobante_domicilio_b64 && <DocChipB64 label="Comprobante domicilio" data={v.doc_comprobante_domicilio_b64} />}
-          {v.doc_predial_b64 && <DocChipB64 label="Predial" data={v.doc_predial_b64} />}
-          {v.doc_escritura_b64 && <DocChipB64 label="Escritura" data={v.doc_escritura_b64} />}
-        </div>
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 12px' }}>Generar documentos</p>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button onClick={handleGenerarPromocion} disabled={!!generando}
-            style={{ ...st.btn, background: '#1A1A3A', color: '#A070E0', border: '1px solid #3A2A5C', opacity: generando ? 0.6 : 1 }}>
-            {generando === 'promocion' ? 'Generando...' : '📄 Contrato de promoción'}
-          </button>
-          <button onClick={handleGenerarPromesaCV} disabled={!!generando}
-              style={{ ...st.btn, background: '#1A2A1A', color: C.greenText, border: `1px solid ${C.green}`, opacity: generando ? 0.6 : 1 }}>
-              {generando === 'promesacv' ? 'Generando...' : '🖹 Promesa de compraventa'}
-            </button>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
-          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// MODAL COMPRADOR CV
-// ═══════════════════════════════════════════════════════════
-function ModalCompradorCV({ comprador: comp, onClose, onSaved }) {
-  return (
-    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={st.modalCard}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{comp.nombre_comprador}</h2>
-            <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>{comp.ocupacion_comprador} — {comp.empresa_comprador}</p>
-          </div>
-          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
-        </div>
-
-        <div style={st.grid2}>
-          <InfoRow label="Celular" value={comp.celular_comprador} />
-          <InfoRow label="Teléfono fijo" value={comp.telefono_fijo_comprador} />
-          <InfoRow label="Correo" value={comp.correo_comprador} />
-          <InfoRow label="RFC" value={comp.rfc_comprador} />
-          <InfoRow label="CURP" value={comp.curp_comprador} />
-          <InfoRow label="NSS" value={comp.nss_comprador} />
-          <InfoRow label="Fecha de nacimiento" value={comp.fecha_nacimiento_comprador} />
-          <InfoRow label="Lugar de nacimiento" value={comp.lugar_nacimiento_comprador} />
-          <InfoRow label="Estado civil" value={comp.estado_civil_comprador} />
-          <InfoRow label="Régimen conyugal" value={comp.regimen_conyugal} />
-          <InfoRow label="Identificación" value={`${comp.tipo_identificacion_comprador} — ${comp.folio_identificacion_comprador}`} />
-          <InfoRow label="Asesor" value={comp.asesor_ventas} />
-        </div>
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-        <div style={st.grid2}>
-          <InfoRow label="Inmueble de interés" value={comp.inmueble_interes} />
-          <InfoRow label="Precio pactado" value={fmt(comp.precio_pactado)} />
-          <InfoRow label="Forma de pago" value={comp.forma_pago_compra} />
-          <InfoRow label="Notaría" value={comp.notaria} />
-          <InfoRow label="Fecha de apartado" value={comp.fecha_apartado} />
-        </div>
-
-        {comp.tiene_conyuge && (
-          <>
-            <div style={{ ...st.divider, margin: '16px 0' }} />
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Cónyuge</p>
-            <div style={{ background: '#1A1A1A', borderRadius: 8, padding: '10px 14px' }}>
-              <p style={{ margin: 0, fontWeight: 600, color: C.white, fontSize: 13 }}>{comp.conyuge_nombre}</p>
-              <p style={{ margin: '4px 0 0', fontSize: 11, color: C.muted }}>{comp.conyuge_telefono} · {comp.conyuge_correo} · RFC: {comp.conyuge_rfc}</p>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
+                <div style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 700 }}>Cobros este mes ({pagosMes.length})</h3>
+                  {pagosMes.length === 0 && <p style={{ color: "#9ca3af", fontSize: 13 }}>No hay cobros este mes</p>}
+                  {pagosMes.map(p => (
+                    <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
+                      <div>
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>{p.tenant_name || "-"}</p>
+                        <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{p.property_name} · {p.due_date}</p>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontWeight: 700, fontSize: 13 }}>{fmt(p.amount)}</span>
+                        <StatusBadge status={p.status} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 700 }}>Ultimos movimientos de caja</h3>
+                  {cashMovements.slice(0, 6).map(m => (
+                    <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.description}</p>
+                        <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{categoryLabels[m.category]} · {m.date}</p>
+                      </div>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: m.type === "entrada" ? "#065f46" : "#dc2626", marginLeft: 8, whiteSpace: "nowrap" }}>
+                        {m.type === "entrada" ? "+" : "-"}{fmt(m.amount)}
+                      </span>
+                    </div>
+                  ))}
+                  {cashMovements.length === 0 && <p style={{ color: "#9ca3af", fontSize: 13 }}>No hay movimientos aun</p>}
+                </div>
+              </div>
             </div>
-          </>
-        )}
-
-        {comp.doc_identificacion_b64 && (
-          <>
-            <div style={{ ...st.divider, margin: '16px 0' }} />
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Documentos</p>
-            <DocChipB64 label="Identificación" data={comp.doc_identificacion_b64} />
-          </>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
-          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Helper para documentos base64
-const DocChipB64 = ({ label, data }) => {
-  const handleView = () => {
-    const win = window.open()
-    win.document.write(`<iframe src="${data}" width="100%" height="100%" style="border:none"></iframe>`)
-  }
-  return (
-    <button onClick={handleView} style={{ ...st.btn, ...st.btnGhost, fontSize: 12, padding: '6px 12px', marginRight: 6, marginBottom: 6 }}>
-      📄 {label}
-    </button>
-  )
-}
-
-
-function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onSaved }) {
-  const [propId, setPropId] = useState(prefill ? '' : '')
-  const [solId, setSolId] = useState(prefill?.id || '')
-  const [form, setForm] = useState({
-    tipo_contrato: 'habitacional_sin_muebles',
-    incluye_administracion: false,
-    // Arrendador
-    nombre_arrendador: '', domicilio_arrendador: '', rfc_arrendador: '',
-    clave_elector_arrendador: '', telefono_arrendador: '', correo_arrendador: '',
-    // Arrendatario
-    nombre_arrendatario: '', domicilio_arrendatario: '', rfc_arrendatario: '',
-    clave_elector_arrendatario: '', telefono_arrendatario: '', correo_arrendatario: '',
-    ocupacion_arrendatario: '', comprobante_ingresos: '',
-    // Inmueble
-    direccion_inmueble: '', ciudad_estado_inmueble: 'San Andrés Cholula, Puebla',
-    // Económico
-    renta_mensual: '', cuota_mantenimiento: '', deposito_garantia: '', forma_pago: 'efectivo',
-    banco_receptor: '', clabe_interbancaria: '', dia_limite_pago: '5',
-    // Fechas
-    fecha_inicio: '', fecha_firma: '',
-    fecha_entrega_posesion: '',
-    // Mascotas
-    mascotas_permitidas: 'no', detalle_mascotas: '',
-    // Póliza
-    monto_poliza: '',
-    status: 'borrador',
-  })
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState('')
-  const formRef = useRef(null)
-
-  // Helper to read all uncontrolled inputs from DOM
-  const getFormValues = () => {
-    if (!formRef.current) return {}
-    const inputs = formRef.current.querySelectorAll('[data-field]')
-    const vals = {}
-    inputs.forEach(el => { vals[el.dataset.field] = el.value })
-    return vals
-  }
-
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  // Pre-llenar desde propietario
-  useEffect(() => {
-    if (!propId) return
-    const p = propietarios.find(x => x.id === propId)
-    if (!p) return
-    setForm(f => ({
-      ...f,
-      nombre_arrendador: p.nombre_propietario || '',
-      domicilio_arrendador: p.domicilio_propietario || '',
-      rfc_arrendador: p.rfc_propietario || '',
-      telefono_arrendador: p.telefono_propietario || '',
-      correo_arrendador: p.correo_propietario || '',
-      clave_elector_arrendador: p.clave_elector_propietario || '',
-      direccion_inmueble: p.direccion_inmueble || '',
-      renta_mensual: p.monto_renta || '',
-      forma_pago: p.forma_pago || 'efectivo',
-      banco_receptor: p.banco || '',
-      clabe_interbancaria: p.clabe || '',
-      mascotas_permitidas: p.mascotas_permitidas || 'no',
-      detalle_mascotas: p.detalle_mascotas || '',
-      incluye_administracion: p.contrato_administracion || false,
-    }))
-  }, [propId])
-
-  // Pre-llenar desde solicitud
-  useEffect(() => {
-    if (!solId) return
-    const sol = solicitudes.find(x => x.id === solId)
-    if (!sol) return
-    setForm(f => ({
-      ...f,
-      nombre_arrendatario: sol.nombre_completo || sol.razon_social || '',
-      domicilio_arrendatario: sol.domicilio_actual || '',
-      rfc_arrendatario: sol.rfc || sol.rfc_empresa || '',
-      telefono_arrendatario: sol.telefono || '',
-      correo_arrendatario: sol.correo || '',
-      clave_elector_arrendatario: sol.clave_elector || '',
-      ocupacion_arrendatario: sol.empresa_labora || sol.giro_empresa || '',
-      comprobante_ingresos: sol.tipo_ingresos || '',
-    }))
-  }, [solId])
-
-  // Auto-calcular depósito y mora al cambiar renta
-  useEffect(() => {
-    const r = parseFloat(form.renta_mensual)
-    if (!r) return
-    setForm(f => ({
-      ...f,
-      deposito_garantia: r,
-      mora_diaria: (r * 0.01).toFixed(2),
-    }))
-  }, [form.renta_mensual])
-
-  // Auto-calcular fecha término
-  const fechaTermino = form.fecha_inicio
-    ? (() => { const d = new Date(form.fecha_inicio + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0] })()
-    : ''
-
-  const handleSave = async () => {
-    const domVals = getFormValues()
-    const merged = { ...form, ...domVals }
-    if (!merged.nombre_arrendador || !merged.nombre_arrendatario || !merged.fecha_inicio) {
-      setMsg('Completa al menos: arrendador, arrendatario y fecha de inicio')
-      return
-    }
-    setSaving(true)
-    setMsg('')
-    try {
-      const r = parseFloat(merged.renta_mensual) || 0
-      const dep = parseFloat(merged.deposito_garantia) || 0
-      const mora = parseFloat((r * 0.01).toFixed(2))
-      const pagares = calcularPagares(merged.fecha_inicio)
-
-      const payload = {
-        ...merged,
-        propietario_id: propId || null,
-        inquilino_id: solId || null,
-        renta_mensual: r,
-        cuota_mantenimiento: parseFloat(merged.cuota_mantenimiento) || 0,
-        renta_mensual_letra: numeroALetra(r),
-        deposito_garantia: dep,
-        deposito_garantia_letra: numeroALetra(dep),
-        mora_diaria: mora,
-        mora_diaria_letra: numeroALetra(mora),
-        monto_poliza: parseFloat(merged.monto_poliza) || null,
-        monto_poliza_letra: merged.monto_poliza ? numeroALetra(parseFloat(merged.monto_poliza)) : null,
-        dia_limite_pago: parseInt(form.dia_limite_pago) || 5,
-        fecha_termino: fechaTermino || null,
-        ...pagares,
-      }
-      delete payload.mora_diaria_campo // limpieza
-
-      const { error } = await supabase.from('poliza_expedientes').insert(payload)
-      if (error) throw error
-      onSaved()
-    } catch (e) {
-      setMsg('Error: ' + e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={st.modalCard} ref={formRef}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>Nuevo expediente</h2>
-          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
-        </div>
-
-        {/* Selector propietario / solicitud */}
-        <div style={st.grid2}>
-          <div>
-            <label style={st.label}>Propietario registrado</label>
-            <select value={propId} onChange={e => setPropId(e.target.value)} style={st.input}>
-              <option value="">— Seleccionar o capturar abajo —</option>
-              {propietarios.map(p => <option key={p.id} value={p.id}>{p.nombre_propietario} · {p.direccion_inmueble?.slice(0, 30)}...</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={st.label}>Solicitud de inquilino</label>
-            <select value={solId} onChange={e => setSolId(e.target.value)} style={st.input}>
-              <option value="">— Seleccionar o capturar abajo —</option>
-              {solicitudes.map(sol => <option key={sol.id} value={sol.id}>{sol.nombre_completo || sol.razon_social} · {sol.status}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div style={{ ...st.divider, margin: '20px 0' }} />
-
-        {/* Tipo de contrato */}
-        <div style={{ marginBottom: 20 }}>
-          <label style={st.label}>Tipo de contrato</label>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {[
-              { v: 'habitacional_sin_muebles', l: 'Casa sin muebles' },
-              { v: 'habitacional_amueblada', l: 'Casa amueblada' },
-              { v: 'comercial', l: 'Comercial' },
-            ].map(opt => (
-              <button key={opt.v} type="button" onClick={() => set('tipo_contrato', opt.v)}
-                style={{ ...st.btn, ...(form.tipo_contrato === opt.v ? st.btnGold : st.btnGhost), padding: '7px 14px', fontSize: 12 }}>
-                {opt.l}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ARRENDADOR */}
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Arrendador (Dueño)</p>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Nombre completo</label>
-    <input type="text" defaultValue={form.nombre_arrendador || ''} data-field='nombre_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>RFC</label>
-    <input type="text" defaultValue={form.rfc_arrendador || ''} data-field='rfc_arrendador' style={st.input} />
-  </div>
-        </div>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Clave de elector</label>
-    <input type="text" defaultValue={form.clave_elector_arrendador || ''} data-field='clave_elector_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Teléfono</label>
-    <input type="text" defaultValue={form.telefono_arrendador || ''} data-field='telefono_arrendador' style={st.input} />
-  </div>
-        </div>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Correo</label>
-    <input type="text" defaultValue={form.correo_arrendador || ''} data-field='correo_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Domicilio</label>
-    <input type="text" defaultValue={form.domicilio_arrendador || ''} data-field='domicilio_arrendador' style={st.input} />
-  </div>
-        </div>
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-
-        {/* ARRENDATARIO */}
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Arrendatario (Inquilino)</p>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Nombre completo</label>
-    <input type="text" defaultValue={form.nombre_arrendatario || ''} data-field='nombre_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>RFC</label>
-    <input type="text" defaultValue={form.rfc_arrendatario || ''} data-field='rfc_arrendatario' style={st.input} />
-  </div>
-        </div>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Clave de elector</label>
-    <input type="text" defaultValue={form.clave_elector_arrendatario || ''} data-field='clave_elector_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Teléfono</label>
-    <input type="text" defaultValue={form.telefono_arrendatario || ''} data-field='telefono_arrendatario' style={st.input} />
-  </div>
-        </div>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Correo</label>
-    <input type="text" defaultValue={form.correo_arrendatario || ''} data-field='correo_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Ocupación / Actividad</label>
-    <input type="text" defaultValue={form.ocupacion_arrendatario || ''} data-field='ocupacion_arrendatario' style={st.input} />
-  </div>
-        </div>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Comprobante de ingresos presentado</label>
-    <input type="text" defaultValue={form.comprobante_ingresos || ''} data-field='comprobante_ingresos' placeholder="Ej: Estados de cuenta, Recibos de nómina..." style={st.input} />
-  </div>
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-
-        {/* INMUEBLE */}
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inmueble</p>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Dirección completa</label>
-    <input type="text" defaultValue={form.direccion_inmueble || ''} data-field='direccion_inmueble' style={st.input} />
-  </div>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Ciudad y estado</label>
-    <input type="text" defaultValue={form.ciudad_estado_inmueble || ''} data-field='ciudad_estado_inmueble' style={st.input} />
-  </div>
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-
-        {/* CONDICIONES ECONÓMICAS */}
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Condiciones económicas</p>
-        <div style={st.grid3}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Renta mensual $</label>
-    <input type="number" defaultValue={form.renta_mensual || ''} data-field='renta_mensual' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Cuota mantenimiento $</label>
-    <input type="number" defaultValue={form.cuota_mantenimiento || ''} data-field='cuota_mantenimiento' placeholder="0 si no aplica" style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Depósito en garantía $</label>
-    <input type="number" defaultValue={form.deposito_garantia || ''} data-field='deposito_garantia' style={st.input} />
-  </div>
-        </div>
-        <div style={st.grid3}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Mora diaria 1% $</label>
-    <input type="number" value={form.mora_diaria || (parseFloat(form.renta_mensual) * 0.01).toFixed(2) || '' || ''} onChange={e => set('mora_diaria', e.target.value)} style={st.input} />
-  </div>
-          <div>
-            <label style={st.label}>Forma de pago</label>
-            <select value={form.forma_pago} onChange={e => set('forma_pago', e.target.value)} style={st.input}>
-              <option value="efectivo">Efectivo</option>
-              <option value="transferencia">Transferencia</option>
-              <option value="deposito">Depósito</option>
-            </select>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Banco receptor</label>
-    <input type="text" defaultValue={form.banco_receptor || ''} data-field='banco_receptor' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Día límite de pago</label>
-    <input type="number" defaultValue={form.dia_limite_pago || ''} data-field='dia_limite_pago' placeholder="Ej: 5" style={st.input} />
-  </div>
-        </div>
-        {(form.forma_pago === 'transferencia' || form.forma_pago === 'deposito') && (
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>CLABE interbancaria</label>
-    <input type="text" defaultValue={form.clabe_interbancaria || ''} data-field='clabe_interbancaria' style={st.input} />
-  </div>
-        )}
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Monto de póliza $</label>
-    <input type="number" defaultValue={form.monto_poliza || ''} data-field='monto_poliza' placeholder="Costo del servicio de póliza jurídica" style={st.input} />
-  </div>
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-
-        {/* FECHAS */}
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Fechas</p>
-        <div style={st.grid3}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Fecha de inicio</label>
-    <input type="date" defaultValue={form.fecha_inicio || ''} data-field='fecha_inicio' style={st.input} />
-  </div>
-          <div>
-            <label style={st.label}>Fecha de término</label>
-            <input value={fechaTermino} readOnly style={{ ...st.input, color: C.muted, cursor: 'not-allowed' }} />
-            <p style={{ margin: '4px 0 0', fontSize: 10, color: C.faint }}>Se calcula automáticamente (1 año)</p>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Entrega de posesión</label>
-    <input type="date" defaultValue={form.fecha_entrega_posesion || ''} data-field='fecha_entrega_posesion' style={st.input} />
-  </div>
-        </div>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Fecha de firma del contrato</label>
-    <input type="date" defaultValue={form.fecha_firma || ''} data-field='fecha_firma' style={st.input} />
-  </div>
-
-        {form.fecha_inicio && (
-          <div style={{ background: '#111', borderRadius: 8, padding: '12px 16px', marginTop: 8 }}>
-            <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 700, color: C.muted }}>PAGARÉS — 12 fechas calculadas automáticamente</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {Object.entries(calcularPagares(form.fecha_inicio)).map(([k, v]) => (
-                <span key={k} style={{ background: '#1A1A1A', border: `1px solid ${C.border}`, borderRadius: 6, padding: '3px 10px', fontSize: 11, color: C.muted }}>
-                  {fmtDate(v)}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-
-        {/* MASCOTAS */}
-        <div style={st.grid2}>
-          <div>
-            <label style={st.label}>Mascotas permitidas</label>
-            <select value={form.mascotas_permitidas} onChange={e => set('mascotas_permitidas', e.target.value)} style={st.input}>
-              <option value="no">No</option>
-              <option value="si">Sí</option>
-              <option value="condicionado">Condicionado</option>
-            </select>
-          </div>
-          {form.mascotas_permitidas !== 'no' && (
-            <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Detalle mascotas</label>
-    <input type="text" defaultValue={form.detalle_mascotas || ''} data-field='detalle_mascotas' style={st.input} />
-  </div>
           )}
-        </div>
 
-        {/* Administración */}
-        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <input type="checkbox" id="admin" checked={form.incluye_administracion} onChange={e => set('incluye_administracion', e.target.checked)} style={{ accentColor: C.gold, width: 16, height: 16 }} />
-          <label htmlFor="admin" style={{ fontSize: 13, color: C.muted, cursor: 'pointer' }}>Incluye contrato de administración</label>
-        </div>
+          {/* ── CAJA ── */}
+          {!loading && view === "caja" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <h1 style={{ margin: 0, fontSize: isMobile ? 20 : 26, fontWeight: 800, color: "#1a1a2e" }}>Caja / Tesoreria</h1>
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>Solo refleja dinero que entra y sale de Emporio</p>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn color="#065f46" small={isMobile} onClick={() => { setCashForm({ ...emptyCash, type: "entrada" }); setShowModal("cash"); }}>+ Entrada</Btn>
+                  <Btn color="#dc2626" small={isMobile} onClick={() => { setCashForm({ ...emptyCash, type: "salida" }); setShowModal("cash"); }}>- Salida</Btn>
+                </div>
+              </div>
+              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "10px 14px", marginBottom: 16 }}>
+                <p style={{ margin: 0, fontSize: 12, color: "#1e40af", fontWeight: 600 }}>
+                  Nota: Las rentas que van directo al propietario NO aparecen aqui. Solo se registra lo que entra a la cuenta de Emporio.
+                </p>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 18 }}>
+                {[
+                  { label: "Saldo Emporio", value: fmt(saldoCaja), color: saldoCaja >= 0 ? "#065f46" : "#dc2626", bg: saldoCaja >= 0 ? "#f0fdf4" : "#fff5f5" },
+                  { label: "Total entradas", value: fmt(totalEntradas), color: "#065f46", bg: "#f0fdf4" },
+                  { label: "Total salidas", value: fmt(totalSalidas), color: "#dc2626", bg: "#fff5f5" },
+                  { label: "Efectivo", value: fmt(entradasEfectivo), color: "#92400e", bg: "#fffbeb" },
+                  { label: "Banco", value: fmt(entradasBanco), color: "#1e40af", bg: "#eff6ff" },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: s.bg, borderRadius: 14, padding: "12px 14px" }}>
+                    <p style={{ margin: "0 0 4px", fontSize: 10, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
+                    <p style={{ margin: 0, fontSize: isMobile ? 16 : 20, fontWeight: 800, color: s.color }}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+              {isMobile ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {cashMovements.map(m => (
+                    <div key={m.id} style={{ background: m.type === "entrada" ? "#f9fffe" : "#fffafa", borderRadius: 12, padding: "12px 14px", border: "1px solid #f0f0f0" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: "0 0 2px", fontWeight: 600, fontSize: 13 }}>{m.description}</p>
+                          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{categoryLabels[m.category]} · {m.date}</p>
+                        </div>
+                        <span style={{ fontWeight: 800, fontSize: 14, color: m.type === "entrada" ? "#065f46" : "#dc2626", marginLeft: 8 }}>
+                          {m.type === "entrada" ? "+" : "-"}{fmt(m.amount)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {cashMovements.length === 0 && <p style={{ color: "#6b7280", textAlign: "center", padding: "2rem" }}>Los movimientos apareceran aqui</p>}
+                </div>
+              ) : (
+                <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "#f9fafb" }}>
+                        {["Fecha", "Tipo", "Categoria", "Descripcion", "Metodo", "Monto", "Por", ""].map(h => (
+                          <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cashMovements.map(m => (
+                        <tr key={m.id} style={{ borderTop: "1px solid #f3f4f6", background: m.type === "entrada" ? "#f9fffe" : "#fffafa" }}>
+                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{m.date}</td>
+                          <td style={{ padding: "12px 16px" }}><StatusBadge status={m.type} /></td>
+                          <td style={{ padding: "12px 16px", fontSize: 13 }}>{categoryLabels[m.category] || m.category}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600 }}>{m.description}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 12, color: "#6b7280" }}>{m.payment_method}</td>
+                          <td style={{ padding: "12px 16px", fontWeight: 800, fontSize: 15, color: m.type === "entrada" ? "#065f46" : "#dc2626" }}>
+                            {m.type === "entrada" ? "+" : "-"}{fmt(m.amount)}
+                          </td>
+                          <td style={{ padding: "12px 16px", fontSize: 11, color: "#9ca3af" }}>{m.created_by?.split("@")[0] || "sistema"}</td>
+                          <td style={{ padding: "12px 16px" }}>
+                            {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("cash", m.id, `Eliminar: ${m.description}`)}>X</Btn>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {cashMovements.length === 0 && <div style={{ padding: 48, textAlign: "center" }}><p style={{ color: "#6b7280" }}>Los movimientos apareceran automaticamente aqui</p></div>}
+                </div>
+              )}
+            </div>
+          )}
 
-        {msg && <p style={{ color: C.redText, fontSize: 13, margin: '16px 0 0' }}>{msg}</p>}
+          {/* ── LIQUIDACIONES ── */}
+          {!loading && view === "owner_payments" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <h1 style={{ margin: 0, fontSize: isMobile ? 20 : 26, fontWeight: 800, color: "#1a1a2e" }}>Liquidaciones</h1>
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>Solo mueve caja si la renta llega a Emporio primero</p>
+                </div>
+                <Btn color="#c8a96e" small={isMobile} onClick={() => setShowModal("owner_payment")}>+ Nueva</Btn>
+              </div>
+              <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 12, padding: "10px 14px", marginBottom: 16 }}>
+                <p style={{ margin: 0, fontSize: 12, color: "#92400e", fontWeight: 600 }}>
+                  Si la renta va directo al propietario: registra la liquidacion como referencia pero NO afecta la caja de Emporio. La comision se registra en el modulo de Comisiones cuando la recibes.
+                </p>
+              </div>
+              {propietariosUnicos.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                  <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Propietarios activos</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+                    {propietariosUnicos.map((owner, i) => {
+                      const propsProp = properties.filter(p => p.owner_email === owner.email);
+                      const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
+                      const liquidoProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0) - calcComision(c), 0);
+                      const pagosDelPropietario = payments.filter(p => propsProp.some(pr => pr.name === p.property_name) && p.status === "pagado");
+const totalPagado = pagosDelPropietario.reduce((a, p) => a + (p.amount || 0), 0);
+                      return (
+                        <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                            <div>
+                              <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{owner.name}</p>
+                              <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>{propsProp.length} propiedad{propsProp.length !== 1 ? "es" : ""}</p>
+                            </div>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <Btn small color="#065f46" onClick={() => openOwnerPayment(owner.name, owner.email)}>Liquidar</Btn>
+                              <Btn small color="#1e40af" onClick={() => descargarPDFPropietario(owner.name, owner.email)}>PDF</Btn>
+                            </div>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <div style={{ background: "#f9fafb", borderRadius: 8, padding: "8px 12px" }}>
+                              <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Liquido/mes</p>
+                              <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#065f46" }}>{fmt(liquidoProp)}</p>
+                            </div>
+                            <div style={{ background: "#f9fafb", borderRadius: 8, padding: "8px 12px" }}>
+                              <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Total pagado</p>
+                              <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1e40af" }}>{fmt(totalPagado)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Historial</h3>
+              {ownerPayments.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ color: "#6b7280" }}>No hay liquidaciones aun</p></div>}
+              {ownerPayments.length > 0 && isMobile ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {ownerPayments.map(op => (
+                    <div key={op.id} style={{ background: "#fff", borderRadius: 12, padding: "14px", border: "1px solid #f0f0f0" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{op.owner_name}</p>
+                        <StatusBadge status={op.status} />
+                      </div>
+                      <p style={{ margin: "0 0 6px", fontSize: 12, color: "#6b7280" }}>{op.period_description} · {op.payment_date}</p>
+                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 12, color: "#065f46", fontWeight: 700 }}>Liquido: {fmt(op.total_liquid)}</span>
+                        <span style={{ fontSize: 12, color: "#1e40af", fontWeight: 700 }}>Pagado: {fmt(op.amount_paid)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : ownerPayments.length > 0 && (
+                <div style={{ background: "#fff", borderRadius: 14, overflowX: "auto", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
+                    <thead>
+                      <tr style={{ background: "#f9fafb" }}>
+                        {["Propietario", "Periodo", "Renta", "Comision", "Liquido", "Pagado", "Fecha", "Estado", ""].map(h => (
+                          <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ownerPayments.map(op => (
+                        <tr key={op.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                          <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{op.owner_name}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{op.period_description}</td>
+                          <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(op.total_rent)}</td>
+                          <td style={{ padding: "12px 16px", color: "#7c3aed" }}>{fmt(op.total_commission)}</td>
+                          <td style={{ padding: "12px 16px", fontWeight: 700, color: "#065f46" }}>{fmt(op.total_liquid)}</td>
+                          <td style={{ padding: "12px 16px", fontWeight: 700, color: "#1e40af" }}>{fmt(op.amount_paid)}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{op.payment_date}</td>
+                          <td style={{ padding: "12px 16px" }}><StatusBadge status={op.status} /></td>
+                          <td style={{ padding: "12px 16px" }}>{isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("owner_payment", op.id, `Eliminar liquidacion de ${op.owner_name}`)}>X</Btn>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 28 }}>
-          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cancelar</button>
-          <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGold, opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'Guardando...' : 'Crear expediente'}
-          </button>
+          {/* ── CONTRATOS ── */}
+          {!loading && view === "contracts" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+                <h1 style={{ margin: 0, fontSize: isMobile ? 20 : 26, fontWeight: 800, color: "#1a1a2e" }}>Contratos ({contracts.length})</h1>
+                <Btn color="#c8a96e" small={isMobile} onClick={() => { setEditing(null); setShowModal("contract"); }}>+ Nuevo</Btn>
+              </div>
+              {contracts.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><Btn color="#c8a96e" onClick={() => setShowModal("contract")}>+ Crear primer contrato</Btn></div>}
+              {contracts.length > 0 && isMobile ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {contracts.map(c => {
+                    const diasRestantes = Math.ceil((new Date(c.end_date) - new Date()) / (1000 * 60 * 60 * 24));
+                    const cobrosContrato = payments.filter(p => p.contract_id === c.id);
+                    const cobradoContrato = cobrosContrato.filter(p => p.status === "pagado").length;
+                    return (
+                      <div key={c.id} style={{ background: "#fff", borderRadius: 12, padding: "14px", border: "1px solid #f0f0f0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                          <div>
+                            <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{c.tenant_name}</p>
+                            {c.co_responsable_nombre && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#7c3aed" }}>{c.co_responsable_nombre}</p>}
+                          </div>
+                          <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#1a1a2e" }}>{fmt(c.monthly_rent)}</p>
+                        </div>
+                        <p style={{ margin: "0 0 2px", fontSize: 12, color: "#6b7280" }}>{c.property_name} · {c.owner_name}</p>
+                        <p style={{ margin: "0 0 8px", fontSize: 11, color: diasRestantes <= 30 ? "#dc2626" : "#9ca3af" }}>Vence: {c.end_date} ({diasRestantes}d) · {cobradoContrato}/{cobrosContrato.length} cobros</p>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <Btn small color="#6b7280" onClick={() => openEdit("contract", c)}>Editar</Btn>
+                          {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("contract", c.id, `Eliminar contrato de ${c.tenant_name}`)}>Eliminar</Btn>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : contracts.length > 0 && (
+                <div style={{ background: "#fff", borderRadius: 14, overflowX: "auto", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
+                    <thead>
+                      <tr style={{ background: "#f9fafb" }}>
+                        {["Inquilino", "Telefono", "Propietario", "Propiedad", "Renta", "Comision", "Renta a", "Vigencia", "Dia", "Cobros", ""].map(h => (
+                          <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {contracts.map(c => {
+                        const diasRestantes = Math.ceil((new Date(c.end_date) - new Date()) / (1000 * 60 * 60 * 24));
+                        const cobrosContrato = payments.filter(p => p.contract_id === c.id);
+                        const cobradoContrato = cobrosContrato.filter(p => p.status === "pagado").length;
+                        return (
+                          <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                            <td style={{ padding: "12px 16px", fontSize: 14 }}>
+                              <p style={{ margin: 0, fontWeight: 600 }}>{c.tenant_name}</p>
+                              {c.co_responsable_nombre && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#7c3aed" }}>{c.co_responsable_nombre}</p>}
+                            </td>
+                            <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>
+                              {c.tenant_phone || "-"}
+                              {c.co_responsable_telefono && <span style={{ display: "block", fontSize: 11, color: "#9ca3af" }}>{c.co_responsable_telefono}</span>}
+                            </td>
+                            <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.owner_name || "-"}</td>
+                            <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.property_name}</td>
+                            <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(c.monthly_rent)}</td>
+                            <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c3aed", fontWeight: 700 }}>{fmt(calcComision(c))}</td>
+                            <td style={{ padding: "12px 16px" }}><StatusBadge status={c.rent_receiver || "inmobiliaria"} /></td>
+                            <td style={{ padding: "12px 16px", fontSize: 12, color: "#6b7280" }}>{c.start_date} - {c.end_date} <span style={{ fontSize: 11, fontWeight: 700, color: diasRestantes <= 30 ? "#dc2626" : "#9ca3af" }}>({diasRestantes}d)</span></td>
+                            <td style={{ padding: "12px 16px", fontSize: 14, fontWeight: 700 }}>Dia {c.payment_day}</td>
+                            <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{cobradoContrato}/{cobrosContrato.length}</td>
+                            <td style={{ padding: "12px 16px" }}>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <Btn small color="#6b7280" onClick={() => openEdit("contract", c)}>Editar</Btn>
+                                {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("contract", c.id, `Eliminar contrato de ${c.tenant_name}`)}>X</Btn>}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── PROPIEDADES ── */}
+          {!loading && view === "properties" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+                <h1 style={{ margin: 0, fontSize: isMobile ? 20 : 26, fontWeight: 800, color: "#1a1a2e" }}>Propiedades ({properties.length})</h1>
+                <Btn color="#c8a96e" small={isMobile} onClick={() => { setEditing(null); setShowModal("property"); }}>+ Nueva</Btn>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+                {properties.map(p => {
+                  const gastosPropiedad = propertyExpenses.filter(e => e.property_name === p.name);
+                  const totalGastos = gastosPropiedad.reduce((a, e) => a + (e.amount || 0), 0);
+                  return (
+                    <div key={p.id} style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                      <div style={{ background: "linear-gradient(135deg, #1a1a2e, #2d2d5e)", height: 60, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>
+                        {p.property_type === "casa" ? "🏠" : p.property_type === "depto" ? "🏢" : p.property_type === "local" ? "🏪" : p.property_type === "bodega" ? "🏭" : "💼"}
+                      </div>
+                      <div style={{ padding: 14 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{p.name}</h3>
+                          <StatusBadge status={p.status} />
+                        </div>
+                        <p style={{ margin: "0 0 4px", fontSize: 11, color: "#6b7280" }}>📍 {p.address || "Sin direccion"}</p>
+                        {p.owner_email && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#9ca3af" }}>{p.owner_email}</p>}
+                        <div style={{ paddingTop: 8, borderTop: "1px solid #f3f4f6", marginBottom: 10 }}>
+                          <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#1a1a2e" }}>{fmt(p.rent_amount)}</p>
+                          {totalGastos > 0 && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#dc2626" }}>Gastos: {fmt(totalGastos)}</p>}
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <Btn small color="#6b7280" onClick={() => openEdit("property", p)}>Editar</Btn>
+                          <Btn small color="#f59e0b" onClick={() => openExpenseModal(p.name)}>Gasto</Btn>
+                          {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("property", p.id, `Eliminar "${p.name}"`)}>X</Btn>}
+                        </div>
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f3f4f6" }}>
+                          {p.contrato_url ? (
+                            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 11, color: "#065f46", fontWeight: 600 }}>Contrato OK</span>
+                              <Btn small color="#1e40af" onClick={() => verContrato(p.contrato_url)}>Ver</Btn>
+                              <label style={{ cursor: "pointer" }}>
+                                <input type="file" accept="application/pdf" style={{ display: "none" }} onChange={e => subirContrato(p.id, p.name, e.target.files[0])} />
+                                <span style={{ background: "#f59e0b", color: "#fff", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                                  {uploadingContrato === p.id ? "Subiendo..." : "Actualizar"}
+                                </span>
+                              </label>
+                              {isAdmin && <Btn small color="#dc2626" onClick={() => eliminarContrato(p.id, p.contrato_url)}>X</Btn>}
+                            </div>
+                          ) : (
+                            <label style={{ cursor: "pointer", display: "inline-block" }}>
+                              <input type="file" accept="application/pdf" style={{ display: "none" }} onChange={e => subirContrato(p.id, p.name, e.target.files[0])} />
+                              <span style={{ background: uploadingContrato === p.id ? "#9ca3af" : "#7c3aed", color: "#fff", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                                {uploadingContrato === p.id ? "Subiendo..." : "Subir contrato PDF"}
+                              </span>
+                            </label>
+                          )}
+                        </div>
+                        {gastosPropiedad.length > 0 && (
+                          <div style={{ marginTop: 8, borderTop: "1px solid #f3f4f6", paddingTop: 8 }}>
+                            {gastosPropiedad.slice(0, 3).map(e => (
+                              <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#6b7280", padding: "2px 0" }}>
+                                <span>{expenseCategoryLabels[e.category]} · {e.description}</span>
+                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  <span style={{ color: "#dc2626", fontWeight: 600 }}>{fmt(e.amount)}</span>
+                                  {isAdmin && <button onClick={() => deleteItem("expense", e.id, `Eliminar gasto`)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10, padding: "0 2px", color: "#dc2626" }}>X</button>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── COBRANZA ── */}
+          {!loading && view === "payments" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+                <h1 style={{ margin: 0, fontSize: isMobile ? 20 : 26, fontWeight: 800, color: "#1a1a2e" }}>Cobranza ({payments.length})</h1>
+                <Btn color="#c8a96e" small={isMobile} onClick={() => setShowModal("payment")}>+ Manual</Btn>
+              </div>
+              <div style={{ background: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <input placeholder="Buscar inquilino o propiedad..." value={searchPago} onChange={e => setSearchPago(e.target.value)} style={{ flex: 1, minWidth: 160, padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13 }} />
+                <select value={filterEstatus} onChange={e => setFilterEstatus(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+                  <option value="">Todos</option>
+                  <option value="pendiente">Pendiente</option>
+                  <option value="en_revision">En revision</option>
+                  <option value="pagado">Pagado</option>
+                  <option value="atrasado">Atrasado</option>
+                </select>
+                <select value={filterMes} onChange={e => setFilterMes(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+                  <option value="">Todos los meses</option>
+                  {["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"].map((m, i) => (
+                    <option key={i} value={i + 1}>{m}</option>
+                  ))}
+                </select>
+                {(searchPago || filterEstatus || filterMes) && (
+                  <button onClick={() => { setSearchPago(""); setFilterEstatus(""); setFilterMes(""); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Limpiar</button>
+                )}
+                <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>{pagosFiltrados.length} resultados</span>
+              </div>
+              {pagosFiltrados.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ color: "#6b7280" }}>No hay resultados</p></div>}
+              {pagosFiltrados.length > 0 && isMobile ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {pagosFiltrados.map(p => {
+                    const contrato = contracts.find(c => c.id === p.contract_id);
+                    return (
+                      <div key={p.id} style={{ background: p.status === "atrasado" ? "#fff5f5" : "#fff", borderRadius: 12, padding: "12px 14px", border: "1px solid #f0f0f0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{p.tenant_name || "-"}</p>
+                          <span style={{ fontWeight: 800, fontSize: 14 }}>{fmt(p.amount)}</span>
+                        </div>
+                        <p style={{ margin: "0 0 6px", fontSize: 12, color: "#6b7280" }}>{p.property_name} · Vence {p.due_date}</p>
+                        {contrato && <p style={{ margin: "0 0 6px", fontSize: 11, color: contrato.rent_receiver === "propietario" ? "#3730a3" : "#065f46", fontWeight: 600 }}>Renta va a: {contrato.rent_receiver === "propietario" ? "propietario" : "Emporio"}</p>}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <StatusBadge status={p.status} />
+                          <select onChange={e => updatePaymentStatus(p.id, e.target.value)} value={p.status} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12 }}>
+                            <option value="pendiente">Pendiente</option>
+                            <option value="en_revision">En revision</option>
+                            <option value="pagado">Pagado</option>
+                            <option value="atrasado">Atrasado</option>
+                          </select>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {["pendiente", "atrasado"].includes(p.status) && <Btn small color="#25d366" onClick={() => sendWhatsApp(p)}>WA</Btn>}
+                            {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("payment", p.id, `Eliminar cobro`)}>X</Btn>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : pagosFiltrados.length > 0 && (
+                <div style={{ background: "#fff", borderRadius: 14, overflowX: "auto", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
+                    <thead>
+                      <tr style={{ background: "#f9fafb" }}>
+                        {["Inquilino", "Propiedad", "Monto", "Vencimiento", "Estado", "Actualizar", "Acciones"].map(h => (
+                          <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagosFiltrados.map(p => {
+                        const contrato = contracts.find(c => c.id === p.contract_id);
+                        return (
+                          <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", background: p.status === "atrasado" ? "#fff5f5" : "#fff" }}>
+                            <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>{p.tenant_name || "-"}</td>
+                            <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>
+                              {p.property_name || "-"}
+                              {contrato && <span style={{ display: "block", fontSize: 10, color: contrato.rent_receiver === "propietario" ? "#3730a3" : "#065f46" }}>{contrato.rent_receiver === "propietario" ? "al propietario" : "a Emporio"}</span>}
+                            </td>
+                            <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(p.amount)}</td>
+                            <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{p.due_date || "-"}</td>
+                            <td style={{ padding: "12px 16px" }}><StatusBadge status={p.status} /></td>
+                            <td style={{ padding: "12px 16px" }}>
+                              <select onChange={e => updatePaymentStatus(p.id, e.target.value)} value={p.status} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, cursor: "pointer" }}>
+                                <option value="pendiente">Pendiente</option>
+                                <option value="en_revision">En revision</option>
+                                <option value="pagado">Pagado</option>
+                                <option value="atrasado">Atrasado</option>
+                              </select>
+                            </td>
+                            <td style={{ padding: "12px 16px" }}>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                {["pendiente", "atrasado"].includes(p.status) && <Btn small color="#1e40af" onClick={() => sendReminder(p)}>Email</Btn>}
+                                {["pendiente", "atrasado"].includes(p.status) && <Btn small color="#25d366" onClick={() => sendWhatsApp(p)}>WhatsApp</Btn>}
+                                {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("payment", p.id, `Eliminar cobro de ${p.tenant_name}`)}>X</Btn>}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── MANTENIMIENTO ── */}
+          {!loading && view === "tickets" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+                <h1 style={{ margin: 0, fontSize: isMobile ? 20 : 26, fontWeight: 800, color: "#1a1a2e" }}>Mantenimiento ({tickets.length})</h1>
+                <Btn color="#c8a96e" small={isMobile} onClick={() => { setEditing(null); setShowModal("ticket"); }}>+ Nuevo ticket</Btn>
+              </div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {tickets.map(t => (
+                  <div key={t.id} style={{ background: "#fff", borderRadius: 14, padding: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                      <div>
+                        <h3 style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 700 }}>{t.title}</h3>
+                        <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>{t.property_name || "-"} · {t.tenant_name || "-"}</p>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <StatusBadge status={t.priority} />
+                        <select onChange={e => updateTicketStatus(t.id, e.target.value)} value={t.status} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, cursor: "pointer" }}>
+                          <option value="nuevo">Nuevo</option>
+                          <option value="en_proceso">En proceso</option>
+                          <option value="resuelto">Resuelto</option>
+                          <option value="cancelado">Cancelado</option>
+                        </select>
+                        <Btn small color="#6b7280" onClick={() => openEdit("ticket", t)}>Editar</Btn>
+                        {isAdmin && <Btn small color="#dc2626" onClick={() => deleteItem("ticket", t.id, `Eliminar "${t.title}"`)}>X</Btn>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {t.payer && <span style={{ fontSize: 11, color: "#374151", background: "#f3f4f6", padding: "2px 8px", borderRadius: 6 }}>Paga: {t.payer}</span>}
+                      {t.provider_cost > 0 && <span style={{ fontSize: 11, color: "#dc2626", background: "#fff5f5", padding: "2px 8px", borderRadius: 6 }}>Costo: {fmt(t.provider_cost)}</span>}
+                      {t.charged_amount > 0 && <span style={{ fontSize: 11, color: "#065f46", background: "#f0fdf4", padding: "2px 8px", borderRadius: 6 }}>Cobrado: {fmt(t.charged_amount)}</span>}
+                      {t.advance_amount > 0 && <span style={{ fontSize: 11, color: "#1e40af", background: "#eff6ff", padding: "2px 8px", borderRadius: 6 }}>Anticipo: {fmt(t.advance_amount)} {t.advance_paid ? "OK" : "pendiente"}</span>}
+                      {t.provider_cost > 0 && t.charged_amount > 0 && <span style={{ fontSize: 11, color: "#7c3aed", background: "#faf5ff", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>Utilidad: {fmt(t.charged_amount - t.provider_cost)}</span>}
+                    </div>
+                  </div>
+                ))}
+                {tickets.length === 0 && <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}><p style={{ color: "#6b7280" }}>No hay tickets aun</p></div>}
+              </div>
+            </div>
+          )}
+
+          {/* ── REPORTES ── */}
+          {!loading && view === "reports" && (
+            <div>
+              <h1 style={{ margin: "0 0 20px", fontSize: isMobile ? 20 : 26, fontWeight: 800, color: "#1a1a2e" }}>Reportes</h1>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
+                <div style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 700 }}>Cobros por mes — {new Date().getFullYear()}</h3>
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const mes = i + 1; const anio = new Date().getFullYear();
+                    const pm = payments.filter(p => p.period_month === mes && p.period_year === anio);
+                    const cobrado = pm.filter(p => p.status === "pagado").reduce((a, p) => a + (p.amount || 0), 0);
+                    const total = pm.reduce((a, p) => a + (p.amount || 0), 0);
+                    if (total === 0) return null;
+                    const meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+                    const pct = Math.round((cobrado / total) * 100);
+                    return (
+                      <div key={mes} style={{ padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>{meses[i]}</span>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <span style={{ fontSize: 12, color: "#065f46", fontWeight: 700 }}>{fmt(cobrado)}</span>
+                            <span style={{ fontSize: 11, color: "#9ca3af" }}>/ {fmt(total)}</span>
+                          </div>
+                        </div>
+                        <div style={{ background: "#f3f4f6", borderRadius: 4, height: 5 }}>
+                          <div style={{ width: `${pct}%`, height: "100%", background: "#c8a96e", borderRadius: 4 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 700 }}>Estado por propiedad</h3>
+                  {properties.map(prop => {
+                    const pp = payments.filter(p => p.property_name === prop.name);
+                    const cobrado = pp.filter(p => p.status === "pagado").reduce((a, p) => a + (p.amount || 0), 0);
+                    const pend = pp.filter(p => p.status === "pendiente").reduce((a, p) => a + (p.amount || 0), 0);
+                    const atr = pp.filter(p => p.status === "atrasado").reduce((a, p) => a + (p.amount || 0), 0);
+                    const contrato = contracts.find(c => c.property_name === prop.name && c.status === "activo");
+                    const comision = contrato ? calcComision(contrato) : 0;
+                    return (
+                      <div key={prop.id} style={{ padding: "10px 0", borderBottom: "1px solid #f3f4f6" }}>
+                        <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 12 }}>{prop.name}</p>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, color: "#065f46", background: "#d1fae5", padding: "2px 8px", borderRadius: 6 }}>Cobrado: {fmt(cobrado)}</span>
+                          {pend > 0 && <span style={{ fontSize: 11, color: "#92400e", background: "#fef3c7", padding: "2px 8px", borderRadius: 6 }}>Pendiente: {fmt(pend)}</span>}
+                          {atr > 0 && <span style={{ fontSize: 11, color: "#991b1b", background: "#fee2e2", padding: "2px 8px", borderRadius: 6 }}>Atrasado: {fmt(atr)}</span>}
+                          {comision > 0 && <span style={{ fontSize: 11, color: "#7c3aed", background: "#ede9fe", padding: "2px 8px", borderRadius: 6 }}>Comision: {fmt(comision)}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── COMISIONES ── */}
+          {!loading && view === "commissions" && (
+            <div>
+              <h1 style={{ margin: "0 0 20px", fontSize: isMobile ? 20 : 26, fontWeight: 800, color: "#1a1a2e" }}>Comisiones</h1>
+              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "10px 14px", marginBottom: 16 }}>
+                <p style={{ margin: 0, fontSize: 12, color: "#1e40af", fontWeight: 600 }}>
+                  Contratos donde la renta va a Emporio: la comision se retiene automaticamente al liquidar al propietario.<br />
+                  Contratos donde la renta va al propietario: marca aqui cuando el propietario te pague la comision para que entre a caja.
+                </p>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
+                {[
+                  { label: "Comision mensual total", value: fmt(totalComisiones), color: "#7c3aed" },
+                  { label: "Comision anual est.", value: fmt(totalComisiones * 12), color: "#1a1a2e" },
+                  { label: "Por cobrar al propietario", value: fmt(comisionesPendientes), color: "#92400e" },
+                  { label: "Contratos activos", value: contracts.filter(c => c.status === "activo").length, color: "#1e40af" },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                    <p style={{ margin: "0 0 6px", fontSize: 10, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
+                    <p style={{ margin: 0, fontSize: isMobile ? 18 : 22, fontWeight: 800, color: s.color }}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+              {comisionesPendientes > 0 && (
+                <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 12, padding: "12px 16px", marginBottom: 16 }}>
+                  <p style={{ margin: 0, fontSize: 13, color: "#92400e", fontWeight: 600 }}>Tienes {fmt(comisionesPendientes)} en comisiones pendientes de cobrar al propietario.</p>
+                </div>
+              )}
+              {isMobile ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {contracts.map(c => {
+                    const comision = calcComision(c);
+                    const esPendiente = !c.commission_status || c.commission_status === "pendiente_cobro";
+                    const esDirecto = c.rent_receiver === "propietario";
+                    return (
+                      <div key={c.id} style={{ background: esPendiente && esDirecto ? "#fffdf0" : "#fff", borderRadius: 12, padding: "12px 14px", border: "1px solid #f0f0f0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: 13 }}>{c.tenant_name}</p>
+                          <span style={{ fontWeight: 800, color: "#7c3aed", fontSize: 14 }}>{fmt(comision)}/mes</span>
+                        </div>
+                        <p style={{ margin: "0 0 6px", fontSize: 11, color: "#6b7280" }}>{c.property_name} · {c.owner_name || "-"}</p>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <StatusBadge status={c.rent_receiver || "inmobiliaria"} />
+                          {esDirecto ? (
+                            esPendiente
+                              ? <Btn small color="#065f46" onClick={() => marcarComisionCobrada(c)}>Recibi la comision</Btn>
+                              : <Btn small color="#6b7280" onClick={() => marcarComisionPendiente(c.id)}>Revertir</Btn>
+                          ) : (
+                            <span style={{ fontSize: 11, color: "#065f46", fontWeight: 600 }}>Se retiene al liquidar</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ background: "#fff", borderRadius: 14, overflowX: "auto", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
+                    <thead>
+                      <tr style={{ background: "#f9fafb" }}>
+                        {["Inquilino", "Propietario", "Propiedad", "Renta", "Comision", "Monto/mes", "Renta va a", "Cobro", "Accion"].map(h => (
+                          <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {contracts.map(c => {
+                        const comision = calcComision(c);
+                        const esPendiente = !c.commission_status || c.commission_status === "pendiente_cobro";
+                        const esDirecto = c.rent_receiver === "propietario";
+                        return (
+                          <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6", background: esPendiente && esDirecto ? "#fffdf0" : "#fff" }}>
+                            <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>
+                              {c.tenant_name}
+                              {c.co_responsable_nombre && <span style={{ display: "block", fontSize: 11, color: "#7c3aed" }}>{c.co_responsable_nombre}</span>}
+                            </td>
+                            <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.owner_name || "-"}</td>
+                            <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{c.property_name}</td>
+                            <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(c.monthly_rent)}</td>
+                            <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c3aed" }}>{c.commission_type === "porcentaje" ? `${c.commission_value}%` : "Fijo"}</td>
+                            <td style={{ padding: "12px 16px", fontWeight: 700, color: "#7c3aed" }}>{fmt(comision)}</td>
+                            <td style={{ padding: "12px 16px" }}><StatusBadge status={c.rent_receiver || "inmobiliaria"} /></td>
+                            <td style={{ padding: "12px 16px" }}>
+                              {esDirecto
+                                ? <StatusBadge status={esPendiente ? "pendiente_cobro" : "cobrada"} />
+                                : <span style={{ fontSize: 11, color: "#065f46", fontWeight: 600 }}>Se retiene al liquidar</span>}
+                            </td>
+                            <td style={{ padding: "12px 16px" }}>
+                              {esDirecto ? (
+                                esPendiente
+                                  ? <Btn small color="#065f46" onClick={() => marcarComisionCobrada(c)}>Recibi la comision</Btn>
+                                  : <Btn small color="#6b7280" onClick={() => marcarComisionPendiente(c.id)}>Revertir</Btn>
+                              ) : <span style={{ fontSize: 11, color: "#9ca3af" }}>Auto al liquidar</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       </div>
-    </div>
-  )
-}
 
-// ═══════════════════════════════════════════════════════════
-// MODAL EXPEDIENTE (ver/editar)
-// ═══════════════════════════════════════════════════════════
-function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSaved }) {
-  const [form, setForm] = useState({ ...expediente })
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState('')
-  const formRef = useRef(null)
-  const [generando, setGenerando] = useState('')
-  const getFormValues = () => {
-    if (!formRef.current) return {}
-    const inputs = formRef.current.querySelectorAll('[data-field]')
-    const vals = {}
-    inputs.forEach(el => { vals[el.dataset.field] = el.value })
-    return vals
-  }
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+      {/* ── MODALES ── */}
 
-  const handleGenerar = async (tipo) => {
-    const domVals = getFormValues()
-    const merged = { ...form, ...domVals }
-    setGenerando(tipo)
-    try {
-      if (tipo === 'contrato') await generarContratoArrendamiento(merged)
-      if (tipo === 'pagares') await generarPagares(merged)
-      if (tipo === 'poliza') await generarPolizaJuridica(merged)
-      if (tipo === 'recibo') await generarReciboPoliza(merged)
-      if (tipo === 'promocion') await generarContratoPromocion(merged)
-      if (tipo === 'administracion') await generarContratoAdministracion(merged)
-    } catch(e) {
-      alert('Error generando documento: ' + e.message)
-    } finally {
-      setGenerando('')
-    }
-  }
-
-  const handleSave = async () => {
-    setSaving(true)
-    setMsg('')
-    try {
-      const domVals = getFormValues()
-      const merged = { ...form, ...domVals }
-
-      // Limpieza de campos numéricos — string vacío → null
-      const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n }
-
-      const r   = num(merged.renta_mensual) || 0
-      const dep = num(merged.deposito_garantia) || 0
-      const mora = parseFloat((r * 0.01).toFixed(2))
-      const pagares = merged.fecha_inicio ? calcularPagares(merged.fecha_inicio) : {}
-      const fechaTermino = merged.fecha_inicio
-        ? (() => { const d = new Date(merged.fecha_inicio + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0] })()
-        : merged.fecha_termino || null
-
-      // Limpiar todos los campos numéricos del merged antes de enviar
-      const camposNumericos = [
-        'cuota_mantenimiento', 'mora_diaria', 'monto_poliza', 'anticipo_poliza',
-        'deposito_garantia', 'renta_mensual', 'precio_venta', 'anticipo', 'monto_adeudo',
-      ]
-      const cleanMerged = { ...merged }
-      camposNumericos.forEach(k => {
-        if (cleanMerged[k] === '' || cleanMerged[k] === undefined) cleanMerged[k] = null
-        else if (cleanMerged[k] !== null) cleanMerged[k] = num(cleanMerged[k])
-      })
-
-      const { error } = await supabase.from('poliza_expedientes').update({
-        ...cleanMerged,
-        renta_mensual: r,
-        renta_mensual_letra: numeroALetra(r),
-        deposito_garantia: dep,
-        deposito_garantia_letra: numeroALetra(dep),
-        mora_diaria: mora,
-        mora_diaria_letra: numeroALetra(mora),
-        monto_poliza: num(merged.monto_poliza),
-        monto_poliza_letra: num(merged.monto_poliza) ? numeroALetra(num(merged.monto_poliza)) : null,
-        fecha_termino: fechaTermino,
-        status_expediente: merged.status_expediente || 'pendiente_firma',
-        anticipo_poliza: num(merged.anticipo_poliza),
-        anticipo_pagado: merged.anticipo_pagado || false,
-        saldo_pagado: merged.saldo_pagado || false,
-        metodo_pago_completo: merged.metodo_pago_completo || 'efectivo',
-        ...pagares,
-      }).eq('id', expediente.id)
-      if (error) throw error
-
-      // Registrar anticipo en caja si se acaba de marcar
-      if (merged.anticipo_pagado && !expediente.anticipo_pagado && parseFloat(merged.anticipo_poliza) > 0) {
-        await supabase.from('poliza_caja').insert({
-          tipo: 'ingreso',
-          concepto: 'anticipo_poliza',
-          descripcion: `Anticipo póliza — ${merged.nombre_arrendatario || ''}`,
-          monto: parseFloat(merged.anticipo_poliza),
-          metodo_pago: merged.metodo_pago_completo || 'efectivo',
-          expediente_id: expediente.id,
-          nombre_cliente: merged.nombre_arrendatario || '',
-          fecha: new Date().toISOString().split('T')[0],
-        })
-      }
-
-      // Registrar pago completo en caja si se acaba de marcar
-      if (merged.saldo_pagado && !expediente.saldo_pagado) {
-        const montoPoliza = parseFloat(merged.monto_poliza) || 0
-        const anticipo = parseFloat(merged.anticipo_poliza) || 0
-        const saldo = montoPoliza - anticipo
-        await supabase.from('poliza_caja').insert({
-          tipo: 'ingreso',
-          concepto: anticipo > 0 ? 'saldo_poliza' : 'pago_poliza',
-          descripcion: `${anticipo > 0 ? 'Saldo' : 'Pago'} póliza — ${merged.nombre_arrendatario || ''}`,
-          monto: anticipo > 0 ? saldo : montoPoliza,
-          metodo_pago: merged.metodo_pago_completo || 'efectivo',
-          expediente_id: expediente.id,
-          nombre_cliente: merged.nombre_arrendatario || '',
-          fecha: new Date().toISOString().split('T')[0],
-        })
-      }
-
-      onSaved()
-    } catch (e) {
-      setMsg('Error: ' + e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={st.modalCard} ref={formRef}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>
-              {form.nombre_arrendatario || 'Expediente'}
-            </h2>
-            <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>ID: {expediente.id.slice(0, 8).toUpperCase()}</p>
+      {showModal === "expense" && (
+        <Modal title="Registrar Gasto Operativo" onClose={closeModal}>
+          <Field label="Propiedad"><Sel value={expenseForm.property_name} onChange={e => setExpenseForm({ ...expenseForm, property_name: e.target.value })}><option value="">-- Selecciona --</option>{properties.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}</Sel></Field>
+          <Field label="Concepto"><Sel value={expenseForm.category} onChange={e => setExpenseForm({ ...expenseForm, category: e.target.value })}><option value="condominio">Condominio</option><option value="predial">Predial</option><option value="agua">Agua</option><option value="luz">Luz</option><option value="gas">Gas</option><option value="seguro">Seguro</option><option value="mantenimiento_comun">Mantenimiento comun</option><option value="otro">Otro</option></Sel></Field>
+          <Field label="Descripcion"><Input placeholder="Ej: Cuota condominio enero 2026" value={expenseForm.description} onChange={e => setExpenseForm({ ...expenseForm, description: e.target.value })} /></Field>
+          <Field label="Monto"><Input type="number" placeholder="0" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} /></Field>
+          <Field label="Quien paga"><Sel value={expenseForm.paid_by} onChange={e => setExpenseForm({ ...expenseForm, paid_by: e.target.value })}><option value="propietario">El propietario (se descuenta de su liquidacion)</option><option value="inmobiliaria">Nosotros (sale de nuestra caja)</option></Sel></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Metodo"><Sel value={expenseForm.payment_method} onChange={e => setExpenseForm({ ...expenseForm, payment_method: e.target.value })}><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option></Sel></Field>
+            <Field label="Fecha"><Input type="date" value={expenseForm.date} onChange={e => setExpenseForm({ ...expenseForm, date: e.target.value })} /></Field>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select value={form.status} onChange={e => set('status', e.target.value)} style={{ ...st.input, width: 'auto', fontSize: 12 }}>
-              {['borrador', 'completo', 'firmado', 'activo', 'vencido', 'cancelado'].map(st => (
-                <option key={st} value={st}>{st}</option>
-              ))}
-            </select>
-            <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
+          <Field label="Notas"><Input placeholder="Observaciones" value={expenseForm.notes} onChange={e => setExpenseForm({ ...expenseForm, notes: e.target.value })} /></Field>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn onClick={saveExpense} color="#f59e0b" disabled={saving || !expenseForm.description || !expenseForm.amount || !expenseForm.property_name}>{saving ? "Guardando..." : "Registrar gasto"}</Btn>
           </div>
-        </div>
+        </Modal>
+      )}
 
-        {/* Mismos campos que nuevo pero con datos pre-llenados */}
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Arrendador</p>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Nombre</label>
-    <input type="text" defaultValue={form.nombre_arrendador || ''} data-field='nombre_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>RFC</label>
-    <input type="text" defaultValue={form.rfc_arrendador || ''} data-field='rfc_arrendador' style={st.input} />
-  </div>
-        </div>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Clave de elector</label>
-    <input type="text" defaultValue={form.clave_elector_arrendador || ''} data-field='clave_elector_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Teléfono</label>
-    <input type="text" defaultValue={form.telefono_arrendador || ''} data-field='telefono_arrendador' style={st.input} />
-  </div>
-        </div>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Correo</label>
-    <input type="text" defaultValue={form.correo_arrendador || ''} data-field='correo_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Domicilio</label>
-    <input type="text" defaultValue={form.domicilio_arrendador || ''} data-field='domicilio_arrendador' style={st.input} />
-  </div>
-        </div>
+      {showModal === "cash" && (
+        <Modal title={cashForm.type === "entrada" ? "Entrada Manual" : "Salida Manual"} onClose={closeModal}>
+          <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+            <button onClick={() => setCashForm({ ...cashForm, type: "entrada" })} style={{ flex: 1, padding: "10px", borderRadius: 8, border: `2px solid ${cashForm.type === "entrada" ? "#065f46" : "#e5e7eb"}`, background: cashForm.type === "entrada" ? "#f0fdf4" : "#fff", color: cashForm.type === "entrada" ? "#065f46" : "#6b7280", fontWeight: 700, cursor: "pointer" }}>Entrada</button>
+            <button onClick={() => setCashForm({ ...cashForm, type: "salida" })} style={{ flex: 1, padding: "10px", borderRadius: 8, border: `2px solid ${cashForm.type === "salida" ? "#dc2626" : "#e5e7eb"}`, background: cashForm.type === "salida" ? "#fff5f5" : "#fff", color: cashForm.type === "salida" ? "#dc2626" : "#6b7280", fontWeight: 700, cursor: "pointer" }}>Salida</button>
+          </div>
+          <Field label="Categoria">
+            <Sel value={cashForm.category} onChange={e => setCashForm({ ...cashForm, category: e.target.value })}>
+              {cashForm.type === "entrada" ? (
+                <><option value="renta_cobrada">Renta cobrada</option><option value="comision_cobrada">Comision cobrada</option><option value="mantenimiento_cobrado">Mantenimiento cobrado</option><option value="anticipo_mantenimiento">Anticipo mantenimiento</option><option value="otro">Otro ingreso</option></>
+              ) : (
+                <><option value="liquidacion_propietario">Liquidacion propietario</option><option value="pago_proveedor">Pago proveedor</option><option value="material">Material/Refaccion</option><option value="gasto_operativo">Gasto operativo</option><option value="otro">Otro gasto</option></>
+              )}
+            </Sel>
+          </Field>
+          <Field label="Descripcion"><Input placeholder="Describe el movimiento" value={cashForm.description} onChange={e => setCashForm({ ...cashForm, description: e.target.value })} /></Field>
+          <Field label="Monto"><Input type="number" placeholder="0" value={cashForm.amount} onChange={e => setCashForm({ ...cashForm, amount: e.target.value })} /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Metodo"><Sel value={cashForm.payment_method} onChange={e => setCashForm({ ...cashForm, payment_method: e.target.value })}><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option></Sel></Field>
+            <Field label="Fecha"><Input type="date" value={cashForm.date} onChange={e => setCashForm({ ...cashForm, date: e.target.value })} /></Field>
+          </div>
+          <Field label="Notas"><Input placeholder="Observaciones" value={cashForm.notes} onChange={e => setCashForm({ ...cashForm, notes: e.target.value })} /></Field>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn onClick={saveCashMovement} color={cashForm.type === "entrada" ? "#065f46" : "#dc2626"} disabled={saving || !cashForm.description || !cashForm.amount}>{saving ? "Guardando..." : "Registrar"}</Btn>
+          </div>
+        </Modal>
+      )}
 
-        <div style={st.divider} />
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Arrendatario</p>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Nombre</label>
-    <input type="text" defaultValue={form.nombre_arrendatario || ''} data-field='nombre_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>RFC</label>
-    <input type="text" defaultValue={form.rfc_arrendatario || ''} data-field='rfc_arrendatario' style={st.input} />
-  </div>
-        </div>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Clave de elector</label>
-    <input type="text" defaultValue={form.clave_elector_arrendatario || ''} data-field='clave_elector_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Teléfono</label>
-    <input type="text" defaultValue={form.telefono_arrendatario || ''} data-field='telefono_arrendatario' style={st.input} />
-  </div>
-        </div>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Correo</label>
-    <input type="text" defaultValue={form.correo_arrendatario || ''} data-field='correo_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Ocupación</label>
-    <input type="text" defaultValue={form.ocupacion_arrendatario || ''} data-field='ocupacion_arrendatario' style={st.input} />
-  </div>
-        </div>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Comprobante de ingresos</label>
-    <input type="text" defaultValue={form.comprobante_ingresos || ''} data-field='comprobante_ingresos' style={st.input} />
-  </div>
-
-        <div style={st.divider} />
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Inmueble y condiciones</p>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Dirección</label>
-    <input type="text" defaultValue={form.direccion_inmueble || ''} data-field='direccion_inmueble' style={st.input} />
-  </div>
-        <div style={st.grid3}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Renta mensual $</label>
-    <input type="number" defaultValue={form.renta_mensual || ''} data-field='renta_mensual' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Cuota mantenimiento $</label>
-    <input type="number" defaultValue={form.cuota_mantenimiento || ''} data-field='cuota_mantenimiento' placeholder="0 si no aplica" style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Depósito $</label>
-    <input type="number" defaultValue={form.deposito_garantia || ''} data-field='deposito_garantia' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Monto póliza $</label>
-    <input type="number" defaultValue={form.monto_poliza || ''} data-field='monto_poliza' style={st.input} />
-  </div>
-        </div>
-        <div style={st.grid3}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Fecha inicio</label>
-    <input type="date" defaultValue={form.fecha_inicio || ''} data-field='fecha_inicio' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Fecha firma</label>
-    <input type="date" defaultValue={form.fecha_firma || ''} data-field='fecha_firma' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Entrega posesión</label>
-    <input type="date" defaultValue={form.fecha_entrega_posesion || ''} data-field='fecha_entrega_posesion' style={st.input} />
-  </div>
-        </div>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Notas</label>
-    <input type="text" defaultValue={form.notas || ''} data-field='notas' placeholder="Observaciones internas..." style={st.input} />
-  </div>
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 12px' }}>Tipo de contrato</p>
-        <div style={st.grid3}>
-          <div style={{ marginBottom: 14 }}>
-            <label style={st.label}>Tipo de inmueble</label>
-            <select value={form.tipo_contrato || 'habitacional'} onChange={e => set('tipo_contrato', e.target.value)} style={st.input}>
-              <option value="habitacional">Habitacional</option>
-              <option value="amueblado">Amueblado</option>
-              <option value="comercial">Comercial</option>
-            </select>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={st.label}>Tipo de arrendatario</label>
-            <select value={form.tipo_arrendatario || 'fisica'} onChange={e => set('tipo_arrendatario', e.target.value)} style={st.input}>
-              <option value="fisica">Persona física</option>
-              <option value="moral">Persona moral</option>
-            </select>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={st.label}>Giro comercial</label>
-            <input type="text" value={form.giro_comercial || ''} onChange={e => set('giro_comercial', e.target.value)}
-              placeholder="Solo si es comercial" style={st.input} />
-          </div>
-        </div>
-        {form.tipo_arrendatario === 'moral' && (
-          <div style={st.grid2}>
-            <div style={{ marginBottom: 14 }}>
-              <label style={st.label}>Razón social</label>
-              <input type="text" value={form.razon_social_arrendatario || ''} onChange={e => set('razon_social_arrendatario', e.target.value)}
-                placeholder="Nombre de la empresa" style={st.input} />
+      {showModal === "owner_payment" && (
+        <Modal title="Registrar Liquidacion" onClose={closeModal}>
+          <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 12px", marginBottom: 16 }}>
+            <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#92400e" }}>La renta llega a:</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setOwnerPayForm({ ...ownerPayForm, rent_receiver: "inmobiliaria" })} style={{ flex: 1, padding: "8px", borderRadius: 6, border: `2px solid ${ownerPayForm.rent_receiver === "inmobiliaria" ? "#065f46" : "#e5e7eb"}`, background: ownerPayForm.rent_receiver === "inmobiliaria" ? "#f0fdf4" : "#fff", color: ownerPayForm.rent_receiver === "inmobiliaria" ? "#065f46" : "#6b7280", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Emporio primero</button>
+              <button onClick={() => setOwnerPayForm({ ...ownerPayForm, rent_receiver: "propietario" })} style={{ flex: 1, padding: "8px", borderRadius: 6, border: `2px solid ${ownerPayForm.rent_receiver === "propietario" ? "#7c3aed" : "#e5e7eb"}`, background: ownerPayForm.rent_receiver === "propietario" ? "#faf5ff" : "#fff", color: ownerPayForm.rent_receiver === "propietario" ? "#7c3aed" : "#6b7280", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Directo al propietario</button>
             </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={st.label}>Representante legal</label>
-              <input type="text" value={form.representante_legal_arrendatario || ''} onChange={e => set('representante_legal_arrendatario', e.target.value)}
-                placeholder="Nombre del representante" style={st.input} />
-            </div>
-          </div>
-        )}
-
-        {/* Status y cobros de póliza */}
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 12px' }}>Status y cobros</p>
-        <div style={st.grid3}>
-          <div style={{ marginBottom: 14 }}>
-            <label style={st.label}>Status del expediente</label>
-            <select value={form.status_expediente || 'pendiente_firma'} onChange={e => set('status_expediente', e.target.value)} style={st.input}>
-              <option value="pendiente_firma">Pendiente de firma</option>
-              <option value="firmado">Firmado</option>
-              <option value="cancelado">Cancelado</option>
-            </select>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={st.label}>Anticipo póliza $</label>
-            <input type="number" value={form.anticipo_poliza || ''} onChange={e => set('anticipo_poliza', e.target.value)}
-              placeholder="0 si no hay anticipo" style={st.input} />
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={st.label}>¿Anticipo cobrado?</label>
-            <select value={form.anticipo_pagado ? 'si' : 'no'} onChange={e => set('anticipo_pagado', e.target.value === 'si')} style={st.input}>
-              <option value="no">No</option>
-              <option value="si">Sí</option>
-            </select>
-          </div>
-        </div>
-        <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-            <label style={st.label}>¿Póliza pagada completa?</label>
-            <select value={form.saldo_pagado ? 'si' : 'no'} onChange={e => set('saldo_pagado', e.target.value === 'si')} style={st.input}>
-              <option value="no">No</option>
-              <option value="si">Sí — póliza liquidada</option>
-            </select>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={st.label}>Método de pago póliza</label>
-            <select value={form.metodo_pago_completo || 'efectivo'} onChange={e => set('metodo_pago_completo', e.target.value)} style={st.input}>
-              <option value="efectivo">Efectivo</option>
-              <option value="transferencia">Transferencia</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Botón registrar cobro en caja */}
-        {form.saldo_pagado && !expediente.saldo_pagado && (
-          <div style={{ background: C.greenBg, border: `1px solid ${C.green}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
-            <p style={{ margin: 0, fontSize: 12, color: C.greenText }}>
-              💰 Al guardar, se registrará el cobro de la póliza en Caja Póliza automáticamente.
+            <p style={{ margin: "6px 0 0", fontSize: 11, color: "#92400e" }}>
+              {ownerPayForm.rent_receiver === "inmobiliaria"
+                ? "Se registrara salida de caja por el monto liquido (renta - comision)"
+                : "Solo se registra como referencia. NO mueve la caja de Emporio."}
             </p>
           </div>
-        )}
-
-        {msg && <p style={{ color: C.redText, fontSize: 13, margin: '12px 0 0' }}>{msg}</p>}
-
-        <div style={{ ...st.divider, margin: '20px 0' }} />
-        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 12px' }}>Generar documentos</p>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 }}>
-          <button
-            onClick={() => handleGenerar('contrato')}
-            disabled={!!generando}
-            style={{ ...st.btn, background: '#1A3A1A', color: '#5EC98A', border: '1px solid #2A5C3F', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando === 'contrato' ? 'Generando...' : '📄 Contrato de arrendamiento'}
-          </button>
-          <button
-            onClick={() => handleGenerar('pagares')}
-            disabled={!!generando}
-            style={{ ...st.btn, background: '#1A1A3A', color: '#70A8E0', border: '1px solid #1A3A5C', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando === 'pagares' ? 'Generando...' : '📄 Pagarés (12)'}
-          </button>
-          <button
-            onClick={() => handleGenerar('poliza')}
-            disabled={!!generando}
-            style={{ ...st.btn, background: '#2A1A3A', color: '#C070E0', border: '1px solid #5A2A7A', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando === 'poliza' ? 'Generando...' : '📄 Póliza jurídica'}
-          </button>
-          <button
-            onClick={() => handleGenerar('recibo')}
-            disabled={!!generando}
-            style={{ ...st.btn, background: '#1A2A1A', color: '#5EC98A', border: '1px solid #2A5C3F', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando === 'recibo' ? 'Generando...' : '🧾 Recibo de póliza'}
-          </button>
-          <button
-            onClick={() => handleGenerar('administracion')}
-            disabled={!!generando}
-            style={{ ...st.btn, background: '#1A2E1A', color: '#70C870', border: '1px solid #2A5C2A', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando === 'administracion' ? 'Generando...' : '📄 Contrato administración'}
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cancelar</button>
-          <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGold, opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'Guardando...' : 'Guardar cambios'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// MODAL PROPIETARIO (ver detalle)
-// ═══════════════════════════════════════════════════════════
-function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
-  const [status, setStatus] = useState(p.status || 'activo')
-  const [saving, setSaving] = useState(false)
-  const [generando, setGenerando] = useState(false)
-
-  const handleSave = async () => {
-    setSaving(true)
-    await supabase.from('propietarios_inmuebles').update({ status }).eq('id', p.id)
-    setSaving(false)
-    onSaved()
-  }
-
-  const handleGenerarPromocion = async () => {
-    setGenerando(true)
-    try {
-      await generarContratoPromocion({
-        nombre_arrendador:    p.nombre_propietario,
-        domicilio_arrendador: p.domicilio_propietario,
-        telefono_arrendador:  p.telefono_propietario,
-        direccion_inmueble:   p.direccion_inmueble,
-        renta_mensual:        p.monto_renta,
-        renta_mensual_letra:  p.monto_renta_letra,
-      })
-    } catch(e) { alert('Error: ' + e.message) }
-    setGenerando(false)
-  }
-
-  return (
-    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={st.modalCard}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{p.nombre_propietario}</h2>
-          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
-        </div>
-
-        <div style={st.grid2}>
-          <InfoRow label="Teléfono" value={p.telefono_propietario} />
-          <InfoRow label="Correo" value={p.correo_propietario} />
-          <InfoRow label="RFC" value={p.rfc_propietario} />
-          <InfoRow label="Clave elector" value={p.clave_elector_propietario} />
-          <InfoRow label="Renta" value={fmt(p.monto_renta)} />
-          <InfoRow label="Forma de pago" value={p.forma_pago} />
-        </div>
-        {p.banco && <InfoRow label="Banco / CLABE" value={`${p.banco} · ${p.clabe}`} />}
-        <InfoRow label="Inmueble" value={p.direccion_inmueble} />
-        <InfoRow label="Domicilio propietario" value={p.domicilio_propietario} />
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <div style={{ flex: 1 }}>
-            <label style={st.label}>Status</label>
-            <select value={status} onChange={e => setStatus(e.target.value)} style={st.input}>
-              <option value="activo">Activo</option>
-              <option value="rentado">Rentado</option>
-              <option value="inactivo">Inactivo</option>
-            </select>
+          <Field label="Propietario"><Input value={ownerPayForm.owner_name} onChange={e => setOwnerPayForm({ ...ownerPayForm, owner_name: e.target.value })} /></Field>
+          <Field label="Email"><Input type="email" value={ownerPayForm.owner_email} onChange={e => setOwnerPayForm({ ...ownerPayForm, owner_email: e.target.value })} /></Field>
+          <Field label="Periodo"><Input placeholder="Ej: Abril 2026" value={ownerPayForm.period_description} onChange={e => setOwnerPayForm({ ...ownerPayForm, period_description: e.target.value })} /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <Field label="Renta total"><Input type="number" value={ownerPayForm.total_rent} onChange={e => { const r = parseFloat(e.target.value) || 0; const com = parseFloat(ownerPayForm.total_commission) || 0; setOwnerPayForm({ ...ownerPayForm, total_rent: e.target.value, total_liquid: (r - com).toString(), amount_paid: (r - com).toString() }); }} /></Field>
+            <Field label="Comision"><Input type="number" value={ownerPayForm.total_commission} onChange={e => { const com = parseFloat(e.target.value) || 0; const r = parseFloat(ownerPayForm.total_rent) || 0; setOwnerPayForm({ ...ownerPayForm, total_commission: e.target.value, total_liquid: (r - com).toString(), amount_paid: (r - com).toString() }); }} /></Field>
+            <Field label="Liquido"><Input type="number" value={ownerPayForm.total_liquid} readOnly style={{ background: "#f9fafb" }} /></Field>
           </div>
-          <div style={{ paddingTop: 18 }}>
-            <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGold }}>
-              {saving ? 'Guardando...' : 'Actualizar'}
-            </button>
+          <Field label="Monto que le pagas"><Input type="number" value={ownerPayForm.amount_paid} onChange={e => setOwnerPayForm({ ...ownerPayForm, amount_paid: e.target.value })} /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Fecha"><Input type="date" value={ownerPayForm.payment_date} onChange={e => setOwnerPayForm({ ...ownerPayForm, payment_date: e.target.value })} /></Field>
+            <Field label="Metodo"><Sel value={ownerPayForm.payment_method} onChange={e => setOwnerPayForm({ ...ownerPayForm, payment_method: e.target.value })}><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option></Sel></Field>
           </div>
-        </div>
-
-        {/* Documentos */}
-        {(p.doc_identificacion || p.doc_comprobante_domicilio || p.doc_predial) && (
-          <>
-            <div style={{ ...st.divider, margin: '16px 0' }} />
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Documentos</p>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {p.doc_identificacion && <DocChip label="Identificación" path={p.doc_identificacion} />}
-              {p.doc_comprobante_domicilio && <DocChip label="Comprobante domicilio" path={p.doc_comprobante_domicilio} />}
-              {p.doc_predial && <DocChip label="Predial" path={p.doc_predial} />}
-            </div>
-          </>
-        )}
-
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24, flexWrap: 'wrap' }}>
-          <button
-            onClick={handleGenerarPromocion}
-            disabled={generando}
-            style={{ ...st.btn, background: '#1A1A3A', color: '#A070E0', border: '1px solid #3A2A5C', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando ? 'Generando...' : '📄 Contrato promoción'}
-          </button>
-          <button onClick={onNuevoExp} style={{ ...st.btn, ...st.btnGold }}>+ Crear expediente</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// MODAL SOLICITUD (ver detalle + cambiar status)
-// ═══════════════════════════════════════════════════════════
-function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
-  const [status, setStatus] = useState(sol.status || 'pendiente')
-  const [notas, setNotas] = useState(sol.notas_juridico || '')
-  const [saving, setSaving] = useState(false)
-  const [cobrando, setCobrando] = useState(false)
-  const [metodoInv, setMetodoInv] = useState('efectivo')
-
-  const handleSave = async () => {
-    setSaving(true)
-    await supabase.from('solicitudes_inquilino').update({ status, notas_juridico: notas }).eq('id', sol.id)
-    setSaving(false)
-    onSaved()
-  }
-
-  const handleCobrarInvestigacion = async () => {
-    setCobrando(true)
-    const monto = 1000
-    await supabase.from('poliza_caja').insert({
-      tipo: 'ingreso',
-      concepto: 'investigacion',
-      descripcion: `Cobro de investigación — ${sol.nombre_completo || sol.razon_social}`,
-      monto,
-      metodo_pago: metodoInv,
-      solicitud_id: sol.id,
-      nombre_cliente: sol.nombre_completo || sol.razon_social,
-      fecha: new Date().toISOString().split('T')[0],
-    })
-    await supabase.from('solicitudes_inquilino').update({
-      cobro_investigacion: true,
-      fecha_cobro_investigacion: new Date().toISOString().split('T')[0],
-      monto_investigacion: monto,
-      metodo_cobro_investigacion: metodoInv,
-    }).eq('id', sol.id)
-    setCobrando(false)
-    onSaved()
-  }
-
-  return (
-    <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={st.modalCard}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{sol.nombre_completo || sol.razon_social}</h2>
-          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
-        </div>
-
-        <div style={st.grid2}>
-          <InfoRow label="Teléfono" value={sol.telefono} />
-          <InfoRow label="Correo" value={sol.correo} />
-          <InfoRow label="RFC" value={sol.rfc || sol.rfc_empresa} />
-          <InfoRow label="Estado civil" value={sol.estado_civil} />
-          <InfoRow label="Ingresos mensuales" value={fmt(sol.ingresos_mensuales || sol.ingresos_empresa)} />
-          <InfoRow label="Tipo de ingresos" value={sol.tipo_ingresos} />
-          <InfoRow label="Empresa" value={sol.empresa_labora || sol.razon_social} />
-          <InfoRow label="Mascotas" value={sol.tiene_mascotas ? `Sí — ${sol.detalle_mascotas || ''}` : 'No'} />
-        </div>
-        <InfoRow label="Domicilio actual" value={sol.domicilio_actual} />
-        <InfoRow label="Inmueble de interés" value={sol.inmueble_interes} />
-        <InfoRow label="Uso del inmueble" value={sol.uso_inmueble} />
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-        <div style={st.grid2}>
-          <div>
-            <label style={st.label}>Status de la solicitud</label>
-            <select value={status} onChange={e => setStatus(e.target.value)} style={st.input}>
-              <option value="pendiente">Pendiente</option>
-              <option value="en_revision">En revisión</option>
-              <option value="aprobado">Aprobado</option>
-              <option value="rechazado">Rechazado</option>
-            </select>
+          <Field label="Estado"><Sel value={ownerPayForm.status} onChange={e => setOwnerPayForm({ ...ownerPayForm, status: e.target.value })}><option value="pagado">Pagado completo</option><option value="pagado_parcial">Pagado parcial</option><option value="pendiente">Pendiente</option></Sel></Field>
+          <Field label="Notas"><Input value={ownerPayForm.notes} onChange={e => setOwnerPayForm({ ...ownerPayForm, notes: e.target.value })} /></Field>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn onClick={saveOwnerPayment} disabled={saving || !ownerPayForm.owner_name || !ownerPayForm.amount_paid}>{saving ? "Guardando..." : "Registrar liquidacion"}</Btn>
           </div>
-        </div>
-        <div style={{ marginTop: 16 }}>
-          <label style={st.label}>Notas jurídicas internas</label>
-          <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={3}
-            style={{ ...st.input, resize: 'vertical' }}
-            placeholder="Observaciones del dictamen, notas de investigación..." />
-        </div>
+        </Modal>
+      )}
 
-        {/* Documentos */}
-        {(sol.doc_identificacion || sol.doc_comprobante_ingresos) && (
-          <>
-            <div style={{ ...st.divider, margin: '16px 0' }} />
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Documentos</p>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {sol.doc_identificacion && <DocChip label="Identificación" path={sol.doc_identificacion} />}
-              {sol.doc_comprobante_ingresos && <DocChip label="Comprobante ingresos" path={sol.doc_comprobante_ingresos} />}
-            </div>
-          </>
-        )}
-
-        {/* Cobro investigación cuando es rechazado */}
-        {status === 'rechazado' && !sol.cobro_investigacion && (
-          <div style={{ background: '#2A1A1A', border: '1px solid #8B3A3A', borderRadius: 8, padding: '14px 16px', marginTop: 16 }}>
-            <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700, color: C.redText }}>💰 Cobrar investigación ($1,000)</p>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <select value={metodoInv} onChange={e => setMetodoInv(e.target.value)}
-                style={{ ...st.input, width: 'auto', fontSize: 12, padding: '6px 10px' }}>
-                <option value="efectivo">Efectivo</option>
-                <option value="transferencia">Transferencia</option>
-              </select>
-              <button onClick={handleCobrarInvestigacion} disabled={cobrando}
-                style={{ ...st.btn, background: C.red, color: C.redText, border: `1px solid ${C.red}`, opacity: cobrando ? 0.6 : 1 }}>
-                {cobrando ? 'Registrando...' : 'Registrar cobro $1,000'}
-              </button>
+      {showModal === "contract" && (
+        <Modal title={editing ? "Editar Contrato" : "Nuevo Contrato"} onClose={closeModal}>
+          <Field label="Inquilino (Titular)"><Input value={contractForm.tenant_name} onChange={e => setContractForm({ ...contractForm, tenant_name: e.target.value })} /></Field>
+          <Field label="Email del inquilino"><Input type="email" value={contractForm.tenant_email} onChange={e => setContractForm({ ...contractForm, tenant_email: e.target.value })} /></Field>
+          <Field label="Telefono del inquilino" hint="10 digitos"><Input type="tel" placeholder="2221234567" value={contractForm.tenant_phone} onChange={e => setContractForm({ ...contractForm, tenant_phone: e.target.value })} /></Field>
+          <div style={{ background: "#f5f3ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+            <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>Responsable adicional (opcional)</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Nombre"><Input placeholder="Nombre completo" value={contractForm.co_responsable_nombre} onChange={e => setContractForm({ ...contractForm, co_responsable_nombre: e.target.value })} /></Field>
+              <Field label="Telefono"><Input type="tel" placeholder="2221234567" value={contractForm.co_responsable_telefono} onChange={e => setContractForm({ ...contractForm, co_responsable_telefono: e.target.value })} /></Field>
             </div>
           </div>
-        )}
-        {sol.cobro_investigacion && (
-          <div style={{ background: '#1A2E1A', border: '1px solid #2A5C3F', borderRadius: 8, padding: '10px 14px', marginTop: 16 }}>
-            <p style={{ margin: 0, fontSize: 12, color: C.greenText }}>✅ Cobro de investigación registrado — $1,000</p>
+          <Field label="Propietario"><Input value={contractForm.owner_name} onChange={e => setContractForm({ ...contractForm, owner_name: e.target.value })} /></Field>
+          <Field label="Propiedad">
+            <Sel value={contractForm.property_name} onChange={e => { const sel = properties.find(p => p.name === e.target.value); setContractForm({ ...contractForm, property_name: e.target.value, monthly_rent: sel ? sel.rent_amount : contractForm.monthly_rent }); }}>
+              <option value="">-- Selecciona --</option>
+              {properties.map(p => <option key={p.id} value={p.name}>{p.name} · {fmt(p.rent_amount)}/mes</option>)}
+            </Sel>
+          </Field>
+          <Field label="Renta mensual"><Input type="number" value={contractForm.monthly_rent} onChange={e => setContractForm({ ...contractForm, monthly_rent: e.target.value })} /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Inicio"><Input type="date" value={contractForm.start_date} onChange={e => setContractForm({ ...contractForm, start_date: e.target.value })} /></Field>
+            <Field label="Fin"><Input type="date" value={contractForm.end_date} onChange={e => setContractForm({ ...contractForm, end_date: e.target.value })} /></Field>
           </div>
-        )}
+          <Field label="Dia de pago" hint="Del 1 al 28"><Input type="number" min="1" max="28" value={contractForm.payment_day} onChange={e => setContractForm({ ...contractForm, payment_day: e.target.value })} /></Field>
+          <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+            <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#0369a1" }}>A quien le paga la renta el inquilino?</p>
+            <Sel value={contractForm.rent_receiver} onChange={e => setContractForm({ ...contractForm, rent_receiver: e.target.value })}>
+              <option value="inmobiliaria">A Emporio — entra a nuestra caja y nosotros le pagamos al propietario</option>
+              <option value="propietario">Directo al propietario — solo registramos y cobramos comision</option>
+            </Sel>
+          </div>
+          <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+            <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>Comision de administracion</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Tipo"><Sel value={contractForm.commission_type} onChange={e => setContractForm({ ...contractForm, commission_type: e.target.value })}><option value="porcentaje">Porcentaje (%)</option><option value="fijo">Monto fijo</option></Sel></Field>
+              <Field label={contractForm.commission_type === "porcentaje" ? "%" : "MXN"}><Input type="number" value={contractForm.commission_value} onChange={e => setContractForm({ ...contractForm, commission_value: e.target.value })} /></Field>
+            </div>
+            {contractForm.commission_value && contractForm.monthly_rent && (
+              <div style={{ background: "#fff", borderRadius: 8, padding: "10px 14px" }}>
+                <p style={{ margin: 0, fontSize: 13, color: "#7c3aed", fontWeight: 700 }}>
+                  Tu comision: {fmt(contractForm.commission_type === "porcentaje" ? (parseFloat(contractForm.monthly_rent) * parseFloat(contractForm.commission_value) / 100) : parseFloat(contractForm.commission_value))} / mes
+                </p>
+                <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                  {contractForm.rent_receiver === "inmobiliaria" ? "Se retiene automaticamente al liquidar al propietario" : "El propietario te la pagara aparte — marcala en Comisiones cuando la recibas"}
+                </p>
+              </div>
+            )}
+          </div>
+          <Field label="Deposito"><Input type="number" value={contractForm.deposit_amount} onChange={e => setContractForm({ ...contractForm, deposit_amount: e.target.value })} /></Field>
+          <Field label="Notas"><Input value={contractForm.notes} onChange={e => setContractForm({ ...contractForm, notes: e.target.value })} /></Field>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn onClick={saveContract} disabled={saving || !contractForm.tenant_name || !contractForm.property_name || !contractForm.monthly_rent || !contractForm.start_date || !contractForm.end_date}>{saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear contrato"}</Btn>
+          </div>
+        </Modal>
+      )}
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24, flexWrap: 'wrap' }}>
-          <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cancelar</button>
-          <button
-            onClick={() => { onClose(); window.open('/poliza/solicitud/' + sol.id, '_blank') }}
-            style={{ ...st.btn, background: '#1A2A3A', border: '1px solid #1A3A5C', color: '#70A8E0' }}
-          >
-            📋 Ver ficha completa
-          </button>
-          <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGreen }}>
-            {saving ? 'Guardando...' : 'Guardar notas'}
-          </button>
-          {status === 'aprobado' && (
-            <button onClick={onNuevoExp} style={{ ...st.btn, ...st.btnGold }}>+ Crear expediente</button>
-          )}
-        </div>
-      </div>
+      {showModal === "property" && (
+        <Modal title={editing ? "Editar Propiedad" : "Nueva Propiedad"} onClose={closeModal}>
+          <Field label="Nombre"><Input value={propForm.name} onChange={e => setPropForm({ ...propForm, name: e.target.value })} /></Field>
+          <Field label="Direccion"><Input value={propForm.address} onChange={e => setPropForm({ ...propForm, address: e.target.value })} /></Field>
+          <Field label="Tipo"><Sel value={propForm.property_type} onChange={e => setPropForm({ ...propForm, property_type: e.target.value })}><option value="depto">Departamento</option><option value="casa">Casa</option><option value="local">Local comercial</option><option value="bodega">Bodega</option><option value="oficina">Oficina</option></Sel></Field>
+          <Field label="Renta mensual"><Input type="number" value={propForm.rent_amount} onChange={e => setPropForm({ ...propForm, rent_amount: e.target.value })} /></Field>
+          <Field label="Estado"><Sel value={propForm.status} onChange={e => setPropForm({ ...propForm, status: e.target.value })}><option value="disponible">Disponible</option><option value="ocupada">Ocupada</option><option value="mantenimiento">En mantenimiento</option></Sel></Field>
+          <Field label="Email propietario"><Input type="email" value={propForm.owner_email} onChange={e => setPropForm({ ...propForm, owner_email: e.target.value })} /></Field>
+          <Field label="Telefono propietario"><Input value={propForm.owner_phone} onChange={e => setPropForm({ ...propForm, owner_phone: e.target.value })} /></Field>
+          <Field label="Notas"><Input value={propForm.notes} onChange={e => setPropForm({ ...propForm, notes: e.target.value })} /></Field>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn onClick={saveProperty} disabled={saving || !propForm.name}>{saving ? "Guardando..." : editing ? "Guardar cambios" : "Guardar"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {showModal === "payment" && (
+        <Modal title="Registrar Pago Manual" onClose={closeModal}>
+          <Field label="Inquilino"><Input value={payForm.tenant_name} onChange={e => setPayForm({ ...payForm, tenant_name: e.target.value })} /></Field>
+          <Field label="Email"><Input type="email" value={payForm.tenant_email} onChange={e => setPayForm({ ...payForm, tenant_email: e.target.value })} /></Field>
+          <Field label="Propiedad"><Sel value={payForm.property_name} onChange={e => setPayForm({ ...payForm, property_name: e.target.value })}><option value="">-- Selecciona --</option>{properties.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}</Sel></Field>
+          <Field label="Monto"><Input type="number" value={payForm.amount} onChange={e => setPayForm({ ...payForm, amount: e.target.value })} /></Field>
+          <Field label="Vencimiento"><Input type="date" value={payForm.due_date} onChange={e => setPayForm({ ...payForm, due_date: e.target.value })} /></Field>
+          <Field label="Metodo"><Sel value={payForm.payment_method} onChange={e => setPayForm({ ...payForm, payment_method: e.target.value })}><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option></Sel></Field>
+          <Field label="Estado"><Sel value={payForm.status} onChange={e => setPayForm({ ...payForm, status: e.target.value })}><option value="pendiente">Pendiente</option><option value="pagado">Pagado</option><option value="atrasado">Atrasado</option></Sel></Field>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn onClick={savePayment} disabled={saving || !payForm.tenant_name || !payForm.amount}>{saving ? "Guardando..." : "Registrar"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {showModal === "ticket" && (
+        <Modal title={editing ? "Editar Ticket" : "Nuevo Ticket"} onClose={closeModal}>
+          <Field label="Titulo"><Input value={ticketForm.title} onChange={e => setTicketForm({ ...ticketForm, title: e.target.value })} /></Field>
+          <Field label="Propiedad"><Sel value={ticketForm.property_name} onChange={e => setTicketForm({ ...ticketForm, property_name: e.target.value })}><option value="">-- Selecciona --</option>{properties.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}</Sel></Field>
+          <Field label="Inquilino"><Input value={ticketForm.tenant_name} onChange={e => setTicketForm({ ...ticketForm, tenant_name: e.target.value })} /></Field>
+          <Field label="Descripcion"><Input value={ticketForm.description} onChange={e => setTicketForm({ ...ticketForm, description: e.target.value })} /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Categoria"><Sel value={ticketForm.category} onChange={e => setTicketForm({ ...ticketForm, category: e.target.value })}><option value="plomeria">Plomeria</option><option value="electricidad">Electricidad</option><option value="pintura">Pintura</option><option value="carpinteria">Carpinteria</option><option value="otro">Otro</option></Sel></Field>
+            <Field label="Prioridad"><Sel value={ticketForm.priority} onChange={e => setTicketForm({ ...ticketForm, priority: e.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option><option value="urgente">Urgente</option></Sel></Field>
+          </div>
+          <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, marginBottom: 4 }}>
+            <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#374151" }}>Costos y pagos</p>
+            <Field label="Quien paga?"><Sel value={ticketForm.payer} onChange={e => setTicketForm({ ...ticketForm, payer: e.target.value })}><option value="propietario">El propietario</option><option value="inquilino">El inquilino</option><option value="inmobiliaria">Nosotros</option></Sel></Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Costo proveedor"><Input type="number" placeholder="0" value={ticketForm.provider_cost} onChange={e => setTicketForm({ ...ticketForm, provider_cost: e.target.value })} /></Field>
+              <Field label="Lo que cobramos"><Input type="number" placeholder="0" value={ticketForm.charged_amount} onChange={e => setTicketForm({ ...ticketForm, charged_amount: e.target.value })} /></Field>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Anticipo cobrado"><Input type="number" placeholder="0" value={ticketForm.advance_amount} onChange={e => setTicketForm({ ...ticketForm, advance_amount: e.target.value })} /></Field>
+              <Field label="Ya recibiste el anticipo?"><Sel value={ticketForm.advance_paid ? "si" : "no"} onChange={e => setTicketForm({ ...ticketForm, advance_paid: e.target.value === "si" })}><option value="no">No todavia</option><option value="si">Si, ya lo tengo</option></Sel></Field>
+            </div>
+            {ticketForm.provider_cost > 0 && ticketForm.charged_amount > 0 && (
+              <div style={{ background: "#fff", borderRadius: 8, padding: "10px 14px", marginTop: 4 }}>
+                <p style={{ margin: 0, fontSize: 13, color: "#7c3aed", fontWeight: 700 }}>Utilidad: {fmt((parseFloat(ticketForm.charged_amount) || 0) - (parseFloat(ticketForm.provider_cost) || 0))}</p>
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+            <button onClick={closeModal} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn onClick={saveTicket} disabled={saving || !ticketForm.title}>{saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear ticket"}</Btn>
+          </div>
+        </Modal>
+      )}
+
     </div>
-  )
-}
-
-// ─── Componentes helper ───────────────────────────────────
-const FField = ({ label, value, onChange, type = 'text', placeholder }) => (
-  <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>{label}</label>
-    <input type={type} value={value || ''} onChange={e => onChange(e.target.value)}
-      placeholder={placeholder}
-      style={st.input} />
-  </div>
-)
-
-const InfoRow = ({ label, value }) => (
-  <div style={{ marginBottom: 12 }}>
-    <p style={{ margin: 0, fontSize: 11, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{label}</p>
-    <p style={{ margin: '3px 0 0', fontSize: 14, color: value ? C.text : C.faint }}>{value || '—'}</p>
-  </div>
-)
-
-const DocChip = ({ label, path }) => {
-  const handleView = async () => {
-    const { data } = await supabase.storage.from('poliza-docs').createSignedUrl(path, 60)
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
-  }
-  return (
-    <button onClick={handleView} style={{ ...st.btn, ...st.btnGhost, fontSize: 12, padding: '6px 12px' }}>
-      📄 {label}
-    </button>
-  )
+  );
 }
