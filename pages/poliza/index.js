@@ -825,7 +825,7 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
                     <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{v.direccion_inmueble}</span></td>
                     <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(v.precio_venta)}</span></td>
                     <td style={st.td}>
-                      <Badge status={v.libre_gravamen ? 'activo' : 'rechazado'} label={v.libre_gravamen ? 'Libre' : 'Con gravamen'} />
+                      <Badge status={v.libre_gravamen ? 'activo' : 'con_gravamen'} label={v.libre_gravamen ? 'Libre de gravamen' : 'Con gravamen'} />
                     </td>
                     <td style={st.td}>
                       {v.tipo_copropiedad && v.tipo_copropiedad !== 'no'
