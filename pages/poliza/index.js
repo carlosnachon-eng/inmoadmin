@@ -377,7 +377,7 @@ export default function PolizaPanel() {
         ) : (
           <>
             {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={e => { setSelected(e); setModal('expediente') }} />}
-            {tab === 'propietarios' && <TabPropietarios propietarios={propietarios} onSelect={p => { setSelected(p); setModal('propietario') }} />}
+            {tab === 'propietarios' && <TabPropietarios propietarios={propietarios.filter(p => p.tipo_operacion !== 'venta')} onSelect={p => { setSelected(p); setModal('propietario') }} />}
             {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected({ _solicitud: sol }); setModal('nuevo') }} />}
             {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} />}
             {tab === 'compraventa' && (
