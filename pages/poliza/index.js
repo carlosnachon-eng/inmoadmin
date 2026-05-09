@@ -1,3 +1,4 @@
+import React from 'react'
 import { useState, useEffect, useRef } from 'react'
 import { generarContratoArrendamiento } from '../../lib/generarContrato'
 import { generarPagares } from '../../lib/generarPagares'
