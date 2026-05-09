@@ -1590,7 +1590,7 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
       // Limpiar todos los campos numéricos del merged antes de enviar
       const camposNumericos = [
         'cuota_mantenimiento', 'mora_diaria', 'monto_poliza', 'anticipo_poliza',
-        'deposito_garantia', 'renta_mensual', 'precio_venta', 'anticipo', 'monto_adeudo',
+        'deposito_garantia', 'renta_mensual', 'precio_venta', 'monto_adeudo',
       ]
       const cleanMerged = { ...merged }
       camposNumericos.forEach(k => {
