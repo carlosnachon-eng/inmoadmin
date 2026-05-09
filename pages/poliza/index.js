@@ -736,7 +736,8 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
 // ═══════════════════════════════════════════════════════════
 function ModalVendedorCV({ vendedor: v, onClose, onSaved }) {
   const [generando, setGenerando] = useState(false)
-
+const [showPromesaForm, setShowPromesaForm] = React.useState(false)
+const [promesaData, setPromesaData] = React.useState(null)
   const handleGenerarPromocion = async () => {
     setGenerando(true)
     try {
