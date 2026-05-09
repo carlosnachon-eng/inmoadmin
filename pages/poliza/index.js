@@ -1950,14 +1950,14 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
   const handleGenerarPromocion = async () => {
     setGenerando(true)
     try {
-      await generarContratoPromocion({
-        nombre_arrendador:    p.nombre_propietario,
-        domicilio_arrendador: p.domicilio_propietario,
-        telefono_arrendador:  p.telefono_propietario,
-        direccion_inmueble:   p.direccion_inmueble,
-        renta_mensual:        p.monto_renta,
-        renta_mensual_letra:  p.monto_renta_letra,
-      })
+      await generarContratoPromocionArrendamiento({
+  nombre_arrendador:    p.nombre_propietario,
+  domicilio_arrendador: p.domicilio_propietario,
+  telefono_arrendador:  p.telefono_propietario,
+  direccion_inmueble:   p.direccion_inmueble,
+  renta_mensual:        p.monto_renta,
+  renta_mensual_letra:  p.monto_renta_letra,
+})
     } catch(e) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
