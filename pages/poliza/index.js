@@ -124,7 +124,7 @@ const CORREOS_PERMITIDOS = [
   'juridico@emporioinmobiliario.mx',
   'carlos.nachon@emporioinmobiliario.mx',
 ]
-function ModalPromesaCV({ vendedor: v, onClose, onGenerar }) {
+function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
   const fmt = (n) => n ? `$${Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : ''
 
   const [form, setForm] = React.useState({
@@ -142,6 +142,15 @@ function ModalPromesaCV({ vendedor: v, onClose, onGenerar }) {
   })
 
   const set = (k, val) => setForm(p => ({ ...p, [k]: val }))
+  const seleccionarComprador = (id) => {
+  const c = compradores.find(x => x.id === id)
+  if (!c) return
+  set('nombre_comprador', c.nombre_comprador || '')
+  set('domicilio_comprador', c.domicilio_comprador || '')
+  set('curp_comprador', c.curp_comprador || '')
+  set('rfc_comprador', c.rfc_comprador || '')
+  set('credencial_comprador', c.folio_identificacion_comprador || '')
+}
 
   const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #333', background: '#1a1a2e', color: '#fff', fontSize: 13, boxSizing: 'border-box', fontFamily: 'system-ui' }
   const lbl = { display: 'block', fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }
@@ -164,7 +173,17 @@ function ModalPromesaCV({ vendedor: v, onClose, onGenerar }) {
         <div style={{ background: '#1a1a2e', border: '1px solid #c8a96e40', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
           <p style={{ margin: 0, fontSize: 12, color: '#c8a96e' }}>Precio: <strong>{fmt(v.precio_venta)}</strong> · Gravamen: <strong>{v.libre_gravamen ? 'Libre' : (v.institucion_gravamen || 'Con hipoteca')}</strong></p>
         </div>
-
+{compradores.length > 0 && (
+  <div style={fld}>
+    <label style={lbl}>Seleccionar comprador registrado</label>
+    <select style={{...inp, color: '#fff'}} onChange={e => seleccionarComprador(e.target.value)} defaultValue="">
+      <option value="">-- Selecciona un comprador --</option>
+      {compradores.map(c => (
+        <option key={c.id} value={c.id}>{c.nombre_comprador} · {c.celular_comprador}</option>
+      ))}
+    </select>
+  </div>
+)}
         <p style={sec}>📋 Datos adicionales del vendedor</p>
         <div style={grid2}>
           <div style={fld}><label style={lbl}>CURP del vendedor</label><input style={inp} value={form.curp_vendedor} onChange={e => set('curp_vendedor', e.target.value)} placeholder="XXXX000000XXXXXX" /></div>
