@@ -124,7 +124,152 @@ const CORREOS_PERMITIDOS = [
   'juridico@emporioinmobiliario.mx',
   'carlos.nachon@emporioinmobiliario.mx',
 ]
+function ModalPromesaCV({ vendedor: v, onClose, onGenerar }) {
+  const fmt = (n) => n ? `$${Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : ''
 
+  const [form, setForm] = React.useState({
+    curp_vendedor: '', credencial_vendedor: '',
+    nombre_comprador: '', domicilio_comprador: '', curp_comprador: '', rfc_comprador: '', credencial_comprador: '',
+    superficie: '',
+    volumen_escritura: '', instrumento_escritura: '', fecha_escritura: '', notario: '', notaria: '', cuenta_predial: '',
+    precio_total_letras: '',
+    tipo_credito: 'contado', nombre_banco: '',
+    pago1_monto: '', pago1_letras: '', pago1_fecha: new Date().toISOString().split('T')[0],
+    tiene_pago2: false, pago2_monto: '', pago2_letras: '', pago2_fecha: '',
+    pago3_monto: '', pago3_letras: '', pago3_fecha: '',
+    pena_convencional: '100000', pena_letras: 'CIEN MIL PESOS 00/100 M.N.',
+    fecha_firma: new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }),
+  })
+
+  const set = (k, val) => setForm(p => ({ ...p, [k]: val }))
+
+  const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #333', background: '#1a1a2e', color: '#fff', fontSize: 13, boxSizing: 'border-box', fontFamily: 'system-ui' }
+  const lbl = { display: 'block', fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }
+  const fld = { marginBottom: 12 }
+  const sec = { color: '#c8a96e', fontWeight: 700, fontSize: 13, margin: '20px 0 10px', borderBottom: '1px solid #333', paddingBottom: 6 }
+  const grid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 16 }}>
+      <div style={{ background: '#111', border: '1px solid #333', borderRadius: 16, width: '100%', maxWidth: 680, maxHeight: '92vh', overflowY: 'auto', padding: 28, color: '#e8e8e8' }}>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#fff' }}>Promesa de Compraventa</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af' }}>{v.nombre_propietario} · {v.direccion_inmueble}</p>
+          </div>
+          <button onClick={onClose} style={{ background: '#222', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 16 }}>✕</button>
+        </div>
+
+        <div style={{ background: '#1a1a2e', border: '1px solid #c8a96e40', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+          <p style={{ margin: 0, fontSize: 12, color: '#c8a96e' }}>Precio: <strong>{fmt(v.precio_venta)}</strong> · Gravamen: <strong>{v.libre_gravamen ? 'Libre' : (v.institucion_gravamen || 'Con hipoteca')}</strong></p>
+        </div>
+
+        <p style={sec}>📋 Datos adicionales del vendedor</p>
+        <div style={grid2}>
+          <div style={fld}><label style={lbl}>CURP del vendedor</label><input style={inp} value={form.curp_vendedor} onChange={e => set('curp_vendedor', e.target.value)} placeholder="XXXX000000XXXXXX" /></div>
+          <div style={fld}><label style={lbl}>No. Credencial INE</label><input style={inp} value={form.credencial_vendedor} onChange={e => set('credencial_vendedor', e.target.value)} placeholder="Número de folio" /></div>
+        </div>
+
+        <p style={sec}>👤 Datos del comprador</p>
+        <div style={fld}><label style={lbl}>Nombre completo *</label><input style={inp} value={form.nombre_comprador} onChange={e => set('nombre_comprador', e.target.value)} placeholder="Como aparece en identificación" /></div>
+        <div style={fld}><label style={lbl}>Domicilio</label><input style={inp} value={form.domicilio_comprador} onChange={e => set('domicilio_comprador', e.target.value)} placeholder="Calle, número, colonia, ciudad" /></div>
+        <div style={grid2}>
+          <div style={fld}><label style={lbl}>CURP</label><input style={inp} value={form.curp_comprador} onChange={e => set('curp_comprador', e.target.value)} placeholder="XXXX000000XXXXXX" /></div>
+          <div style={fld}><label style={lbl}>RFC</label><input style={inp} value={form.rfc_comprador} onChange={e => set('rfc_comprador', e.target.value)} placeholder="XXXX000000XXX" /></div>
+        </div>
+        <div style={fld}><label style={lbl}>No. Credencial INE</label><input style={inp} value={form.credencial_comprador} onChange={e => set('credencial_comprador', e.target.value)} placeholder="Número de folio" /></div>
+
+        <p style={sec}>🏠 Antecedentes del inmueble</p>
+        <div style={fld}><label style={lbl}>Superficie</label><input style={inp} value={form.superficie} onChange={e => set('superficie', e.target.value)} placeholder="Ej: CIENTO SESENTA Y NUEVE PUNTO NOVENTA METROS CUADRADOS" /></div>
+        <div style={grid2}>
+          <div style={fld}><label style={lbl}>Volumen de escritura</label><input style={inp} value={form.volumen_escritura} onChange={e => set('volumen_escritura', e.target.value)} placeholder="Ej: OCHOCIENTOS CUARENTA" /></div>
+          <div style={fld}><label style={lbl}>Instrumento No.</label><input style={inp} value={form.instrumento_escritura} onChange={e => set('instrumento_escritura', e.target.value)} placeholder="Ej: CUARENTA MIL TRESCIENTOS..." /></div>
+        </div>
+        <div style={grid2}>
+          <div style={fld}><label style={lbl}>Fecha de escritura</label><input style={inp} value={form.fecha_escritura} onChange={e => set('fecha_escritura', e.target.value)} placeholder="Ej: DIEZ DE JUNIO DEL AÑO DOS MIL VEINTIDÓS" /></div>
+          <div style={fld}><label style={lbl}>Cuenta predial</label><input style={inp} value={form.cuenta_predial} onChange={e => set('cuenta_predial', e.target.value)} placeholder="Ej: PU-29330" /></div>
+        </div>
+        <div style={fld}><label style={lbl}>Notario</label><input style={inp} value={form.notario} onChange={e => set('notario', e.target.value)} placeholder="Ej: DOCTOR EN DERECHO ERNESTO JOAQUÍN BRIONES AMADOR" /></div>
+        <div style={fld}><label style={lbl}>Notaría</label><input style={inp} value={form.notaria} onChange={e => set('notaria', e.target.value)} placeholder="Ej: NOTARÍA PÚBLICA NÚMERO CUARENTA Y SEIS" /></div>
+
+        <p style={sec}>💰 Operación y pagos</p>
+        <div style={fld}><label style={lbl}>Precio total en letras</label><input style={inp} value={form.precio_total_letras} onChange={e => set('precio_total_letras', e.target.value)} placeholder="Ej: TRES MILLONES QUINIENTOS MIL PESOS 00/100 M.N." /></div>
+
+        <div style={fld}>
+          <label style={lbl}>Forma de pago del resto</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[{ v: 'contado', l: 'Contado' }, { v: 'infonavit', l: 'INFONAVIT' }, { v: 'bancario', l: 'Crédito bancario' }].map(op => (
+              <button key={op.v} onClick={() => set('tipo_credito', op.v)}
+                style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${form.tipo_credito === op.v ? '#c8a96e' : '#333'}`, background: form.tipo_credito === op.v ? '#c8a96e20' : '#1a1a1a', color: form.tipo_credito === op.v ? '#c8a96e' : '#9ca3af', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                {op.l}
+              </button>
+            ))}
+          </div>
+        </div>
+        {form.tipo_credito === 'bancario' && (
+          <div style={fld}><label style={lbl}>Nombre del banco</label><input style={inp} value={form.nombre_banco} onChange={e => set('nombre_banco', e.target.value)} placeholder="Ej: BBVA, Banorte, Scotiabank" /></div>
+        )}
+
+        <div style={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 10, padding: 14, marginBottom: 10 }}>
+          <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#c8a96e' }}>Pago 1 — Anticipo/Garantía</p>
+          <div style={grid2}>
+            <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago1_monto} onChange={e => set('pago1_monto', e.target.value)} placeholder="0" /></div>
+            <div style={fld}><label style={lbl}>Fecha</label><input style={inp} type="date" value={form.pago1_fecha} onChange={e => set('pago1_fecha', e.target.value)} /></div>
+          </div>
+          <div style={fld}><label style={lbl}>Monto en letras</label><input style={inp} value={form.pago1_letras} onChange={e => set('pago1_letras', e.target.value)} placeholder="Ej: TRESCIENTOS CINCUENTA MIL PESOS 00/100 M.N." /></div>
+        </div>
+
+        <div style={{ marginBottom: 10 }}>
+          <button onClick={() => set('tiene_pago2', !form.tiene_pago2)}
+            style={{ background: 'none', border: '1px dashed #555', borderRadius: 8, color: '#9ca3af', padding: '8px 14px', cursor: 'pointer', fontSize: 12, width: '100%' }}>
+            {form.tiene_pago2 ? '✕ Quitar segundo pago' : '+ Agregar segundo pago en efectivo'}
+          </button>
+        </div>
+        {form.tiene_pago2 && (
+          <div style={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 10, padding: 14, marginBottom: 10 }}>
+            <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#c8a96e' }}>Pago 2 — Segundo pago en efectivo</p>
+            <div style={grid2}>
+              <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago2_monto} onChange={e => set('pago2_monto', e.target.value)} placeholder="0" /></div>
+              <div style={fld}><label style={lbl}>Fecha</label><input style={inp} type="date" value={form.pago2_fecha} onChange={e => set('pago2_fecha', e.target.value)} /></div>
+            </div>
+            <div style={fld}><label style={lbl}>Monto en letras</label><input style={inp} value={form.pago2_letras} onChange={e => set('pago2_letras', e.target.value)} placeholder="En letras..." /></div>
+          </div>
+        )}
+
+        <div style={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 10, padding: 14, marginBottom: 10 }}>
+          <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#c8a96e' }}>Pago 3 — Resto ({form.tipo_credito === 'contado' ? 'Contado' : form.tipo_credito === 'infonavit' ? 'INFONAVIT' : form.nombre_banco || 'Banco'})</p>
+          <div style={grid2}>
+            <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago3_monto} onChange={e => set('pago3_monto', e.target.value)} placeholder="0" /></div>
+            <div style={fld}><label style={lbl}>Fecha límite</label><input style={inp} type="date" value={form.pago3_fecha} onChange={e => set('pago3_fecha', e.target.value)} /></div>
+          </div>
+          <div style={fld}><label style={lbl}>Monto en letras</label><input style={inp} value={form.pago3_letras} onChange={e => set('pago3_letras', e.target.value)} placeholder="En letras..." /></div>
+        </div>
+
+        <p style={sec}>⚖️ Pena convencional</p>
+        <div style={grid2}>
+          <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pena_convencional} onChange={e => set('pena_convencional', e.target.value)} placeholder="100000" /></div>
+          <div style={fld}><label style={lbl}>En letras</label><input style={inp} value={form.pena_letras} onChange={e => set('pena_letras', e.target.value)} placeholder="CIEN MIL PESOS 00/100 M.N." /></div>
+        </div>
+
+        <p style={sec}>📅 Fecha de firma</p>
+        <div style={fld}><label style={lbl}>Fecha (texto)</label><input style={inp} value={form.fecha_firma} onChange={e => set('fecha_firma', e.target.value)} placeholder="Ej: diecisiete de abril del año dos mil veintiséis" /></div>
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
+          <button onClick={onClose} style={{ background: '#222', border: '1px solid #333', color: '#9ca3af', borderRadius: 10, padding: '11px 20px', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
+          <button onClick={() => {
+            if (!form.nombre_comprador) { alert('El nombre del comprador es requerido'); return }
+            if (!form.pago1_monto) { alert('El anticipo es requerido'); return }
+            if (!form.pago3_monto) { alert('El resto del precio es requerido'); return }
+            onGenerar(form)
+          }} style={{ background: '#c8a96e', color: '#000', border: 'none', borderRadius: 10, padding: '11px 24px', cursor: 'pointer', fontWeight: 800, fontSize: 14 }}>
+            🖹 Generar Promesa
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 export default function PolizaPanel() {
   const router = useRouter()
   const [tab, setTab] = useState('expedientes')
