@@ -898,7 +898,7 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
 // ═══════════════════════════════════════════════════════════
 // MODAL VENDEDOR CV
 // ═══════════════════════════════════════════════════════════
-function ModalVendedorCV({ vendedor: v, onClose, onSaved }) {
+function ModalVendedorCV({ vendedor: v, onClose, onSaved, compradores = [] }) {
   const [generando, setGenerando] = useState(false)
 const [showPromesaForm, setShowPromesaForm] = React.useState(false)
 const [promesaData, setPromesaData] = React.useState(null)
