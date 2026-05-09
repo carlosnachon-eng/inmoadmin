@@ -397,8 +397,8 @@ export default function PolizaPanel() {
 
       {/* Modales */}
       {modal === 'vendedor_cv' && selected && (
-        <ModalVendedorCV vendedor={selected} onClose={() => { setModal(null); setSelected(null) }} onSaved={() => { setModal(null); setSelected(null); loadAll() }} />
-      )}
+  <ModalVendedorCV vendedor={selected} compradores={compradores} onClose={() => { setModal(null); setSelected(null) }} onSaved={() => { setModal(null); setSelected(null); loadAll() }} />
+)}
       {modal === 'comprador_cv' && selected && (
         <ModalCompradorCV comprador={selected} onClose={() => { setModal(null); setSelected(null) }} onSaved={() => { setModal(null); setSelected(null); loadAll() }} />
       )}
