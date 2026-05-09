@@ -765,17 +765,49 @@ const [promesaData, setPromesaData] = React.useState(null)
     } catch(e) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
-  const handleGenerarPromesaCV = async () => {
+  const handleGenerarPromesaCV = () => setShowPromesaForm(true)
+
+const generarPromesaFinal = async (formData) => {
   setGenerando('promesacv')
+  setShowPromesaForm(false)
   try {
     await generarPromesaCompraventa({
-      nombre_vendedor:    v.nombre_propietario,
-      domicilio_vendedor: v.domicilio_propietario,
-      telefono_vendedor:  v.telefono_propietario,
-      direccion_inmueble: v.direccion_inmueble,
-      precio_total:       v.precio_venta,
-      gravamen:           v.gravamen,
-      tipo_credito:       'contado',
+      nombre_vendedor:       v.nombre_propietario,
+      domicilio_vendedor:    v.domicilio_propietario,
+      telefono_vendedor:     v.telefono_propietario,
+      curp_vendedor:         formData.curp_vendedor,
+      rfc_vendedor:          v.rfc_propietario,
+      credencial_vendedor:   formData.credencial_vendedor,
+      nombre_comprador:      formData.nombre_comprador,
+      domicilio_comprador:   formData.domicilio_comprador,
+      curp_comprador:        formData.curp_comprador,
+      rfc_comprador:         formData.rfc_comprador,
+      credencial_comprador:  formData.credencial_comprador,
+      direccion_inmueble:    v.direccion_inmueble,
+      superficie:            formData.superficie,
+      volumen_escritura:     formData.volumen_escritura,
+      instrumento_escritura: formData.instrumento_escritura,
+      fecha_escritura:       formData.fecha_escritura,
+      notario:               formData.notario,
+      notaria:               formData.notaria,
+      cuenta_predial:        formData.cuenta_predial,
+      precio_total:          v.precio_venta,
+      precio_total_letras:   formData.precio_total_letras,
+      tipo_credito:          formData.tipo_credito,
+      nombre_banco:          formData.nombre_banco,
+      pago1_monto:           formData.pago1_monto,
+      pago1_letras:          formData.pago1_letras,
+      pago1_fecha:           formData.pago1_fecha,
+      pago2_monto:           formData.tiene_pago2 ? formData.pago2_monto : null,
+      pago2_letras:          formData.pago2_letras,
+      pago2_fecha:           formData.pago2_fecha,
+      pago3_monto:           formData.pago3_monto,
+      pago3_letras:          formData.pago3_letras,
+      pago3_fecha:           formData.pago3_fecha,
+      pena_convencional:     formData.pena_convencional,
+      pena_letras:           formData.pena_letras,
+      gravamen:              v.libre_gravamen ? '' : (v.institucion_gravamen || 'hipoteca'),
+      fecha_firma:           formData.fecha_firma,
     })
   } catch(e) { alert('Error: ' + e.message) }
   setGenerando(false)
