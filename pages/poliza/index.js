@@ -882,6 +882,7 @@ const generarPromesaFinal = async (formData) => {
         </div>
       </div>
     </div>
+{showPromesaForm && <ModalPromesaCV vendedor={v} onClose={() => setShowPromesaForm(false)} onGenerar={generarPromesaFinal} />}
   )
 }
 
