@@ -34,6 +34,12 @@ const CATS_GASTO = [
   { emoji: '💧', label: 'Agua' },
   { emoji: '🔧', label: 'Mant. casa' },
   { emoji: '🔩', label: 'Mant. autos' },
+  { emoji: '📱', label: 'Telcel' },
+  { emoji: '💊', label: 'Medicinas y salud' },
+  { emoji: '🐾', label: 'Mascotas' },
+  { emoji: '👕', label: 'Ropa' },
+  { emoji: '✈️', label: 'Viajes' },
+  { emoji: '🎁', label: 'Regalos' },
   { emoji: '📦', label: 'Gastos extra' },
   { emoji: '•••', label: 'Otro' },
 ]
@@ -41,10 +47,6 @@ const CATS_GASTO = [
 const CATS_INGRESO = [
   { emoji: '💼', label: 'Sueldo Carlos' },
   { emoji: '💼', label: 'Sueldo Ivonne' },
-  { emoji: '🏡', label: 'Cierre comisión' },
-  { emoji: '📋', label: 'Póliza' },
-  { emoji: '🏢', label: 'Administración' },
-  { emoji: '🔧', label: 'Mantenimiento' },
   { emoji: '💵', label: 'Otro ingreso' },
 ]
 
