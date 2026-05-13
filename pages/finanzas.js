@@ -7,6 +7,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
+const CORREO_PERMITIDO = 'carlos.nachon@emporioinmobiliario.mx'
+
 const fmt = n => '$' + Number(n).toLocaleString('es-MX', { minimumFractionDigits: 0 })
 
 const CATS_GASTO = [
@@ -80,7 +82,17 @@ export default function Finanzas() {
     setLoading(false)
   }
 
-  useEffect(() => { cargar() }, [])
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session || session.user.email !== CORREO_PERMITIDO) {
+        window.location.href = '/login'
+        return
+      }
+      cargar()
+    }
+    checkAuth()
+  }, [])
   useEffect(() => { if (vista === 'dashboard') cargar() }, [vista])
 
   const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + Number(m.monto), 0)
