@@ -1102,14 +1102,32 @@ function ModalCompradorCV({ comprador: comp, onClose, onSaved }) {
           </>
         )}
 
-        {comp.doc_identificacion_b64 && (
-          <>
-            <div style={{ ...st.divider, margin: '16px 0' }} />
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Documentos</p>
-            <DocChipB64 label="Identificación" data={comp.doc_identificacion_b64} />
-          </>
-        )}
-
+      <>
+  <div style={{ ...st.divider, margin: '16px 0' }} />
+  <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Documentos</p>
+  {comp.doc_identificacion_b64 ? (
+    <DocChipB64 label="Identificación" data={comp.doc_identificacion_b64} />
+  ) : (
+    <label style={{ cursor: 'pointer' }}>
+      <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
+        onChange={async (e) => {
+          const file = e.target.files[0]
+          if (!file) return
+          const reader = new FileReader()
+          reader.onload = async () => {
+            await supabase.from('compradores').update({ doc_identificacion_b64: reader.result }).eq('id', comp.id)
+            onSaved()
+            onClose()
+          }
+          reader.readAsDataURL(file)
+        }}
+      />
+      <span style={{ ...st.btn, ...st.btnGhost, fontSize: 12, padding: '6px 12px', display: 'inline-block' }}>
+        📎 Subir INE / Pasaporte
+      </span>
+    </label>
+  )}
+</>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
         </div>
