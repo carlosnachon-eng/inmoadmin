@@ -305,6 +305,7 @@ export default function PropietarioPortal() {
   const [liquidaciones, setLiquidaciones] = useState([]);
   const [loading, setLoading] = useState(false);
   const [generandoPDF, setGenerandoPDF] = useState(false);
+  const [propertyExpenses, setPropertyExpenses] = useState([]);
   const [ownerName, setOwnerName] = useState("");
 
   useEffect(() => {
@@ -336,6 +337,8 @@ export default function PropietarioPortal() {
       setTickets(ticketsData || []);
       const { data: liqData } = await supabase.from("owner_payments").select("*").eq("owner_email", email).order("created_at", { ascending: false });
       setLiquidaciones(liqData || []);
+      const { data: expensesData } = await supabase.from("property_expenses").select("*").in("property_name", propNames).order("date", { ascending: false });
+setPropertyExpenses(expensesData || []);
     } else {
       setOwnerName(email.split("@")[0]);
     }
@@ -345,7 +348,6 @@ export default function PropietarioPortal() {
   const logout = async () => { await supabase.auth.signOut(); setSession(null); };
 
   const handleGenerarPDF = async () => {
-    const handleGenerarPDF = async () => {
   setGenerandoPDF(true);
   try { await generarPDF(ownerName, properties, contracts, payments, liquidaciones, tickets, propertyExpenses); }
   catch (e) { console.error("Error generando PDF:", e); }
