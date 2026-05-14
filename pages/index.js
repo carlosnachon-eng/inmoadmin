@@ -649,7 +649,13 @@ doc.text(esDirecto ? `Comision pendiente de cobro: ${fmt(comisionesPendientes2)}
     doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
     doc.text("Mantenimiento", 20, y); y += 6;
     autoTable(doc, { startY: y, head: [["Titulo", "Propiedad", "Quien paga", "Costo", "Estado", "Fecha"]], body: (ticketsProp || []).length > 0 ? (ticketsProp || []).map(t => [t.title || "-", t.property_name || "-", t.payer === "propietario" ? "Propietario" : t.payer === "inquilino" ? "Inquilino" : "Inmobiliaria", t.payer === "propietario" && t.charged_amount > 0 ? fmt(t.charged_amount) : "-", t.status === "resuelto" ? "Resuelto" : t.status === "en_proceso" ? "En proceso" : "Nuevo", new Date(t.created_at).toLocaleDateString("es-MX")]) : [["-", "", "", "", "", ""]], styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" }, alternateRowStyles: { fillColor: [249, 250, 251] }, margin: { left: 15, right: 15 } });
-
+if (gastosProp.length > 0) {
+      y = doc.lastAutoTable.finalY + 12;
+      if (y > 220) { doc.addPage(); y = 20; }
+      doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+      doc.text("Gastos Operativos", 20, y); y += 6;
+      autoTable(doc, { startY: y, head: [["Concepto", "Propiedad", "Descripcion", "Monto", "Quien paga", "Fecha"]], body: gastosProp.map(e => [e.category || "-", e.property_name || "-", e.description || "-", fmt(e.amount), e.paid_by === "propietario" ? "Propietario" : "Emporio", e.date || "-"]), styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" }, alternateRowStyles: { fillColor: [249, 250, 251] }, margin: { left: 15, right: 15 } });
+    }
     const totalPaginas = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPaginas; i++) {
       doc.setPage(i); doc.setFillColor(26, 26, 46); doc.rect(0, 285, 210, 15, "F");
