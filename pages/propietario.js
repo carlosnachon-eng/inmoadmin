@@ -345,11 +345,12 @@ export default function PropietarioPortal() {
   const logout = async () => { await supabase.auth.signOut(); setSession(null); };
 
   const handleGenerarPDF = async () => {
-    setGenerandoPDF(true);
-    await generarPDF(ownerName, properties, contracts, payments, liquidaciones, tickets, propertyExpenses);
-    catch (e) { console.error("Error generando PDF:", e); }
-    setGenerandoPDF(false);
-  };
+    const handleGenerarPDF = async () => {
+  setGenerandoPDF(true);
+  try { await generarPDF(ownerName, properties, contracts, payments, liquidaciones, tickets, propertyExpenses); }
+  catch (e) { console.error("Error generando PDF:", e); }
+  setGenerandoPDF(false);
+};
 
   const totalRenta = contracts.reduce((a, c) => a + (c.monthly_rent || 0), 0);
   const totalComisiones = contracts.reduce((a, c) => a + calcComision(c), 0);
