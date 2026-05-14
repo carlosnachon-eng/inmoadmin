@@ -78,7 +78,7 @@ const calcComision = (contrato) => {
   return contrato.commission_value;
 };
 
-const generarPDF = async (ownerName, properties, contracts, payments, liquidaciones, tickets) => {
+const generarPDF = async (ownerName, properties, contracts, payments, liquidaciones, tickets, propertyExpenses) => {
   const { default: jsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
   const doc = new jsPDF();
@@ -251,7 +251,33 @@ const generarPDF = async (ownerName, properties, contracts, payments, liquidacio
     },
     margin: { left: 15, right: 15 },
   });
-
+// Gastos Operativos
+if ((propertyExpenses || []).length > 0) {
+  y += 6;
+  if (y > 220) { doc.addPage(); y = 20; }
+  doc.setTextColor(26, 26, 46);
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text("Gastos Operativos", 20, y);
+  y += 6;
+  autoTable(doc, {
+    startY: y,
+    head: [["Concepto", "Propiedad", "Descripción", "Monto", "Quien paga", "Fecha"]],
+    body: (propertyExpenses || []).map(e => [
+      e.category || "–",
+      e.property_name || "–",
+      e.description || "–",
+      fmt(e.amount),
+      e.paid_by === "propietario" ? "Propietario" : "Emporio",
+      e.date || "–",
+    ]),
+    styles: { fontSize: 8, cellPadding: 3 },
+    headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [249, 250, 251] },
+    margin: { left: 15, right: 15 },
+  });
+  y = doc.lastAutoTable.finalY + 12;
+}
   // Footer
   const totalPaginas = doc.internal.getNumberOfPages();
   for (let i = 1; i <= totalPaginas; i++) {
@@ -320,7 +346,7 @@ export default function PropietarioPortal() {
 
   const handleGenerarPDF = async () => {
     setGenerandoPDF(true);
-    try { await generarPDF(ownerName, properties, contracts, payments, liquidaciones, tickets); }
+    await generarPDF(ownerName, properties, contracts, payments, liquidaciones, tickets, propertyExpenses);
     catch (e) { console.error("Error generando PDF:", e); }
     setGenerandoPDF(false);
   };
