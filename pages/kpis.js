@@ -321,7 +321,7 @@ function Login() {
     setLoading(true)
     await supabase.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: false, emailRedirectTo: 'https://app.emporioinmobiliario.com.mx/kpis' }
+      options: { shouldCreateUser: true, emailRedirectTo: 'https://app.emporioinmobiliario.com.mx/kpis' }
     })
     setLoading(false)
     setSent(true)
