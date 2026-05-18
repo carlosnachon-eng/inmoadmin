@@ -67,7 +67,7 @@ export default function KPIsDashboard() {
     const citas_agendadas = registros.reduce((a, k) => a + (k.citas_agendadas || 0), 0)
     const citas_efectivas = registros.reduce((a, k) => a + (k.citas_efectivas || 0), 0)
     const citas_calificadas = registros.reduce((a, k) => a + (k.citas_calificadas || 0), 0)
-    const cierresAsesor = cierres.filter(c => (c.vendedor || '').toLowerCase().includes(nombre.toLowerCase()) || nombre.toLowerCase().includes((c.vendedor || '').toLowerCase()))
+    const cierresAsesor = cierres.filter(c => (c.vendedor || '').toLowerCase() === nombre.toLowerCase())
     const operaciones = cierresAsesor.length
     const ingresos = cierresAsesor.reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0)
     const conversion = pct(operaciones, citas_calificadas)
