@@ -54,7 +54,7 @@ export default function KPIsDashboard() {
 
     const [{ data: kpisData }, { data: cierresData }] = await Promise.all([
       supabase.from('kpis_diarios').select('*').gte('fecha', inicio).lte('fecha', fin).order('fecha', { ascending: false }),
-      supabase.from('cierres').select('*').gte('fecha', inicio).lte('fecha', fin),
+      supabase.from('cierres').select('*').gte('fecha_cierre', inicio).lte('fecha_cierre', fin),
     ])
 
     setKpis(kpisData || [])
@@ -67,9 +67,9 @@ export default function KPIsDashboard() {
     const citas_agendadas = registros.reduce((a, k) => a + (k.citas_agendadas || 0), 0)
     const citas_efectivas = registros.reduce((a, k) => a + (k.citas_efectivas || 0), 0)
     const citas_calificadas = registros.reduce((a, k) => a + (k.citas_calificadas || 0), 0)
-    const cierresAsesor = cierres.filter(c => c.vendedor === nombre || c.asesor === nombre)
+    const cierresAsesor = cierres.filter(c => (c.vendedor || '').toLowerCase().includes(nombre.toLowerCase()) || nombre.toLowerCase().includes((c.vendedor || '').toLowerCase()))
     const operaciones = cierresAsesor.length
-    const ingresos = cierresAsesor.reduce((a, c) => a + (c.emporio_neto || c.comision || 0), 0)
+    const ingresos = cierresAsesor.reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0)
     const conversion = pct(operaciones, citas_calificadas)
     const citasDiariasPromedio = diasCapturados > 0 ? (citas_efectivas / diasCapturados).toFixed(1) : 0
     const okCitas = citasDiariasPromedio >= META_CITAS_DIARIAS
@@ -110,7 +110,7 @@ export default function KPIsDashboard() {
     citas_efectivas: kpis.reduce((a, k) => a + (k.citas_efectivas || 0), 0),
     citas_calificadas: kpis.reduce((a, k) => a + (k.citas_calificadas || 0), 0),
     operaciones: cierres.length,
-    ingresos: cierres.reduce((a, c) => a + (c.emporio_neto || c.comision || 0), 0),
+    ingresos: cierres.reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0),
   }
 
   return (
