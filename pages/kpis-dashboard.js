@@ -69,7 +69,7 @@ export default function KPIsDashboard() {
     const citas_calificadas = registros.reduce((a, k) => a + (k.citas_calificadas || 0), 0)
     const cierresAsesor = cierres.filter(c => (c.vendedor || '').toLowerCase() === nombre.toLowerCase())
     const operaciones = cierresAsesor.length
-    const ingresos = cierresAsesor.reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0)
+    const ingresos = cierresAsesor.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0)
     const conversion = pct(operaciones, citas_calificadas)
     const citasDiariasPromedio = diasCapturados > 0 ? (citas_efectivas / diasCapturados).toFixed(1) : 0
     const okCitas = citasDiariasPromedio >= META_CITAS_DIARIAS
@@ -110,7 +110,7 @@ export default function KPIsDashboard() {
     citas_efectivas: kpis.reduce((a, k) => a + (k.citas_efectivas || 0), 0),
     citas_calificadas: kpis.reduce((a, k) => a + (k.citas_calificadas || 0), 0),
     operaciones: cierres.length,
-    ingresos: cierres.reduce((a, c) => a + (c.comision_inmobiliaria || 0), 0),
+    ingresos: cierres.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0),
   }
 
   return (
