@@ -1,23 +1,31 @@
 export default async function handler(req, res) {
   const token = process.env.RESPOND_IO_TOKEN
 
-  const hoy = new Date()
-  const inicioMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`
-  const hoyStr = hoy.toISOString().split('T')[0]
+  const ASESORES = [
+    { nombre: 'Guillermo', id: 1087997 },
+    { nombre: 'Angélica', id: 1088026 },
+    { nombre: 'Rosario', id: 1088052 },
+    { nombre: 'Iván', id: 1088058 },
+    { nombre: 'Andrea', id: 1088068 },
+    { nombre: 'Ariannet', id: 1088092 },
+  ]
 
   try {
-    // Jalar conversaciones con assignee
-    const response = await fetch(
-      `https://api.respond.io/v2/contact?limit=100`,
-      { 
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        } 
-      }
+    const results = await Promise.all(
+      ASESORES.map(async (asesor) => {
+        const response = await fetch(
+          `https://api.respond.io/v2/conversations?assigneeId=${asesor.id}&limit=100`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        const text = await response.text()
+        return { 
+          nombre: asesor.nombre, 
+          status: response.status, 
+          body: text.slice(0, 200) 
+        }
+      })
     )
-    const text = await response.text()
-    res.status(200).json({ status: response.status, body: text.slice(0, 500) })
+    res.status(200).json(results)
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
