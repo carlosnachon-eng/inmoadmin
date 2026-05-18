@@ -26,11 +26,8 @@ export default function KPIsDashboard() {
   const [loading, setLoading] = useState(true)
   const [kpis, setKpis] = useState([])
   const [cierres, setCierres] = useState([])
-  const [vista, setVista] = useState('equipo') // equipo | hoy | semana
+  const [vista, setVista] = useState('equipo')
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1)
-
-  const email = session?.user?.email
-  const esAdmin = ADMINS.includes(email)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -42,15 +39,16 @@ export default function KPIsDashboard() {
   }, [])
 
   useEffect(() => {
-    if (session && esAdmin) {
+    if (session && ADMINS.includes(session.user.email)) {
       cargarDatos()
     }
   }, [session, mesSeleccionado])
 
   const cargarDatos = async () => {
     const anio = new Date().getFullYear()
-    const inicio = `${anio}-${String(mesSeleccionado).padStart(2, '0')}-01`
-    const fin = `${anio}-${String(mesSeleccionado).padStart(2, '0')}-31`
+    const mes = mesSeleccionado
+    const inicio = `${anio}-${String(mes).padStart(2, '0')}-01`
+    const fin = `${anio}-${String(mes).padStart(2, '0')}-31`
 
     const [{ data: kpisData }, { data: cierresData }] = await Promise.all([
       supabase.from('kpis_diarios').select('*').gte('fecha', inicio).lte('fecha', fin).order('fecha', { ascending: false }),
@@ -75,7 +73,6 @@ export default function KPIsDashboard() {
     const okCitas = citasDiariasPromedio >= META_CITAS_DIARIAS
     const okConversion = conversion >= META_CONVERSION * 100
     const okIngresos = ingresos >= META_INGRESOS
-
     return { diasCapturados, citas_agendadas, citas_efectivas, citas_calificadas, operaciones, ingresos, conversion, citasDiariasPromedio, okCitas, okConversion, okIngresos }
   }
 
@@ -95,7 +92,7 @@ export default function KPIsDashboard() {
     </div>
   )
 
-  if (!session || !esAdmin) return (
+  if (!session || !ADMINS.includes(session.user.email)) return (
     <div style={{ minHeight: '100vh', background: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ textAlign: 'center', color: '#f0f0f0', fontFamily: "'Syne', sans-serif" }}>
         <p style={{ fontSize: 32, marginBottom: 12 }}>🚫</p>
@@ -123,7 +120,6 @@ export default function KPIsDashboard() {
 
       <div style={{ minHeight: '100vh', background: '#0f0f0f', color: '#f0f0f0', fontFamily: "'Syne', sans-serif" }}>
 
-        {/* HEADER */}
         <div style={{ background: '#1a1a1a', borderBottom: '1px solid #222', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: '#666', textTransform: 'uppercase', letterSpacing: 1 }}>Emporio Inmobiliario</div>
@@ -143,7 +139,6 @@ export default function KPIsDashboard() {
 
         <div style={{ padding: '20px 24px', maxWidth: 1200, margin: '0 auto' }}>
 
-          {/* TABS */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
             {[['equipo', 'Equipo'], ['hoy', 'Hoy'], ['semana', 'Tendencia']].map(([id, label]) => (
               <button key={id} onClick={() => setVista(id)}
@@ -153,10 +148,8 @@ export default function KPIsDashboard() {
             ))}
           </div>
 
-          {/* RESUMEN EQUIPO */}
           {vista === 'equipo' && (
             <>
-              {/* Totales */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 24 }}>
                 {[
                   { label: 'Citas agendadas', value: totalEquipo.citas_agendadas, color: '#00e676' },
@@ -172,7 +165,6 @@ export default function KPIsDashboard() {
                 ))}
               </div>
 
-              {/* Por asesor */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
                 {ASESORES.map(nombre => {
                   const s = statsAsesor(nombre)
@@ -189,7 +181,6 @@ export default function KPIsDashboard() {
                           <Semaforo ok={s.okIngresos} label="Ingresos" />
                         </div>
                       </div>
-
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
                         {[
                           { label: 'Agendadas', value: s.citas_agendadas, color: '#00e676' },
@@ -202,7 +193,6 @@ export default function KPIsDashboard() {
                           </div>
                         ))}
                       </div>
-
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                         <div style={{ background: '#111', borderRadius: 8, padding: '8px 10px' }}>
                           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#555', marginBottom: 4 }}>Cierres</div>
@@ -224,7 +214,6 @@ export default function KPIsDashboard() {
             </>
           )}
 
-          {/* HOY */}
           {vista === 'hoy' && (
             <div>
               <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: '#555', marginBottom: 16 }}>
@@ -260,7 +249,6 @@ export default function KPIsDashboard() {
             </div>
           )}
 
-          {/* TENDENCIA */}
           {vista === 'semana' && (
             <div>
               <div style={{ background: '#1a1a1a', borderRadius: 14, padding: 20, border: '1px solid #222' }}>
@@ -288,8 +276,6 @@ export default function KPIsDashboard() {
                   )
                 })()}
               </div>
-
-              {/* Ranking */}
               <div style={{ marginTop: 16, background: '#1a1a1a', borderRadius: 14, padding: 20, border: '1px solid #222' }}>
                 <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: '#666', textTransform: 'uppercase', marginBottom: 16 }}>Ranking del mes</div>
                 {ASESORES
