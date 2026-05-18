@@ -65,7 +65,16 @@ export default function KPIsDashboard() {
     const citas_agendadas = registros.reduce((a, k) => a + (k.citas_agendadas || 0), 0)
     const citas_efectivas = registros.reduce((a, k) => a + (k.citas_efectivas || 0), 0)
     const citas_calificadas = registros.reduce((a, k) => a + (k.citas_calificadas || 0), 0)
-    const cierresAsesor = cierres.filter(c => (c.vendedor || '').toLowerCase() === nombre.toLowerCase())
+    const VENDEDOR_MAP = {
+  'Ariannet': 'ari',
+  'Angélica': 'angelica', 
+  'Iván': 'ivan',
+  'Rosario': 'rosario',
+  'Andrea': 'andrea',
+  'Guillermo': 'guillermo',
+}
+const vendedorKey = VENDEDOR_MAP[nombre] || nombre.toLowerCase()
+const cierresAsesor = cierres.filter(c => (c.vendedor || '').toLowerCase() === vendedorKey)
     const operaciones = cierresAsesor.length
     const ingresos = cierresAsesor.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0)
     const conversion = pct(operaciones, citas_calificadas)
