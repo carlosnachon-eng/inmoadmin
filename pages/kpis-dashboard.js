@@ -48,7 +48,7 @@ export default function KPIsDashboard() {
     const anio = new Date().getFullYear()
     const mes = mesSeleccionado
     const inicio = `${anio}-${String(mes).padStart(2, '0')}-01`
-    const fin = `${anio}-${String(mes).padStart(2, '0')}-31`
+    const fin = new Date(anio, mes, 0).toISOString().split('T')[0]
 
     const [{ data: kpisData }, { data: cierresData }] = await Promise.all([
       supabase.from('kpis_diarios').select('*').gte('fecha', inicio).lte('fecha', fin).order('fecha', { ascending: false }),
