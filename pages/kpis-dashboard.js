@@ -39,6 +39,7 @@ export default function KPIsDashboard() {
   const [vista, setVista] = useState('ranking')
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1)
   const [animado, setAnimado] = useState(false)
+  const [filtroAsesor, setFiltroAsesor] = useState('Todos')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -92,7 +93,7 @@ export default function KPIsDashboard() {
     return { diasCapturados, citas_agendadas, citas_efectivas, citas_calificadas, operaciones, ingresos, conversion, citasDiariasPromedio, progreso }
   }
 
-  const hoy = new Date().toISOString().split('T')[0]
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' })
   const kpisHoy = kpis.filter(k => k.fecha === hoy)
   const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
@@ -107,6 +108,12 @@ export default function KPIsDashboard() {
     ingresos: cierres.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0),
   }
 
+  const Semaforo = ({ ok, label }) => (
+    <span style={{ fontSize: 10, fontFamily: "'DM Mono', monospace", background: ok ? '#00e67622' : '#ff444422', color: ok ? '#00e676' : '#ff4444', padding: '2px 8px', borderRadius: 99, fontWeight: 600 }}>
+      {ok ? '✓' : '!'} {label}
+    </span>
+  )
+
   if (loading) return (
     <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <p style={{ color: '#555', fontFamily: 'monospace', letterSpacing: 4 }}>CARGANDO...</p>
@@ -118,55 +125,47 @@ export default function KPIsDashboard() {
       <div style={{ textAlign: 'center', color: '#f0f0f0' }}>
         <p style={{ fontSize: 32 }}>🚫</p>
         <p style={{ fontFamily: 'monospace' }}>SIN ACCESO</p>
-        <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, background: '#222', border: '1px solid #333', borderRadius: 8, padding: '10px 20px', color: '#fff', cursor: 'pointer', fontFamily: 'monospace' }}>SALIR</button>
+        <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, background: '#222', border: 'none', borderRadius: 8, padding: '10px 20px', color: '#fff', cursor: 'pointer' }}>SALIR</button>
       </div>
     </div>
   )
+
+  const detallesFiltrados = filtroAsesor === 'Todos'
+    ? kpis
+    : kpis.filter(k => k.asesor === filtroAsesor)
 
   return (
     <>
       <Head>
         <title>KPIs Emporio · Scoreboard</title>
-        <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <style>{`
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { background: #0a0a0a; }
-          @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          @keyframes fillBar {
-            from { width: 0%; }
-            to { width: var(--target-width); }
-          }
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-          }
-          .card-enter { animation: slideUp 0.4s ease forwards; }
-          .card-enter:nth-child(1) { animation-delay: 0.05s; }
-          .card-enter:nth-child(2) { animation-delay: 0.1s; }
-          .card-enter:nth-child(3) { animation-delay: 0.15s; }
-          .card-enter:nth-child(4) { animation-delay: 0.2s; }
-          .card-enter:nth-child(5) { animation-delay: 0.25s; }
-          .card-enter:nth-child(6) { animation-delay: 0.3s; }
-          .tab-btn:hover { border-color: #00e676 !important; color: #00e676 !important; }
+          @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+          .card { animation: slideUp 0.4s ease forwards; }
+          .card:nth-child(1) { animation-delay: 0.05s; }
+          .card:nth-child(2) { animation-delay: 0.1s; }
+          .card:nth-child(3) { animation-delay: 0.15s; }
+          .card:nth-child(4) { animation-delay: 0.2s; }
+          .card:nth-child(5) { animation-delay: 0.25s; }
+          .card:nth-child(6) { animation-delay: 0.3s; }
         `}</style>
       </Head>
 
-      <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#f0f0f0' }}>
+      <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#f0f0f0', fontFamily: "'Syne', sans-serif" }}>
 
         {/* HEADER */}
         <div style={{ background: 'linear-gradient(180deg, #111 0%, #0a0a0a 100%)', borderBottom: '1px solid #1a1a1a', padding: '14px 20px' }}>
           <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
             <div>
-              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, letterSpacing: 3, lineHeight: 1, color: '#fff' }}>EMPORIO <span style={{ color: '#00e676' }}>SCOREBOARD</span></div>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, letterSpacing: 3, lineHeight: 1 }}>EMPORIO <span style={{ color: '#00e676' }}>SCOREBOARD</span></div>
               <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#444', letterSpacing: 2, marginTop: 2 }}>{meses[mesSeleccionado - 1].toUpperCase()} 2026</div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <select value={mesSeleccionado} onChange={e => setMesSeleccionado(parseInt(e.target.value))}
-                style={{ background: '#111', border: '1px solid #222', borderRadius: 6, padding: '6px 10px', color: '#888', fontFamily: "'DM Mono', monospace", fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
+                style={{ background: '#111', border: '1px solid #222', borderRadius: 6, padding: '6px 10px', color: '#888', fontFamily: "'DM Mono', monospace", fontSize: 11, cursor: 'pointer' }}>
                 {meses.map((m, i) => <option key={i} value={i + 1}>{m.toUpperCase()}</option>)}
               </select>
               <button onClick={() => supabase.auth.signOut()}
@@ -177,7 +176,7 @@ export default function KPIsDashboard() {
           </div>
         </div>
 
-        {/* TOTALES EQUIPO */}
+        {/* TOTALES */}
         <div style={{ background: '#0f0f0f', borderBottom: '1px solid #1a1a1a', padding: '12px 20px' }}>
           <div style={{ maxWidth: 900, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
             {[
@@ -196,10 +195,10 @@ export default function KPIsDashboard() {
 
         {/* TABS */}
         <div style={{ padding: '16px 20px 0', maxWidth: 900, margin: '0 auto' }}>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
-            {[['ranking', '🏆 RANKING'], ['equipo', '📊 EQUIPO'], ['hoy', '📍 HOY']].map(([id, label]) => (
-              <button key={id} onClick={() => setVista(id)} className="tab-btn"
-                style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid ' + (vista === id ? '#00e676' : '#222'), background: vista === id ? '#00e67611' : 'transparent', color: vista === id ? '#00e676' : '#444', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace", letterSpacing: 1, transition: 'all 0.2s' }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+            {[['ranking', '🏆 RANKING'], ['equipo', '📊 EQUIPO'], ['hoy', '📍 HOY'], ['detalle', '📋 DETALLE']].map(([id, label]) => (
+              <button key={id} onClick={() => setVista(id)}
+                style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid ' + (vista === id ? '#00e676' : '#222'), background: vista === id ? '#00e67611' : 'transparent', color: vista === id ? '#00e676' : '#444', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace", letterSpacing: 1 }}>
                 {label}
               </button>
             ))}
@@ -217,70 +216,39 @@ export default function KPIsDashboard() {
                   const esPrimero = i === 0
                   const barColor = i === 0 ? '#00e676' : i === 1 ? '#ffab00' : i === 2 ? '#ff6b6b' : '#444'
                   return (
-                    <div key={a.nombre} className={animado ? 'card-enter' : ''} style={{ opacity: animado ? 1 : 0 }}>
+                    <div key={a.nombre} className={animado ? 'card' : ''} style={{ opacity: animado ? 1 : 0 }}>
                       <div style={{
                         background: esPrimero ? 'linear-gradient(135deg, #0a1a0a, #0f2a0f)' : '#111',
                         border: `1px solid ${esPrimero ? '#00e67633' : '#1a1a1a'}`,
-                        borderRadius: 12,
-                        padding: '16px 20px',
-                        display: 'grid',
-                        gridTemplateColumns: '48px 1fr auto',
-                        gap: 16,
-                        alignItems: 'center',
-                        position: 'relative',
-                        overflow: 'hidden',
+                        borderRadius: 12, padding: '16px 20px',
+                        display: 'grid', gridTemplateColumns: '48px 1fr auto', gap: 16, alignItems: 'center',
+                        position: 'relative', overflow: 'hidden',
                       }}>
                         {esPrimero && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, #00e676, transparent)' }} />}
-
-                        {/* Posición */}
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: i < 3 ? 28 : 18 }}>{MEDALLAS[i]}</div>
                           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#333', marginTop: 2 }}>#{i + 1}</div>
                         </div>
-
-                        {/* Info */}
                         <div>
                           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, letterSpacing: 2, color: esPrimero ? '#00e676' : '#f0f0f0', marginBottom: 8 }}>{a.nombre.toUpperCase()}</div>
-
-                          {/* Barra de progreso */}
                           <div style={{ marginBottom: 8 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>META INGRESOS</span>
+                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>META $90K</span>
                               <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: a.progreso >= 100 ? '#00e676' : '#555' }}>{Math.round(a.progreso)}%</span>
                             </div>
-                            <div style={{ background: '#1a1a1a', borderRadius: 99, height: 4, overflow: 'hidden' }}>
-                              <div style={{
-                                height: '100%',
-                                borderRadius: 99,
-                                background: a.progreso >= 100 ? '#00e676' : a.progreso >= 50 ? '#ffab00' : barColor,
-                                width: `${a.progreso}%`,
-                                transition: 'width 1s ease',
-                              }} />
+                            <div style={{ background: '#1a1a1a', borderRadius: 99, height: 4 }}>
+                              <div style={{ height: '100%', borderRadius: 99, background: a.progreso >= 100 ? '#00e676' : a.progreso >= 50 ? '#ffab00' : barColor, width: `${a.progreso}%`, transition: 'width 1s ease' }} />
                             </div>
                           </div>
-
-                          {/* Stats secundarios */}
                           <div style={{ display: 'flex', gap: 16 }}>
-                            <div>
-                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>CITAS EF. </span>
-                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: '#ffab00' }}>{a.citas_efectivas}</span>
-                            </div>
-                            <div>
-                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>CONV. </span>
-                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: a.conversion >= 15 ? '#00e676' : '#555' }}>{a.conversion}%</span>
-                            </div>
-                            <div>
-                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>DÍAS </span>
-                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: '#555' }}>{a.diasCapturados}</span>
-                            </div>
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>CITAS <span style={{ color: '#ffab00' }}>{a.citas_efectivas}</span></span>
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>INGRESOS <span style={{ color: '#00e676' }}>{fmt(a.ingresos)}</span></span>
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>CONV <span style={{ color: a.conversion >= 15 ? '#00e676' : '#555' }}>{a.conversion}%</span></span>
                           </div>
                         </div>
-
-                        {/* Cierres e ingresos */}
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 42, lineHeight: 1, color: a.operaciones > 0 ? barColor : '#222', letterSpacing: 2 }}>{a.operaciones}</div>
+                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, lineHeight: 1, color: a.operaciones > 0 ? barColor : '#222', letterSpacing: 2 }}>{a.operaciones}</div>
                           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#333', letterSpacing: 1 }}>CIERRES</div>
-                          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: a.ingresos > 0 ? '#00e676' : '#333', marginTop: 4 }}>{fmt(a.ingresos)}</div>
                         </div>
                       </div>
                     </div>
@@ -293,18 +261,21 @@ export default function KPIsDashboard() {
           {/* EQUIPO */}
           {vista === 'equipo' && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-              {ASESORES.map((nombre, idx) => {
+              {ASESORES.map(nombre => {
                 const s = statsAsesor(nombre)
                 return (
-                  <div key={nombre} className={animado ? 'card-enter' : ''} style={{ opacity: animado ? 1 : 0, background: '#111', borderRadius: 12, padding: 16, border: '1px solid #1a1a1a' }}>
+                  <div key={nombre} className={animado ? 'card' : ''} style={{ opacity: animado ? 1 : 0, background: '#111', borderRadius: 12, padding: 16, border: '1px solid #1a1a1a' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
                       <div>
                         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, letterSpacing: 2 }}>{nombre.toUpperCase()}</div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444', marginTop: 2 }}>{s.diasCapturados} DÍAS CAPTURADOS</div>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444', marginTop: 2 }}>{s.diasCapturados} DÍAS</div>
                       </div>
-                      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: s.operaciones > 0 ? '#00e676' : '#222', letterSpacing: 2, lineHeight: 1 }}>{s.operaciones}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
+                        <Semaforo ok={s.citasDiariasPromedio >= META_CITAS_DIARIAS} label="Citas" />
+                        <Semaforo ok={s.conversion >= META_CONVERSION * 100} label="Conv." />
+                      </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 8 }}>
                       {[
                         { l: 'AGEND', v: s.citas_agendadas, c: '#00e676' },
                         { l: 'EFECT', v: s.citas_efectivas, c: '#ffab00' },
@@ -316,14 +287,18 @@ export default function KPIsDashboard() {
                         </div>
                       ))}
                     </div>
-                    <div style={{ background: '#0a0a0a', borderRadius: 6, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ background: '#0a0a0a', borderRadius: 6, padding: '8px 10px', display: 'flex', justifyContent: 'space-between' }}>
                       <div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#333' }}>INGRESOS</div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: s.ingresos > 0 ? '#00e676' : '#333' }}>{fmt(s.ingresos)}</div>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#333' }}>CIERRES</div>
+                        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: s.operaciones > 0 ? '#00e676' : '#333' }}>{s.operaciones}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#333' }}>CONVERSIÓN</div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: s.conversion >= 15 ? '#00e676' : '#555' }}>{s.conversion}%</div>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#333' }}>INGRESOS</div>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: s.ingresos > 0 ? '#00e676' : '#333' }}>{fmt(s.ingresos)}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#333' }}>CONV</div>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: s.conversion >= 15 ? '#00e676' : '#555' }}>{s.conversion}%</div>
                       </div>
                     </div>
                   </div>
@@ -342,25 +317,24 @@ export default function KPIsDashboard() {
                 {ASESORES.map((nombre, i) => {
                   const reg = kpisHoy.find(k => k.asesor === nombre)
                   return (
-                    <div key={nombre} className={animado ? 'card-enter' : ''} style={{ opacity: animado ? 1 : 0, background: reg ? '#0a1a0a' : '#111', borderRadius: 10, padding: '14px 18px', border: `1px solid ${reg ? '#00e67633' : '#1a1a1a'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div key={nombre} className={animado ? 'card' : ''} style={{ opacity: animado ? 1 : 0,
+                      background: reg ? '#0a1a0a' : '#111',
+                      border: `1px solid ${reg ? '#00e67633' : '#1a1a1a'}`,
+                      borderRadius: 10, padding: '14px 18px',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', background: reg ? '#00e676' : '#222', boxShadow: reg ? '0 0 8px #00e676' : 'none' }} />
                         <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, letterSpacing: 2, color: reg ? '#f0f0f0' : '#444' }}>{nombre.toUpperCase()}</span>
                       </div>
                       {reg ? (
                         <div style={{ display: 'flex', gap: 20 }}>
-                          <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#00e676', letterSpacing: 1 }}>{reg.citas_agendadas}</div>
-                            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#444' }}>AG</div>
-                          </div>
-                          <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#ffab00', letterSpacing: 1 }}>{reg.citas_efectivas}</div>
-                            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#444' }}>EF</div>
-                          </div>
-                          <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#ff6b6b', letterSpacing: 1 }}>{reg.citas_calificadas}</div>
-                            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#444' }}>CAL</div>
-                          </div>
+                          {[['AG', reg.citas_agendadas, '#00e676'], ['EF', reg.citas_efectivas, '#ffab00'], ['CAL', reg.citas_calificadas, '#ff6b6b']].map(([l, v, c]) => (
+                            <div key={l} style={{ textAlign: 'center' }}>
+                              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: c, letterSpacing: 1 }}>{v}</div>
+                              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#444' }}>{l}</div>
+                            </div>
+                          ))}
                         </div>
                       ) : (
                         <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#333', letterSpacing: 1 }}>SIN CAPTURA</span>
@@ -371,6 +345,67 @@ export default function KPIsDashboard() {
               </div>
             </div>
           )}
+
+          {/* DETALLE */}
+          {vista === 'detalle' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#333', letterSpacing: 2 }}>
+                  REGISTRO DIARIO — {meses[mesSeleccionado - 1].toUpperCase()}
+                </div>
+                <select value={filtroAsesor} onChange={e => setFiltroAsesor(e.target.value)}
+                  style={{ background: '#111', border: '1px solid #222', borderRadius: 6, padding: '6px 10px', color: '#888', fontFamily: "'DM Mono', monospace", fontSize: 11, cursor: 'pointer' }}>
+                  <option value="Todos">TODOS LOS ASESORES</option>
+                  {ASESORES.map(a => <option key={a} value={a}>{a.toUpperCase()}</option>)}
+                </select>
+              </div>
+
+              {detallesFiltrados.length === 0 && (
+                <div style={{ background: '#111', borderRadius: 12, padding: 40, textAlign: 'center', border: '1px solid #1a1a1a' }}>
+                  <p style={{ color: '#333', fontFamily: "'DM Mono', monospace" }}>SIN REGISTROS</p>
+                </div>
+              )}
+
+              <div style={{ background: '#111', borderRadius: 12, overflow: 'hidden', border: '1px solid #1a1a1a' }}>
+                {detallesFiltrados.length > 0 && (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#1a1a1a' }}>
+                        {['FECHA', 'ASESOR', 'AGENDADAS', 'EFECTIVAS', 'CALIFICADAS', 'CIERRES', 'INGRESOS', '✓ META'].map(h => (
+                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#555', letterSpacing: 1 }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detallesFiltrados.map((r, i) => {
+                        const cumpleMeta = r.citas_efectivas >= META_CITAS_DIARIAS
+                        const vendedorKey = VENDEDOR_MAP[r.asesor] || r.asesor.toLowerCase()
+                        const cierresDia = cierres.filter(c => (c.vendedor || '').toLowerCase() === vendedorKey && c.fecha_cierre === r.fecha)
+                        const ingresosDia = cierresDia.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0)
+                        return (
+                          <tr key={r.id} style={{ borderTop: '1px solid #1a1a1a', background: cumpleMeta ? '#0a1a0a' : 'transparent' }}>
+                            <td style={{ padding: '10px 14px', fontFamily: "'DM Mono', monospace", fontSize: 11, color: '#666' }}>{r.fecha}</td>
+                            <td style={{ padding: '10px 14px', fontFamily: "'Bebas Neue', sans-serif", fontSize: 14, letterSpacing: 1, color: '#f0f0f0' }}>{r.asesor}</td>
+                            <td style={{ padding: '10px 14px', fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: '#00e676', letterSpacing: 1 }}>{r.citas_agendadas}</td>
+                            <td style={{ padding: '10px 14px', fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: '#ffab00', letterSpacing: 1 }}>{r.citas_efectivas}</td>
+                            <td style={{ padding: '10px 14px', fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: '#ff6b6b', letterSpacing: 1 }}>{r.citas_calificadas}</td>
+                            <td style={{ padding: '10px 14px', fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: cierresDia.length > 0 ? '#7c6aff' : '#333', letterSpacing: 1 }}>{cierresDia.length || '—'}</td>
+                            <td style={{ padding: '10px 14px', fontFamily: "'DM Mono', monospace", fontSize: 11, color: ingresosDia > 0 ? '#00e676' : '#333' }}>{ingresosDia > 0 ? fmt(ingresosDia) : '—'}</td>
+                            <td style={{ padding: '10px 14px', fontFamily: "'DM Mono', monospace", fontSize: 12 }}>
+                              {cumpleMeta
+                                ? <span style={{ color: '#00e676' }}>✓</span>
+                                : <span style={{ color: '#ff4444' }}>✗</span>}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </>
