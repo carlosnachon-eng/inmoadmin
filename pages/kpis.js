@@ -45,7 +45,7 @@ export default function KPIs() {
   const [cierres, setCierres] = useState([])
   const [animado, setAnimado] = useState(false)
 
-  const hoy = new Date().toISOString().split('T')[0]
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' })
   const email = session?.user?.email
   const nombre = ASESORES[email] || null
   const esAdmin = ADMINS.includes(email)
