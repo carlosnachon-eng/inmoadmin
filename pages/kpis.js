@@ -119,12 +119,13 @@ export default function KPIs() {
     return {
       citas_efectivas: registros.reduce((a, k) => a + (k.citas_efectivas || 0), 0),
       operaciones: cierresAsesor.length,
+      ingresos: cierresAsesor.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0),
     }
   }
 
   const rankingData = NOMBRES_LISTA
     .map(n => ({ nombre: n, ...statsAsesor(n) }))
-    .sort((a, b) => b.operaciones - a.operaciones || b.citas_efectivas - a.citas_efectivas)
+    .sort((a, b) => b.operaciones - a.operaciones || b.ingresos - a.ingresos)
 
   const Counter = ({ label, field, color }) => (
     <div style={{ background: '#111', borderRadius: 14, padding: 20, border: `1px solid ${color}22` }}>
