@@ -192,7 +192,7 @@ export default function InquilinoPortal() {
       showToast("✅ Comprobante enviado, lo revisaremos pronto");
       loadTenantData();
     } catch (e) {
-      showToast("Error al subir: " + e.message, false);
+      showToast("❌ Error al subir: " + e.message, false);
     }
     setUploadingFile(null);
   };
@@ -235,7 +235,11 @@ export default function InquilinoPortal() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f4f5f7", fontFamily: "system-ui, sans-serif" }}>
-      {toast && <div style={{ position: "fixed", top: 24, right: 24, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 2000, boxShadow: "0 4px 20px rgba(0,0,0,0.2)", maxWidth: 300 }}>{toast.msg}</div>}
+      {toast && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "16px 20px", fontWeight: 700, fontSize: 15, zIndex: 2000, textAlign: "center" }}>
+          {toast.msg}
+        </div>
+      )}
 
       <div style={{ background: "linear-gradient(135deg, #1a1a2e, #2d2d5e)", padding: "24px 20px 0" }}>
         <div style={{ maxWidth: 600, margin: "0 auto" }}>
@@ -291,6 +295,15 @@ export default function InquilinoPortal() {
                 </div>
               </div>
             )}
+
+            {/* Pagos en revisión este mes */}
+            {pagosMes.filter(p => p.status === "en_revision").map(p => (
+              <div key={p.id} style={{ background: "#dbeafe", borderRadius: 14, padding: 16, marginBottom: 12, border: "1px solid #93c5fd" }}>
+                <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: "#1e40af" }}>🔍 Comprobante en revisión — {fmt(p.amount)}</p>
+                <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#1e40af", fontWeight: 600 }}>📄 Ver comprobante enviado</a>
+              </div>
+            ))}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
               <div style={{ background: "#fff", borderRadius: 14, padding: 18 }}>
                 <p style={{ margin: "0 0 4px", fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>Pagos realizados</p>
@@ -326,12 +339,14 @@ export default function InquilinoPortal() {
                   </label>
                 )}
                 {p.status === "en_revision" && (
-                  <div style={{ background: "#dbeafe", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#1e40af", fontWeight: 600 }}>
+                  <div style={{ background: "#dbeafe", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#1e40af", fontWeight: 600, marginBottom: 6 }}>
                     🔍 Tu comprobante está en revisión
                   </div>
                 )}
-                {p.receipt_url && p.status === "pagado" && (
-                  <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#065f46", textDecoration: "none" }}>📄 Ver comprobante</a>
+                {p.receipt_url && ["en_revision", "pagado"].includes(p.status) && (
+                  <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#065f46", textDecoration: "none", display: "inline-block", background: "#d1fae5", padding: "6px 12px", borderRadius: 8, fontWeight: 600 }}>
+                    📄 Ver comprobante
+                  </a>
                 )}
               </div>
             ))}
