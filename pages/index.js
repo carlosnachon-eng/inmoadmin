@@ -710,7 +710,7 @@ if (gastosProp.length > 0) {
   const nav = [
     { id: "dashboard", label: "Panel", icon: "📊" },
     { id: "caja", label: "Caja", icon: "💵", link: "/caja" },
-    { id: "contracts", label: "Contratos", icon: "📋" },
+    { id: "contracts", label: "Contratos", icon: "📋", link: "/contratos" },
     { id: "properties", label: "Propiedades", icon: "🏠" },
     { id: "payments", label: "Cobranza", icon: "💰" },
     { id: "owner_payments", label: "Liquidaciones", icon: "🏦", link: "/liquidaciones" },
