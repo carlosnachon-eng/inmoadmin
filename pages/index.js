@@ -712,7 +712,7 @@ if (gastosProp.length > 0) {
     { id: "caja", label: "Caja", icon: "💵", link: "/caja" },
     { id: "contracts", label: "Contratos", icon: "📋", link: "/contratos" },
     { id: "properties", label: "Propiedades", icon: "🏠" },
-    { id: "payments", label: "Cobranza", icon: "💰" },
+    { id: "payments", label: "Cobranza", icon: "💰", link: "/cobranza" },
     { id: "owner_payments", label: "Liquidaciones", icon: "🏦", link: "/liquidaciones" },
     { id: "tickets", label: "Mantenimiento", icon: "🔧", link: "/mantenimiento" },
     { id: "reports", label: "Reportes", icon: "📈", link: "/reportes" },
