@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
-import { PageHeader, brand } from "../components/Layout";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -205,22 +204,37 @@ export default function Liquidaciones() {
     const gastosOpProp   = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
     const totalLiqProp   = totalRentaProp - totalComProp - costoMantProp - gastosOpProp;
 
-    doc.setFillColor(26, 26, 46); doc.rect(0, 0, 210, 40, "F");
-    doc.setTextColor(200, 169, 110); doc.setFontSize(20); doc.setFont("helvetica", "bold");
-    doc.text("Emporio Inmobiliario", 20, 18);
-    doc.setFontSize(11); doc.setTextColor(200, 200, 200);
-    doc.text("Reporte de Propietario", 20, 28); doc.text(`Generado: ${hoy}`, 20, 35);
-    doc.setTextColor(26, 26, 46); doc.setFontSize(16); doc.setFont("helvetica", "bold");
-    doc.text(ownerName, 20, 55);
-    doc.setFontSize(11); doc.setFont("helvetica", "normal"); doc.setTextColor(100, 100, 100);
-    doc.text(`Periodo: ${mes}`, 20, 63);
+    // Header con branding Emporio — barra roja/borgoña
+    doc.setFillColor(185, 28, 60); doc.rect(0, 0, 210, 42, "F");
+    // Línea decorativa más oscura
+    doc.setFillColor(127, 29, 46); doc.rect(0, 36, 210, 6, "F");
 
-    let y = 75;
+    // Logo (texto estilizado ya que jsPDF no carga imágenes externas fácilmente)
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18); doc.setFont("helvetica", "bold");
+    doc.text("EMPORIO", 20, 16);
+    doc.setFontSize(9); doc.setFont("helvetica", "normal");
+    doc.setTextColor(255, 200, 200);
+    doc.text("INMOBILIARIO", 20, 23);
+    doc.setFontSize(9); doc.setTextColor(255, 230, 230);
+    doc.text("Reporte de Propietario", 20, 31);
+
+    // Fecha en la derecha
+    doc.setFontSize(8); doc.setTextColor(255, 220, 220);
+    doc.text(`Generado: ${hoy}`, 210 - 20, 31, { align: "right" });
+
+    // Nombre del propietario y periodo
+    doc.setTextColor(74, 74, 74); doc.setFontSize(16); doc.setFont("helvetica", "bold");
+    doc.text(ownerName, 20, 57);
+    doc.setFontSize(11); doc.setFont("helvetica", "normal"); doc.setTextColor(122, 122, 122);
+    doc.text(`Periodo: ${mes}`, 20, 65);
+
+    let y = 80;
     const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0);
     const boxH = 32 + extraLines * 7;
-    doc.setFillColor(240, 253, 244); doc.rect(15, y, 180, boxH, "F");
-    doc.setDrawColor(200, 169, 110); doc.rect(15, y, 180, boxH, "S");
-    doc.setTextColor(26, 26, 46); doc.setFontSize(10); doc.setFont("helvetica", "bold");
+    doc.setFillColor(255, 240, 243); doc.rect(15, y, 180, boxH, "F");
+    doc.setDrawColor(185, 28, 60); doc.setLineWidth(0.5); doc.rect(15, y, 180, boxH, "S");
+    doc.setTextColor(74, 74, 74); doc.setFontSize(10); doc.setFont("helvetica", "bold");
     doc.text("RESUMEN FINANCIERO", 20, y + 8);
     doc.setFont("helvetica", "normal"); doc.setFontSize(9);
     doc.text(`Renta mensual total: ${fmt(totalRentaProp)}`, 20, y + 16);
@@ -232,7 +246,7 @@ export default function Liquidaciones() {
     doc.text(`Líquido a recibir: ${fmt(totalLiqProp)}`, 20, lineY);
     y += boxH + 12;
 
-    doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+    doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
     doc.text("Propiedades", 20, y); y += 6;
     autoTable(doc, {
       startY: y,
@@ -243,7 +257,7 @@ export default function Liquidaciones() {
         return [prop.name, c?.tenant_name || "-", fmt(prop.rent_amount), fmt(com), fmt((prop.rent_amount || 0) - com), c ? `Día ${c.payment_day}` : "-"];
       }),
       styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" },
+      headStyles: { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" },
       alternateRowStyles: { fillColor: [249, 250, 251] },
       margin: { left: 15, right: 15 }
     });
@@ -251,7 +265,7 @@ export default function Liquidaciones() {
 
     // Pagos del mes
     if (y > 220) { doc.addPage(); y = 20; }
-    doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+    doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
     doc.text("Pagos del Mes", 20, y); y += 6;
     const contractIds = contratosProp.map(c => c.id);
     const { data: pagosFrescos } = await supabase.from("payments").select("*").in("contract_id", contractIds.length > 0 ? contractIds : ["none"]);
@@ -270,7 +284,7 @@ export default function Liquidaciones() {
         p.due_date || "-", p.status === "pagado" ? "Pagado" : p.status === "atrasado" ? "Atrasado" : "Pendiente"
       ]) : [["-", "", "", "", ""]],
       styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" },
+      headStyles: { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" },
       alternateRowStyles: { fillColor: [249, 250, 251] },
       margin: { left: 15, right: 15 }
     });
@@ -278,7 +292,7 @@ export default function Liquidaciones() {
 
     // Historial de liquidaciones
     if (y > 220) { doc.addPage(); y = 20; }
-    doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+    doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
     doc.text("Historial de Liquidaciones", 20, y); y += 6;
     autoTable(doc, {
       startY: y,
@@ -289,7 +303,7 @@ export default function Liquidaciones() {
         l.status === "pagado" ? "Pagado" : l.status === "pagado_parcial" ? "Parcial" : "Pendiente"
       ]) : [["-", "", "", "", "", ""]],
       styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" },
+      headStyles: { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" },
       alternateRowStyles: { fillColor: [249, 250, 251] },
       margin: { left: 15, right: 15 }
     });
@@ -297,7 +311,7 @@ export default function Liquidaciones() {
 
     // Mantenimiento
     if (y > 220) { doc.addPage(); y = 20; }
-    doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+    doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
     doc.text("Mantenimiento", 20, y); y += 6;
     autoTable(doc, {
       startY: y,
@@ -310,7 +324,7 @@ export default function Liquidaciones() {
         new Date(t.created_at).toLocaleDateString("es-MX")
       ]) : [["-", "", "", "", "", ""]],
       styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" },
+      headStyles: { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" },
       alternateRowStyles: { fillColor: [249, 250, 251] },
       margin: { left: 15, right: 15 }
     });
@@ -319,7 +333,7 @@ export default function Liquidaciones() {
     // Gastos operativos
     if (gastosProp.length > 0) {
       if (y > 220) { doc.addPage(); y = 20; }
-      doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+      doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
       doc.text("Gastos Operativos", 20, y); y += 6;
       autoTable(doc, {
         startY: y,
@@ -329,7 +343,7 @@ export default function Liquidaciones() {
           fmt(e.amount), e.paid_by === "propietario" ? "Propietario" : "Emporio", e.date || "-"
         ]),
         styles: { fontSize: 8, cellPadding: 3 },
-        headStyles: { fillColor: [26, 26, 46], textColor: [200, 169, 110], fontStyle: "bold" },
+        headStyles: { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [249, 250, 251] },
         margin: { left: 15, right: 15 }
       });
@@ -346,8 +360,8 @@ export default function Liquidaciones() {
   };
 
   if (authLoading) return (
-    <div style={{ minHeight: "100vh", background: "#f4f5f7", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
+    <div style={{ minHeight: "100vh", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <p style={{ color: "#c8a96e", fontSize: 18, fontWeight: 700 }}>Cargando...</p>
     </div>
   );
 
@@ -369,14 +383,24 @@ export default function Liquidaciones() {
     : ownerPayments;
 
   return (
-    <div style={{ minHeight: "100vh", background: brand.bg, fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#f4f5f7", fontFamily: "system-ui, sans-serif" }}>
       {toast && (
         <div style={{ position: "fixed", top: 24, right: 16, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 3000, boxShadow: "0 4px 20px rgba(0,0,0,0.2)", maxWidth: 320 }}>
           {toast.msg}
         </div>
       )}
-      <PageHeader title="Liquidaciones" icon="🏦" actions={<><Btn color={brand.red} onClick={() => { setForm(emptyForm); setShowModal(true); }}>+ Nueva</Btn></>} />
 
+      {/* HEADER */}
+      <div style={{ background: "#1a1a2e", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <button onClick={() => router.push("/")} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 8, padding: "8px 14px", color: "rgba(255,255,255,0.6)", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>← Panel</button>
+          <div>
+            <p style={{ margin: 0, fontSize: 11, color: "#c8a96e", fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>InmoAdmin</p>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#fff" }}>🏦 Liquidaciones</h1>
+          </div>
+        </div>
+        <Btn color="#c8a96e" onClick={() => { setForm(emptyForm); setShowModal(true); }}>+ Nueva</Btn>
+      </div>
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
 
