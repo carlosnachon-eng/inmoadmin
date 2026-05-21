@@ -194,6 +194,8 @@ export default function Liquidaciones() {
     const doc = new jsPDF();
     const hoy = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
     const mes = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long" });
+
+    // Datos
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
     const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
     const liqProp = ownerPayments.filter(l => l.owner_email === ownerEmail);
@@ -205,75 +207,127 @@ export default function Liquidaciones() {
     const gastosOpProp   = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
     const totalLiqProp   = totalRentaProp - totalComProp - costoMantProp - gastosOpProp;
 
-    // ── HEADER PDF EMPORIO ──────────────────────────────────────────────────
-    // Barra principal roja
-    doc.setFillColor(185, 28, 60); doc.rect(0, 0, 210, 46, "F");
-    // Franja borgoña inferior
-    doc.setFillColor(127, 29, 46); doc.rect(0, 40, 210, 6, "F");
+    // ── Cargar logo desde el navegador ──
+    let logoDataUrl = null;
+    try {
+      const res = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
+      const blob = await res.blob();
+      logoDataUrl = await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) { console.warn("Logo no disponible:", e); }
 
-    // Nombre empresa
-    doc.setTextColor(255, 255, 255); doc.setFontSize(20); doc.setFont("helvetica", "bold");
-    doc.text("EMPORIO", 20, 18);
-    doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.setTextColor(255, 200, 210);
-    doc.text("INMOBILIARIO", 20, 26);
+    // ── HEADER ──────────────────────────────────────────────────────────────
+    // Fondo blanco limpio con acento lateral rojo
+    doc.setFillColor(255, 255, 255); doc.rect(0, 0, 210, 55, "F");
+    // Barra lateral izquierda roja
+    doc.setFillColor(185, 28, 60); doc.rect(0, 0, 6, 55, "F");
+    // Línea inferior roja delgada
+    doc.setFillColor(185, 28, 60); doc.rect(0, 52, 210, 3, "F");
 
-    // Tipo de documento
-    doc.setFontSize(9); doc.setTextColor(255, 230, 235);
-    doc.text("Reporte de Propietario", 20, 34);
+    // Logo o texto
+    if (logoDataUrl) {
+      doc.addImage(logoDataUrl, "PNG", 14, 6, 40, 18);
+    } else {
+      doc.setTextColor(185, 28, 60); doc.setFontSize(16); doc.setFont("helvetica", "bold");
+      doc.text("EMPORIO", 14, 16);
+      doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(122, 122, 122);
+      doc.text("INMOBILIARIO", 14, 22);
+    }
 
-    // Fecha alineada a la derecha
-    doc.setFontSize(8); doc.setTextColor(255, 210, 220);
-    doc.text(`Generado: ${hoy}`, 195, 18, { align: "right" });
-    doc.text("app.emporioinmobiliario.com.mx", 195, 26, { align: "right" });
+    // Tipo de documento — derecha
+    doc.setTextColor(185, 28, 60); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+    doc.text("REPORTE DE PROPIETARIO", 195, 14, { align: "right" });
+    doc.setTextColor(122, 122, 122); doc.setFontSize(8); doc.setFont("helvetica", "normal");
+    doc.text(`Generado: ${hoy}`, 195, 21, { align: "right" });
+    doc.text("app.emporioinmobiliario.com.mx", 195, 27, { align: "right" });
 
-    // Línea separadora sutil
-    doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3);
-    doc.line(15, 62, 195, 62);
+    // ── DATOS PROPIETARIO ────────────────────────────────────────────────────
+    doc.setFillColor(248, 248, 248); doc.rect(0, 55, 210, 22, "F");
+    doc.setTextColor(74, 74, 74); doc.setFontSize(14); doc.setFont("helvetica", "bold");
+    doc.text(ownerName, 14, 66);
+    doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(122, 122, 122);
+    doc.text(`Periodo: ${mes}  ·  ${propsProp.length} propiedad${propsProp.length !== 1 ? "es" : ""}  ·  ${contratosProp.length} contrato${contratosProp.length !== 1 ? "s" : ""} activo${contratosProp.length !== 1 ? "s" : ""}`, 14, 73);
 
-    // Nombre propietario
-    doc.setTextColor(74, 74, 74); doc.setFontSize(15); doc.setFont("helvetica", "bold");
-    doc.text(ownerName, 15, 57);
-    doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.setTextColor(122, 122, 122);
-    doc.text(`Periodo: ${mes}`, 15, 68);
-
-    let y = 78;
+    // ── RESUMEN FINANCIERO ───────────────────────────────────────────────────
+    let y = 84;
     const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0);
-    const boxH = 32 + extraLines * 7;
-    doc.setFillColor(255, 240, 243); doc.rect(15, y, 180, boxH, "F");
-    doc.setDrawColor(185, 28, 60); doc.setLineWidth(0.5); doc.rect(15, y, 180, boxH, "S");
-    doc.setTextColor(74, 74, 74); doc.setFontSize(10); doc.setFont("helvetica", "bold");
-    doc.text("RESUMEN FINANCIERO", 20, y + 8);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-    doc.text(`Renta mensual total: ${fmt(totalRentaProp)}`, 20, y + 16);
-    doc.text(`Comisión administración: -${fmt(totalComProp)}`, 20, y + 23);
-    let lineY = y + 30;
-    if (costoMantProp > 0) { doc.setTextColor(153, 27, 27); doc.text(`Mantenimiento: -${fmt(costoMantProp)}`, 20, lineY); lineY += 7; }
-    if (gastosOpProp > 0) { doc.setTextColor(153, 27, 27); doc.text(`Gastos operativos: -${fmt(gastosOpProp)}`, 20, lineY); lineY += 7; }
-    doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
-    doc.text(`Líquido a recibir: ${fmt(totalLiqProp)}`, 20, lineY);
-    y += boxH + 12;
+    const boxH = 28 + extraLines * 7;
 
-    doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
-    doc.text("Propiedades", 20, y); y += 6;
+    // Fondo del resumen
+    doc.setFillColor(185, 28, 60); doc.rect(14, y, 182, 7, "F");
+    doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont("helvetica", "bold");
+    doc.text("RESUMEN FINANCIERO", 18, y + 5);
+
+    doc.setFillColor(255, 245, 247); doc.rect(14, y + 7, 182, boxH, "F");
+    doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3);
+    doc.rect(14, y + 7, 182, boxH, "S");
+
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(74, 74, 74);
+    doc.text(`Renta mensual total:`, 18, y + 14);
+    doc.setFont("helvetica", "bold");
+    doc.text(fmt(totalRentaProp), 105, y + 14);
+
+    doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+    doc.text(`Comisión administración:`, 18, y + 21);
+    doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
+    doc.text(`-${fmt(totalComProp)}`, 105, y + 21);
+
+    let lineY = y + 28;
+    if (costoMantProp > 0) {
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+      doc.text("Mantenimiento:", 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
+      doc.text(`-${fmt(costoMantProp)}`, 105, lineY);
+      lineY += 7;
+    }
+    if (gastosOpProp > 0) {
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+      doc.text("Gastos operativos:", 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
+      doc.text(`-${fmt(gastosOpProp)}`, 105, lineY);
+      lineY += 7;
+    }
+
+    // Líquido destacado
+    doc.setFillColor(6, 95, 70); doc.rect(105, lineY - 5, 91, 10, "F");
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+    doc.text("Líquido a recibir:", 108, lineY + 1);
+    doc.text(fmt(totalLiqProp), 190, lineY + 1, { align: "right" });
+
+    y += boxH + 14;
+
+    // ── ESTILOS DE TABLAS ────────────────────────────────────────────────────
+    const headStyle = { fillColor: [74, 74, 74], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 };
+    const altRow = { fillColor: [250, 250, 250] };
+    const tableMargin = { left: 14, right: 14 };
+
+    const sectionTitle = (titulo, yPos) => {
+      doc.setFillColor(185, 28, 60); doc.rect(14, yPos, 4, 8, "F");
+      doc.setTextColor(74, 74, 74); doc.setFontSize(11); doc.setFont("helvetica", "bold");
+      doc.text(titulo, 22, yPos + 6);
+      return yPos + 10;
+    };
+
+    // ── PROPIEDADES ──────────────────────────────────────────────────────────
+    y = sectionTitle("Propiedades", y);
     autoTable(doc, {
       startY: y,
       head: [["Propiedad", "Inquilino", "Renta", "Comisión", "Líquido", "Día pago"]],
       body: propsProp.map(prop => {
         const c = contratosProp.find(c => c.property_name === prop.name);
         const com = c ? calcComision(c) : 0;
-        return [prop.name, c?.tenant_name || "-", fmt(prop.rent_amount), fmt(com), fmt((prop.rent_amount || 0) - com), c ? `Día ${c.payment_day}` : "-"];
+        return [prop.name, c?.tenant_name || "—", fmt(prop.rent_amount), fmt(com), fmt((prop.rent_amount || 0) - com), c ? `Día ${c.payment_day}` : "—"];
       }),
-      styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" },
-      alternateRowStyles: { fillColor: [249, 250, 251] },
-      margin: { left: 15, right: 15 }
+      styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: tableMargin,
     });
     y = doc.lastAutoTable.finalY + 12;
+    if (y > 230) { doc.addPage(); y = 15; }
 
-    // Pagos del mes
-    if (y > 220) { doc.addPage(); y = 20; }
-    doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
-    doc.text("Pagos del Mes", 20, y); y += 6;
+    // ── PAGOS DEL MES ────────────────────────────────────────────────────────
+    y = sectionTitle("Pagos del Mes", y);
     const contractIds = contratosProp.map(c => c.id);
     const { data: pagosFrescos } = await supabase.from("payments").select("*").in("contract_id", contractIds.length > 0 ? contractIds : ["none"]);
     const pagosProp = (pagosFrescos || []);
@@ -287,82 +341,82 @@ export default function Liquidaciones() {
       startY: y,
       head: [["Inquilino", "Propiedad", "Monto", "Vencimiento", "Estado"]],
       body: pagosMesPDF.length > 0 ? pagosMesPDF.map(p => [
-        p.tenant_name || "-", p.property_name || "-", fmt(p.amount),
-        p.due_date || "-", p.status === "pagado" ? "Pagado" : p.status === "atrasado" ? "Atrasado" : "Pendiente"
-      ]) : [["-", "", "", "", ""]],
-      styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" },
-      alternateRowStyles: { fillColor: [249, 250, 251] },
-      margin: { left: 15, right: 15 }
+        p.tenant_name || "—", p.property_name || "—", fmt(p.amount), p.due_date || "—",
+        p.status === "pagado" ? "Pagado" : p.status === "atrasado" ? "Atrasado" : "Pendiente"
+      ]) : [["Sin pagos registrados este mes", "", "", "", ""]],
+      styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow,
+      didParseCell: (data) => {
+        if (data.section === "body" && data.column.index === 4) {
+          if (data.cell.raw === "Pagado") data.cell.styles.textColor = [6, 95, 70];
+          if (data.cell.raw === "Atrasado") data.cell.styles.textColor = [185, 28, 60];
+          if (data.cell.raw === "Pendiente") data.cell.styles.textColor = [146, 64, 14];
+        }
+      },
+      margin: tableMargin,
     });
     y = doc.lastAutoTable.finalY + 12;
+    if (y > 230) { doc.addPage(); y = 15; }
 
-    // Historial de liquidaciones
-    if (y > 220) { doc.addPage(); y = 20; }
-    doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
-    doc.text("Historial de Liquidaciones", 20, y); y += 6;
+    // ── LIQUIDACIONES ────────────────────────────────────────────────────────
+    y = sectionTitle("Historial de Liquidaciones", y);
     autoTable(doc, {
       startY: y,
-      head: [["Periodo", "Renta", "Comisión", "Pagado", "Fecha", "Estado"]],
+      head: [["Periodo", "Renta", "Comisión", "Te pagamos", "Fecha", "Estado"]],
       body: liqProp.length > 0 ? liqProp.map(l => [
-        l.period_description || "-", fmt(l.total_rent), fmt(l.total_commission),
-        fmt(l.amount_paid), l.payment_date || "-",
+        l.period_description || "—", fmt(l.total_rent), fmt(l.total_commission),
+        fmt(l.amount_paid), l.payment_date || "—",
         l.status === "pagado" ? "Pagado" : l.status === "pagado_parcial" ? "Parcial" : "Pendiente"
-      ]) : [["-", "", "", "", "", ""]],
-      styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" },
-      alternateRowStyles: { fillColor: [249, 250, 251] },
-      margin: { left: 15, right: 15 }
+      ]) : [["Sin liquidaciones registradas", "", "", "", "", ""]],
+      styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: tableMargin,
     });
     y = doc.lastAutoTable.finalY + 12;
+    if (y > 230) { doc.addPage(); y = 15; }
 
-    // Mantenimiento
-    if (y > 220) { doc.addPage(); y = 20; }
-    doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
-    doc.text("Mantenimiento", 20, y); y += 6;
+    // ── MANTENIMIENTO ────────────────────────────────────────────────────────
+    y = sectionTitle("Mantenimiento", y);
     autoTable(doc, {
       startY: y,
       head: [["Título", "Propiedad", "Quién paga", "Costo", "Estado", "Fecha"]],
       body: ticketsProp.length > 0 ? ticketsProp.map(t => [
-        t.title || "-", t.property_name || "-",
+        t.title || "—", t.property_name || "—",
         t.payer === "propietario" ? "Propietario" : t.payer === "inquilino" ? "Inquilino" : "Inmobiliaria",
-        t.payer === "propietario" && t.charged_amount > 0 ? fmt(t.charged_amount) : "-",
-        t.status === "cerrado" || t.status === "resuelto" ? "Resuelto" : t.status === "en_proceso" ? "En proceso" : "Nuevo",
+        t.payer === "propietario" && t.charged_amount > 0 ? fmt(t.charged_amount) : "—",
+        t.status === "cerrado" || t.status === "resuelto" ? "Resuelto" : t.status === "en_proceso" ? "En proceso" : "Abierto",
         new Date(t.created_at).toLocaleDateString("es-MX")
-      ]) : [["-", "", "", "", "", ""]],
-      styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" },
-      alternateRowStyles: { fillColor: [249, 250, 251] },
-      margin: { left: 15, right: 15 }
+      ]) : [["Sin reportes de mantenimiento", "", "", "", "", ""]],
+      styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: tableMargin,
     });
-    y = doc.lastAutoTable.finalY + 12;
 
-    // Gastos operativos
+    // ── GASTOS OPERATIVOS ────────────────────────────────────────────────────
     if (gastosProp.length > 0) {
-      if (y > 220) { doc.addPage(); y = 20; }
-      doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
-      doc.text("Gastos Operativos", 20, y); y += 6;
+      y = doc.lastAutoTable.finalY + 12;
+      if (y > 230) { doc.addPage(); y = 15; }
+      y = sectionTitle("Gastos Operativos", y);
       autoTable(doc, {
         startY: y,
         head: [["Concepto", "Propiedad", "Descripción", "Monto", "Quién paga", "Fecha"]],
-        body: gastosProp.map(e => [
-          e.category || "-", e.property_name || "-", e.description || "-",
-          fmt(e.amount), e.paid_by === "propietario" ? "Propietario" : "Emporio", e.date || "-"
-        ]),
-        styles: { fontSize: 8, cellPadding: 3 },
-        headStyles: { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" },
-        alternateRowStyles: { fillColor: [249, 250, 251] },
-        margin: { left: 15, right: 15 }
+        body: gastosProp.map(e => [e.category || "—", e.property_name || "—", e.description || "—", fmt(e.amount), e.paid_by === "propietario" ? "Propietario" : "Emporio", e.date || "—"]),
+        styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: tableMargin,
       });
     }
 
+    // ── FOOTER EN TODAS LAS PÁGINAS ──────────────────────────────────────────
     const totalPaginas = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPaginas; i++) {
-      doc.setPage(i); doc.setFillColor(26, 26, 46); doc.rect(0, 285, 210, 15, "F");
-      doc.setTextColor(255, 255, 255); doc.setFontSize(8);
-      doc.text("Emporio Inmobiliario — app.emporioinmobiliario.com.mx", 20, 293);
-      doc.setTextColor(255, 200, 200); doc.text(`Página ${i} de ${totalPaginas}`, 175, 293);
+      doc.setPage(i);
+      // Línea separadora
+      doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3);
+      doc.line(14, 284, 196, 284);
+      // Barra lateral roja
+      doc.setFillColor(185, 28, 60); doc.rect(0, 284, 6, 13, "F");
+      // Texto footer
+      doc.setTextColor(122, 122, 122); doc.setFontSize(7); doc.setFont("helvetica", "normal");
+      doc.text("Emporio Inmobiliario — Puebla, México", 14, 290);
+      doc.text("222 257 3237  ·  ventas@emporioinmobiliario.mx", 14, 294);
+      doc.setTextColor(185, 28, 60); doc.setFont("helvetica", "bold");
+      doc.text(`${i} / ${totalPaginas}`, 196, 292, { align: "right" });
     }
+
     doc.save(`Liquidacion_${ownerName.replace(/\s+/g, "_")}_${today}.pdf`);
   };
 
