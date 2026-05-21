@@ -200,7 +200,9 @@ export default function Liquidaciones() {
     const gastosProp = propertyExpenses.filter(e => propsProp.some(p => p.name === e.property_name) && e.paid_by === "propietario");
     const totalRentaProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0), 0);
     const totalComProp   = contratosProp.reduce((a, c) => a + calcComision(c), 0);
-    const totalLiqProp   = totalRentaProp - totalComProp;
+    const costoMantProp  = ticketsProp.filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
+    const gastosOpProp   = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
+    const totalLiqProp   = totalRentaProp - totalComProp - costoMantProp - gastosOpProp;
 
     doc.setFillColor(26, 26, 46); doc.rect(0, 0, 210, 40, "F");
     doc.setTextColor(200, 169, 110); doc.setFontSize(20); doc.setFont("helvetica", "bold");
@@ -213,16 +215,21 @@ export default function Liquidaciones() {
     doc.text(`Periodo: ${mes}`, 20, 63);
 
     let y = 75;
-    doc.setFillColor(240, 253, 244); doc.rect(15, y, 180, 32, "F");
-    doc.setDrawColor(200, 169, 110); doc.rect(15, y, 180, 32, "S");
+    const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0);
+    const boxH = 32 + extraLines * 7;
+    doc.setFillColor(240, 253, 244); doc.rect(15, y, 180, boxH, "F");
+    doc.setDrawColor(200, 169, 110); doc.rect(15, y, 180, boxH, "S");
     doc.setTextColor(26, 26, 46); doc.setFontSize(10); doc.setFont("helvetica", "bold");
     doc.text("RESUMEN FINANCIERO", 20, y + 8);
     doc.setFont("helvetica", "normal"); doc.setFontSize(9);
     doc.text(`Renta mensual total: ${fmt(totalRentaProp)}`, 20, y + 16);
     doc.text(`Comisión administración: -${fmt(totalComProp)}`, 20, y + 23);
+    let lineY = y + 30;
+    if (costoMantProp > 0) { doc.setTextColor(153, 27, 27); doc.text(`Mantenimiento: -${fmt(costoMantProp)}`, 20, lineY); lineY += 7; }
+    if (gastosOpProp > 0) { doc.setTextColor(153, 27, 27); doc.text(`Gastos operativos: -${fmt(gastosOpProp)}`, 20, lineY); lineY += 7; }
     doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
-    doc.text(`Líquido a recibir: ${fmt(totalLiqProp)}`, 20, y + 30);
-    y += 44;
+    doc.text(`Líquido a recibir: ${fmt(totalLiqProp)}`, 20, lineY);
+    y += boxH + 12;
 
     doc.setTextColor(26, 26, 46); doc.setFontSize(13); doc.setFont("helvetica", "bold");
     doc.text("Propiedades", 20, y); y += 6;
