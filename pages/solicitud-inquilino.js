@@ -2,8 +2,8 @@ import { supabase } from "../lib/supabase";
 import { useState } from "react";
 
 const colors = {
-  dark: "#1a1a2e", gold: "#c8a96e", red: "#c0392b", gray: "#f4f5f7",
-  white: "#ffffff", text: "#374151", muted: "#6b7280", border: "#e5e7eb",
+  dark: "#4a4a4a", gold: "#b91c3c", red: "#b91c3c", gray: "#f8f8f8",
+  white: "#ffffff", text: "#374151", muted: "#7a7a7a", border: "#e5e7eb",
   success: "#065f46", successBg: "#f0fdf4",
 };
 
@@ -20,7 +20,7 @@ const Field = ({ label, required, hint, error, children }) => (
 
 const Input = (props) => (
   <input {...props} style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${props.error ? "#E07070" : colors.border}`, fontSize: 14, boxSizing: "border-box", background: "#fff", color: colors.text, outline: "none", ...props.style }}
-    onFocus={e => e.target.style.borderColor = colors.gold}
+    onFocus={e => e.target.style.borderColor = '#b91c3c'}
     onBlur={e => e.target.style.borderColor = props.error ? "#E07070" : colors.border} />
 );
 
@@ -32,15 +32,15 @@ const Sel = ({ children, ...props }) => (
 
 const Textarea = (props) => (
   <textarea {...props} style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${props.error ? "#E07070" : colors.border}`, fontSize: 14, boxSizing: "border-box", background: "#fff", color: colors.text, outline: "none", minHeight: 80, resize: "vertical", ...props.style }}
-    onFocus={e => e.target.style.borderColor = colors.gold}
+    onFocus={e => e.target.style.borderColor = '#b91c3c'}
     onBlur={e => e.target.style.borderColor = props.error ? "#E07070" : colors.border} />
 );
 
 const SectionTitle = ({ number, title, subtitle }) => (
-  <div style={{ display: "flex", alignItems: "flex-start", gap: 16, margin: "32px 0 24px", paddingBottom: 16, borderBottom: `2px solid ${colors.gold}` }}>
-    <div style={{ background: colors.dark, color: colors.gold, width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, flexShrink: 0 }}>{number}</div>
+  <div style={{ display: "flex", alignItems: "flex-start", gap: 16, margin: "32px 0 24px", paddingBottom: 16, borderBottom: "2px solid #b91c3c" }}>
+    <div style={{ background: "#b91c3c", color: "#fff", width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, flexShrink: 0 }}>{number}</div>
     <div>
-      <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: colors.dark }}>{title}</h2>
+      <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#4a4a4a" }}>{title}</h2>
       {subtitle && <p style={{ margin: "4px 0 0", fontSize: 13, color: colors.muted }}>{subtitle}</p>}
     </div>
   </div>
@@ -310,10 +310,10 @@ export default function SolicitudInquilino() {
 
   // ── PANTALLA DE ÉXITO ─────────────────────────────────────────────────────
   if (submitted) return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #1a1a2e, #2d2d5e)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 20 }}>
+    <div style={{ minHeight: "100vh", background: "#f8f8f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 20 }}>
       <div style={{ background: "#fff", borderRadius: 24, padding: 48, maxWidth: 500, width: "100%", textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ fontSize: 64, marginBottom: 20 }}>✅</div>
-        <h2 style={{ margin: "0 0 12px", fontSize: 24, fontWeight: 800, color: colors.dark }}>¡Solicitud enviada!</h2>
+        <h2 style={{ margin: "0 0 12px", fontSize: 24, fontWeight: 800, color: "#4a4a4a" }}>¡Solicitud enviada!</h2>
         <p style={{ margin: "0 0 8px", fontSize: 15, color: colors.muted }}>Hemos recibido tu solicitud de arrendamiento correctamente.</p>
         <p style={{ margin: "0 0 32px", fontSize: 14, color: colors.muted }}>Nuestro equipo jurídico la revisará y se pondrá en contacto contigo en breve.</p>
         <div style={{ background: colors.successBg, borderRadius: 12, padding: "16px 20px", marginBottom: 16 }}>
@@ -321,7 +321,7 @@ export default function SolicitudInquilino() {
         </div>
         {submitId && (
           <p style={{ margin: "0 0 16px", fontSize: 12, color: colors.muted }}>
-            Folio: <strong style={{ color: colors.gold }}>{submitId.slice(0, 8).toUpperCase()}</strong>
+            Folio: <strong style={{ color: "#b91c3c" }}>{submitId.slice(0, 8).toUpperCase()}</strong>
           </p>
         )}
         <p style={{ margin: 0, fontSize: 13, color: colors.muted }}>¿Tienes dudas? Escríbenos al <strong>222 257 3237</strong></p>
@@ -331,27 +331,24 @@ export default function SolicitudInquilino() {
 
   // ── FORMULARIO ────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: "100vh", background: colors.gray, fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#f8f8f8", fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
-      <div style={{ background: colors.dark, padding: "20px 24px" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "14px 20px" }}>
         <div style={{ maxWidth: 780, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <p style={{ margin: 0, fontSize: 11, color: colors.gold, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>Emporio Inmobiliario</p>
-            <h1 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: "#fff" }}>Solicitud de Arrendamiento</h1>
-          </div>
+          <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio Inmobiliario" style={{ height: 36, objectFit: "contain" }} />
           <div style={{ textAlign: "right" }}>
-            <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.5)" }}>Paso {step} de {totalSteps}</p>
-            <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
-              {Array.from({ length: totalSteps }, (_, i) => (
-                <div key={i} style={{ width: 28, height: 4, borderRadius: 2, background: i + 1 <= step ? colors.gold : "rgba(255,255,255,0.2)" }} />
-              ))}
-            </div>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#b91c3c" }}>Solicitud de Arrendamiento</p>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>Paso {step} de {totalSteps}</p>
           </div>
         </div>
       </div>
+      {/* Barra de progreso */}
+      <div style={{ background: "#f3f4f6", height: 4 }}>
+        <div style={{ background: "#b91c3c", height: 4, width: `${(step / totalSteps) * 100}%`, transition: "width 0.3s ease" }} />
+      </div>
 
       <div style={{ maxWidth: 780, margin: "0 auto", padding: "32px 20px" }}>
-        <div style={{ background: "#fff", borderRadius: 20, padding: 36, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+        <div style={{ background: "#fff", borderRadius: 16, padding: 32, boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: "1px solid #e5e7eb", maxWidth: 780, margin: "24px auto", marginLeft: 16, marginRight: 16 }}>
 
           {/* PASO 1 — Inmueble y tipo */}
           {step === 1 && (
@@ -367,7 +364,7 @@ export default function SolicitudInquilino() {
               <Field label="Tipo de solicitante" required>
                 <div style={{ display: "flex", gap: 12 }}>
                   {["Persona física", "Persona moral"].map(tipo => (
-                    <button key={tipo} onClick={() => set("tipo_solicitante", tipo)} style={{ flex: 1, padding: "14px", borderRadius: 12, border: `2px solid ${form.tipo_solicitante === tipo ? colors.gold : colors.border}`, background: form.tipo_solicitante === tipo ? "#fffbeb" : "#fff", color: form.tipo_solicitante === tipo ? colors.dark : colors.muted, fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
+                    <button key={tipo} onClick={() => set("tipo_solicitante", tipo)} style={{ flex: 1, padding: "14px", borderRadius: 12, border: `2px solid ${form.tipo_solicitante === tipo ? "#b91c3c" : colors.border}`, background: form.tipo_solicitante === tipo ? "#fff0f3" : "#fff", color: form.tipo_solicitante === tipo ? "#b91c3c" : colors.muted, fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
                       {tipo === "Persona física" ? "👤 Persona física" : "🏢 Persona moral"}
                     </button>
                   ))}
@@ -678,13 +675,13 @@ export default function SolicitudInquilino() {
                 <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#0369a1" }}>📄 Aviso de Privacidad</p>
                 <p style={{ margin: "0 0 16px", fontSize: 13, color: "#0369a1", lineHeight: 1.6 }}>
                   Tus datos personales serán tratados conforme a nuestro{" "}
-                  <a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: colors.gold, fontWeight: 700 }}>Aviso de Privacidad</a>
+                  <a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: "#b91c3c", fontWeight: 700 }}>Aviso de Privacidad</a>
                   {" "}de Emporio Inmobiliario, en cumplimiento con la LFPDPPP.
                 </p>
                 <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}>
-                  <input type="checkbox" checked={aceptaPrivacidad} onChange={e => setAceptaPrivacidad(e.target.checked)} style={{ width: 18, height: 18, marginTop: 2, accentColor: colors.gold, flexShrink: 0 }} />
+                  <input type="checkbox" checked={aceptaPrivacidad} onChange={e => setAceptaPrivacidad(e.target.checked)} style={{ width: 18, height: 18, marginTop: 2, accentColor: "#b91c3c", flexShrink: 0 }} />
                   <span style={{ fontSize: 14, color: colors.text, lineHeight: 1.5 }}>
-                    He leído y acepto el <a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: colors.gold, fontWeight: 700 }}>Aviso de Privacidad</a> y autorizo el tratamiento de mis datos personales. <span style={{ color: colors.red }}>*</span>
+                    He leído y acepto el <a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: "#b91c3c", fontWeight: 700 }}>Aviso de Privacidad</a> y autorizo el tratamiento de mis datos personales. <span style={{ color: colors.red }}>*</span>
                   </span>
                 </label>
               </div>
@@ -703,9 +700,9 @@ export default function SolicitudInquilino() {
               <button onClick={() => { setErrors({}); setStep(s => s - 1); }} style={{ background: colors.gray, border: "none", borderRadius: 10, padding: "12px 24px", cursor: "pointer", fontWeight: 700, fontSize: 14, color: colors.muted }}>← Anterior</button>
             ) : <div />}
             {step < totalSteps ? (
-              <button onClick={handleNext} style={{ background: colors.dark, color: "#fff", border: "none", borderRadius: 10, padding: "12px 28px", cursor: "pointer", fontWeight: 700, fontSize: 15 }}>Siguiente →</button>
+              <button onClick={handleNext} style={{ background: "#b91c3c", color: "#fff", border: "none", borderRadius: 10, padding: "12px 28px", cursor: "pointer", fontWeight: 700, fontSize: 15 }}>Siguiente →</button>
             ) : (
-              <button onClick={handleSubmit} disabled={submitting || !aceptaPrivacidad} style={{ background: submitting ? colors.muted : !aceptaPrivacidad ? colors.border : colors.gold, color: !aceptaPrivacidad ? colors.muted : "#fff", border: "none", borderRadius: 10, padding: "13px 32px", cursor: submitting || !aceptaPrivacidad ? "not-allowed" : "pointer", fontWeight: 800, fontSize: 15 }}>
+              <button onClick={handleSubmit} disabled={submitting || !aceptaPrivacidad} style={{ background: submitting ? "#9ca3af" : !aceptaPrivacidad ? "#e5e7eb" : "#b91c3c", color: !aceptaPrivacidad ? colors.muted : "#fff", border: "none", borderRadius: 10, padding: "13px 32px", cursor: submitting || !aceptaPrivacidad ? "not-allowed" : "pointer", fontWeight: 800, fontSize: 15 }}>
                 {submitting ? "Enviando..." : "✅ Enviar solicitud"}
               </button>
             )}
@@ -713,7 +710,7 @@ export default function SolicitudInquilino() {
         </div>
 
         <p style={{ textAlign: "center", marginTop: 20, fontSize: 12, color: colors.muted }}>
-          Emporio Inmobiliario · <a href="https://emporioinmobiliario.com.mx" style={{ color: colors.gold }}>emporioinmobiliario.com.mx</a> · 222 257 3237
+          Emporio Inmobiliario · <a href="https://emporioinmobiliario.com.mx" style={{ color: "#b91c3c" }}>emporioinmobiliario.com.mx</a> · 222 257 3237
         </p>
       </div>
     </div>
