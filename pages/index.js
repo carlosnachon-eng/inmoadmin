@@ -713,7 +713,7 @@ if (gastosProp.length > 0) {
     { id: "contracts", label: "Contratos", icon: "📋" },
     { id: "properties", label: "Propiedades", icon: "🏠" },
     { id: "payments", label: "Cobranza", icon: "💰" },
-    { id: "owner_payments", label: "Liquidaciones", icon: "🏦" },
+    { id: "owner_payments", label: "Liquidaciones", icon: "🏦", link: "/liquidaciones" },
     { id: "tickets", label: "Mantenimiento", icon: "🔧", link: "/mantenimiento" },
     { id: "reports", label: "Reportes", icon: "📈", link: "/reportes" },
     { id: "commissions", label: "Comisiones", icon: "💼", link: "/comisiones" },
