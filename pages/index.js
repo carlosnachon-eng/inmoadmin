@@ -1265,7 +1265,7 @@ const totalPagado = pagosDelPropietario.reduce((a, p) => a + (p.amount || 0), 0)
                   <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
                     <thead>
                       <tr style={{ background: "#f9fafb" }}>
-                        {["Inquilino", "Propiedad", "Monto", "Vencimiento", "Estado", "Actualizar", "Acciones"].map(h => (
+                        {["Inquilino", "Propiedad", "Monto", "Vencimiento", "Estado", "Comprobante", "Actualizar", "Acciones"].map(h => (
                           <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                         ))}
                       </tr>
@@ -1283,6 +1283,11 @@ const totalPagado = pagosDelPropietario.reduce((a, p) => a + (p.amount || 0), 0)
                             <td style={{ padding: "12px 16px", fontWeight: 700 }}>{fmt(p.amount)}</td>
                             <td style={{ padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>{p.due_date || "-"}</td>
                             <td style={{ padding: "12px 16px" }}><StatusBadge status={p.status} /></td>
+<td style={{ padding: "12px 16px" }}>
+  {p.receipt_url
+    ? <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#065f46", textDecoration: "none", background: "#d1fae5", padding: "4px 10px", borderRadius: 6, fontWeight: 600 }}>📄 Ver</a>
+    : <span style={{ fontSize: 12, color: "#d1d5db" }}>—</span>}
+</td>
                             <td style={{ padding: "12px 16px" }}>
                               <select onChange={e => updatePaymentStatus(p.id, e.target.value)} value={p.status} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, cursor: "pointer" }}>
                                 <option value="pendiente">Pendiente</option>
