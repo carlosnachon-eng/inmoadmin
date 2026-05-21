@@ -709,7 +709,7 @@ if (gastosProp.length > 0) {
 
   const nav = [
     { id: "dashboard", label: "Panel", icon: "📊" },
-    { id: "caja", label: "Caja", icon: "💵" },
+    { id: "caja", label: "Caja", icon: "💵", link: "/caja" },
     { id: "contracts", label: "Contratos", icon: "📋" },
     { id: "properties", label: "Propiedades", icon: "🏠" },
     { id: "payments", label: "Cobranza", icon: "💰" },
