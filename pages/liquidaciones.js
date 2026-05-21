@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
+import { PageHeader, brand } from "../components/Layout";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -204,32 +205,38 @@ export default function Liquidaciones() {
     const gastosOpProp   = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
     const totalLiqProp   = totalRentaProp - totalComProp - costoMantProp - gastosOpProp;
 
-    // Header con branding Emporio — barra roja/borgoña
-    doc.setFillColor(185, 28, 60); doc.rect(0, 0, 210, 42, "F");
-    // Línea decorativa más oscura
-    doc.setFillColor(127, 29, 46); doc.rect(0, 36, 210, 6, "F");
+    // ── HEADER PDF EMPORIO ──────────────────────────────────────────────────
+    // Barra principal roja
+    doc.setFillColor(185, 28, 60); doc.rect(0, 0, 210, 46, "F");
+    // Franja borgoña inferior
+    doc.setFillColor(127, 29, 46); doc.rect(0, 40, 210, 6, "F");
 
-    // Logo (texto estilizado ya que jsPDF no carga imágenes externas fácilmente)
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(18); doc.setFont("helvetica", "bold");
-    doc.text("EMPORIO", 20, 16);
-    doc.setFontSize(9); doc.setFont("helvetica", "normal");
-    doc.setTextColor(255, 200, 200);
-    doc.text("INMOBILIARIO", 20, 23);
-    doc.setFontSize(9); doc.setTextColor(255, 230, 230);
-    doc.text("Reporte de Propietario", 20, 31);
+    // Nombre empresa
+    doc.setTextColor(255, 255, 255); doc.setFontSize(20); doc.setFont("helvetica", "bold");
+    doc.text("EMPORIO", 20, 18);
+    doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.setTextColor(255, 200, 210);
+    doc.text("INMOBILIARIO", 20, 26);
 
-    // Fecha en la derecha
-    doc.setFontSize(8); doc.setTextColor(255, 220, 220);
-    doc.text(`Generado: ${hoy}`, 210 - 20, 31, { align: "right" });
+    // Tipo de documento
+    doc.setFontSize(9); doc.setTextColor(255, 230, 235);
+    doc.text("Reporte de Propietario", 20, 34);
 
-    // Nombre del propietario y periodo
-    doc.setTextColor(74, 74, 74); doc.setFontSize(16); doc.setFont("helvetica", "bold");
-    doc.text(ownerName, 20, 57);
-    doc.setFontSize(11); doc.setFont("helvetica", "normal"); doc.setTextColor(122, 122, 122);
-    doc.text(`Periodo: ${mes}`, 20, 65);
+    // Fecha alineada a la derecha
+    doc.setFontSize(8); doc.setTextColor(255, 210, 220);
+    doc.text(`Generado: ${hoy}`, 195, 18, { align: "right" });
+    doc.text("app.emporioinmobiliario.com.mx", 195, 26, { align: "right" });
 
-    let y = 80;
+    // Línea separadora sutil
+    doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3);
+    doc.line(15, 62, 195, 62);
+
+    // Nombre propietario
+    doc.setTextColor(74, 74, 74); doc.setFontSize(15); doc.setFont("helvetica", "bold");
+    doc.text(ownerName, 15, 57);
+    doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.setTextColor(122, 122, 122);
+    doc.text(`Periodo: ${mes}`, 15, 68);
+
+    let y = 78;
     const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0);
     const boxH = 32 + extraLines * 7;
     doc.setFillColor(255, 240, 243); doc.rect(15, y, 180, boxH, "F");
@@ -352,16 +359,16 @@ export default function Liquidaciones() {
     const totalPaginas = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPaginas; i++) {
       doc.setPage(i); doc.setFillColor(26, 26, 46); doc.rect(0, 285, 210, 15, "F");
-      doc.setTextColor(200, 169, 110); doc.setFontSize(8);
-      doc.text("Emporio Inmobiliario - app.emporioinmobiliario.com.mx", 20, 293);
-      doc.setTextColor(150, 150, 150); doc.text(`Página ${i} de ${totalPaginas}`, 175, 293);
+      doc.setTextColor(255, 255, 255); doc.setFontSize(8);
+      doc.text("Emporio Inmobiliario — app.emporioinmobiliario.com.mx", 20, 293);
+      doc.setTextColor(255, 200, 200); doc.text(`Página ${i} de ${totalPaginas}`, 175, 293);
     }
     doc.save(`Liquidacion_${ownerName.replace(/\s+/g, "_")}_${today}.pdf`);
   };
 
   if (authLoading) return (
-    <div style={{ minHeight: "100vh", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <p style={{ color: "#c8a96e", fontSize: 18, fontWeight: 700 }}>Cargando...</p>
+    <div style={{ minHeight: "100vh", background: "#f8f8f8", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
   );
 
@@ -383,24 +390,14 @@ export default function Liquidaciones() {
     : ownerPayments;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f4f5f7", fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: brand.bg, fontFamily: "system-ui, sans-serif" }}>
       {toast && (
         <div style={{ position: "fixed", top: 24, right: 16, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 3000, boxShadow: "0 4px 20px rgba(0,0,0,0.2)", maxWidth: 320 }}>
           {toast.msg}
         </div>
       )}
 
-      {/* HEADER */}
-      <div style={{ background: "#1a1a2e", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <button onClick={() => router.push("/")} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 8, padding: "8px 14px", color: "rgba(255,255,255,0.6)", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>← Panel</button>
-          <div>
-            <p style={{ margin: 0, fontSize: 11, color: "#c8a96e", fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>InmoAdmin</p>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#fff" }}>🏦 Liquidaciones</h1>
-          </div>
-        </div>
-        <Btn color="#c8a96e" onClick={() => { setForm(emptyForm); setShowModal(true); }}>+ Nueva</Btn>
-      </div>
+      <PageHeader title="Liquidaciones" icon="🏦" actions={<Btn color={brand.red} onClick={() => { setForm(emptyForm); setShowModal(true); }}>+ Nueva</Btn>} />
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
 
