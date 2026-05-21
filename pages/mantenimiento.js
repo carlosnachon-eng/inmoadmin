@@ -449,7 +449,7 @@ export default function Mantenimiento() {
                       <span style={{ fontSize: 12, fontWeight: 700, color: etapa.color, background: etapa.color + "18", padding: "4px 10px", borderRadius: 99 }}>
                         {etapa.icon} {etapa.label}
                       </span>
-                      <select value={t.status} onChange={e => cambiarEtapa(t.id, e.target.value)}
+                      <select key={t.status} value={t.status} onChange={e => cambiarEtapa(t.id, e.target.value)}
                         style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, cursor: "pointer", background: "#fff" }}>
                         {ETAPAS.map(e => <option key={e.key} value={e.key}>{e.icon} {e.label}</option>)}
                       </select>
