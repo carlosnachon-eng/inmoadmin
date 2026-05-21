@@ -7,20 +7,21 @@ const colors = {
   success: "#065f46", successBg: "#f0fdf4",
 };
 
-const Field = ({ label, required, hint, children }) => (
+const Field = ({ label, required, hint, error, children }) => (
   <div style={{ marginBottom: 20 }}>
     <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: colors.text, marginBottom: 4 }}>
       {label} {required && <span style={{ color: colors.red }}>*</span>}
     </label>
     {hint && <p style={{ margin: "0 0 6px", fontSize: 11, color: colors.muted }}>{hint}</p>}
     {children}
+    {error && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#E07070", fontWeight: 600 }}>{error}</p>}
   </div>
 );
 
 const Input = (props) => (
-  <input {...props} style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${colors.border}`, fontSize: 14, boxSizing: "border-box", background: "#fff", color: colors.text, outline: "none", ...props.style }}
+  <input {...props} style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${props.error ? "#E07070" : colors.border}`, fontSize: 14, boxSizing: "border-box", background: "#fff", color: colors.text, outline: "none", ...props.style }}
     onFocus={e => e.target.style.borderColor = colors.gold}
-    onBlur={e => e.target.style.borderColor = colors.border} />
+    onBlur={e => e.target.style.borderColor = props.error ? "#E07070" : colors.border} />
 );
 
 const Sel = ({ children, ...props }) => (
@@ -30,9 +31,9 @@ const Sel = ({ children, ...props }) => (
 );
 
 const Textarea = (props) => (
-  <textarea {...props} style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${colors.border}`, fontSize: 14, boxSizing: "border-box", background: "#fff", color: colors.text, outline: "none", minHeight: 80, resize: "vertical", ...props.style }}
+  <textarea {...props} style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${props.error ? "#E07070" : colors.border}`, fontSize: 14, boxSizing: "border-box", background: "#fff", color: colors.text, outline: "none", minHeight: 80, resize: "vertical", ...props.style }}
     onFocus={e => e.target.style.borderColor = colors.gold}
-    onBlur={e => e.target.style.borderColor = colors.border} />
+    onBlur={e => e.target.style.borderColor = props.error ? "#E07070" : colors.border} />
 );
 
 const SectionTitle = ({ number, title, subtitle }) => (
@@ -49,9 +50,9 @@ const Grid = ({ cols = 2, children }) => (
   <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 16 }}>{children}</div>
 );
 
-const FileUpload = ({ label, hint, required, onChange, value }) => (
-  <Field label={label} required={required} hint={hint}>
-    <div style={{ border: `2px dashed ${value ? colors.gold : colors.border}`, borderRadius: 10, padding: "16px 20px", textAlign: "center", background: value ? "#fffbeb" : "#fafafa", cursor: "pointer", transition: "all 0.2s" }}>
+const FileUpload = ({ label, hint, required, onChange, value, error }) => (
+  <Field label={label} required={required} hint={hint} error={error}>
+    <div style={{ border: `2px dashed ${error ? "#E07070" : value ? colors.gold : colors.border}`, borderRadius: 10, padding: "16px 20px", textAlign: "center", background: value ? "#fffbeb" : "#fafafa", cursor: "pointer", transition: "all 0.2s" }}>
       <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={onChange} style={{ display: "none" }} id={label.replace(/\s/g, "_")} />
       <label htmlFor={label.replace(/\s/g, "_")} style={{ cursor: "pointer" }}>
         {value ? (
@@ -77,6 +78,7 @@ export default function SolicitudInquilino() {
   const [submitted, setSubmitted] = useState(false);
   const [submitId, setSubmitId] = useState(null);
   const [error, setError] = useState("");
+  const [errors, setErrors] = useState({});
   const [aceptaPrivacidad, setAceptaPrivacidad] = useState(false);
 
   const [files, setFiles] = useState({
@@ -121,19 +123,80 @@ export default function SolicitudInquilino() {
 
   const handleFile = (key, e) => {
     const file = e.target.files[0];
-    if (file) setFiles(f => ({ ...f, [key]: file }));
+    if (file) {
+      setFiles(f => ({ ...f, [key]: file }));
+      setErrors(prev => ({ ...prev, [key]: undefined }));
+    }
   };
 
-  // Sube archivo a poliza-docs y devuelve la ruta
-  const subirArchivo = async (file, carpeta, nombre) => {
-    if (!file) return null;
-    const ext = file.name.split(".").pop();
-    const path = `solicitudes/${carpeta}/${Date.now()}_${nombre}.${ext}`;
-    const { error } = await supabase.storage
-      .from("poliza-docs")
-      .upload(path, file, { contentType: file.type, upsert: true });
-    if (error) throw new Error("Error subiendo archivo: " + error.message);
-    return path;
+  // ── VALIDACIONES POR PASO ──────────────────────────────────────────────────
+  const validateStep1 = () => {
+    const e = {};
+    if (!form.direccion_inmueble?.trim()) e.direccion_inmueble = "Este campo es requerido";
+    if (!form.monto_renta?.trim()) e.monto_renta = "Este campo es requerido";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const validateStep2 = () => {
+    const e = {};
+    if (!isMoral) {
+      if (!form.nombre_completo?.trim()) e.nombre_completo = "Este campo es requerido";
+      if (!form.telefono?.trim()) e.telefono = "Este campo es requerido";
+      if (!form.email?.trim()) e.email = "Este campo es requerido";
+      if (!form.domicilio_actual?.trim()) e.domicilio_actual = "Este campo es requerido";
+      if (!files.identidad_fisica) e.identidad_fisica = "Debes subir tu identificación oficial";
+    } else {
+      if (!form.razon_social?.trim()) e.razon_social = "Este campo es requerido";
+      if (!form.rfc_empresa?.trim()) e.rfc_empresa = "Este campo es requerido";
+      if (!form.nombre_representante?.trim()) e.nombre_representante = "Este campo es requerido";
+      if (!files.identidad_moral) e.identidad_moral = "Debes subir los documentos de la empresa";
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const validateStep3 = () => {
+    const e = {};
+    if (!isMoral) {
+      if (!form.empresa_labora?.trim()) e.empresa_labora = "Este campo es requerido";
+      if (!form.ingresos_mensuales?.trim()) e.ingresos_mensuales = "Este campo es requerido";
+      if (!files.ingresos) e.ingresos = "Debes subir tus comprobantes de ingresos";
+    } else {
+      if (!form.origen_recursos?.trim()) e.origen_recursos = "Este campo es requerido";
+      if (!form.ingresos_empresa?.trim()) e.ingresos_empresa = "Este campo es requerido";
+      if (!files.empresa) e.empresa = "Debes subir los documentos financieros";
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const validateStep4 = () => {
+    const e = {};
+    if (!form.descripcion_uso?.trim()) e.descripcion_uso = "Este campo es requerido";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const validateStep5 = () => {
+    const e = {};
+    if (!form.ref_fam1_nombre?.trim()) e.ref_fam1_nombre = "Agrega al menos una referencia familiar";
+    if (!form.ref_fam1_telefono?.trim()) e.ref_fam1_telefono = "El teléfono es requerido";
+    if (!form.ref_per1_nombre?.trim()) e.ref_per1_nombre = "Agrega al menos una referencia personal";
+    if (!form.ref_per1_telefono?.trim()) e.ref_per1_telefono = "El teléfono es requerido";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleNext = () => {
+    setError("");
+    if (step === 1 && !validateStep1()) return;
+    if (step === 2 && !validateStep2()) return;
+    if (step === 3 && !validateStep3()) return;
+    if (step === 4 && !validateStep4()) return;
+    if (step === 5 && !validateStep5()) return;
+    setErrors({});
+    setStep(s => s + 1);
   };
 
   const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -149,21 +212,22 @@ export default function SolicitudInquilino() {
       setError("Debes aceptar el Aviso de Privacidad para continuar.");
       return;
     }
+    if (!form.num_personas?.trim()) {
+      setErrors({ num_personas: "Este campo es requerido" });
+      return;
+    }
+    if (!form.personas_detalle?.trim()) {
+      setErrors({ personas_detalle: "Este campo es requerido" });
+      return;
+    }
     setSubmitting(true);
     setError("");
 
     try {
-      // 1. Insertar solicitud en Supabase
-      const nombreCarpeta = (form.nombre_completo || form.razon_social || "sin_nombre")
-        .replace(/\s+/g, "_").toLowerCase().slice(0, 40);
-
       const payload = {
-        // Inmueble de interés
         inmueble_interes: form.direccion_inmueble,
         monto_renta_solicitada: parseFloat(form.monto_renta) || null,
         tipo_solicitante: form.tipo_solicitante,
-
-        // Persona física
         nombre_completo: form.nombre_completo || form.nombre_representante,
         telefono: form.telefono || form.telefono_representante,
         correo: form.email || form.email_representante,
@@ -175,15 +239,11 @@ export default function SolicitudInquilino() {
         nombre_conyuge: form.nombre_conyuge,
         telefono_conyuge: form.telefono_conyuge,
         domicilio_actual: form.domicilio_actual,
-
-        // Persona moral
         razon_social: form.razon_social,
         rfc_empresa: form.rfc_empresa,
         giro_empresa: form.giro_empresa,
         domicilio_fiscal: form.domicilio_fiscal,
         nombre_representante: form.nombre_representante,
-
-        // Laboral / ingresos
         empresa_labora: form.empresa_labora,
         giro_empresa_labora: form.giro_empresa_labora,
         domicilio_trabajo: form.domicilio_trabajo,
@@ -195,8 +255,6 @@ export default function SolicitudInquilino() {
         ingresos_mensuales: parseFloat(form.ingresos_mensuales) || null,
         ingresos_empresa: parseFloat(form.ingresos_empresa) || null,
         origen_recursos: form.origen_recursos,
-
-        // Uso del inmueble
         uso_inmueble: form.uso_inmueble,
         descripcion_uso: form.descripcion_uso,
         subarrendamiento: form.subarrendamiento,
@@ -204,37 +262,18 @@ export default function SolicitudInquilino() {
         telefono_arrendador_actual: form.telefono_arrendador,
         monto_renta_actual: parseFloat(form.monto_renta_actual) || null,
         motivo_cambio: form.motivo_cambio,
-
-        // Referencias familiares
-        ref_fam1_nombre: form.ref_fam1_nombre,
-        ref_fam1_parentesco: form.ref_fam1_parentesco,
-        ref_fam1_telefono: form.ref_fam1_telefono,
-        ref_fam2_nombre: form.ref_fam2_nombre,
-        ref_fam2_parentesco: form.ref_fam2_parentesco,
-        ref_fam2_telefono: form.ref_fam2_telefono,
-        ref_fam3_nombre: form.ref_fam3_nombre,
-        ref_fam3_parentesco: form.ref_fam3_parentesco,
-        ref_fam3_telefono: form.ref_fam3_telefono,
-
-        // Referencias personales
-        ref_per1_nombre: form.ref_per1_nombre,
-        ref_per1_relacion: form.ref_per1_relacion,
-        ref_per1_telefono: form.ref_per1_telefono,
-        ref_per2_nombre: form.ref_per2_nombre,
-        ref_per2_relacion: form.ref_per2_relacion,
-        ref_per2_telefono: form.ref_per2_telefono,
-        ref_per3_nombre: form.ref_per3_nombre,
-        ref_per3_relacion: form.ref_per3_relacion,
-        ref_per3_telefono: form.ref_per3_telefono,
-
-        // Ocupantes
+        ref_fam1_nombre: form.ref_fam1_nombre, ref_fam1_parentesco: form.ref_fam1_parentesco, ref_fam1_telefono: form.ref_fam1_telefono,
+        ref_fam2_nombre: form.ref_fam2_nombre, ref_fam2_parentesco: form.ref_fam2_parentesco, ref_fam2_telefono: form.ref_fam2_telefono,
+        ref_fam3_nombre: form.ref_fam3_nombre, ref_fam3_parentesco: form.ref_fam3_parentesco, ref_fam3_telefono: form.ref_fam3_telefono,
+        ref_per1_nombre: form.ref_per1_nombre, ref_per1_relacion: form.ref_per1_relacion, ref_per1_telefono: form.ref_per1_telefono,
+        ref_per2_nombre: form.ref_per2_nombre, ref_per2_relacion: form.ref_per2_relacion, ref_per2_telefono: form.ref_per2_telefono,
+        ref_per3_nombre: form.ref_per3_nombre, ref_per3_relacion: form.ref_per3_relacion, ref_per3_telefono: form.ref_per3_telefono,
         num_habitantes: parseInt(form.num_personas) || null,
         detalle_habitantes: form.personas_detalle,
         tiene_mascotas: form.mascotas === "Sí",
         detalle_mascotas: form.mascotas_detalle,
         personal_servicio: form.personal_servicio === "Sí",
         personal_servicio_detalle: form.personal_servicio_detalle,
-
         status: "pendiente",
       };
 
@@ -246,26 +285,19 @@ export default function SolicitudInquilino() {
 
       if (insertError) throw insertError;
 
-      const solicitudId = data.id;
+      const [b64IdentFisica, b64IdentMoral, b64Ingresos, b64Empresa] = await Promise.all([
+        fileToBase64(files.identidad_fisica),
+        fileToBase64(files.identidad_moral),
+        fileToBase64(files.ingresos),
+        fileToBase64(files.empresa),
+      ]);
 
-      // 2. Subir archivos y actualizar URLs
-      const [b64IdentFisica, b64IdentMoral, b64Ingresos, b64Empresa] =
-        await Promise.all([
-          fileToBase64(files.identidad_fisica),
-          fileToBase64(files.identidad_moral),
-          fileToBase64(files.ingresos),
-          fileToBase64(files.empresa),
-        ]);
+      await supabase.from("solicitudes_inquilino").update({
+        doc_identificacion_b64: b64IdentFisica || b64IdentMoral,
+        doc_comprobante_ingresos_b64: b64Ingresos || b64Empresa,
+      }).eq("id", data.id);
 
-      await supabase
-        .from("solicitudes_inquilino")
-        .update({
-          doc_identificacion_b64: b64IdentFisica || b64IdentMoral,
-          doc_comprobante_ingresos_b64: b64Ingresos || b64Empresa,
-        })
-        .eq("id", solicitudId);
-
-      setSubmitId(solicitudId);
+      setSubmitId(data.id);
       setSubmitted(true);
 
     } catch (e) {
@@ -276,7 +308,7 @@ export default function SolicitudInquilino() {
     }
   };
 
-  // ---------- Pantalla de éxito ----------
+  // ── PANTALLA DE ÉXITO ─────────────────────────────────────────────────────
   if (submitted) return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #1a1a2e, #2d2d5e)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 20 }}>
       <div style={{ background: "#fff", borderRadius: 24, padding: 48, maxWidth: 500, width: "100%", textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
@@ -297,7 +329,7 @@ export default function SolicitudInquilino() {
     </div>
   );
 
-  // ---------- Formulario ----------
+  // ── FORMULARIO ────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: colors.gray, fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
@@ -321,15 +353,15 @@ export default function SolicitudInquilino() {
       <div style={{ maxWidth: 780, margin: "0 auto", padding: "32px 20px" }}>
         <div style={{ background: "#fff", borderRadius: 20, padding: 36, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
 
-          {/* PASO 1 */}
+          {/* PASO 1 — Inmueble y tipo */}
           {step === 1 && (
             <div>
               <SectionTitle number="1" title="Datos del Inmueble" subtitle="Información sobre la propiedad que deseas rentar" />
-              <Field label="Dirección completa del inmueble a rentar" required>
-                <Input placeholder="Calle, número, colonia, ciudad" value={form.direccion_inmueble} onChange={e => set("direccion_inmueble", e.target.value)} />
+              <Field label="Dirección completa del inmueble a rentar" required error={errors.direccion_inmueble}>
+                <Input placeholder="Calle, número, colonia, ciudad" value={form.direccion_inmueble} onChange={e => set("direccion_inmueble", e.target.value)} error={errors.direccion_inmueble} />
               </Field>
-              <Field label="Monto de renta mensual" required hint="Solo el número, sin signos">
-                <Input type="number" placeholder="15000" value={form.monto_renta} onChange={e => set("monto_renta", e.target.value)} />
+              <Field label="Monto de renta mensual" required hint="Solo el número, sin signos" error={errors.monto_renta}>
+                <Input type="number" placeholder="15000" value={form.monto_renta} onChange={e => set("monto_renta", e.target.value)} error={errors.monto_renta} />
               </Field>
               <SectionTitle number="2" title="Tipo de Solicitante" subtitle="¿Estás rentando como persona física o empresa?" />
               <Field label="Tipo de solicitante" required>
@@ -344,22 +376,32 @@ export default function SolicitudInquilino() {
             </div>
           )}
 
-          {/* PASO 2 */}
+          {/* PASO 2 — Datos personales */}
           {step === 2 && (
             <div>
               <SectionTitle number="3" title="Datos Personales" subtitle={isMoral ? "Información de la empresa" : "Información del solicitante"} />
               {!isMoral ? (
                 <>
                   <Grid>
-                    <Field label="Nombre completo" required><Input value={form.nombre_completo} onChange={e => set("nombre_completo", e.target.value)} /></Field>
-                    <Field label="Teléfono celular" required><Input type="tel" value={form.telefono} onChange={e => set("telefono", e.target.value)} placeholder="2221234567" /></Field>
+                    <Field label="Nombre completo" required error={errors.nombre_completo}>
+                      <Input value={form.nombre_completo} onChange={e => set("nombre_completo", e.target.value)} error={errors.nombre_completo} />
+                    </Field>
+                    <Field label="Teléfono celular" required error={errors.telefono}>
+                      <Input type="tel" value={form.telefono} onChange={e => set("telefono", e.target.value)} placeholder="2221234567" error={errors.telefono} />
+                    </Field>
                   </Grid>
                   <Grid>
-                    <Field label="Correo electrónico" required><Input type="email" value={form.email} onChange={e => set("email", e.target.value)} /></Field>
-                    <Field label="CURP"><Input value={form.curp} onChange={e => set("curp", e.target.value)} /></Field>
+                    <Field label="Correo electrónico" required error={errors.email}>
+                      <Input type="email" value={form.email} onChange={e => set("email", e.target.value)} error={errors.email} />
+                    </Field>
+                    <Field label="CURP">
+                      <Input value={form.curp} onChange={e => set("curp", e.target.value)} />
+                    </Field>
                   </Grid>
                   <Grid>
-                    <Field label="RFC"><Input value={form.rfc} onChange={e => set("rfc", e.target.value)} /></Field>
+                    <Field label="RFC">
+                      <Input value={form.rfc} onChange={e => set("rfc", e.target.value)} />
+                    </Field>
                     <Field label="Nacionalidad">
                       <Sel value={form.nacionalidad} onChange={e => set("nacionalidad", e.target.value)}>
                         <option>Mexicana</option><option>Extranjera</option>
@@ -372,7 +414,11 @@ export default function SolicitudInquilino() {
                         <option>No</option><option>Sí</option>
                       </Sel>
                     </Field>
-                    {isExtranjero && <Field label="Estatus migratorio"><Input value={form.estatus_migratorio} onChange={e => set("estatus_migratorio", e.target.value)} /></Field>}
+                    {isExtranjero && (
+                      <Field label="Estatus migratorio">
+                        <Input value={form.estatus_migratorio} onChange={e => set("estatus_migratorio", e.target.value)} />
+                      </Field>
+                    )}
                   </Grid>
                   <Grid>
                     <Field label="Estado civil">
@@ -380,57 +426,95 @@ export default function SolicitudInquilino() {
                         <option>Soltero(a)</option><option>Casado(a)</option><option>Unión libre</option><option>Divorciado(a)</option><option>Viudo(a)</option>
                       </Sel>
                     </Field>
-                    {hasConyuge && <Field label="Nombre del cónyuge"><Input value={form.nombre_conyuge} onChange={e => set("nombre_conyuge", e.target.value)} /></Field>}
+                    {hasConyuge && (
+                      <Field label="Nombre del cónyuge">
+                        <Input value={form.nombre_conyuge} onChange={e => set("nombre_conyuge", e.target.value)} />
+                      </Field>
+                    )}
                   </Grid>
-                  {hasConyuge && <Field label="Teléfono del cónyuge"><Input type="tel" value={form.telefono_conyuge} onChange={e => set("telefono_conyuge", e.target.value)} /></Field>}
-                  <Field label="Domicilio actual completo" required>
-                    <Textarea value={form.domicilio_actual} onChange={e => set("domicilio_actual", e.target.value)} placeholder="Calle, número, colonia, ciudad, CP" />
+                  {hasConyuge && (
+                    <Field label="Teléfono del cónyuge">
+                      <Input type="tel" value={form.telefono_conyuge} onChange={e => set("telefono_conyuge", e.target.value)} />
+                    </Field>
+                  )}
+                  <Field label="Domicilio actual completo" required error={errors.domicilio_actual}>
+                    <Textarea value={form.domicilio_actual} onChange={e => set("domicilio_actual", e.target.value)} placeholder="Calle, número, colonia, ciudad, CP" error={errors.domicilio_actual} />
                   </Field>
-                  <FileUpload label="Identificación oficial vigente y comprobante de domicilio" hint="Sube un archivo PDF o imagen con ambos documentos" required value={files.identidad_fisica} onChange={e => handleFile("identidad_fisica", e)} />
+                  <FileUpload label="Identificación oficial vigente y comprobante de domicilio" hint="Sube un archivo PDF o imagen con ambos documentos" required value={files.identidad_fisica} onChange={e => handleFile("identidad_fisica", e)} error={errors.identidad_fisica} />
                 </>
               ) : (
                 <>
                   <Grid>
-                    <Field label="Razón social" required><Input value={form.razon_social} onChange={e => set("razon_social", e.target.value)} /></Field>
-                    <Field label="RFC de la empresa" required><Input value={form.rfc_empresa} onChange={e => set("rfc_empresa", e.target.value)} /></Field>
+                    <Field label="Razón social" required error={errors.razon_social}>
+                      <Input value={form.razon_social} onChange={e => set("razon_social", e.target.value)} error={errors.razon_social} />
+                    </Field>
+                    <Field label="RFC de la empresa" required error={errors.rfc_empresa}>
+                      <Input value={form.rfc_empresa} onChange={e => set("rfc_empresa", e.target.value)} error={errors.rfc_empresa} />
+                    </Field>
                   </Grid>
                   <Grid>
-                    <Field label="Giro o actividad principal"><Input value={form.giro_empresa} onChange={e => set("giro_empresa", e.target.value)} /></Field>
-                    <Field label="Domicilio fiscal"><Input value={form.domicilio_fiscal} onChange={e => set("domicilio_fiscal", e.target.value)} /></Field>
+                    <Field label="Giro o actividad principal">
+                      <Input value={form.giro_empresa} onChange={e => set("giro_empresa", e.target.value)} />
+                    </Field>
+                    <Field label="Domicilio fiscal">
+                      <Input value={form.domicilio_fiscal} onChange={e => set("domicilio_fiscal", e.target.value)} />
+                    </Field>
                   </Grid>
                   <SectionTitle number="3b" title="Representante Legal" subtitle="" />
                   <Grid>
-                    <Field label="Nombre del representante legal" required><Input value={form.nombre_representante} onChange={e => set("nombre_representante", e.target.value)} /></Field>
-                    <Field label="Teléfono del representante"><Input type="tel" value={form.telefono_representante} onChange={e => set("telefono_representante", e.target.value)} /></Field>
+                    <Field label="Nombre del representante legal" required error={errors.nombre_representante}>
+                      <Input value={form.nombre_representante} onChange={e => set("nombre_representante", e.target.value)} error={errors.nombre_representante} />
+                    </Field>
+                    <Field label="Teléfono del representante">
+                      <Input type="tel" value={form.telefono_representante} onChange={e => set("telefono_representante", e.target.value)} />
+                    </Field>
                   </Grid>
-                  <Field label="Correo del representante"><Input type="email" value={form.email_representante} onChange={e => set("email_representante", e.target.value)} /></Field>
-                  <FileUpload label="Acta constitutiva, Poder del Representante, INE, Constancia fiscal y Comprobante de domicilio" hint="Sube un archivo PDF con todos los documentos" required value={files.identidad_moral} onChange={e => handleFile("identidad_moral", e)} />
+                  <Field label="Correo del representante">
+                    <Input type="email" value={form.email_representante} onChange={e => set("email_representante", e.target.value)} />
+                  </Field>
+                  <FileUpload label="Acta constitutiva, Poder del Representante, INE, Constancia fiscal y Comprobante de domicilio" hint="Sube un archivo PDF con todos los documentos" required value={files.identidad_moral} onChange={e => handleFile("identidad_moral", e)} error={errors.identidad_moral} />
                 </>
               )}
             </div>
           )}
 
-          {/* PASO 3 */}
+          {/* PASO 3 — Laboral / Ingresos */}
           {step === 3 && (
             <div>
               {!isMoral ? (
                 <>
                   <SectionTitle number="4" title="Información Laboral e Ingresos" subtitle="" />
                   <Grid>
-                    <Field label="Empresa donde laboras" required><Input value={form.empresa_labora} onChange={e => set("empresa_labora", e.target.value)} /></Field>
-                    <Field label="Giro de la empresa"><Input value={form.giro_empresa_labora} onChange={e => set("giro_empresa_labora", e.target.value)} /></Field>
+                    <Field label="Empresa donde laboras" required error={errors.empresa_labora}>
+                      <Input value={form.empresa_labora} onChange={e => set("empresa_labora", e.target.value)} error={errors.empresa_labora} />
+                    </Field>
+                    <Field label="Giro de la empresa">
+                      <Input value={form.giro_empresa_labora} onChange={e => set("giro_empresa_labora", e.target.value)} />
+                    </Field>
                   </Grid>
                   <Grid>
-                    <Field label="Página web"><Input type="url" placeholder="https://..." value={form.pagina_web_empresa} onChange={e => set("pagina_web_empresa", e.target.value)} /></Field>
-                    <Field label="Domicilio del trabajo"><Input value={form.domicilio_trabajo} onChange={e => set("domicilio_trabajo", e.target.value)} /></Field>
+                    <Field label="Página web">
+                      <Input type="url" placeholder="https://..." value={form.pagina_web_empresa} onChange={e => set("pagina_web_empresa", e.target.value)} />
+                    </Field>
+                    <Field label="Domicilio del trabajo">
+                      <Input value={form.domicilio_trabajo} onChange={e => set("domicilio_trabajo", e.target.value)} />
+                    </Field>
                   </Grid>
                   <Grid>
-                    <Field label="Teléfono del trabajo"><Input type="tel" value={form.telefono_trabajo} onChange={e => set("telefono_trabajo", e.target.value)} /></Field>
-                    <Field label="Nombre del jefe inmediato"><Input value={form.nombre_jefe} onChange={e => set("nombre_jefe", e.target.value)} /></Field>
+                    <Field label="Teléfono del trabajo">
+                      <Input type="tel" value={form.telefono_trabajo} onChange={e => set("telefono_trabajo", e.target.value)} />
+                    </Field>
+                    <Field label="Nombre del jefe inmediato">
+                      <Input value={form.nombre_jefe} onChange={e => set("nombre_jefe", e.target.value)} />
+                    </Field>
                   </Grid>
                   <Grid>
-                    <Field label="Puesto del jefe"><Input value={form.puesto_jefe} onChange={e => set("puesto_jefe", e.target.value)} /></Field>
-                    <Field label="Teléfono y correo del jefe"><Input value={form.telefono_email_jefe} onChange={e => set("telefono_email_jefe", e.target.value)} /></Field>
+                    <Field label="Puesto del jefe">
+                      <Input value={form.puesto_jefe} onChange={e => set("puesto_jefe", e.target.value)} />
+                    </Field>
+                    <Field label="Teléfono y correo del jefe">
+                      <Input value={form.telefono_email_jefe} onChange={e => set("telefono_email_jefe", e.target.value)} />
+                    </Field>
                   </Grid>
                   <Grid>
                     <Field label="Tipo de ingresos">
@@ -438,31 +522,39 @@ export default function SolicitudInquilino() {
                         <option>Empleo formal</option><option>Negocio propio</option><option>Honorarios / Freelance</option><option>Rentas</option><option>Otro</option>
                       </Sel>
                     </Field>
-                    <Field label="Ingresos mensuales aproximados" required><Input type="number" placeholder="30000" value={form.ingresos_mensuales} onChange={e => set("ingresos_mensuales", e.target.value)} /></Field>
+                    <Field label="Ingresos mensuales aproximados" required error={errors.ingresos_mensuales}>
+                      <Input type="number" placeholder="30000" value={form.ingresos_mensuales} onChange={e => set("ingresos_mensuales", e.target.value)} error={errors.ingresos_mensuales} />
+                    </Field>
                   </Grid>
-                  <FileUpload label="Documentos que comprueben el origen lícito de tus ingresos" hint="Estados de cuenta 3 meses, recibos de nómina, CFDI, etc." required value={files.ingresos} onChange={e => handleFile("ingresos", e)} />
+                  <FileUpload label="Documentos que comprueben el origen lícito de tus ingresos" hint="Estados de cuenta 3 meses, recibos de nómina, CFDI, etc." required value={files.ingresos} onChange={e => handleFile("ingresos", e)} error={errors.ingresos} />
                 </>
               ) : (
                 <>
                   <SectionTitle number="4" title="Información Financiera" subtitle="" />
                   <Grid>
-                    <Field label="Actividad principal"><Input value={form.actividad_empresa} onChange={e => set("actividad_empresa", e.target.value)} /></Field>
-                    <Field label="Giro comercial"><Input value={form.giro_comercial} onChange={e => set("giro_comercial", e.target.value)} /></Field>
+                    <Field label="Actividad principal">
+                      <Input value={form.actividad_empresa} onChange={e => set("actividad_empresa", e.target.value)} />
+                    </Field>
+                    <Field label="Giro comercial">
+                      <Input value={form.giro_comercial} onChange={e => set("giro_comercial", e.target.value)} />
+                    </Field>
                   </Grid>
-                  <Field label="Página web"><Input type="url" placeholder="https://..." value={form.pagina_web_empresa2} onChange={e => set("pagina_web_empresa2", e.target.value)} /></Field>
-                  <Field label="Origen de los recursos con los que se pagará la renta" required>
-                    <Textarea value={form.origen_recursos} onChange={e => set("origen_recursos", e.target.value)} />
+                  <Field label="Página web">
+                    <Input type="url" placeholder="https://..." value={form.pagina_web_empresa2} onChange={e => set("pagina_web_empresa2", e.target.value)} />
                   </Field>
-                  <Field label="Ingresos mensuales de la empresa" required>
-                    <Input type="number" placeholder="100000" value={form.ingresos_empresa} onChange={e => set("ingresos_empresa", e.target.value)} />
+                  <Field label="Origen de los recursos con los que se pagará la renta" required error={errors.origen_recursos}>
+                    <Textarea value={form.origen_recursos} onChange={e => set("origen_recursos", e.target.value)} error={errors.origen_recursos} />
                   </Field>
-                  <FileUpload label="Documentos que comprueben el origen lícito de los recursos" hint="Estados de cuenta, estados financieros, CFDI, contratos" required value={files.empresa} onChange={e => handleFile("empresa", e)} />
+                  <Field label="Ingresos mensuales de la empresa" required error={errors.ingresos_empresa}>
+                    <Input type="number" placeholder="100000" value={form.ingresos_empresa} onChange={e => set("ingresos_empresa", e.target.value)} error={errors.ingresos_empresa} />
+                  </Field>
+                  <FileUpload label="Documentos que comprueben el origen lícito de los recursos" hint="Estados de cuenta, estados financieros, CFDI, contratos" required value={files.empresa} onChange={e => handleFile("empresa", e)} error={errors.empresa} />
                 </>
               )}
             </div>
           )}
 
-          {/* PASO 4 */}
+          {/* PASO 4 — Uso del inmueble */}
           {step === 4 && (
             <div>
               <SectionTitle number="5" title="Uso del Inmueble" subtitle="" />
@@ -478,56 +570,81 @@ export default function SolicitudInquilino() {
                   </Sel>
                 </Field>
               </Grid>
-              <Field label="Describe el uso específico del inmueble" required>
-                <Textarea value={form.descripcion_uso} onChange={e => set("descripcion_uso", e.target.value)} />
+              <Field label="Describe el uso específico del inmueble" required error={errors.descripcion_uso}>
+                <Textarea value={form.descripcion_uso} onChange={e => set("descripcion_uso", e.target.value)} error={errors.descripcion_uso} placeholder="Describe detalladamente cómo usarás el inmueble" />
               </Field>
               <SectionTitle number="5b" title="Arrendador Actual" subtitle="" />
               <Grid>
-                <Field label="Nombre del arrendador actual"><Input value={form.nombre_arrendador} onChange={e => set("nombre_arrendador", e.target.value)} /></Field>
-                <Field label="Teléfono del arrendador"><Input type="tel" value={form.telefono_arrendador} onChange={e => set("telefono_arrendador", e.target.value)} /></Field>
+                <Field label="Nombre del arrendador actual">
+                  <Input value={form.nombre_arrendador} onChange={e => set("nombre_arrendador", e.target.value)} />
+                </Field>
+                <Field label="Teléfono del arrendador">
+                  <Input type="tel" value={form.telefono_arrendador} onChange={e => set("telefono_arrendador", e.target.value)} />
+                </Field>
               </Grid>
               <Grid>
-                <Field label="Monto de renta actual"><Input type="number" value={form.monto_renta_actual} onChange={e => set("monto_renta_actual", e.target.value)} /></Field>
-                <Field label="Motivo del cambio"><Input value={form.motivo_cambio} onChange={e => set("motivo_cambio", e.target.value)} /></Field>
+                <Field label="Monto de renta actual">
+                  <Input type="number" value={form.monto_renta_actual} onChange={e => set("monto_renta_actual", e.target.value)} />
+                </Field>
+                <Field label="Motivo del cambio">
+                  <Input value={form.motivo_cambio} onChange={e => set("motivo_cambio", e.target.value)} />
+                </Field>
               </Grid>
             </div>
           )}
 
-          {/* PASO 5 */}
+          {/* PASO 5 — Referencias */}
           {step === 5 && (
             <div>
-              <SectionTitle number="6" title="Referencias Familiares" subtitle="3 referencias de familiares" />
+              <SectionTitle number="6" title="Referencias Familiares" subtitle="Mínimo 1 referencia familiar requerida" />
               {[1, 2, 3].map(n => (
-                <div key={n} style={{ background: colors.gray, borderRadius: 12, padding: "16px 20px", marginBottom: 16 }}>
-                  <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: colors.dark }}>Referencia familiar {n}</p>
+                <div key={n} style={{ background: colors.gray, borderRadius: 12, padding: "16px 20px", marginBottom: 16, border: n === 1 && errors.ref_fam1_nombre ? "1px solid #E07070" : "none" }}>
+                  <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: colors.dark }}>
+                    Referencia familiar {n} {n === 1 && <span style={{ color: colors.red }}>*</span>}
+                  </p>
                   <Grid cols={3}>
-                    <Field label="Nombre"><Input value={form[`ref_fam${n}_nombre`]} onChange={e => set(`ref_fam${n}_nombre`, e.target.value)} /></Field>
-                    <Field label="Parentesco"><Input value={form[`ref_fam${n}_parentesco`]} onChange={e => set(`ref_fam${n}_parentesco`, e.target.value)} placeholder="Madre, padre..." /></Field>
-                    <Field label="Teléfono"><Input type="tel" value={form[`ref_fam${n}_telefono`]} onChange={e => set(`ref_fam${n}_telefono`, e.target.value)} /></Field>
+                    <Field label="Nombre" error={n === 1 ? errors.ref_fam1_nombre : undefined}>
+                      <Input value={form[`ref_fam${n}_nombre`]} onChange={e => set(`ref_fam${n}_nombre`, e.target.value)} error={n === 1 ? errors.ref_fam1_nombre : undefined} />
+                    </Field>
+                    <Field label="Parentesco">
+                      <Input value={form[`ref_fam${n}_parentesco`]} onChange={e => set(`ref_fam${n}_parentesco`, e.target.value)} placeholder="Madre, padre..." />
+                    </Field>
+                    <Field label="Teléfono" error={n === 1 ? errors.ref_fam1_telefono : undefined}>
+                      <Input type="tel" value={form[`ref_fam${n}_telefono`]} onChange={e => set(`ref_fam${n}_telefono`, e.target.value)} error={n === 1 ? errors.ref_fam1_telefono : undefined} />
+                    </Field>
                   </Grid>
                 </div>
               ))}
-              <SectionTitle number="6b" title="Referencias Personales" subtitle="3 referencias que no sean familiares" />
+
+              <SectionTitle number="6b" title="Referencias Personales" subtitle="Mínimo 1 referencia personal requerida (no familiares)" />
               {[1, 2, 3].map(n => (
-                <div key={n} style={{ background: colors.gray, borderRadius: 12, padding: "16px 20px", marginBottom: 16 }}>
-                  <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: colors.dark }}>Referencia personal {n}</p>
+                <div key={n} style={{ background: colors.gray, borderRadius: 12, padding: "16px 20px", marginBottom: 16, border: n === 1 && errors.ref_per1_nombre ? "1px solid #E07070" : "none" }}>
+                  <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: colors.dark }}>
+                    Referencia personal {n} {n === 1 && <span style={{ color: colors.red }}>*</span>}
+                  </p>
                   <Grid cols={3}>
-                    <Field label="Nombre"><Input value={form[`ref_per${n}_nombre`]} onChange={e => set(`ref_per${n}_nombre`, e.target.value)} /></Field>
-                    <Field label="Relación"><Input value={form[`ref_per${n}_relacion`]} onChange={e => set(`ref_per${n}_relacion`, e.target.value)} placeholder="Amigo, compañero..." /></Field>
-                    <Field label="Teléfono"><Input type="tel" value={form[`ref_per${n}_telefono`]} onChange={e => set(`ref_per${n}_telefono`, e.target.value)} /></Field>
+                    <Field label="Nombre" error={n === 1 ? errors.ref_per1_nombre : undefined}>
+                      <Input value={form[`ref_per${n}_nombre`]} onChange={e => set(`ref_per${n}_nombre`, e.target.value)} error={n === 1 ? errors.ref_per1_nombre : undefined} />
+                    </Field>
+                    <Field label="Relación">
+                      <Input value={form[`ref_per${n}_relacion`]} onChange={e => set(`ref_per${n}_relacion`, e.target.value)} placeholder="Amigo, compañero..." />
+                    </Field>
+                    <Field label="Teléfono" error={n === 1 ? errors.ref_per1_telefono : undefined}>
+                      <Input type="tel" value={form[`ref_per${n}_telefono`]} onChange={e => set(`ref_per${n}_telefono`, e.target.value)} error={n === 1 ? errors.ref_per1_telefono : undefined} />
+                    </Field>
                   </Grid>
                 </div>
               ))}
             </div>
           )}
 
-          {/* PASO 6 */}
+          {/* PASO 6 — Ocupantes + envío */}
           {step === 6 && (
             <div>
               <SectionTitle number="7" title="Ocupantes del Inmueble" subtitle="" />
               <Grid>
-                <Field label="¿Cuántas personas habitarán?" required>
-                  <Input type="number" min="1" value={form.num_personas} onChange={e => set("num_personas", e.target.value)} />
+                <Field label="¿Cuántas personas habitarán?" required error={errors.num_personas}>
+                  <Input type="number" min="1" value={form.num_personas} onChange={e => set("num_personas", e.target.value)} error={errors.num_personas} />
                 </Field>
                 <Field label="¿Habrá mascotas?">
                   <Sel value={form.mascotas} onChange={e => set("mascotas", e.target.value)}>
@@ -535,8 +652,8 @@ export default function SolicitudInquilino() {
                   </Sel>
                 </Field>
               </Grid>
-              <Field label="Nombre y parentesco de cada persona que habitará">
-                <Textarea value={form.personas_detalle} onChange={e => set("personas_detalle", e.target.value)} placeholder="Ej: María López (esposa), Juan Jr. (hijo, 8 años)..." />
+              <Field label="Nombre y parentesco de cada persona que habitará" required error={errors.personas_detalle}>
+                <Textarea value={form.personas_detalle} onChange={e => set("personas_detalle", e.target.value)} placeholder="Ej: María López (esposa), Juan Jr. (hijo, 8 años)..." error={errors.personas_detalle} />
               </Field>
               {form.mascotas === "Sí" && (
                 <Field label="¿Cuántas mascotas y de qué tipo?">
@@ -583,10 +700,10 @@ export default function SolicitudInquilino() {
           {/* Navegación */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 32, paddingTop: 24, borderTop: `1px solid ${colors.border}` }}>
             {step > 1 ? (
-              <button onClick={() => setStep(s => s - 1)} style={{ background: colors.gray, border: "none", borderRadius: 10, padding: "12px 24px", cursor: "pointer", fontWeight: 700, fontSize: 14, color: colors.muted }}>← Anterior</button>
+              <button onClick={() => { setErrors({}); setStep(s => s - 1); }} style={{ background: colors.gray, border: "none", borderRadius: 10, padding: "12px 24px", cursor: "pointer", fontWeight: 700, fontSize: 14, color: colors.muted }}>← Anterior</button>
             ) : <div />}
             {step < totalSteps ? (
-              <button onClick={() => setStep(s => s + 1)} style={{ background: colors.dark, color: "#fff", border: "none", borderRadius: 10, padding: "12px 28px", cursor: "pointer", fontWeight: 700, fontSize: 15 }}>Siguiente →</button>
+              <button onClick={handleNext} style={{ background: colors.dark, color: "#fff", border: "none", borderRadius: 10, padding: "12px 28px", cursor: "pointer", fontWeight: 700, fontSize: 15 }}>Siguiente →</button>
             ) : (
               <button onClick={handleSubmit} disabled={submitting || !aceptaPrivacidad} style={{ background: submitting ? colors.muted : !aceptaPrivacidad ? colors.border : colors.gold, color: !aceptaPrivacidad ? colors.muted : "#fff", border: "none", borderRadius: 10, padding: "13px 32px", cursor: submitting || !aceptaPrivacidad ? "not-allowed" : "pointer", fontWeight: 800, fontSize: 15 }}>
                 {submitting ? "Enviando..." : "✅ Enviar solicitud"}
