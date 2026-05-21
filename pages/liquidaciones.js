@@ -221,15 +221,15 @@ export default function Liquidaciones() {
 
     // ── HEADER ──────────────────────────────────────────────────────────────
     // Fondo blanco limpio con acento lateral rojo
-    doc.setFillColor(255, 255, 255); doc.rect(0, 0, 210, 55, "F");
+    doc.setFillColor(255, 255, 255); doc.rect(0, 0, 210, 44, "F");
     // Barra lateral izquierda roja
-    doc.setFillColor(185, 28, 60); doc.rect(0, 0, 6, 55, "F");
+    doc.setFillColor(185, 28, 60); doc.rect(0, 0, 6, 44, "F");
     // Línea inferior roja delgada
-    doc.setFillColor(185, 28, 60); doc.rect(0, 52, 210, 3, "F");
+    doc.setFillColor(185, 28, 60); doc.rect(0, 41, 210, 3, "F");
 
     // Logo o texto
     if (logoDataUrl) {
-      doc.addImage(logoDataUrl, "PNG", 14, 6, 40, 18);
+      doc.addImage(logoDataUrl, "PNG", 14, 5, 34, 15);
     } else {
       doc.setTextColor(185, 28, 60); doc.setFontSize(16); doc.setFont("helvetica", "bold");
       doc.text("EMPORIO", 14, 16);
@@ -239,17 +239,17 @@ export default function Liquidaciones() {
 
     // Tipo de documento — derecha
     doc.setTextColor(185, 28, 60); doc.setFontSize(13); doc.setFont("helvetica", "bold");
-    doc.text("REPORTE DE PROPIETARIO", 195, 14, { align: "right" });
+    doc.text("REPORTE DE PROPIETARIO", 195, 12, { align: "right" });
     doc.setTextColor(122, 122, 122); doc.setFontSize(8); doc.setFont("helvetica", "normal");
-    doc.text(`Generado: ${hoy}`, 195, 21, { align: "right" });
-    doc.text("app.emporioinmobiliario.com.mx", 195, 27, { align: "right" });
+    doc.text(`Generado: ${hoy}`, 195, 19, { align: "right" });
+    doc.text("app.emporioinmobiliario.com.mx", 195, 25, { align: "right" });
 
     // ── DATOS PROPIETARIO ────────────────────────────────────────────────────
-    doc.setFillColor(248, 248, 248); doc.rect(0, 55, 210, 22, "F");
+    doc.setFillColor(248, 248, 248); doc.rect(0, 44, 210, 20, "F");
     doc.setTextColor(74, 74, 74); doc.setFontSize(14); doc.setFont("helvetica", "bold");
-    doc.text(ownerName, 14, 66);
+    doc.text(ownerName, 14, 55);
     doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(122, 122, 122);
-    doc.text(`Periodo: ${mes}  ·  ${propsProp.length} propiedad${propsProp.length !== 1 ? "es" : ""}  ·  ${contratosProp.length} contrato${contratosProp.length !== 1 ? "s" : ""} activo${contratosProp.length !== 1 ? "s" : ""}`, 14, 73);
+    doc.text(`Periodo: ${mes}  ·  ${propsProp.length} propiedad${propsProp.length !== 1 ? "es" : ""}  ·  ${contratosProp.length} contrato${contratosProp.length !== 1 ? "s" : ""} activo${contratosProp.length !== 1 ? "s" : ""}`, 14, 61);
 
     // ── RESUMEN FINANCIERO ───────────────────────────────────────────────────
     let y = 84;
