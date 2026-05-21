@@ -716,7 +716,7 @@ if (gastosProp.length > 0) {
     { id: "owner_payments", label: "Liquidaciones", icon: "🏦" },
     { id: "tickets", label: "Mantenimiento", icon: "🔧", link: "/mantenimiento" },
     { id: "reports", label: "Reportes", icon: "📈", link: "/reportes" },
-    { id: "commissions", label: "Comisiones", icon: "💼" },
+    { id: "commissions", label: "Comisiones", icon: "💼", link: "/comisiones" },
     { id: "cierres", label: "Cierres", icon: "📊", link: "/cierres" },
     { id: "firmas", label: "Firmas", icon: "📝", link: "/firmas" },
     { id: "poliza", label: "Póliza", icon: "⚖️", link: "/poliza" },
