@@ -249,7 +249,7 @@ export default function Mantenimiento() {
 
   // ── CAMBIAR ETAPA ──
   const cambiarEtapa = async (id, status) => {
-    await supabase.from("maintenance_tickets").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+    await supabase.from("maintenance_tickets").update({ status }).eq("id", id);
     // Si se cierra, registrar movimiento de caja si aplica
     if (status === "cerrado") {
       const t = tickets.find(t => t.id === id);
