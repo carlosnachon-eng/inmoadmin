@@ -429,7 +429,18 @@ export default function Mantenimiento() {
                       </p>
                       <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>
                         Creado {tiempoTranscurrido(t.created_at)}
-                        {t.created_by && ` · por ${t.created_by.split("@")[0]}`}
+                        {(() => {
+                          const equipoEmails = [
+                            "carlos.nachon@emporioinmobiliario.mx",
+                            "guillermo@emporioinmobiliario.com.mx",
+                            "administracion@emporioinmobiliario.com.mx",
+                            "ariannet81@gmail.com","angelicamomox@gmail.com",
+                            "rddd298@gmail.com","ivanmtzco@gmail.com","nextelmoto2@gmail.com"
+                          ];
+                          if (!t.created_by) return <span style={{color:"#1e40af",fontWeight:700}}> · 📱 Portal inquilino</span>;
+                          if (equipoEmails.includes(t.created_by)) return ` · por ${t.created_by.split("@")[0]}`;
+                          return <span style={{color:"#1e40af",fontWeight:700}}> · 📱 Reportado por inquilino</span>;
+                        })()}
                       </p>
                     </div>
 
