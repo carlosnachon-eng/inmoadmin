@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
+import { PageHeader, brand } from "../components/Layout";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -249,7 +250,7 @@ export default function Mantenimiento() {
 
   // ── CAMBIAR ETAPA ──
   const cambiarEtapa = async (id, status) => {
-    await supabase.from("maintenance_tickets").update({ status }).eq("id", id);
+    await supabase.from("maintenance_tickets").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
     // Si se cierra, registrar movimiento de caja si aplica
     if (status === "cerrado") {
       const t = tickets.find(t => t.id === id);
@@ -317,8 +318,8 @@ export default function Mantenimiento() {
   }).length;
 
   if (authLoading) return (
-    <div style={{ minHeight: "100vh", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <p style={{ color: "#c8a96e", fontSize: 18, fontWeight: 700 }}>Cargando...</p>
+    <div style={{ minHeight: "100vh", background: "#f4f5f7", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
   );
 
@@ -328,24 +329,14 @@ export default function Mantenimiento() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f4f5f7", fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: brand.bg, fontFamily: "system-ui, sans-serif" }}>
       {toast && (
         <div style={{ position: "fixed", top: 24, right: 16, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 3000, boxShadow: "0 4px 20px rgba(0,0,0,0.2)", maxWidth: 320 }}>
           {toast.msg}
         </div>
       )}
+      <PageHeader title="Mantenimiento" icon="🔧" actions={<><Btn color={brand.red} onClick={() => { setForm(emptyTicket); setEditing(null); setShowModal(true); }}>+ Nuevo ticket</Btn></>} />
 
-      {/* HEADER */}
-      <div style={{ background: "#1a1a2e", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <button onClick={() => router.push("/")} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 8, padding: "8px 14px", color: "rgba(255,255,255,0.6)", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>← Panel</button>
-          <div>
-            <p style={{ margin: 0, fontSize: 11, color: "#c8a96e", fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>InmoAdmin</p>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#fff" }}>🔧 Mantenimiento</h1>
-          </div>
-        </div>
-        <Btn color="#c8a96e" onClick={() => { setForm(emptyTicket); setEditing(null); setShowModal(true); }}>+ Nuevo ticket</Btn>
-      </div>
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
 
@@ -449,7 +440,7 @@ export default function Mantenimiento() {
                       <span style={{ fontSize: 12, fontWeight: 700, color: etapa.color, background: etapa.color + "18", padding: "4px 10px", borderRadius: 99 }}>
                         {etapa.icon} {etapa.label}
                       </span>
-                      <select key={t.status} value={t.status} onChange={e => cambiarEtapa(t.id, e.target.value)}
+                      <select value={t.status} onChange={e => cambiarEtapa(t.id, e.target.value)}
                         style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, cursor: "pointer", background: "#fff" }}>
                         {ETAPAS.map(e => <option key={e.key} value={e.key}>{e.icon} {e.label}</option>)}
                       </select>
