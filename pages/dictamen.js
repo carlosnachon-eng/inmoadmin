@@ -32,7 +32,7 @@ function SecTitle({ children }) {
   );
 }
 
-async function generarPDF(data) {
+async function generarPDF(data, sb) {
   // Importar librerías
   const jspdfModule = await import("jspdf");
   const jsPDFClass = jspdfModule.jsPDF || (jspdfModule.default && jspdfModule.default.jsPDF) || jspdfModule.default;
@@ -128,13 +128,8 @@ async function generarPDF(data) {
   const docBuroRaw  = data.doc_buro_mexico || "";
   const solicitudId = data._solicitud_id || "";
 
-  const { createClient } = await import("@supabase/supabase-js");
-  const sb = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
+  // sb viene como parámetro — es el cliente autenticado con la sesión activa
 
-  // Convierte base64 a Blob
   const b64ToBlob = (b64) => {
     const [meta, data64] = b64.split(",");
     const mime = meta.match(/:(.*?);/)[1];
@@ -149,7 +144,7 @@ async function generarPDF(data) {
     if (!val) return "";
     // Ya es path de Storage — solo firmar
     if (!val.startsWith("data:")) {
-      const { data: d } = await sb.storage.from("poliza-docs").createSignedUrl(val, 604800);
+      const { data: d } = await sb.storage.from("poliza-docs").createSignedUrl(val, 31536000);
       return d?.signedUrl || "";
     }
     // Es base64 — subir a Storage
@@ -164,7 +159,7 @@ async function generarPDF(data) {
           .update({ [dbField]: path })
           .eq("id", solicitudId);
       }
-      const { data: d } = await sb.storage.from("poliza-docs").createSignedUrl(path, 604800);
+      const { data: d } = await sb.storage.from("poliza-docs").createSignedUrl(path, 31536000);
       return d?.signedUrl || "";
     } catch { return ""; }
   };
@@ -548,7 +543,7 @@ export default function Dictamen() {
     if (!form.folio || !form.nombre_solicitante) { alert("Completa el Folio y Nombre del solicitante."); return; }
     setGenerando(true);
     try {
-      const doc = await generarPDF(form);
+      const doc = await generarPDF(form, supabase);
       doc.save(`Dictamen_${form.folio}_${form.nombre_solicitante.split(" ")[0]}.pdf`);
       setGuardado(true); setTimeout(() => setGuardado(false), 3000);
     } catch (e) { alert("Error: " + e.message); }
