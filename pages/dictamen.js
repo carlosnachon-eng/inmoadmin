@@ -417,21 +417,57 @@ async function generarPDF(data, sb) {
   // Esperar a que carguen fuentes e imágenes
   await new Promise(r => setTimeout(r, 1500));
 
-  const pages = container.querySelectorAll("div[style*='min-height:1123px'], div[style*='min-height: 1123px'], div[style*='height:1123px'], div[style*='height: 1123px']");
   const doc = new jsPDFClass({ unit: "mm", format: "letter", orientation: "portrait" });
+  const PAGE_H = 1123; // px altura de página carta a 96dpi
+  const PAGE_W = 794;
+  let pageIndex = 0;
 
-  for (let i = 0; i < pages.length; i++) {
-    const canvas = await html2canvas(pages[i], {
-      scale: 2,
-      useCORS: true,
-      allowTaint: false,
-      backgroundColor: "#ffffff",
-      width: 794,
+  // Función para capturar cualquier elemento y agregarlo al PDF
+  const addElementToDoc = async (el) => {
+    const canvas = await html2canvas(el, {
+      scale: 2, useCORS: true, allowTaint: false,
+      backgroundColor: "#ffffff", width: PAGE_W,
     });
     const imgData = canvas.toDataURL("image/jpeg", 0.92);
-    if (i > 0) doc.addPage();
+    if (pageIndex > 0) doc.addPage();
     doc.addImage(imgData, "JPEG", 0, 0, 215.9, 279.4);
-  }
+    pageIndex++;
+  };
+
+  // Función para paginar un div alto en múltiples páginas
+  const addTallElementToDoc = async (el) => {
+    const totalH = el.scrollHeight;
+    const numPages = Math.ceil(totalH / PAGE_H);
+
+    for (let p = 0; p < numPages; p++) {
+      const canvas = await html2canvas(el, {
+        scale: 2, useCORS: true, allowTaint: false,
+        backgroundColor: "#ffffff",
+        width: PAGE_W,
+        height: PAGE_H,
+        windowWidth: PAGE_W,
+        windowHeight: PAGE_H,
+        y: p * PAGE_H,
+        scrollY: -(p * PAGE_H),
+      });
+      const imgData = canvas.toDataURL("image/jpeg", 0.92);
+      if (pageIndex > 0) doc.addPage();
+      doc.addImage(imgData, "JPEG", 0, 0, 215.9, 279.4);
+      pageIndex++;
+    }
+  };
+
+  // Portada (height fija 1123px)
+  const portada = container.querySelector("div[style*='height:1123px']");
+  if (portada) await addElementToDoc(portada);
+
+  // Contenido (puede ser más alto que 1123px — paginar)
+  const contenido = container.querySelector("div[style*='min-height:1123px'][style*='page-break-after']");
+  if (contenido) await addTallElementToDoc(contenido);
+
+  // Página de documentos (min-height:1123px sin page-break-after)
+  const docsPage = container.querySelector("div[style*='min-height:1123px']:not([style*='page-break-after'])");
+  if (docsPage) await addElementToDoc(docsPage);
 
   document.body.removeChild(container);
   return doc;
