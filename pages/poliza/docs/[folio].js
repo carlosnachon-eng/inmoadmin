@@ -35,29 +35,15 @@ export default function DocsPublico() {
   useEffect(() => {
     if (!autenticado || !folio) return;
     setCargando(true);
+    // El folio son los primeros 8 chars del solicitud_id en mayúsculas
     supabase
       .from("solicitudes_inquilino")
-      .select("id, nombre_completo, nombre_representante, doc_identificacion, doc_comprobante_ingresos, doc_buro_mexico, doc_identificacion_b64, doc_comprobante_ingresos_b64")
-      .ilike("folio_dictamen", folio)
+      .select("id, nombre_completo, razon_social, nombre_representante, doc_identificacion, doc_comprobante_ingresos, doc_buro_mexico, doc_identificacion_b64, doc_comprobante_ingresos_b64")
+      .ilike("id", `${folio.toLowerCase()}%`)
       .single()
-      .then(async ({ data, error }) => {
-        if (error || !data) {
-          // Buscar por folio en poliza_expedientes
-          const { data: exp } = await supabase
-            .from("poliza_expedientes")
-            .select("solicitud_id")
-            .ilike("folio", folio)
-            .single();
-          if (exp?.solicitud_id) {
-            const { data: s } = await supabase
-              .from("solicitudes_inquilino")
-              .select("id, nombre_completo, nombre_representante, doc_identificacion, doc_comprobante_ingresos, doc_buro_mexico, doc_identificacion_b64, doc_comprobante_ingresos_b64")
-              .eq("id", exp.solicitud_id)
-              .single();
-            if (s) await procesarSolicitud(s);
-          }
-        } else {
-          await procesarSolicitud(data);
+      .then(async ({ data: s }) => {
+        if (s) {
+          await procesarSolicitud(s);
         }
         setCargando(false);
       });
@@ -96,7 +82,7 @@ export default function DocsPublico() {
     setAbriendo("");
   };
 
-  const nombre = sol?.nombre_completo || sol?.nombre_representante || "—";
+  const nombre = sol?.nombre_completo || sol?.razon_social || sol?.nombre_representante || "—";
 
   return (
     <>
