@@ -107,14 +107,20 @@ export default function FirmasDashboard() {
   )
 
   return (
-    <div style={{ maxWidth: '900px', margin: '1rem auto', padding: '0 0.75rem', fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.3rem', color: '#1a3c5e', margin: '0 0 4px' }}>Coordinacion de Firmas</h1>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>{session.user.email}</p>
+    <div style={{ maxWidth: '900px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Header */}
+      <div style={{ background: '#fff', borderBottom: '3px solid #C8102E', padding: '0 24px', height: 64, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 36, objectFit: 'contain' }} />
+          <div style={{ width: 1, height: 32, background: '#e5e7eb' }} />
+          <div>
+            <p style={{ margin: 0, fontSize: 9, color: '#C8102E', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Área Jurídica</p>
+            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#1a1a2e' }}>Coordinación de Firmas</h1>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <Link href="/firmas/nueva" style={{ background: '#1a3c5e', color: '#fff', padding: '0.6rem 1.25rem', borderRadius: '8px', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <a href="/" style={{ color: '#9ca3af', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>← Panel</a>
+          <Link href="/firmas/nueva" style={{ background: '#C8102E', color: '#fff', padding: '0.6rem 1.25rem', borderRadius: '8px', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>
             + Nuevo expediente
           </Link>
           <button onClick={handleLogout} style={{ background: '#f3f4f6', color: '#555', border: 'none', padding: '0.6rem 1rem', borderRadius: '8px', fontSize: '0.9rem', cursor: 'pointer' }}>
@@ -122,6 +128,7 @@ export default function FirmasDashboard() {
           </button>
         </div>
       </div>
+      <div style={{ padding: '0 0.75rem' }}>
 
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
         {[['activo', 'En proceso'], ['completado', 'Completados'], ['cancelado', 'Cancelados']].map(([v, l]) => (
@@ -177,6 +184,7 @@ export default function FirmasDashboard() {
         {!loading && firmas.length === 0 && (
           <p style={{ color: '#aaa', textAlign: 'center', padding: '2rem' }}>No hay expedientes</p>
         )}
+      </div>
       </div>
     </div>
   )
