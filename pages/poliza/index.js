@@ -14,13 +14,12 @@ import { supabase } from '../../lib/supabase'
 
 // ─── Colores ───────────────────────────────────────────────
 const C = {
-  bg: '#0F0F0F', card: '#161616', border: '#222', border2: '#2E2E2E',
-  gold: '#C8973A', goldLight: '#C8973A20', goldText: '#E8B86D',
-  green: '#2A5C3F', greenText: '#5EC98A', greenBg: '#1A2E20',
-  red: '#8B3A3A', redText: '#E07070', redBg: '#2A1A1A',
-  blue: '#1A3A5C', blueText: '#70A8E0', blueBg: '#1A2A3A',
-  text: '#E8E8E8', muted: '#888', faint: '#444',
-  white: '#FFFFFF',
+  bg: '#f8f8f8', card: '#ffffff', border: '#e5e7eb', border2: '#e5e7eb',
+  gold: '#b91c3c', goldLight: '#fff0f3', goldText: '#b91c3c',
+  green: '#065f46', greenText: '#065f46', greenBg: '#f0fdf4',
+  red: '#991b1b', redText: '#991b1b', redBg: '#fee2e2',
+  blue: '#1e40af', blueText: '#1e40af', blueBg: '#dbeafe',
+  text: '#374151', muted: '#9ca3af', faint: '#d1d5db', white: '#FFFFFF',
 }
 
 const STATUS_LABELS = {
