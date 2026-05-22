@@ -107,7 +107,7 @@ const st = {
   btn: { padding: '9px 18px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'opacity 0.15s' },
   btnGold: { background: C.gold, color: '#fff' },
   btnGhost: { background: 'transparent', border: `1px solid ${C.border2}`, color: C.muted },
-  btnGreen: { background: C.green, color: C.greenText },
+  btnGreen: { background: C.green, color: '#ffffff' },
   btnRed: { background: C.red, color: C.redText },
   input: { width: '100%', background: '#ffffff', border: `1px solid ${C.border2}`, borderRadius: 8, padding: '10px 14px', color: C.text, fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' },
   label: { display: 'block', fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 6, letterSpacing: '0.3px' },
