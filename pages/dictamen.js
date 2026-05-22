@@ -75,33 +75,34 @@ async function generarPDF(data) {
   // Fondo blanco completo
   doc.setFillColor(255, 255, 255); doc.rect(0, 0, W, H, "F");
 
-  // Franja superior roja — grande
-  doc.setFillColor(...ROJO); doc.rect(0, 0, W, 70, "F");
-  doc.setFillColor(...BORG); doc.rect(0, 64, W, 6, "F");
+  // Header portada — blanco con línea roja abajo
+  doc.setFillColor(255, 255, 255); doc.rect(0, 0, W, 42, "F");
+  doc.setFillColor(...ROJO); doc.rect(0, 40, W, 3, "F");
+  doc.setFillColor(...BORG); doc.rect(0, 43, W, 1.5, "F");
 
-  // Logo grande en portada
+  // Logo en portada — proporcional sobre fondo blanco
   if (logoData) {
-    doc.addImage(logoData, "PNG", M, 10, 52, 22);
+    doc.addImage(logoData, "PNG", M, 8, 44, 26);
   } else {
-    doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(20);
-    doc.text("EMPORIO", M, 24);
-    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(255,200,210);
-    doc.text("INMOBILIARIO", M, 31);
+    doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(18);
+    doc.text("EMPORIO", M, 22);
+    doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(...GR2);
+    doc.text("INMOBILIARIO", M, 29);
   }
 
-  // Folio en portada
-  doc.setTextColor(255,220,230); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+  // Folio en portada — sobre fondo blanco
+  doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(7);
   doc.text("FOLIO", W - M, 14, { align: "right" });
-  doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+  doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(16);
   doc.text(data.folio || "—", W - M, 24, { align: "right" });
-  doc.setTextColor(255,210,220); doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+  doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
   doc.text(data.fecha || "", W - M, 32, { align: "right" });
 
-  // Título del documento centrado en la franja
-  doc.setTextColor(255,230,235); doc.setFont("helvetica","normal"); doc.setFontSize(7);
-  doc.text("EMPORIO INMOBILIARIO  ·  ÁREA JURÍDICA", W / 2, 54, { align: "center" });
-  doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(10);
-  doc.text("REPORTE DE INVESTIGACIÓN Y DICTAMEN DEL INQUILINO", W / 2, 62, { align: "center" });
+  // Área jurídica y título bajo la franja
+  doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+  doc.text("EMPORIO INMOBILIARIO  ·  ÁREA JURÍDICA", W / 2, 52, { align: "center" });
+  doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(11);
+  doc.text("REPORTE DE INVESTIGACIÓN Y DICTAMEN DEL INQUILINO", W / 2, 60, { align: "center" });
 
   // ── Nombre del solicitante destacado ─────────────────
   y = 84;
@@ -123,8 +124,8 @@ async function generarPDF(data) {
   const iw = AW / 3 - 2;
   infos.forEach((info, i) => {
     const x = M + (iw + 3) * i;
-    doc.setFillColor(...GBGX); doc.roundedRect(x, y, iw, infoH, 2, 2, "F");
-    doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(x, y, iw, infoH, 2, 2, "S");
+    doc.setFillColor(255, 255, 255); doc.roundedRect(x, y, iw, infoH, 2, 2, "F");
+    doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(x, y, iw, infoH, 2, 2, "S");
     doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
     doc.text(info.l, x + 4, y + 5.5);
     doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(8);
@@ -141,13 +142,13 @@ async function generarPDF(data) {
                                           [RBG, RC, "NO APROBADO"];
 
   // Fondo del semáforo
-  doc.setFillColor(...GBGX); doc.roundedRect(M, y, AW, 38, 4, 4, "F");
+  doc.setFillColor(255, 255, 255); doc.roundedRect(M, y, AW, 38, 4, 4, "F");
   doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(M, y, AW, 38, 4, 4, "S");
 
   const sems = [
-    { val: "APROBADO",               lbl: "APROBADO",          bg: VBG, on: VC },
-    { val: "APROBADO CON CONDICIONES", lbl: "CON CONDICIONES", bg: ABG, on: AC },
-    { val: "NO APROBADO",            lbl: "NO APROBADO",       bg: RBG, on: RC },
+    { val: "APROBADO",                lbl: "APROBADO",          bg: [255,245,247], on: ROJO },
+    { val: "APROBADO CON CONDICIONES", lbl: "CON CONDICIONES",  bg: [255,245,247], on: ROJO },
+    { val: "NO APROBADO",             lbl: "NO APROBADO",       bg: [255,245,247], on: ROJO },
   ];
   const sw = AW / 3;
   sems.forEach((s, i) => {
@@ -155,24 +156,21 @@ async function generarPDF(data) {
     const cx = M + sw * i + sw / 2, cy = y + 18;
 
     if (act) {
-      // Circulo activo grande con sombra
-      doc.setFillColor(...s.bg); doc.setDrawColor(...s.on); doc.setLineWidth(2);
-      doc.circle(cx, cy, 11, "FD");
-      // Texto dentro del círculo
+      doc.setFillColor(...ROJO); doc.setDrawColor(...ROJO); doc.setLineWidth(0);
+      doc.circle(cx, cy, 11, "F");
       doc.setFont("helvetica","bold"); doc.setFontSize(9);
-      doc.setTextColor(...s.on);
+      doc.setTextColor(255, 255, 255);
       doc.text(i === 0 ? "OK" : i === 1 ? "!" : "X", cx, cy + 3.5, { align: "center" });
     } else {
-      doc.setFillColor(240, 240, 240); doc.setDrawColor(...GR3); doc.setLineWidth(0.5);
+      doc.setFillColor(245, 245, 245); doc.setDrawColor(...GR3); doc.setLineWidth(0.4);
       doc.circle(cx, cy, 8, "FD");
-      doc.setFont("helvetica","bold"); doc.setFontSize(7);
+      doc.setFont("helvetica","normal"); doc.setFontSize(6);
       doc.setTextColor(...GR3);
       doc.text(i === 0 ? "OK" : i === 1 ? "!" : "X", cx, cy + 2.5, { align: "center" });
     }
-    // Label debajo
     doc.setFont("helvetica", act ? "bold" : "normal");
-    doc.setFontSize(act ? 7.5 : 6.5);
-    doc.setTextColor(...(act ? s.on : GR2));
+    doc.setFontSize(act ? 7.5 : 6);
+    doc.setTextColor(...(act ? ROJO : GR3));
     doc.text(s.lbl, cx, y + 34, { align: "center" });
   });
   y += 38 + 10;
@@ -183,11 +181,11 @@ async function generarPDF(data) {
   const multMatch = rel.match(/(\d+(?:\.\d+)?)x/);
   const mult = multMatch ? parseFloat(multMatch[1]) : 0;
   const score = mult >= 4 ? 95 : mult >= 3 ? 80 : mult >= 2.5 ? 65 : mult >= 2 ? 50 : 35;
-  const scoreColor = score >= 75 ? VC : score >= 55 ? AC : RC;
+  const scoreColor = score >= 75 ? [6, 78, 59] : score >= 55 ? GR1 : ROJO;
   const scoreLabel = score >= 75 ? "PERFIL SÓLIDO" : score >= 55 ? "PERFIL ACEPTABLE" : "PERFIL DE RIESGO";
 
-  doc.setFillColor(...GBGX); doc.roundedRect(M, y, AW, 22, 3, 3, "F");
-  doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(M, y, AW, 22, 3, 3, "S");
+  doc.setFillColor(255, 255, 255); doc.roundedRect(M, y, AW, 22, 3, 3, "F");
+  doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(M, y, AW, 22, 3, 3, "S");
 
   doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
   doc.text("ÍNDICE DE CONFIANZA DEL PERFIL", M + 6, y + 6);
@@ -198,7 +196,7 @@ async function generarPDF(data) {
   const barX = M + 90, barW = AW - 96, barH = 6;
   doc.setFillColor(229, 231, 235); doc.roundedRect(barX, y + 9, barW, barH, 2, 2, "F");
   doc.setFillColor(...scoreColor);
-  doc.roundedRect(barX, y + 9, barW * (score / 100), barH, 2, 2, "F");
+  doc.roundedRect(barX, y + 9, Math.max(barW * (score / 100), 4), barH, 2, 2, "F");
   doc.setTextColor(...scoreColor); doc.setFont("helvetica","bold"); doc.setFontSize(9);
   doc.text(`${score}%`, barX + barW + 4, y + 14);
   y += 22 + 6;
@@ -224,14 +222,15 @@ async function generarPDF(data) {
 
   // Header de páginas internas
   const pageHeader = () => {
-    doc.setFillColor(...ROJO); doc.rect(0, 0, W, 10, "F");
-    doc.setFillColor(...BORG); doc.rect(0, 9, W, 1.5, "F");
-    if (logoData) doc.addImage(logoData, "PNG", M, 0.5, 18, 8);
-    doc.setTextColor(255,230,235); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
-    doc.text("REPORTE DE INVESTIGACIÓN Y DICTAMEN", W / 2, 6.5, { align: "center" });
-    doc.setTextColor(255,210,220); doc.setFont("helvetica","normal"); doc.setFontSize(6);
-    doc.text(data.folio || "", W - M, 6.5, { align: "right" });
-    y = 18;
+    doc.setFillColor(255, 255, 255); doc.rect(0, 0, W, 12, "F");
+    doc.setFillColor(...ROJO); doc.rect(0, 11, W, 2, "F");
+    doc.setFillColor(...BORG); doc.rect(0, 13, W, 1, "F");
+    if (logoData) doc.addImage(logoData, "PNG", M, 1, 22, 10);
+    doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
+    doc.text("REPORTE DE INVESTIGACIÓN Y DICTAMEN", W / 2, 7.5, { align: "center" });
+    doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(6);
+    doc.text(data.folio || "", W - M, 7.5, { align: "right" });
+    y = 20;
   };
   pageHeader();
 
@@ -248,8 +247,8 @@ async function generarPDF(data) {
   const c2 = (l1, v1, l2, v2) => {
     chk(20); const h = AW / 2 - 2;
     [[l1, v1, M], [l2, v2, M + h + 4]].forEach(([l, v, x]) => {
-      doc.setFillColor(...GBGX); doc.roundedRect(x, y, h, 17, 2, 2, "F");
-      doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(x, y, h, 17, 2, 2, "S");
+      doc.setFillColor(255, 255, 255); doc.roundedRect(x, y, h, 17, 2, 2, "F");
+      doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(x, y, h, 17, 2, 2, "S");
       doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
       doc.text((l || "").toUpperCase(), x + 4, y + 5.5);
       doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(9);
@@ -263,8 +262,8 @@ async function generarPDF(data) {
     chk(20); const t = AW / 3 - 1.5;
     [[l1, v1, 0], [l2, v2, 1], [l3, v3, 2]].forEach(([l, v, i]) => {
       const x = M + (t + 2.25) * i;
-      doc.setFillColor(...GBGX); doc.roundedRect(x, y, t, 17, 2, 2, "F");
-      doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(x, y, t, 17, 2, 2, "S");
+      doc.setFillColor(255, 255, 255); doc.roundedRect(x, y, t, 17, 2, 2, "F");
+      doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(x, y, t, 17, 2, 2, "S");
       doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(5.5);
       doc.text((l || "").toUpperCase(), x + 4, y + 5.5);
       doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
@@ -280,8 +279,8 @@ async function generarPDF(data) {
     chk(h + 12);
     doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
     doc.text((l || "").toUpperCase(), M, y + 4); y += 7;
-    doc.setFillColor(...GBGX); doc.roundedRect(M, y, AW, h, 2, 2, "F");
-    doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(M, y, AW, h, 2, 2, "S");
+    doc.setFillColor(255, 255, 255); doc.roundedRect(M, y, AW, h, 2, 2, "F");
+    doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(M, y, AW, h, 2, 2, "S");
     doc.setTextColor(...GR1); doc.setFont("helvetica","normal"); doc.setFontSize(8);
     lines.forEach((line, i) => doc.text(line, M + 5, y + 8 + i * 5.5));
     y += h + 6;
@@ -305,14 +304,13 @@ async function generarPDF(data) {
   // Relación ingreso/renta — visual
   chk(24);
   const adecuada = (data.relacion_ingreso_renta || "").toLowerCase().includes("adecuada") || mult >= 2;
-  doc.setFillColor(...(adecuada ? VBG : ABG));
-  doc.setDrawColor(...(adecuada ? VC : AC)); doc.setLineWidth(0.8);
+  doc.setFillColor(255, 255, 255); doc.setDrawColor(...GR3); doc.setLineWidth(0.4);
   doc.roundedRect(M, y, AW, 20, 3, 3, "FD");
-  // Acento lateral
-  doc.setFillColor(...(adecuada ? VC : AC)); doc.roundedRect(M, y, 4, 20, 3, 0, "F");
+  // Acento lateral rojo siempre
+  doc.setFillColor(...ROJO); doc.roundedRect(M, y, 4, 20, 3, 0, "F");
   doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
   doc.text("RELACIÓN INGRESO / RENTA", M + 8, y + 6);
-  doc.setTextColor(...(adecuada ? VC : AC)); doc.setFont("helvetica","bold"); doc.setFontSize(10);
+  doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(10);
   doc.text(data.relacion_ingreso_renta || "—", M + 8, y + 14);
   doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(7);
   doc.text(`Comprobante: ${data.comprobante_ingresos || "—"}`, W - M - 4, y + 14, { align: "right" });
@@ -336,11 +334,10 @@ async function generarPDF(data) {
   st("V. ANTECEDENTES LEGALES — BURÓ MÉXICO");
   chk(20);
   const sinA = data.resultado_legal === "Sin antecedentes";
-  doc.setFillColor(...(sinA ? VBG : RBG));
-  doc.setDrawColor(...(sinA ? VC : RC)); doc.setLineWidth(0.8);
+  doc.setFillColor(255, 255, 255); doc.setDrawColor(...GR3); doc.setLineWidth(0.4);
   doc.roundedRect(M, y, AW, 16, 3, 3, "FD");
-  doc.setFillColor(...(sinA ? VC : RC)); doc.roundedRect(M, y, 4, 16, 3, 0, "F");
-  doc.setTextColor(...(sinA ? VC : RC)); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+  doc.setFillColor(...ROJO); doc.roundedRect(M, y, 4, 16, 3, 0, "F");
+  doc.setTextColor(...(sinA ? [6, 78, 59] : ROJO)); doc.setFont("helvetica","bold"); doc.setFontSize(9);
   doc.text(sinA ? "SIN ANTECEDENTES LEGALES RELEVANTES" : "CON ANTECEDENTES — VER OBSERVACIONES", W / 2, y + 10, { align: "center" });
   y += 20;
   if (data.observaciones_legales) ctxt("Observaciones", data.observaciones_legales);
@@ -368,10 +365,11 @@ async function generarPDF(data) {
   // ── VIII. DICTAMEN FINAL ─────────────────────────────
   chk(36); st("VIII. DICTAMEN FINAL");
   chk(28);
-  doc.setFillColor(...dictBg); doc.setDrawColor(...dictC); doc.setLineWidth(2);
+  const dictFinal_C = dictTxt === "APROBADO" ? [6, 78, 59] : dictTxt === "APROBADO CON CONDICIONES" ? GR1 : ROJO;
+  doc.setFillColor(255, 255, 255); doc.setDrawColor(...dictFinal_C); doc.setLineWidth(1.5);
   doc.roundedRect(M, y, AW, 26, 5, 5, "FD");
-  doc.setFillColor(...dictC); doc.roundedRect(M, y, 6, 26, 5, 0, "F");
-  doc.setTextColor(...dictC); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+  doc.setFillColor(...dictFinal_C); doc.roundedRect(M, y, 5, 26, 5, 0, "F");
+  doc.setTextColor(...dictFinal_C); doc.setFont("helvetica","bold"); doc.setFontSize(18);
   doc.text(dictTxt, W / 2, y + 17, { align: "center" }); y += 30;
   if (data.condiciones) {
     doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(8);
@@ -399,7 +397,7 @@ async function generarPDF(data) {
 
   const fw = AW / 3 - 4;
   // Caja analista
-  doc.setFillColor(...GBGX); doc.roundedRect(M, y, fw, 32, 3, 3, "F");
+  doc.setFillColor(255, 255, 255); doc.roundedRect(M, y, fw, 32, 3, 3, "F");
   doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(M, y, fw, 32, 3, 3, "S");
   doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
   doc.text("ANALISTA RESPONSABLE", M + fw/2, y + 6, { align: "center" });
@@ -412,7 +410,7 @@ async function generarPDF(data) {
 
   // Caja fecha
   const fx2 = M + fw + 8;
-  doc.setFillColor(...GBGX); doc.roundedRect(fx2, y, fw, 32, 3, 3, "F");
+  doc.setFillColor(255, 255, 255); doc.roundedRect(fx2, y, fw, 32, 3, 3, "F");
   doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(fx2, y, fw, 32, 3, 3, "S");
   doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
   doc.text("FECHA DE EMISIÓN", fx2 + fw/2, y + 6, { align: "center" });
