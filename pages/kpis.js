@@ -41,7 +41,18 @@ export default function KPIs() {
   const [cierres, setCierres] = useState([])
   const [animado, setAnimado] = useState(false)
 
-  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' })
+  // Fecha basada en servidor Supabase para evitar desfase por zona horaria del dispositivo
+  const [hoy, setHoy] = useState('')
+  useEffect(() => {
+    // Obtener hora actual del servidor de Supabase
+    supabase.rpc('get_fecha_mexico').then(({ data }) => {
+      if (data) setHoy(data)
+      else {
+        // Fallback: usar hora local con zona México
+        setHoy(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }))
+      }
+    })
+  }, [])
   const email = session?.user?.email
   const nombre = ASESORES[email] || null
   const esAdmin = ADMINS.includes(email)
