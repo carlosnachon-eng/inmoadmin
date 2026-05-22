@@ -177,7 +177,6 @@ async function generarPDF(data, sb) {
       <div style="flex:1">
         <div style="font-size:12px;font-weight:700;color:${GR1}">${label}</div>
         <div style="font-size:10px;color:${GR2};margin-top:3px">${disponible ? 'Documento verificado y analizado' : 'No se adjuntó en esta solicitud'}</div>
-        ${disponible && url ? `<div style="font-size:8px;color:#1e40af;margin-top:4px;word-break:break-all">${url}</div>` : ''}
       </div>
       <div style="font-size:11px;font-weight:800;color:${disponible ? '#065f46' : GR2};white-space:nowrap;margin-left:8px">${disponible ? '✓ PRESENTADO' : '— N/A'}</div>
     </div>`;
@@ -390,13 +389,17 @@ async function generarPDF(data, sb) {
       ${renderDocItem("Reporte Buró México — Antecedentes crediticios y legales", "📋", urlBuro, !!urlBuro)}
 
       ${urlIdent || urlComp || urlBuro ? `
-      <div style="margin-top:28px;background:#f8faff;border:1px solid #bfdbfe;border-radius:10px;padding:18px 20px">
-        <div style="font-size:10px;font-weight:800;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">🔗 Acceso digital a los documentos</div>
-        <div style="font-size:9px;color:#374151;margin-bottom:10px">Los documentos originales están disponibles en la plataforma segura de Emporio Inmobiliario. Solicite acceso a su asesor.</div>
-        ${urlIdent ? `<div style="margin-bottom:6px;font-size:9px;color:#1e40af">• <strong>Identificación:</strong> ${urlIdent}</div>` : ""}
-        ${urlComp  ? `<div style="margin-bottom:6px;font-size:9px;color:#1e40af">• <strong>Comprobante de ingresos:</strong> ${urlComp}</div>` : ""}
-        ${urlBuro  ? `<div style="margin-bottom:6px;font-size:9px;color:#1e40af">• <strong>Reporte Buró México:</strong> ${urlBuro}</div>` : ""}
-        <div style="font-size:8px;color:${GR2};margin-top:10px">⏱ Los enlaces tienen vigencia de 5 minutos por seguridad. Solicite nuevos enlaces a su asesor si han expirado.</div>
+      <div style="margin-top:28px;background:#f0fdf4;border:1.5px solid #6ee7b7;border-radius:12px;padding:22px 24px">
+        <div style="font-size:11px;font-weight:800;color:#065f46;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">🔗 Acceso digital a los documentos</div>
+        <div style="font-size:10px;color:#374151;margin-bottom:16px">Para consultar los documentos originales, ingrese al siguiente enlace e introduzca el PIN de acceso.</div>
+        <div style="background:#fff;border:1px solid #6ee7b7;border-radius:8px;padding:14px 18px;margin-bottom:12px">
+          <div style="font-size:9px;font-weight:700;color:${GR2};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">Enlace</div>
+          <div style="font-size:11px;font-weight:700;color:#1e40af">app.emporioinmobiliario.com.mx/poliza/docs/${data.folio || ""}</div>
+        </div>
+        <div style="background:#fff;border:1px solid #6ee7b7;border-radius:8px;padding:14px 18px">
+          <div style="font-size:9px;font-weight:700;color:${GR2};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">PIN de acceso</div>
+          <div style="font-size:22px;font-weight:900;color:${ROJO};letter-spacing:0.2em">${(data.folio || "").slice(-4)}</div>
+        </div>
       </div>` : ""}
 
       <!-- Footer -->
