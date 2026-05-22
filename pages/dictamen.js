@@ -36,7 +36,16 @@ async function generarPDF(data) {
   // Importar librerías
   const jspdfModule = await import("jspdf");
   const jsPDFClass = jspdfModule.jsPDF || (jspdfModule.default && jspdfModule.default.jsPDF) || jspdfModule.default;
-  const html2canvas = (await import("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js")).default;
+
+  // Cargar html2canvas via script tag (no webpack)
+  const html2canvas = await new Promise((resolve, reject) => {
+    if (window.html2canvas) { resolve(window.html2canvas); return; }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+    script.onload = () => resolve(window.html2canvas);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
 
   // Cargar logo
   let logoSrc = "https://www.emporioinmobiliario.com.mx/logo.png";
