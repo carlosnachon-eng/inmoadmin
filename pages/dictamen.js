@@ -65,7 +65,9 @@ async function generarPDF(data) {
   const rel = data.relacion_ingreso_renta || "";
   const multMatch = rel.match(/(\d+(?:\.\d+)?)x/);
   const mult = multMatch ? parseFloat(multMatch[1]) : 0;
-  const score = mult >= 4 ? 95 : mult >= 3 ? 80 : mult >= 2.5 ? 65 : mult >= 2 ? 50 : 35;
+  const scoreRaw = mult >= 4 ? 95 : mult >= 3 ? 80 : mult >= 2.5 ? 65 : mult >= 2 ? 60 : 35;
+  // APROBADO nunca muestra PERFIL DE RIESGO
+  const score = dict === "APROBADO" ? Math.max(scoreRaw, 70) : dict === "APROBADO CON CONDICIONES" ? Math.max(scoreRaw, 45) : scoreRaw;
   const scoreLabel = score >= 75 ? "PERFIL SÓLIDO" : score >= 55 ? "PERFIL ACEPTABLE" : "PERFIL DE RIESGO";
   const scoreColor = score >= 75 ? "#065f46" : score >= 55 ? "#92400e" : "#991b1b";
 
@@ -160,78 +162,76 @@ async function generarPDF(data) {
   const html = `
   <div style="width:794px;font-family:'Montserrat',system-ui,sans-serif;background:#f8f8f8;color:${GR1}">
 
-    <!-- PORTADA -->
-    <div style="background:#fff;min-height:1123px;position:relative;display:flex;flex-direction:column;page-break-after:always">
-      
-      <!-- Header portada -->
-      <div style="padding:24px 40px 20px;border-bottom:3px solid ${ROJO};position:relative">
-        <div style="position:absolute;bottom:0;left:0;right:0;height:1.5px;background:${BORG};margin-top:3px"></div>
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <img src="${logoSrc}" style="height:44px;object-fit:contain" crossorigin="anonymous" />
-          <div style="text-align:right">
-            <div style="font-size:9px;color:${GR2};font-weight:600;text-transform:uppercase;letter-spacing:0.08em">Folio</div>
-            <div style="font-size:20px;font-weight:900;color:${ROJO};letter-spacing:0.05em">${data.folio || "—"}</div>
-            <div style="font-size:10px;color:${GR2}">${data.fecha || ""}</div>
-          </div>
+    <!-- PORTADA — layout con padding fijo, sin flexbox vertical -->
+    <div style="width:794px;height:1123px;background:#fff;position:relative;overflow:hidden;box-sizing:border-box">
+
+      <!-- Franja roja superior -->
+      <div style="position:absolute;top:0;left:0;right:0;height:6px;background:${ROJO}"></div>
+      <div style="position:absolute;top:6px;left:0;right:0;height:2px;background:${BORG}"></div>
+
+      <!-- Header -->
+      <div style="position:absolute;top:18px;left:40px;right:40px;display:flex;justify-content:space-between;align-items:center">
+        <img src="${logoSrc}" style="height:44px;object-fit:contain" crossorigin="anonymous" />
+        <div style="text-align:right">
+          <div style="font-size:9px;color:${GR2};font-weight:600;text-transform:uppercase;letter-spacing:0.08em">Folio</div>
+          <div style="font-size:20px;font-weight:900;color:${ROJO};letter-spacing:0.05em">${data.folio || "—"}</div>
+          <div style="font-size:10px;color:${GR2}">${data.fecha || ""}</div>
         </div>
       </div>
 
-      <!-- Cuerpo portada -->
-      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 60px;gap:32px">
-        
-        <!-- Área jurídica -->
-        <div style="text-align:center">
-          <div style="font-size:9px;color:${GR2};font-weight:700;text-transform:uppercase;letter-spacing:0.15em;margin-bottom:4px">Emporio Inmobiliario · Área Jurídica</div>
-          <div style="font-size:13px;font-weight:800;color:${GR1};text-transform:uppercase;letter-spacing:0.05em">Reporte de Investigación y Dictamen del Inquilino</div>
-          <div style="font-size:9px;color:${GR2};margin-top:4px">Póliza Jurídica de Desalojo y Deslinde — Habitacional</div>
-        </div>
+      <!-- Título área jurídica -->
+      <div style="position:absolute;top:160px;left:40px;right:40px;text-align:center">
+        <div style="font-size:9px;color:${GR2};font-weight:700;text-transform:uppercase;letter-spacing:0.15em;margin-bottom:6px">Emporio Inmobiliario · Área Jurídica</div>
+        <div style="font-size:14px;font-weight:800;color:${GR1};text-transform:uppercase;letter-spacing:0.05em">Reporte de Investigación y Dictamen del Inquilino</div>
+        <div style="font-size:9px;color:${GR2};margin-top:6px">Póliza Jurídica de Desalojo y Deslinde — Habitacional</div>
+      </div>
 
-        <div style="height:1px;background:${GR3}"></div>
+      <!-- Línea divisora -->
+      <div style="position:absolute;top:240px;left:40px;right:40px;height:1px;background:${GR3}"></div>
 
-        <!-- Nombre solicitante -->
-        <div style="text-align:center">
-          <div style="font-size:10px;color:${GR2};font-weight:600;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px">Solicitante</div>
-          <div style="font-size:32px;font-weight:900;color:${GR1};line-height:1.1;margin-bottom:8px">${(data.nombre_solicitante || "—").toUpperCase()}</div>
-          <div style="font-size:11px;color:${GR2}">${data.tipo_solicitante || "—"} · ${data.tipo_identificacion || "—"} · ${data.num_identificacion || "—"}</div>
-        </div>
+      <!-- Nombre solicitante -->
+      <div style="position:absolute;top:260px;left:40px;right:40px;text-align:center">
+        <div style="font-size:10px;color:${GR2};font-weight:600;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px">Solicitante</div>
+        <div style="font-size:34px;font-weight:900;color:${GR1};line-height:1.1;margin-bottom:10px">${(data.nombre_solicitante || "—").toUpperCase()}</div>
+        <div style="font-size:11px;color:${GR2}">${data.tipo_solicitante || "—"} · ${data.tipo_identificacion || "—"} · ${data.num_identificacion || "—"}</div>
+      </div>
 
-        <!-- Info rápida -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-          ${[
-            ["Inmueble", data.direccion_inmueble],
-            ["Renta mensual", data.monto_renta],
-            ["Fecha de emisión", data.fecha],
-          ].map(([l,v]) => `
-            <div style="background:#fff;border:1px solid ${GR3};border-radius:10px;padding:14px">
-              <div style="font-size:8px;font-weight:700;color:${GR2};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">${l}</div>
-              <div style="font-size:11px;font-weight:700;color:${GR1}">${v || "—"}</div>
-            </div>`).join("")}
-        </div>
+      <!-- Info rápida (3 cajas) -->
+      <div style="position:absolute;top:430px;left:40px;right:40px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        ${[
+          ["Inmueble", data.direccion_inmueble],
+          ["Renta mensual", data.monto_renta],
+          ["Fecha de emisión", data.fecha],
+        ].map(([l,v]) => `
+          <div style="background:#fff;border:1px solid ${GR3};border-radius:10px;padding:14px">
+            <div style="font-size:8px;font-weight:700;color:${GR2};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px">${l}</div>
+            <div style="font-size:11px;font-weight:700;color:${GR1}">${v || "—"}</div>
+          </div>`).join("")}
+      </div>
 
-        <!-- Semáforo -->
-        <div style="background:#fff;border:1px solid ${GR3};border-radius:12px;padding:24px 40px">
-          <div style="display:flex;justify-content:space-around;align-items:center">${semHTML}</div>
-        </div>
+      <!-- Semáforo -->
+      <div style="position:absolute;top:570px;left:40px;right:40px;background:#fff;border:1px solid ${GR3};border-radius:12px;padding:24px 40px">
+        <div style="display:flex;justify-content:space-around;align-items:center">${semHTML}</div>
+      </div>
 
-        <!-- Score -->
-        <div style="background:#fff;border:1px solid ${GR3};border-radius:12px;padding:16px 20px">
-          <div style="font-size:9px;font-weight:700;color:${GR2};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Índice de confianza del perfil</div>
-          <div style="display:flex;align-items:center;gap:16px">
-            <div style="font-size:14px;font-weight:900;color:${scoreColor};white-space:nowrap">${scoreLabel}</div>
-            <div style="flex:1;height:8px;background:${GR3};border-radius:4px;overflow:hidden">
-              <div style="height:100%;width:${score}%;background:${scoreColor};border-radius:4px"></div>
-            </div>
-            <div style="font-size:14px;font-weight:900;color:${scoreColor}">${score}%</div>
+      <!-- Score -->
+      <div style="position:absolute;top:720px;left:40px;right:40px;background:#fff;border:1px solid ${GR3};border-radius:12px;padding:18px 20px">
+        <div style="font-size:9px;font-weight:700;color:${GR2};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">Índice de confianza del perfil</div>
+        <div style="display:flex;align-items:center;gap:16px">
+          <div style="font-size:13px;font-weight:900;color:${scoreColor};white-space:nowrap;min-width:140px">${scoreLabel}</div>
+          <div style="flex:1;height:8px;background:${GR3};border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${score}%;background:${scoreColor};border-radius:4px"></div>
           </div>
+          <div style="font-size:14px;font-weight:900;color:${scoreColor};min-width:36px;text-align:right">${score}%</div>
         </div>
-
       </div>
 
       <!-- Footer portada -->
-      <div style="padding:14px 40px;border-top:1px solid ${GR3};display:flex;justify-content:space-between;align-items:center">
+      <div style="position:absolute;bottom:0;left:0;right:0;padding:14px 40px;border-top:1px solid ${GR3};display:flex;justify-content:space-between;align-items:center;background:#fff">
         <div style="font-size:9px;color:${GR2}">Emporio Inmobiliario · Reserva Territorial Atlixcayotl, San Andrés Cholula, Puebla · 222 257 3237</div>
         <div style="font-size:9px;font-weight:800;color:${ROJO};text-transform:uppercase;letter-spacing:0.1em">Confidencial</div>
       </div>
+
     </div>
 
     <!-- PÁGINAS DE CONTENIDO -->
