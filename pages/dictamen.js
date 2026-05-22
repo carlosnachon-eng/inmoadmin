@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 const inp = {
   width: "100%", padding: "10px 14px", borderRadius: 8,
   border: "1.5px solid #e5e7eb", fontSize: 14, boxSizing: "border-box",
-  fontFamily: "'Montserrat', sans-serif", color: "#1a1a2e", outline: "none",
+  fontFamily: "'Montserrat', sans-serif", color: "#4a4a4a", outline: "none",
   background: "#fff", transition: "border 0.15s",
 };
 const sel = { ...inp, cursor: "pointer" };
@@ -15,7 +15,7 @@ function Campo({ label, children, required }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        {label}{required && <span style={{ color: "#C8102E" }}> *</span>}
+        {label}{required && <span style={{ color: "#b91c3c" }}> *</span>}
       </label>
       {children}
     </div>
@@ -25,8 +25,8 @@ function Campo({ label, children, required }) {
 function SecTitle({ children }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "28px 0 20px" }}>
-      <div style={{ width: 4, height: 18, background: "#C8102E", borderRadius: 2, flexShrink: 0 }} />
-      <span style={{ fontSize: 11, fontWeight: 800, color: "#1a1a2e", letterSpacing: "0.15em", textTransform: "uppercase" }}>{children}</span>
+      <div style={{ width: 4, height: 18, background: "#b91c3c", borderRadius: 2, flexShrink: 0 }} />
+      <span style={{ fontSize: 11, fontWeight: 800, color: "#4a4a4a", letterSpacing: "0.15em", textTransform: "uppercase" }}>{children}</span>
       <div style={{ flex: 1, height: 1, background: "#f0f0f0" }} />
     </div>
   );
@@ -371,9 +371,9 @@ export default function Dictamen() {
     <div style={{ minHeight: "100vh", background: "#f4f5f7", fontFamily: "'Montserrat',system-ui,sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
 
-      <div style={{ background: "#1a1a2e", padding: "20px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 16px rgba(0,0,0,0.2)" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "14px 32px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <p style={{ margin: 0, fontSize: 11, color: "#C8102E", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>Emporio Inmobiliario</p>
+          <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 36, objectFit: "contain" }} />
           <h1 style={{ margin: "4px 0 0", fontSize: 20, fontWeight: 800, color: "#fff" }}>📋 Generador de Dictamen</h1>
           <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Poliza Juridica de Desalojo y Deslinde — Habitacional</p>
         </div>
@@ -395,7 +395,7 @@ export default function Dictamen() {
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "32px 20px" }}>
 
         <div style={{ background: "#fff", borderRadius: 20, padding: "28px 32px", marginBottom: 20, border: "1px solid #f0f0f0", boxShadow: "0 2px 16px rgba(0,0,0,0.04)" }}>
-          <p style={{ margin: "0 0 20px", fontSize: 11, fontWeight: 800, color: "#C8102E", letterSpacing: "0.15em", textTransform: "uppercase" }}>Dictamen Final</p>
+          <p style={{ margin: "0 0 20px", fontSize: 11, fontWeight: 800, color: "#b91c3c", letterSpacing: "0.15em", textTransform: "uppercase" }}>Dictamen Final</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
             {DOPTS.map(opt => (
               <button key={opt.value} onClick={() => set("dictamen", opt.value)} style={{
@@ -466,7 +466,7 @@ export default function Dictamen() {
           </div>
           {form.fuente_ingresos === "OTRA" && (
             <Campo label="Especifica la fuente de ingresos">
-              <input value={form.fuente_ingresos_otro} onChange={e => set("fuente_ingresos_otro", e.target.value)} placeholder="Describe la fuente de ingresos..." style={{ ...inp, borderColor: "#C8102E" }} />
+              <input value={form.fuente_ingresos_otro} onChange={e => set("fuente_ingresos_otro", e.target.value)} placeholder="Describe la fuente de ingresos..." style={{ ...inp, borderColor: "#b91c3c" }} />
             </Campo>
           )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
@@ -511,7 +511,7 @@ export default function Dictamen() {
           </div>
           {form.mascotas === "Sí — especificar" && (
             <Campo label="Especifica las mascotas">
-              <input value={form.mascotas_detalle} onChange={e => set("mascotas_detalle", e.target.value)} placeholder="Ej. 1 perro mediano, 2 gatos..." style={{ ...inp, borderColor: "#C8102E" }} />
+              <input value={form.mascotas_detalle} onChange={e => set("mascotas_detalle", e.target.value)} placeholder="Ej. 1 perro mediano, 2 gatos..." style={{ ...inp, borderColor: "#b91c3c" }} />
             </Campo>
           )}
 
@@ -565,7 +565,7 @@ export default function Dictamen() {
           <div style={{ marginTop: 32, paddingTop: 24, borderTop: "2px solid #f3f4f6" }}>
             <button onClick={handleGenerar} disabled={generando} style={{
               width: "100%",
-              background: guardado ? "#22c55e" : generando ? "#9ca3af" : "#C8102E",
+              background: guardado ? "#22c55e" : generando ? "#9ca3af" : "#b91c3c",
               color: "#fff", border: "none", borderRadius: 14, padding: "18px",
               fontWeight: 900, fontSize: 17, cursor: generando ? "not-allowed" : "pointer",
               fontFamily: "'Montserrat',sans-serif", transition: "background 0.3s",
