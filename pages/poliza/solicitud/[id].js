@@ -71,6 +71,9 @@ export default function FichaSolicitud() {
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [docBuro, setDocBuro] = useState(null)        // path en Storage
+  const [subiendoBuro, setSubiendoBuro] = useState(false)
+  const [buroOk, setBuroOk] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -80,6 +83,7 @@ export default function FichaSolicitud() {
           setSol(data)
           setStatus(data.status || 'pendiente')
           setNotas(data.notas_juridico || '')
+          setDocBuro(data.doc_buro_mexico || null)
         }
         setLoading(false)
       })
@@ -93,6 +97,27 @@ export default function FichaSolicitud() {
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
+  }
+
+  const handleSubirBuro = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !id) return
+    setSubiendoBuro(true)
+    const ext = file.name.split('.').pop()
+    const path = `buro/${id}.${ext}`
+    const { error } = await supabase.storage.from('poliza-docs').upload(path, file, { upsert: true })
+    if (!error) {
+      await supabase.from('solicitudes_inquilino').update({ doc_buro_mexico: path }).eq('id', id)
+      setDocBuro(path)
+      setBuroOk(true)
+      setTimeout(() => setBuroOk(false), 3000)
+    }
+    setSubiendoBuro(false)
+  }
+
+  const handleVerDoc = async (path) => {
+    const { data } = await supabase.storage.from('poliza-docs').createSignedUrl(path, 120)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
   const handlePrint = () => window.print()
@@ -325,13 +350,15 @@ export default function FichaSolicitud() {
             </Seccion>
 
             {/* 8. Documentos */}
-            <Seccion numero="8" titulo="Documentos adjuntos">
-              <Grid cols={2}>
+            <Seccion numero="8" titulo="Documentos del análisis">
+              <Grid cols={1}>
+
+                {/* Identificación oficial */}
                 <div style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ fontSize: 24 }}>{sol.doc_identificacion_b64 || sol.doc_identificacion ? '✅' : '❌'}</span>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>Identificación oficial</p>
-                    <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{sol.doc_identificacion_b64 || sol.doc_identificacion ? 'Documento adjunto' : 'No adjuntado'}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{sol.doc_identificacion_b64 || sol.doc_identificacion ? 'Documento adjunto por el solicitante' : 'No adjuntado'}</p>
                   </div>
                   {(sol.doc_identificacion_b64 || sol.doc_identificacion) && (
                     <button
@@ -340,21 +367,22 @@ export default function FichaSolicitud() {
                         if (src.startsWith('data:')) {
                           const a = document.createElement('a'); a.href = src; a.download = 'identificacion'; a.click()
                         } else {
-                          supabase.storage.from('poliza-docs').createSignedUrl(src, 60)
-                            .then(({ data }) => data?.signedUrl && window.open(data.signedUrl, '_blank'))
+                          handleVerDoc(src)
                         }
                       }}
-                      style={{ marginLeft: 'auto', background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
+                      style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
                     >
                       Ver
                     </button>
                   )}
                 </div>
+
+                {/* Comprobante de ingresos */}
                 <div style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ fontSize: 24 }}>{sol.doc_comprobante_ingresos_b64 || sol.doc_comprobante_ingresos ? '✅' : '❌'}</span>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>Comprobante de ingresos</p>
-                    <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{sol.doc_comprobante_ingresos_b64 || sol.doc_comprobante_ingresos ? 'Documento adjunto' : 'No adjuntado'}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{sol.doc_comprobante_ingresos_b64 || sol.doc_comprobante_ingresos ? 'Documento adjunto por el solicitante' : 'No adjuntado'}</p>
                   </div>
                   {(sol.doc_comprobante_ingresos_b64 || sol.doc_comprobante_ingresos) && (
                     <button
@@ -363,16 +391,39 @@ export default function FichaSolicitud() {
                         if (src.startsWith('data:')) {
                           const a = document.createElement('a'); a.href = src; a.download = 'comprobante_ingresos'; a.click()
                         } else {
-                          supabase.storage.from('poliza-docs').createSignedUrl(src, 60)
-                            .then(({ data }) => data?.signedUrl && window.open(data.signedUrl, '_blank'))
+                          handleVerDoc(src)
                         }
                       }}
-                      style={{ marginLeft: 'auto', background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
+                      style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
                     >
                       Ver
                     </button>
                   )}
                 </div>
+
+                {/* Reporte Buró México — subido por la abogada */}
+                <div style={{ background: docBuro ? '#f0fdf4' : '#fffbeb', border: `1px solid ${docBuro ? '#6ee7b7' : '#fde68a'}`, borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 24 }}>{docBuro ? '✅' : '📋'}</span>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>Reporte Buró México</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>
+                      {docBuro ? 'Reporte subido por el área jurídica' : 'Pendiente — subir reporte generado por la abogada'}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {docBuro && (
+                      <button onClick={() => handleVerDoc(docBuro)}
+                        style={{ background: '#f0fdf4', border: '1px solid #6ee7b7', color: '#065f46', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>
+                        Ver
+                      </button>
+                    )}
+                    <label style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      {subiendoBuro ? 'Subiendo...' : buroOk ? '✓ Guardado' : docBuro ? 'Reemplazar' : '+ Subir PDF'}
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleSubirBuro} style={{ display: 'none' }} />
+                    </label>
+                  </div>
+                </div>
+
               </Grid>
             </Seccion>
 
