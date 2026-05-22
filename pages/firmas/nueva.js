@@ -56,11 +56,20 @@ export default function NuevaFirma() {
   const inputStyle = { width: '100%', padding: '0.6rem', marginBottom: '1rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.95rem', boxSizing: 'border-box' }
 
   return (
-    <div style={{ maxWidth: '620px', margin: '2rem auto', padding: '0 1rem', fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <Link href="/firmas" style={{ fontSize: '0.85rem', color: '#888', textDecoration: 'none' }}>← Volver a firmas</Link>
-        <h1 style={{ color: '#1a3c5e', fontSize: '1.3rem', margin: '0.5rem 0 0' }}>Nuevo expediente de firma</h1>
+    <div style={{ maxWidth: '620px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Header */}
+      <div style={{ background: '#fff', borderBottom: '3px solid #C8102E', padding: '0 24px', height: 64, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 36, objectFit: 'contain' }} />
+          <div style={{ width: 1, height: 32, background: '#e5e7eb' }} />
+          <div>
+            <p style={{ margin: 0, fontSize: 9, color: '#C8102E', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Área Jurídica</p>
+            <h1 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1a1a2e' }}>Nuevo expediente de firma</h1>
+          </div>
+        </div>
+        <Link href="/firmas" style={{ fontSize: '0.85rem', color: '#9ca3af', textDecoration: 'none', fontWeight: 600 }}>← Volver</Link>
       </div>
+      <div style={{ padding: '0 1rem' }}>
 
       <form onSubmit={handleSubmit}>
         <div style={card}>
@@ -133,6 +142,7 @@ export default function NuevaFirma() {
           {loading ? 'Creando expediente...' : 'Crear expediente'}
         </button>
       </form>
+      </div>
     </div>
   )
 }
