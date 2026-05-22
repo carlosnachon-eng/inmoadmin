@@ -35,13 +35,8 @@ export default function DocsPublico() {
   useEffect(() => {
     if (!autenticado || !folio) return;
     setCargando(true);
-    const prefix = folio.toLowerCase();
     supabase
-      .from("solicitudes_inquilino")
-      .select("id, nombre_completo, razon_social, nombre_representante, doc_identificacion, doc_comprobante_ingresos, doc_buro_mexico, doc_identificacion_b64, doc_comprobante_ingresos_b64")
-      .gte("id", prefix)
-      .lte("id", prefix + "-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz")
-      .limit(1)
+      .rpc("buscar_solicitud_por_folio", { p_folio: folio.toLowerCase() })
       .then(async ({ data }) => {
         const s = data?.[0];
         if (s) await procesarSolicitud(s);
@@ -98,7 +93,10 @@ export default function DocsPublico() {
         <div style={{ background: "#fff", borderBottom: "3px solid #b91c3c", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="Emporio Inmobiliario" style={{ height: 36, objectFit: "contain" }} />
+            <img src="/emporio-logo.png" alt="Emporio Inmobiliario" style={{ height: 36, objectFit: "contain" }}
+              onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }}
+            />
+            <span style={{ display:'none', fontWeight:900, fontSize:14, color:'#b91c3c', letterSpacing:'0.05em' }}>EMPORIO INMOBILIARIO</span>
           </div>
           {folio && (
             <div style={{ textAlign: "right" }}>
