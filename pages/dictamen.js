@@ -33,149 +33,257 @@ function SecTitle({ children }) {
 }
 
 async function generarPDF(data) {
-  const jspdfModule = await import("jspdf");
-  const jsPDF = jspdfModule.jsPDF || jspdfModule.default?.jsPDF || jspdfModule.default;
-  const doc = new jsPDF({ unit: "mm", format: "letter" });
+  let doc;
+  try {
+    const jspdfModule = await import("jspdf");
+    const jsPDFClass = jspdfModule.jsPDF || (jspdfModule.default && jspdfModule.default.jsPDF) || jspdfModule.default;
+    doc = new jsPDFClass({ unit: "mm", format: "letter" });
+  } catch(e) { alert("Error al cargar PDF: " + e.message); return; }
+
   const W = 215.9, H = 279.4, M = 18, AW = W - M * 2;
   let y = 0;
 
-  // ── Paleta Emporio ───────────────────────────────────────
-  const ROJO   = [185, 28, 60];
-  const BORG   = [127, 29, 46];
-  const GR1    = [74,  74,  74];   // gris oscuro texto
-  const GR2    = [122, 122, 122];  // gris medio labels
-  const GR3    = [229, 231, 235];  // gris borde
-  const GBGX   = [248, 248, 248];  // fondo celdas
-  const VBG    = [220, 252, 231]; const VC  = [6,  95,  70]; const VS = [34, 197, 94];
-  const ABG    = [254, 249, 195]; const AC  = [133, 77,  14]; const AS = [234, 179, 8];
-  const RBG    = [254, 226, 226]; const RC  = [153, 27,  27]; const RS = [239, 68,  68];
-  const AZB    = [239, 246, 255]; const AZC = [29,  78, 216];
+  // ── Paleta Emporio ─────────────────────────────────────
+  const ROJO  = [185, 28,  60];
+  const BORG  = [127, 29,  46];
+  const GR1   = [74,  74,  74];
+  const GR2   = [122, 122, 122];
+  const GR3   = [229, 231, 235];
+  const GBGX  = [248, 248, 248];
+  const VBG   = [220, 252, 231]; const VC = [6,   95,  70];
+  const ABG   = [254, 249, 195]; const AC = [133, 77,  14];
+  const RBG   = [254, 226, 226]; const RC = [153, 27,  27];
+  const AZB   = [239, 246, 255]; const AZC = [29,  78, 216];
 
   const addPg = () => { doc.addPage(); y = 18; };
-  const chk   = (n)  => { if (y + n > 258) addPg(); };
+  const chk   = (n)  => { if (y + n > 255) addPg(); };
 
-  // ═══════════════════════════════════════════════════════
-  // PORTADA — Página 1
-  // ═══════════════════════════════════════════════════════
-
-  // Franja superior roja
-  doc.setFillColor(...ROJO); doc.rect(0, 0, W, 52, "F");
-  // Franja borgoña inferior de la portada
-  doc.setFillColor(...BORG); doc.rect(0, 46, W, 6, "F");
-
-  // Logo desde navegador
+  // ── Cargar logo ─────────────────────────────────────────
   let logoData = null;
   try {
     const res = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
     const blob = await res.blob();
-    logoData = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.readAsDataURL(blob); });
+    logoData = await new Promise(r => {
+      const rd = new FileReader(); rd.onload = () => r(rd.result); rd.readAsDataURL(blob);
+    });
   } catch(e) {}
 
+  // ═══════════════════════════════════════════════════════
+  // PÁGINA 1 — PORTADA COMPLETA
+  // ═══════════════════════════════════════════════════════
+
+  // Fondo blanco completo
+  doc.setFillColor(255, 255, 255); doc.rect(0, 0, W, H, "F");
+
+  // Franja superior roja — grande
+  doc.setFillColor(...ROJO); doc.rect(0, 0, W, 70, "F");
+  doc.setFillColor(...BORG); doc.rect(0, 64, W, 6, "F");
+
+  // Logo grande en portada
   if (logoData) {
-    doc.addImage(logoData, "PNG", M, 8, 38, 16);
+    doc.addImage(logoData, "PNG", M, 10, 52, 22);
   } else {
-    doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(16);
-    doc.text("EMPORIO", M, 18);
-    doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(255,200,210);
-    doc.text("INMOBILIARIO", M, 24);
+    doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(20);
+    doc.text("EMPORIO", M, 24);
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(255,200,210);
+    doc.text("INMOBILIARIO", M, 31);
   }
 
-  // Folio y fecha alineados a la derecha en la franja
+  // Folio en portada
   doc.setTextColor(255,220,230); doc.setFont("helvetica","normal"); doc.setFontSize(7);
-  doc.text("FOLIO", W - M, 11, { align: "right" });
-  doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(14);
-  doc.text(data.folio || "—", W - M, 20, { align: "right" });
-  doc.setTextColor(255,210,220); doc.setFont("helvetica","normal"); doc.setFontSize(7);
-  doc.text(data.fecha || "", W - M, 27, { align: "right" });
+  doc.text("FOLIO", W - M, 14, { align: "right" });
+  doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+  doc.text(data.folio || "—", W - M, 24, { align: "right" });
+  doc.setTextColor(255,210,220); doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+  doc.text(data.fecha || "", W - M, 32, { align: "right" });
 
-  y = 62;
+  // Título del documento centrado en la franja
+  doc.setTextColor(255,230,235); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+  doc.text("EMPORIO INMOBILIARIO  ·  ÁREA JURÍDICA", W / 2, 54, { align: "center" });
+  doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(10);
+  doc.text("REPORTE DE INVESTIGACIÓN Y DICTAMEN DEL INQUILINO", W / 2, 62, { align: "center" });
 
-  // Título del documento
-  doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(13);
-  doc.text("REPORTE DE INVESTIGACIÓN Y DICTAMEN", W / 2, y, { align: "center" }); y += 7;
-  doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
-  doc.text("PÓLIZA JURÍDICA DE DESALOJO Y DESLINDE — HABITACIONAL", W / 2, y, { align: "center" }); y += 5;
-  doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.line(M, y, W - M, y); y += 8;
+  // ── Nombre del solicitante destacado ─────────────────
+  y = 84;
+  doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(8);
+  doc.text("SOLICITANTE", W / 2, y, { align: "center" }); y += 7;
+  doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(20);
+  doc.text((data.nombre_solicitante || "—").toUpperCase(), W / 2, y, { align: "center" }); y += 8;
+  doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+  doc.text(`${data.tipo_solicitante || "—"}  ·  ${data.tipo_identificacion || "—"}  ·  ${data.num_identificacion || "—"}`, W / 2, y, { align: "center" }); y += 6;
+  doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.line(M + 20, y, W - M - 20, y); y += 10;
 
-  // ── Semáforo de dictamen ─────────────────────────────
-  const dict = data.dictamen || "APROBADO";
-  const sems = [
-    { val: "APROBADO",               icon: "✓", on: VS, bg: VBG, tc: VC, lbl: "APROBADO" },
-    { val: "APROBADO CON CONDICIONES", icon: "!", on: AS, bg: ABG, tc: AC, lbl: "CON CONDICIONES" },
-    { val: "NO APROBADO",            icon: "✗", on: RS, bg: RBG, tc: RC, lbl: "NO APROBADO" },
+  // ── Inmueble e info clave ─────────────────────────────
+  const infoH = 18;
+  const infos = [
+    { l: "INMUEBLE", v: data.direccion_inmueble || "—" },
+    { l: "RENTA MENSUAL", v: data.monto_renta || "—" },
+    { l: "FECHA DE EMISIÓN", v: data.fecha || "—" },
   ];
-  const semH = 28;
-  doc.setFillColor(...GBGX); doc.roundedRect(M, y, AW, semH, 4, 4, "F");
+  const iw = AW / 3 - 2;
+  infos.forEach((info, i) => {
+    const x = M + (iw + 3) * i;
+    doc.setFillColor(...GBGX); doc.roundedRect(x, y, iw, infoH, 2, 2, "F");
+    doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(x, y, iw, infoH, 2, 2, "S");
+    doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+    doc.text(info.l, x + 4, y + 5.5);
+    doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+    const vv = doc.splitTextToSize(info.v, iw - 8);
+    doc.text(vv[0], x + 4, y + 13);
+  });
+  y += infoH + 12;
+
+  // ── SEMÁFORO DE DICTAMEN — Grande y visual ─────────────
+  const dict = data.dictamen || "APROBADO";
+  const [dictBg, dictC, dictTxt] =
+    dict === "APROBADO"                ? [VBG, VC, "APROBADO"] :
+    dict === "APROBADO CON CONDICIONES" ? [ABG, AC, "APROBADO CON CONDICIONES"] :
+                                          [RBG, RC, "NO APROBADO"];
+
+  // Fondo del semáforo
+  doc.setFillColor(...GBGX); doc.roundedRect(M, y, AW, 38, 4, 4, "F");
+  doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(M, y, AW, 38, 4, 4, "S");
+
+  const sems = [
+    { val: "APROBADO",               lbl: "APROBADO",          bg: VBG, on: VC },
+    { val: "APROBADO CON CONDICIONES", lbl: "CON CONDICIONES", bg: ABG, on: AC },
+    { val: "NO APROBADO",            lbl: "NO APROBADO",       bg: RBG, on: RC },
+  ];
   const sw = AW / 3;
   sems.forEach((s, i) => {
-    const cx = M + sw * i + sw / 2, cy = y + semH / 2 - 3;
     const act = dict === s.val;
+    const cx = M + sw * i + sw / 2, cy = y + 18;
+
     if (act) {
-      doc.setFillColor(...s.bg); doc.setDrawColor(...s.on); doc.setLineWidth(1.5);
+      // Circulo activo grande con sombra
+      doc.setFillColor(...s.bg); doc.setDrawColor(...s.on); doc.setLineWidth(2);
+      doc.circle(cx, cy, 11, "FD");
+      // Texto dentro del círculo
+      doc.setFont("helvetica","bold"); doc.setFontSize(9);
+      doc.setTextColor(...s.on);
+      doc.text(i === 0 ? "OK" : i === 1 ? "!" : "X", cx, cy + 3.5, { align: "center" });
     } else {
       doc.setFillColor(240, 240, 240); doc.setDrawColor(...GR3); doc.setLineWidth(0.5);
+      doc.circle(cx, cy, 8, "FD");
+      doc.setFont("helvetica","bold"); doc.setFontSize(7);
+      doc.setTextColor(...GR3);
+      doc.text(i === 0 ? "OK" : i === 1 ? "!" : "X", cx, cy + 2.5, { align: "center" });
     }
-    doc.circle(cx, cy, 8, "FD");
-    doc.setFont("helvetica","bold"); doc.setFontSize(act ? 12 : 8);
-    doc.setTextColor(...(act ? s.on : [209,213,219]));
-    doc.text(s.icon, cx, cy + 4, { align: "center" });
-    doc.setFont("helvetica", act ? "bold" : "normal"); doc.setFontSize(6.5);
-    doc.setTextColor(...(act ? s.tc : [180,180,180]));
-    doc.text(s.lbl, cx, y + semH - 3, { align: "center" });
+    // Label debajo
+    doc.setFont("helvetica", act ? "bold" : "normal");
+    doc.setFontSize(act ? 7.5 : 6.5);
+    doc.setTextColor(...(act ? s.on : GR2));
+    doc.text(s.lbl, cx, y + 34, { align: "center" });
   });
-  y += semH + 10;
+  y += 38 + 10;
 
-  // ── Helpers ──────────────────────────────────────────
-  // Título de sección
+  // ── Puntuación / Score visual ──────────────────────────
+  // Calcular score basado en relación ingreso/renta
+  const rel = data.relacion_ingreso_renta || "";
+  const multMatch = rel.match(/(\d+(?:\.\d+)?)x/);
+  const mult = multMatch ? parseFloat(multMatch[1]) : 0;
+  const score = mult >= 4 ? 95 : mult >= 3 ? 80 : mult >= 2.5 ? 65 : mult >= 2 ? 50 : 35;
+  const scoreColor = score >= 75 ? VC : score >= 55 ? AC : RC;
+  const scoreLabel = score >= 75 ? "PERFIL SÓLIDO" : score >= 55 ? "PERFIL ACEPTABLE" : "PERFIL DE RIESGO";
+
+  doc.setFillColor(...GBGX); doc.roundedRect(M, y, AW, 22, 3, 3, "F");
+  doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(M, y, AW, 22, 3, 3, "S");
+
+  doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
+  doc.text("ÍNDICE DE CONFIANZA DEL PERFIL", M + 6, y + 6);
+  doc.setTextColor(...scoreColor); doc.setFont("helvetica","bold"); doc.setFontSize(11);
+  doc.text(scoreLabel, M + 6, y + 14);
+
+  // Barra de progreso
+  const barX = M + 90, barW = AW - 96, barH = 6;
+  doc.setFillColor(229, 231, 235); doc.roundedRect(barX, y + 9, barW, barH, 2, 2, "F");
+  doc.setFillColor(...scoreColor);
+  doc.roundedRect(barX, y + 9, barW * (score / 100), barH, 2, 2, "F");
+  doc.setTextColor(...scoreColor); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+  doc.text(`${score}%`, barX + barW + 4, y + 14);
+  y += 22 + 6;
+
+  // Texto de póliza
+  doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+  doc.text("PÓLIZA JURÍDICA DE DESALOJO Y DESLINDE — HABITACIONAL", W / 2, y + 4, { align: "center" });
+  y += 10;
+
+  // ── Footer portada ─────────────────────────────────────
+  doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.line(M, H - 14, W - M, H - 14);
+  doc.setFillColor(...ROJO); doc.rect(0, H - 13, 4, 13, "F");
+  doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
+  doc.text("Emporio Inmobiliario  ·  Reserva Territorial Atlixcayotl, San Andrés Cholula, Puebla", M + 2, H - 7);
+  doc.text("222 257 3237  ·  ventas@emporioinmobiliario.mx", M + 2, H - 3);
+  doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(7);
+  doc.text("CONFIDENCIAL", W - M, H - 5, { align: "right" });
+
+  // ═══════════════════════════════════════════════════════
+  // PÁGINAS DE CONTENIDO — desde página 2
+  // ═══════════════════════════════════════════════════════
+  addPg();
+
+  // Header de páginas internas
+  const pageHeader = () => {
+    doc.setFillColor(...ROJO); doc.rect(0, 0, W, 10, "F");
+    doc.setFillColor(...BORG); doc.rect(0, 9, W, 1.5, "F");
+    if (logoData) doc.addImage(logoData, "PNG", M, 0.5, 18, 8);
+    doc.setTextColor(255,230,235); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
+    doc.text("REPORTE DE INVESTIGACIÓN Y DICTAMEN", W / 2, 6.5, { align: "center" });
+    doc.setTextColor(255,210,220); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+    doc.text(data.folio || "", W - M, 6.5, { align: "right" });
+    y = 18;
+  };
+  pageHeader();
+
+  // ── Helpers para contenido ─────────────────────────────
   const st = (t) => {
-    chk(14);
-    doc.setFillColor(...ROJO); doc.rect(M, y, 3, 7, "F");
-    doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(8);
-    doc.text(t, M + 6, y + 5); y += 11;
+    chk(16);
+    // Si cambia de página, agregar header
+    if (y === 18) pageHeader();
+    doc.setFillColor(...ROJO); doc.rect(M, y, 4, 8, "F");
+    doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+    doc.text(t, M + 8, y + 5.5); y += 12;
   };
 
-  // 2 columnas
   const c2 = (l1, v1, l2, v2) => {
-    chk(18); const h = AW / 2 - 2;
+    chk(20); const h = AW / 2 - 2;
     [[l1, v1, M], [l2, v2, M + h + 4]].forEach(([l, v, x]) => {
-      doc.setFillColor(...GBGX); doc.roundedRect(x, y, h, 16, 2, 2, "F");
-      doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(x, y, h, 16, 2, 2, "S");
+      doc.setFillColor(...GBGX); doc.roundedRect(x, y, h, 17, 2, 2, "F");
+      doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(x, y, h, 17, 2, 2, "S");
       doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
       doc.text((l || "").toUpperCase(), x + 4, y + 5.5);
-      doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
-      const vv = doc.splitTextToSize(v || "—", h - 8);
-      doc.text(vv[0], x + 4, y + 12);
+      doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+      const vv = doc.splitTextToSize(String(v || "—"), h - 8);
+      doc.text(vv[0], x + 4, y + 13);
     });
-    y += 19;
+    y += 20;
   };
 
-  // 3 columnas
   const c3 = (l1, v1, l2, v2, l3, v3) => {
-    chk(18); const t = AW / 3 - 1.5;
+    chk(20); const t = AW / 3 - 1.5;
     [[l1, v1, 0], [l2, v2, 1], [l3, v3, 2]].forEach(([l, v, i]) => {
       const x = M + (t + 2.25) * i;
-      doc.setFillColor(...GBGX); doc.roundedRect(x, y, t, 16, 2, 2, "F");
-      doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(x, y, t, 16, 2, 2, "S");
+      doc.setFillColor(...GBGX); doc.roundedRect(x, y, t, 17, 2, 2, "F");
+      doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(x, y, t, 17, 2, 2, "S");
       doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(5.5);
       doc.text((l || "").toUpperCase(), x + 4, y + 5.5);
-      doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(8);
-      doc.text(doc.splitTextToSize(v || "—", t - 8)[0], x + 4, y + 12);
+      doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+      doc.text(doc.splitTextToSize(String(v || "—"), t - 8)[0], x + 4, y + 13);
     });
-    y += 19;
+    y += 20;
   };
 
-  // Texto largo
   const ctxt = (l, v) => {
     if (!v) return;
     const lines = doc.splitTextToSize(v, AW - 10);
-    const lineH = 5.5, h = lines.length * lineH + 14;
+    const h = lines.length * 5.5 + 14;
     chk(h + 12);
     doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
     doc.text((l || "").toUpperCase(), M, y + 4); y += 7;
     doc.setFillColor(...GBGX); doc.roundedRect(M, y, AW, h, 2, 2, "F");
     doc.setDrawColor(...GR3); doc.setLineWidth(0.2); doc.roundedRect(M, y, AW, h, 2, 2, "S");
     doc.setTextColor(...GR1); doc.setFont("helvetica","normal"); doc.setFontSize(8);
-    lines.forEach((line, i) => doc.text(line, M + 5, y + 8 + i * lineH));
+    lines.forEach((line, i) => doc.text(line, M + 5, y + 8 + i * 5.5));
     y += h + 6;
   };
 
@@ -185,58 +293,59 @@ async function generarPDF(data) {
   c3("Tipo de identificación", data.tipo_identificacion, "Núm. de identificación", data.num_identificacion, "Fecha de nacimiento", data.fecha_nacimiento);
   c3("RFC", data.rfc_solicitante || "—", "Estado civil", data.estado_civil || "—", "Cónyuge", data.conyuge || "—");
   c3("Teléfono", data.telefono_inquilino, "Correo electrónico", data.correo_inquilino, "Tiempo en dom. anterior", data.tiempo_domicilio_anterior);
-  c2("Domicilio anterior", data.domicilio_anterior, "Domicilio actual / nuevo inmueble", data.direccion_inmueble);
+  c2("Domicilio anterior", data.domicilio_anterior, "Nuevo inmueble", data.direccion_inmueble);
   c3("Monto de renta", data.monto_renta, "Fecha de inicio", data.fecha_inicio, "Tipo de solicitud", data.tipo_solicitante);
 
-  // ── II. ACTIVIDAD Y FUENTE DE INGRESOS ───────────────
+  // ── II. ACTIVIDAD E INGRESOS ─────────────────────────
   st("II. ACTIVIDAD Y FUENTE DE INGRESOS");
   const fuenteDisplay = data.fuente_ingresos === "OTRA" ? `Otra: ${data.fuente_ingresos_otro || "—"}` : data.fuente_ingresos;
   c2("Actividad principal", data.actividad_principal, "Fuente de ingresos", fuenteDisplay);
   c3("Empresa / Empleador", data.empresa, "Teléfono RRHH", data.tel_empresa, "Ingreso mensual", data.ingreso_mensual);
 
-  // Relación ingreso/renta destacada
-  chk(20);
-  const rel = data.relacion_ingreso_renta || "—";
-  const adecuada = rel.toLowerCase().includes("adecuada") || rel.toLowerCase().includes("x el");
+  // Relación ingreso/renta — visual
+  chk(24);
+  const adecuada = (data.relacion_ingreso_renta || "").toLowerCase().includes("adecuada") || mult >= 2;
   doc.setFillColor(...(adecuada ? VBG : ABG));
   doc.setDrawColor(...(adecuada ? VC : AC)); doc.setLineWidth(0.8);
-  doc.roundedRect(M, y, AW, 16, 3, 3, "FD");
+  doc.roundedRect(M, y, AW, 20, 3, 3, "FD");
+  // Acento lateral
+  doc.setFillColor(...(adecuada ? VC : AC)); doc.roundedRect(M, y, 4, 20, 3, 0, "F");
   doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
-  doc.text("RELACIÓN INGRESO / RENTA", M + 6, y + 5.5);
-  doc.setTextColor(...(adecuada ? VC : AC)); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-  doc.text(rel, M + 6, y + 12);
+  doc.text("RELACIÓN INGRESO / RENTA", M + 8, y + 6);
+  doc.setTextColor(...(adecuada ? VC : AC)); doc.setFont("helvetica","bold"); doc.setFontSize(10);
+  doc.text(data.relacion_ingreso_renta || "—", M + 8, y + 14);
   doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(7);
-  doc.text(`Comprobante: ${data.comprobante_ingresos || "—"}`, W - M - 2, y + 12, { align: "right" });
-  y += 20;
+  doc.text(`Comprobante: ${data.comprobante_ingresos || "—"}`, W - M - 4, y + 14, { align: "right" });
+  y += 24;
 
-  // ── III. USO DEL INMUEBLE / OCUPANTES ────────────────
+  // ── III. USO DEL INMUEBLE ────────────────────────────
   st("III. USO DEL INMUEBLE / OCUPANTES");
-  const mascotasDisplay = data.mascotas === "Si — especificar" ? `Sí — ${data.mascotas_detalle || "por especificar"}` : data.mascotas;
+  const mascotasDisplay = data.mascotas === "Si — especificar" ? `Si — ${data.mascotas_detalle || ""}` : data.mascotas;
   c3("Uso declarado", data.uso_declarado, "Núm. de ocupantes", data.num_ocupantes, "Subarrendamiento", data.subarrendamiento || "No");
   c3("Mascotas", mascotasDisplay, "Personal de servicio", data.personal_servicio, "Modalidad", data.modalidad_servicio || "—");
   if (data.descripcion_uso) ctxt("Descripción del uso", data.descripcion_uso);
 
   // ── IV. REFERENCIAS ──────────────────────────────────
-  const tieneRefs = data.ref1_nombre || data.ref2_nombre || data.ref_fam1 || data.ref_per1;
-  if (tieneRefs) {
+  if (data.ref1_nombre || data.ref2_nombre) {
     st("IV. REFERENCIAS PERSONALES Y FAMILIARES");
     if (data.ref1_nombre) c3("Referencia 1 — Nombre", data.ref1_nombre, "Teléfono", data.ref1_telefono, "Relación", data.ref1_relacion);
     if (data.ref2_nombre) c3("Referencia 2 — Nombre", data.ref2_nombre, "Teléfono", data.ref2_telefono, "Relación", data.ref2_relacion);
-    if (data.ref_fam1) c3("Ref. familiar — Nombre", data.ref_fam1, "Teléfono", data.ref_fam1_tel, "Parentesco", data.ref_fam1_parentesco);
   }
 
   // ── V. ANTECEDENTES LEGALES ──────────────────────────
   st("V. ANTECEDENTES LEGALES — BURÓ MÉXICO");
-  chk(18);
+  chk(20);
   const sinA = data.resultado_legal === "Sin antecedentes";
-  doc.setFillColor(...(sinA ? VBG : RBG)); doc.setDrawColor(...(sinA ? VC : RC)); doc.setLineWidth(0.8);
-  doc.roundedRect(M, y, AW, 15, 3, 3, "FD");
+  doc.setFillColor(...(sinA ? VBG : RBG));
+  doc.setDrawColor(...(sinA ? VC : RC)); doc.setLineWidth(0.8);
+  doc.roundedRect(M, y, AW, 16, 3, 3, "FD");
+  doc.setFillColor(...(sinA ? VC : RC)); doc.roundedRect(M, y, 4, 16, 3, 0, "F");
   doc.setTextColor(...(sinA ? VC : RC)); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-  doc.text(sinA ? "✓  SIN ANTECEDENTES LEGALES RELEVANTES" : "⚠  CON ANTECEDENTES — VER OBSERVACIONES", W / 2, y + 9.5, { align: "center" });
-  y += 19;
-  if (data.observaciones_legales) ctxt("Observaciones de antecedentes", data.observaciones_legales);
+  doc.text(sinA ? "SIN ANTECEDENTES LEGALES RELEVANTES" : "CON ANTECEDENTES — VER OBSERVACIONES", W / 2, y + 10, { align: "center" });
+  y += 20;
+  if (data.observaciones_legales) ctxt("Observaciones", data.observaciones_legales);
 
-  // ── VI. HISTORIAL Y REVISIÓN LEGAL ──────────────────
+  // ── VI. HISTORIAL Y REVISIÓN ─────────────────────────
   st("VI. REFERENCIAS E HISTORIAL / REVISIÓN LEGAL");
   ctxt("Historial de referencias", data.referencias);
   ctxt("Revisión legal", data.revision_legal);
@@ -245,38 +354,36 @@ async function generarPDF(data) {
   st("VII. CONCLUSIÓN Y RECOMENDACIÓN");
   ctxt("Conclusión", data.conclusion);
   if (data.observaciones_analista) {
-    chk(24);
     const ol = doc.splitTextToSize(data.observaciones_analista, AW - 12);
     const oh = ol.length * 4.5 + 14; chk(oh);
     doc.setFillColor(...AZB); doc.setDrawColor(...AZC); doc.setLineWidth(0.8);
     doc.roundedRect(M, y, AW, oh, 3, 3, "FD");
+    doc.setFillColor(...AZC); doc.roundedRect(M, y, 4, oh, 3, 0, "F");
     doc.setTextColor(...AZC); doc.setFont("helvetica","bold"); doc.setFontSize(6.5);
-    doc.text("OBSERVACIONES DEL ANALISTA", M + 6, y + 6);
+    doc.text("OBSERVACIONES DEL ANALISTA", M + 8, y + 7);
     doc.setTextColor(...GR1); doc.setFont("helvetica","normal"); doc.setFontSize(8);
-    doc.text(ol, M + 6, y + 12); y += oh + 6;
+    doc.text(ol, M + 8, y + 13); y += oh + 6;
   }
 
   // ── VIII. DICTAMEN FINAL ─────────────────────────────
   chk(36); st("VIII. DICTAMEN FINAL");
-  const [dbg, dc, dtxt] = dict === "APROBADO" ? [VBG, VC, "APROBADO"]
-    : dict === "APROBADO CON CONDICIONES" ? [ABG, AC, "APROBADO CON CONDICIONES"]
-    : [RBG, RC, "NO APROBADO"];
-  chk(26);
-  doc.setFillColor(...dbg); doc.setDrawColor(...dc); doc.setLineWidth(2);
-  doc.roundedRect(M, y, AW, 24, 5, 5, "FD");
-  doc.setTextColor(...dc); doc.setFont("helvetica","bold"); doc.setFontSize(16);
-  doc.text(dtxt, W / 2, y + 15, { align: "center" }); y += 28;
+  chk(28);
+  doc.setFillColor(...dictBg); doc.setDrawColor(...dictC); doc.setLineWidth(2);
+  doc.roundedRect(M, y, AW, 26, 5, 5, "FD");
+  doc.setFillColor(...dictC); doc.roundedRect(M, y, 6, 26, 5, 0, "F");
+  doc.setTextColor(...dictC); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+  doc.text(dictTxt, W / 2, y + 17, { align: "center" }); y += 30;
   if (data.condiciones) {
     doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(8);
     doc.text(`Condiciones: ${data.condiciones}`, W / 2, y + 5, { align: "center" }); y += 10;
   }
 
   // ── IX. DESLINDE LEGAL ───────────────────────────────
-  chk(22);
+  chk(24);
   doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.line(M, y, W - M, y); y += 6;
-  doc.setFillColor(...ROJO); doc.rect(M, y, 3, 7, "F");
-  doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(8);
-  doc.text("IX. DESLINDE LEGAL", M + 6, y + 5); y += 9;
+  doc.setFillColor(...ROJO); doc.rect(M, y, 4, 8, "F");
+  doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+  doc.text("IX. DESLINDE LEGAL", M + 8, y + 5.5); y += 10;
   doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
   const dl = doc.splitTextToSize(
     "El presente reporte y dictamen se emite con base en la información proporcionada por el solicitante y bajo un estándar de diligencia razonable, sin constituir garantía de pago ni sustituir resoluciones judiciales. Emporio Inmobiliario actúa como intermediario en la verificación de la información y no asume responsabilidad por datos incorrectos o incompletos proporcionados por el solicitante.",
@@ -286,75 +393,116 @@ async function generarPDF(data) {
 
   // ── X. FIRMA ─────────────────────────────────────────
   chk(50);
-  doc.setFillColor(...ROJO); doc.rect(M, y, 3, 7, "F");
-  doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(8);
-  doc.text("X. FIRMA Y AUTORIZACIÓN", M + 6, y + 5); y += 12;
+  doc.setFillColor(...ROJO); doc.rect(M, y, 4, 8, "F");
+  doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+  doc.text("X. FIRMA Y AUTORIZACIÓN", M + 8, y + 5.5); y += 12;
 
-  // Caja de firma profesional
   const fw = AW / 3 - 4;
-  // Columna analista
-  doc.setFillColor(...GBGX); doc.roundedRect(M, y, fw, 36, 3, 3, "F");
-  doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(M, y, fw, 36, 3, 3, "S");
+  // Caja analista
+  doc.setFillColor(...GBGX); doc.roundedRect(M, y, fw, 32, 3, 3, "F");
+  doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(M, y, fw, 32, 3, 3, "S");
   doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
-  doc.text("ANALISTA", M + fw/2, y + 6, { align: "center" });
-  // Línea de firma
-  doc.setDrawColor(...GR1); doc.setLineWidth(0.5);
-  doc.line(M + 6, y + 26, M + fw - 6, y + 26);
+  doc.text("ANALISTA RESPONSABLE", M + fw/2, y + 6, { align: "center" });
+  doc.setDrawColor(...GR1); doc.setLineWidth(0.4);
+  doc.line(M + 8, y + 22, M + fw - 8, y + 22);
   doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
-  doc.text(data.analista || "—", M + fw/2, y + 31, { align: "center" });
-  doc.setTextColor(...ROJO); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
-  doc.text("Firma autorizada", M + fw/2, y + 35, { align: "center" });
+  doc.text(data.analista || "—", M + fw/2, y + 27, { align: "center" });
+  doc.setTextColor(...ROJO); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+  doc.text("Firma autorizada", M + fw/2, y + 31, { align: "center" });
 
-  // Columna fecha
+  // Caja fecha
   const fx2 = M + fw + 8;
-  doc.setFillColor(...GBGX); doc.roundedRect(fx2, y, fw, 36, 3, 3, "F");
-  doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(fx2, y, fw, 36, 3, 3, "S");
+  doc.setFillColor(...GBGX); doc.roundedRect(fx2, y, fw, 32, 3, 3, "F");
+  doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(fx2, y, fw, 32, 3, 3, "S");
   doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6);
   doc.text("FECHA DE EMISIÓN", fx2 + fw/2, y + 6, { align: "center" });
-  doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(10);
-  doc.text(data.fecha || "—", fx2 + fw/2, y + 22, { align: "center" });
+  doc.setTextColor(...GR1); doc.setFont("helvetica","bold"); doc.setFontSize(11);
+  doc.text(data.fecha || "—", fx2 + fw/2, y + 19, { align: "center" });
 
-  // Columna empresa con logo
+  // Caja empresa con logo rojo
   const fx3 = fx2 + fw + 8;
-  doc.setFillColor(...ROJO); doc.roundedRect(fx3, y, fw, 36, 3, 3, "F");
+  doc.setFillColor(...ROJO); doc.roundedRect(fx3, y, fw, 32, 3, 3, "F");
   if (logoData) {
-    doc.addImage(logoData, "PNG", fx3 + 4, y + 4, fw - 8, 14);
+    doc.addImage(logoData, "PNG", fx3 + 4, y + 3, fw - 8, 13);
   } else {
     doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-    doc.text("EMPORIO", fx3 + fw/2, y + 14, { align: "center" });
-    doc.setFont("helvetica","normal"); doc.setFontSize(6);
-    doc.text("INMOBILIARIO", fx3 + fw/2, y + 19, { align: "center" });
+    doc.text("EMPORIO", fx3 + fw/2, y + 13, { align: "center" });
   }
-  doc.setTextColor(255,220,230); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
-  doc.text("emporioinmobiliario.com.mx", fx3 + fw/2, y + 26, { align: "center" });
+  doc.setTextColor(255,220,230); doc.setFont("helvetica","normal"); doc.setFontSize(6);
+  doc.text("emporioinmobiliario.com.mx", fx3 + fw/2, y + 22, { align: "center" });
   doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(6);
-  doc.text("222 257 3237", fx3 + fw/2, y + 31, { align: "center" });
-  doc.text("ventas@emporioinmobiliario.mx", fx3 + fw/2, y + 35.5, { align: "center" });
+  doc.text("222 257 3237", fx3 + fw/2, y + 27, { align: "center" });
+  doc.text("ventas@emporioinmobiliario.mx", fx3 + fw/2, y + 31, { align: "center" });
+  y += 36;
 
-  y += 42;
+  // ═══════════════════════════════════════════════════════
+  // PÁGINA DOCUMENTOS — Identificación y comprobante
+  // ═══════════════════════════════════════════════════════
+  const docIdent = data.doc_identificacion_b64 || data.doc_identificacion;
+  const docComp  = data.doc_comprobante_ingresos_b64 || data.doc_comprobante_ingresos;
 
-  // ── FOOTER EN TODAS LAS PÁGINAS ──────────────────────
+  if (docIdent || docComp) {
+    addPg(); pageHeader();
+    doc.setFillColor(...ROJO); doc.rect(M, y, 4, 8, "F");
+    doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+    doc.text("XI. DOCUMENTOS ADJUNTOS", M + 8, y + 5.5); y += 14;
+    doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+    doc.text("Los siguientes documentos fueron presentados por el solicitante como parte de la investigación.", M, y); y += 8;
+
+    const renderDoc = async (b64, titulo, subtitulo) => {
+      if (!b64) return;
+      chk(80);
+      doc.setTextColor(...GR2); doc.setFont("helvetica","bold"); doc.setFontSize(7);
+      doc.text(titulo.toUpperCase(), M, y + 4); y += 7;
+
+      const isPDF = b64.startsWith("data:application/pdf") || b64.includes(";base64,JVBER");
+      const isImg = b64.startsWith("data:image/");
+
+      if (isImg) {
+        // Mostrar imagen
+        const imgW = AW, imgH = 70;
+        doc.setFillColor(...GBGX); doc.roundedRect(M, y, imgW, imgH, 3, 3, "F");
+        doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.roundedRect(M, y, imgW, imgH, 3, 3, "S");
+        try {
+          doc.addImage(b64, M + 2, y + 2, imgW - 4, imgH - 4);
+        } catch(e) {
+          doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(8);
+          doc.text("No se pudo renderizar la imagen", M + imgW/2, y + imgH/2, { align: "center" });
+        }
+        y += imgH + 4;
+      } else {
+        // Es PDF — mostrar recuadro informativo
+        doc.setFillColor(...AZB); doc.roundedRect(M, y, AW, 22, 3, 3, "F");
+        doc.setDrawColor(...AZC); doc.setLineWidth(0.5); doc.roundedRect(M, y, AW, 22, 3, 3, "S");
+        doc.setFillColor(...AZC); doc.roundedRect(M, y, 4, 22, 3, 0, "F");
+        doc.setTextColor(...AZC); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+        doc.text("DOCUMENTO PDF ADJUNTO", W / 2, y + 10, { align: "center" });
+        doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+        doc.text(subtitulo, W / 2, y + 16, { align: "center" });
+        y += 26;
+      }
+    };
+
+    await renderDoc(docIdent, "Identificación oficial", "INE / Pasaporte / Cédula profesional");
+    if (docComp) { y += 6; await renderDoc(docComp, "Comprobante de ingresos", "Recibos de nómina / Estados de cuenta / CFDI"); }
+  }
+
+  // ── FOOTER EN TODAS LAS PÁGINAS (excepto portada) ────
   const np = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= np; i++) {
+  for (let i = 2; i <= np; i++) {
     doc.setPage(i);
     const ph = doc.internal.pageSize.height;
-    // Línea separadora
-    doc.setDrawColor(...GR3); doc.setLineWidth(0.3);
-    doc.line(M, ph - 12, W - M, ph - 12);
-    // Barra roja lateral izquierda
+    doc.setDrawColor(...GR3); doc.setLineWidth(0.3); doc.line(M, ph - 12, W - M, ph - 12);
     doc.setFillColor(...ROJO); doc.rect(0, ph - 11, 4, 11, "F");
-    // Texto footer
     doc.setTextColor(...GR2); doc.setFont("helvetica","normal"); doc.setFontSize(6.5);
-    doc.text("Emporio Inmobiliario  ·  Reserva Territorial Atlixcayotl, San Andrés Cholula, Puebla", M + 2, ph - 4);
-    doc.text("222 257 3237  ·  ventas@emporioinmobiliario.mx", M + 2, ph - 0.5);
-    // Numeración
+    doc.text("Emporio Inmobiliario  ·  Reserva Territorial Atlixcayotl, San Andrés Cholula, Puebla", M + 2, ph - 6);
+    doc.text("222 257 3237  ·  ventas@emporioinmobiliario.mx", M + 2, ph - 2);
     doc.setTextColor(...ROJO); doc.setFont("helvetica","bold"); doc.setFontSize(7);
-    doc.text(`${i} / ${np}`, W - M, ph - 2.5, { align: "right" });
+    doc.text(`${i} / ${np}`, W - M, ph - 4, { align: "right" });
   }
 
-  doc.save(`Dictamen_${(data.folio || "").slice(0,8)}_${data.nombre_solicitante?.split(" ")[0] || "Emporio"}.pdf`);
-}
-export default function Dictamen() {
+  doc.save(`Dictamen_${(data.folio || "").slice(0,8)}_${(data.nombre_solicitante || "").split(" ")[0]}.pdf`);
+}export default function Dictamen() {
   const router = useRouter();
   const [generando, setGenerando] = useState(false);
   const [guardado, setGuardado] = useState(false);
@@ -464,9 +612,9 @@ export default function Dictamen() {
   };
 
   const DOPTS = [
-    { value: "APROBADO", color: "#22c55e", bg: "#dcfce7", tc: "#166534", icon: "✓", label: "APROBADO" },
+    { value: "APROBADO", color: "#22c55e", bg: "#dcfce7", tc: "#166534", icon: "OK", label: "APROBADO" },
     { value: "APROBADO CON CONDICIONES", color: "#eab308", bg: "#fef9c3", tc: "#854d0e", icon: "!", label: "CON CONDICIONES" },
-    { value: "NO APROBADO", color: "#ef4444", bg: "#fee2e2", tc: "#991b1b", icon: "✗", label: "NO APROBADO" },
+    { value: "NO APROBADO", color: "#ef4444", bg: "#fee2e2", tc: "#991b1b", icon: "X", label: "NO APROBADO" },
   ];
 
   return (
