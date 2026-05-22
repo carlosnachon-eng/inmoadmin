@@ -122,48 +122,57 @@ async function generarPDF(data) {
     </div>`;
   }).join("");
 
-  // ── Documentos ───────────────────────────────────────
-  const docIdent = data.doc_identificacion_b64 || data.doc_identificacion;
-  const docComp  = data.doc_comprobante_ingresos_b64 || data.doc_comprobante_ingresos;
-  const docBuro  = data.doc_buro_mexico || "";
+  // ── Documentos — migración automática base64 → Storage ──
+  const docIdentRaw = data.doc_identificacion_b64 || data.doc_identificacion;
+  const docCompRaw  = data.doc_comprobante_ingresos_b64 || data.doc_comprobante_ingresos;
+  const docBuroRaw  = data.doc_buro_mexico || "";
+  const solicitudId = data._solicitud_id || "";
 
-  // Convierte base64 a Blob URL apta para link en PDF
-  const b64ToUrl = (b64) => {
-    if (!b64) return "";
-    if (!b64.startsWith("data:")) return b64; // ya es path/url
+  const { createClient } = await import("@supabase/supabase-js");
+  const sb = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+
+  // Convierte base64 a Blob
+  const b64ToBlob = (b64) => {
+    const [meta, data64] = b64.split(",");
+    const mime = meta.match(/:(.*?);/)[1];
+    const bytes = atob(data64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    return { blob: new Blob([arr], { type: mime }), mime };
+  };
+
+  // Sube base64 a Storage si aún no está migrado, devuelve signed URL de 7 días
+  const migrateAndSign = async (val, storagePath, dbField) => {
+    if (!val) return "";
+    // Ya es path de Storage — solo firmar
+    if (!val.startsWith("data:")) {
+      const { data: d } = await sb.storage.from("poliza-docs").createSignedUrl(val, 604800);
+      return d?.signedUrl || "";
+    }
+    // Es base64 — subir a Storage
     try {
-      const [meta, data64] = b64.split(",");
-      const mime = meta.match(/:(.*?);/)[1];
-      const bytes = atob(data64);
-      const arr = new Uint8Array(bytes.length);
-      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-      return URL.createObjectURL(new Blob([arr], { type: mime }));
+      const { blob, mime } = b64ToBlob(val);
+      const ext = mime.split("/")[1]?.replace("jpeg", "jpg") || "pdf";
+      const path = `${storagePath}.${ext}`;
+      await sb.storage.from("poliza-docs").upload(path, blob, { upsert: true, contentType: mime });
+      // Actualizar BD con el path para futuras generaciones
+      if (solicitudId && dbField) {
+        await sb.from("solicitudes_inquilino")
+          .update({ [dbField]: path })
+          .eq("id", solicitudId);
+      }
+      const { data: d } = await sb.storage.from("poliza-docs").createSignedUrl(path, 604800);
+      return d?.signedUrl || "";
     } catch { return ""; }
   };
 
-  // Generar URL firmada para paths de Supabase Storage
-  const getSignedUrl = async (path) => {
-    if (!path || path.startsWith("data:") || path.startsWith("blob:")) return path;
-    const { createClient } = await import("@supabase/supabase-js");
-    const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    );
-    const { data: d } = await sb.storage.from("poliza-docs").createSignedUrl(path, 300);
-    return d?.signedUrl || "";
-  };
-
-  // Resolver URL final de cada documento
-  const resolveDoc = async (val) => {
-    if (!val) return "";
-    if (val.startsWith("data:")) return b64ToUrl(val);
-    return getSignedUrl(val);
-  };
-
   const [urlIdent, urlComp, urlBuro] = await Promise.all([
-    resolveDoc(docIdent),
-    resolveDoc(docComp),
-    resolveDoc(docBuro),
+    migrateAndSign(docIdentRaw, `identificaciones/${solicitudId}`, "doc_identificacion"),
+    migrateAndSign(docCompRaw,  `comprobantes/${solicitudId}`,     "doc_comprobante_ingresos"),
+    migrateAndSign(docBuroRaw,  `buro/${solicitudId}`,             null), // buro ya se sube como path
   ]);
 
   const renderDocItem = (label, icono, url, disponible) => `
@@ -171,10 +180,10 @@ async function generarPDF(data) {
       <div style="width:40px;height:40px;border-radius:8px;background:${disponible ? '#f0fdf4' : '#f9fafb'};border:1px solid ${disponible ? '#6ee7b7' : GR3};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${icono}</div>
       <div style="flex:1">
         <div style="font-size:12px;font-weight:700;color:${GR1}">${label}</div>
-        <div style="font-size:10px;color:${GR2};margin-top:2px">${disponible ? 'Documento verificado y analizado — clic en el enlace para abrir' : 'No se adjuntó en esta solicitud'}</div>
-        ${disponible && url ? `<div style="font-size:9px;color:#1e40af;margin-top:3px;word-break:break-all">${url}</div>` : ''}
+        <div style="font-size:10px;color:${GR2};margin-top:3px">${disponible ? 'Documento verificado y analizado' : 'No se adjuntó en esta solicitud'}</div>
+        ${disponible && url ? `<div style="font-size:8px;color:#1e40af;margin-top:4px;word-break:break-all">${url}</div>` : ''}
       </div>
-      <div style="font-size:11px;font-weight:800;color:${disponible ? '#065f46' : GR2};white-space:nowrap">${disponible ? '✓ PRESENTADO' : '— N/A'}</div>
+      <div style="font-size:11px;font-weight:800;color:${disponible ? '#065f46' : GR2};white-space:nowrap;margin-left:8px">${disponible ? '✓ PRESENTADO' : '— N/A'}</div>
     </div>`;
 
   const hayDocs = urlIdent || urlComp || urlBuro;
@@ -460,6 +469,7 @@ export default function Dictamen() {
     dictamen: "APROBADO", condiciones: "",
     analista: "LIC. ZAYETZY MONTES LUNA",
     doc_buro_mexico: "",
+    _solicitud_id: "",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -528,6 +538,7 @@ export default function Dictamen() {
           doc_buro_mexico: s.doc_buro_mexico || "",
           doc_identificacion_b64: s.doc_identificacion_b64 || s.doc_identificacion || "",
           doc_comprobante_ingresos_b64: s.doc_comprobante_ingresos_b64 || s.doc_comprobante_ingresos || "",
+          _solicitud_id: solicitud_id,
         }));
         setCargando(false);
       });
