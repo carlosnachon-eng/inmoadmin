@@ -88,10 +88,20 @@ export default function DetalleFirma() {
   const pct = total > 0 ? Math.round((progreso / total) * 100) : 0
 
   return (
-    <div style={{ maxWidth: '780px', margin: '1rem auto', padding: '0 0.75rem', fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{ marginBottom: '1rem' }}>
-        <Link href="/firmas" style={{ fontSize: '0.85rem', color: '#888', textDecoration: 'none' }}>← Volver a firmas</Link>
+    <div style={{ maxWidth: '780px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Header */}
+      <div style={{ background: '#fff', borderBottom: '3px solid #C8102E', padding: '0 24px', height: 64, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 36, objectFit: 'contain' }} />
+          <div style={{ width: 1, height: 32, background: '#e5e7eb' }} />
+          <div>
+            <p style={{ margin: 0, fontSize: 9, color: '#C8102E', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Área Jurídica</p>
+            <h1 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1a1a2e' }}>Coordinación de Firmas</h1>
+          </div>
+        </div>
+        <Link href="/firmas" style={{ fontSize: '0.85rem', color: '#9ca3af', textDecoration: 'none', fontWeight: 600 }}>← Volver</Link>
       </div>
+      <div style={{ padding: '0 0.75rem' }}>
 
       <div style={{ background: '#1a3c5e', borderRadius: '10px', padding: '1.25rem', marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -233,6 +243,7 @@ export default function DetalleFirma() {
             ))}
           </div>
         </div>
+      </div>
       </div>
     </div>
   )
