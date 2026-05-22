@@ -127,9 +127,23 @@ async function generarPDF(data) {
   const docComp  = data.doc_comprobante_ingresos_b64 || data.doc_comprobante_ingresos;
   const docBuro  = data.doc_buro_mexico || "";
 
-  // Generar URLs firmadas para paths de Storage (no base64)
+  // Convierte base64 a Blob URL apta para link en PDF
+  const b64ToUrl = (b64) => {
+    if (!b64) return "";
+    if (!b64.startsWith("data:")) return b64; // ya es path/url
+    try {
+      const [meta, data64] = b64.split(",");
+      const mime = meta.match(/:(.*?);/)[1];
+      const bytes = atob(data64);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      return URL.createObjectURL(new Blob([arr], { type: mime }));
+    } catch { return ""; }
+  };
+
+  // Generar URL firmada para paths de Supabase Storage
   const getSignedUrl = async (path) => {
-    if (!path || path.startsWith("data:")) return path;
+    if (!path || path.startsWith("data:") || path.startsWith("blob:")) return path;
     const { createClient } = await import("@supabase/supabase-js");
     const sb = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -139,11 +153,17 @@ async function generarPDF(data) {
     return d?.signedUrl || "";
   };
 
-  // Resolver URLs de los docs
+  // Resolver URL final de cada documento
+  const resolveDoc = async (val) => {
+    if (!val) return "";
+    if (val.startsWith("data:")) return b64ToUrl(val);
+    return getSignedUrl(val);
+  };
+
   const [urlIdent, urlComp, urlBuro] = await Promise.all([
-    docIdent && !docIdent.startsWith("data:") ? getSignedUrl(docIdent) : Promise.resolve(docIdent || ""),
-    docComp  && !docComp.startsWith("data:")  ? getSignedUrl(docComp)  : Promise.resolve(docComp  || ""),
-    docBuro  ? getSignedUrl(docBuro) : Promise.resolve(""),
+    resolveDoc(docIdent),
+    resolveDoc(docComp),
+    resolveDoc(docBuro),
   ]);
 
   const renderDocItem = (label, icono, url, disponible) => `
@@ -151,9 +171,10 @@ async function generarPDF(data) {
       <div style="width:40px;height:40px;border-radius:8px;background:${disponible ? '#f0fdf4' : '#f9fafb'};border:1px solid ${disponible ? '#6ee7b7' : GR3};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${icono}</div>
       <div style="flex:1">
         <div style="font-size:12px;font-weight:700;color:${GR1}">${label}</div>
-        <div style="font-size:10px;color:${GR2};margin-top:2px">${disponible ? 'Documento verificado y analizado' : 'No se adjuntó en esta solicitud'}</div>
+        <div style="font-size:10px;color:${GR2};margin-top:2px">${disponible ? 'Documento verificado y analizado — clic en el enlace para abrir' : 'No se adjuntó en esta solicitud'}</div>
+        ${disponible && url ? `<div style="font-size:9px;color:#1e40af;margin-top:3px;word-break:break-all">${url}</div>` : ''}
       </div>
-      <div style="font-size:11px;font-weight:800;color:${disponible ? '#065f46' : GR2}">${disponible ? '✓ PRESENTADO' : '— N/A'}</div>
+      <div style="font-size:11px;font-weight:800;color:${disponible ? '#065f46' : GR2};white-space:nowrap">${disponible ? '✓ PRESENTADO' : '— N/A'}</div>
     </div>`;
 
   const hayDocs = urlIdent || urlComp || urlBuro;
@@ -505,6 +526,8 @@ export default function Dictamen() {
           ref2_telefono: s.ref_per2_telefono || s.ref_fam2_telefono || "",
           ref2_relacion: s.ref_per2_relacion || s.ref_fam2_parentesco || "",
           doc_buro_mexico: s.doc_buro_mexico || "",
+          doc_identificacion_b64: s.doc_identificacion_b64 || s.doc_identificacion || "",
+          doc_comprobante_ingresos_b64: s.doc_comprobante_ingresos_b64 || s.doc_comprobante_ingresos || "",
         }));
         setCargando(false);
       });
