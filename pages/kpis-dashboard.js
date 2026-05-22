@@ -15,12 +15,8 @@ const ADMINS = [
 const ASESORES = ['Ariannet', 'Angélica', 'Rosario', 'Iván', 'Andrea', 'Guillermo']
 
 const VENDEDOR_MAP = {
-  'Ariannet': 'ari',
-  'Angélica': 'angelica',
-  'Iván': 'ivan',
-  'Rosario': 'rosario',
-  'Andrea': 'andrea',
-  'Guillermo': 'guillermo',
+  'Ariannet': 'ari', 'Angélica': 'angelica', 'Iván': 'ivan',
+  'Rosario': 'rosario', 'Andrea': 'andrea', 'Guillermo': 'guillermo',
 }
 
 const MEDALLAS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣']
@@ -42,10 +38,7 @@ export default function KPIsDashboard() {
   const [filtroAsesor, setFiltroAsesor] = useState('Todos')
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setLoading(false)
-    })
+    supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); setLoading(false) })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
     return () => subscription.unsubscribe()
   }, [])
@@ -65,12 +58,10 @@ export default function KPIsDashboard() {
     const mes = mesSeleccionado
     const inicio = `${anio}-${String(mes).padStart(2, '0')}-01`
     const fin = new Date(anio, mes, 0).toISOString().split('T')[0]
-
     const [{ data: kpisData }, { data: cierresData }] = await Promise.all([
       supabase.from('kpis_diarios').select('*').gte('fecha', inicio).lte('fecha', fin).order('fecha', { ascending: false }),
       supabase.from('cierres').select('*').gte('fecha_cierre', inicio).lte('fecha_cierre', fin),
     ])
-
     setKpis(kpisData || [])
     setCierres(cierresData || [])
     setAnimado(false)
@@ -109,40 +100,38 @@ export default function KPIsDashboard() {
   }
 
   const Semaforo = ({ ok, label }) => (
-    <span style={{ fontSize: 10, fontFamily: "'DM Mono', monospace", background: ok ? '#00e67622' : '#ff444422', color: ok ? '#00e676' : '#ff4444', padding: '2px 8px', borderRadius: 99, fontWeight: 600 }}>
+    <span style={{ fontSize: 10, background: ok ? '#b91c3c22' : '#fee2e2', color: ok ? '#b91c3c' : '#991b1b', padding: '2px 8px', borderRadius: 99, fontWeight: 600 }}>
       {ok ? '✓' : '!'} {label}
     </span>
   )
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: '#555', fontFamily: 'monospace', letterSpacing: 4 }}>CARGANDO...</p>
+    <div style={{ minHeight: '100vh', background: '#f8f8f8', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+      <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
   )
 
   if (!session || !ADMINS.includes(session.user.email)) return (
-    <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ textAlign: 'center', color: '#f0f0f0' }}>
-        <p style={{ fontSize: 32 }}>🚫</p>
-        <p style={{ fontFamily: 'monospace' }}>SIN ACCESO</p>
-        <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, background: '#222', border: 'none', borderRadius: 8, padding: '10px 20px', color: '#fff', cursor: 'pointer' }}>SALIR</button>
+    <div style={{ minHeight: '100vh', background: '#f8f8f8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ textAlign: 'center', background: '#fff', padding: 40, borderRadius: 16, border: '1px solid #e5e7eb' }}>
+        <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, marginBottom: 16 }} />
+        <p style={{ fontSize: 16, fontWeight: 700, color: '#4a4a4a', marginBottom: 8 }}>Sin acceso</p>
+        <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 20 }}>Esta página es solo para administradores</p>
+        <button onClick={() => supabase.auth.signOut()} style={{ background: '#b91c3c', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontWeight: 700 }}>Salir</button>
       </div>
     </div>
   )
 
-  const detallesFiltrados = filtroAsesor === 'Todos'
-    ? kpis
-    : kpis.filter(k => k.asesor === filtroAsesor)
+  const detallesFiltrados = filtroAsesor === 'Todos' ? kpis : kpis.filter(k => k.asesor === filtroAsesor)
 
   return (
     <>
       <Head>
-        <title>KPIs Emporio · Scoreboard</title>
+        <title>KPIs Emporio · Dashboard</title>
         <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <style>{`
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { background: #0a0a0a; }
           @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
           .card { animation: slideUp 0.4s ease forwards; }
           .card:nth-child(1) { animation-delay: 0.05s; }
@@ -154,40 +143,43 @@ export default function KPIsDashboard() {
         `}</style>
       </Head>
 
-      <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#f0f0f0', fontFamily: "'Syne', sans-serif" }}>
+      <div style={{ minHeight: '100vh', background: '#f8f8f8', color: '#4a4a4a', fontFamily: 'system-ui, sans-serif' }}>
 
         {/* HEADER */}
-        <div style={{ background: 'linear-gradient(180deg, #111 0%, #0a0a0a 100%)', borderBottom: '1px solid #1a1a1a', padding: '14px 20px' }}>
+        <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '14px 20px' }}>
           <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-            <div>
-              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, letterSpacing: 3, lineHeight: 1 }}>EMPORIO <span style={{ color: '#00e676' }}>SCOREBOARD</span></div>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#444', letterSpacing: 2, marginTop: 2 }}>{meses[mesSeleccionado - 1].toUpperCase()} 2026</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 32, objectFit: 'contain' }} />
+              <div>
+                <p style={{ margin: 0, fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Sistema de KPIs</p>
+                <h1 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#4a4a4a' }}>Scoreboard — {meses[mesSeleccionado - 1]}</h1>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <select value={mesSeleccionado} onChange={e => setMesSeleccionado(parseInt(e.target.value))}
-                style={{ background: '#111', border: '1px solid #222', borderRadius: 6, padding: '6px 10px', color: '#888', fontFamily: "'DM Mono', monospace", fontSize: 11, cursor: 'pointer' }}>
-                {meses.map((m, i) => <option key={i} value={i + 1}>{m.toUpperCase()}</option>)}
+                style={{ background: '#f8f8f8', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', color: '#4a4a4a', fontSize: 13, cursor: 'pointer' }}>
+                {meses.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
               </select>
               <button onClick={() => supabase.auth.signOut()}
-                style={{ background: 'transparent', border: '1px solid #222', borderRadius: 6, padding: '6px 12px', color: '#444', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>
-                SALIR
+                style={{ background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 14px', color: '#9ca3af', fontSize: 13, cursor: 'pointer' }}>
+                Salir
               </button>
             </div>
           </div>
         </div>
 
         {/* TOTALES */}
-        <div style={{ background: '#0f0f0f', borderBottom: '1px solid #1a1a1a', padding: '12px 20px' }}>
+        <div style={{ background: '#b91c3c', padding: '14px 20px' }}>
           <div style={{ maxWidth: 900, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
             {[
-              { label: 'CITAS AGENDADAS', value: totalEquipo.citas_agendadas, color: '#00e676' },
-              { label: 'CITAS EFECTIVAS', value: totalEquipo.citas_efectivas, color: '#ffab00' },
-              { label: 'OPERACIONES', value: totalEquipo.operaciones, color: '#7c6aff' },
-              { label: 'INGRESOS EQUIPO', value: fmt(totalEquipo.ingresos), color: '#00e676' },
+              { label: 'Citas agendadas', value: totalEquipo.citas_agendadas },
+              { label: 'Citas efectivas', value: totalEquipo.citas_efectivas },
+              { label: 'Operaciones', value: totalEquipo.operaciones },
+              { label: 'Ingresos equipo', value: fmt(totalEquipo.ingresos) },
             ].map((s, i) => (
               <div key={i} style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444', letterSpacing: 2, marginBottom: 4 }}>{s.label}</div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: s.color, letterSpacing: 2 }}>{s.value}</div>
+                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.6)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>{s.label}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{s.value}</div>
               </div>
             ))}
           </div>
@@ -196,9 +188,9 @@ export default function KPIsDashboard() {
         {/* TABS */}
         <div style={{ padding: '16px 20px 0', maxWidth: 900, margin: '0 auto' }}>
           <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
-            {[['ranking', '🏆 RANKING'], ['equipo', '📊 EQUIPO'], ['hoy', '📍 HOY'], ['detalle', '📋 DETALLE']].map(([id, label]) => (
+            {[['ranking', '🏆 Ranking'], ['equipo', '📊 Equipo'], ['hoy', '📍 Hoy'], ['detalle', '📋 Detalle']].map(([id, label]) => (
               <button key={id} onClick={() => setVista(id)}
-                style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid ' + (vista === id ? '#00e676' : '#222'), background: vista === id ? '#00e67611' : 'transparent', color: vista === id ? '#00e676' : '#444', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace", letterSpacing: 1 }}>
+                style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${vista === id ? '#b91c3c' : '#e5e7eb'}`, background: vista === id ? '#fff0f3' : '#fff', color: vista === id ? '#b91c3c' : '#9ca3af', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                 {label}
               </button>
             ))}
@@ -210,45 +202,39 @@ export default function KPIsDashboard() {
           {/* RANKING */}
           {vista === 'ranking' && (
             <div>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#333', letterSpacing: 2, marginBottom: 16 }}>ORDENADO POR CIERRES · DESEMPATE POR INGRESOS</div>
+              <p style={{ fontSize: 11, color: '#9ca3af', letterSpacing: 1, marginBottom: 16, textTransform: 'uppercase' }}>Ordenado por cierres · Desempate por ingresos</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {rankingData.map((a, i) => {
                   const esPrimero = i === 0
-                  const barColor = i === 0 ? '#00e676' : i === 1 ? '#ffab00' : i === 2 ? '#ff6b6b' : '#444'
+                  const barColor = i === 0 ? '#b91c3c' : i === 1 ? '#7f1d2e' : i === 2 ? '#dc2626' : '#e5e7eb'
                   return (
                     <div key={a.nombre} className={animado ? 'card' : ''} style={{ opacity: animado ? 1 : 0 }}>
-                      <div style={{
-                        background: esPrimero ? 'linear-gradient(135deg, #0a1a0a, #0f2a0f)' : '#111',
-                        border: `1px solid ${esPrimero ? '#00e67633' : '#1a1a1a'}`,
-                        borderRadius: 12, padding: '16px 20px',
-                        display: 'grid', gridTemplateColumns: '48px 1fr auto', gap: 16, alignItems: 'center',
-                        position: 'relative', overflow: 'hidden',
-                      }}>
-                        {esPrimero && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, #00e676, transparent)' }} />}
+                      <div style={{ background: esPrimero ? '#fff0f3' : '#fff', border: `1px solid ${esPrimero ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 12, padding: '16px 20px', display: 'grid', gridTemplateColumns: '48px 1fr auto', gap: 16, alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
+                        {esPrimero && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#b91c3c' }} />}
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: i < 3 ? 28 : 18 }}>{MEDALLAS[i]}</div>
-                          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#333', marginTop: 2 }}>#{i + 1}</div>
+                          <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>#{i + 1}</div>
                         </div>
                         <div>
-                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, letterSpacing: 2, color: esPrimero ? '#00e676' : '#f0f0f0', marginBottom: 8 }}>{a.nombre.toUpperCase()}</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: esPrimero ? '#b91c3c' : '#4a4a4a', marginBottom: 8 }}>{a.nombre}</div>
                           <div style={{ marginBottom: 8 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>META $90K</span>
-                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: a.progreso >= 100 ? '#00e676' : '#555' }}>{Math.round(a.progreso)}%</span>
+                              <span style={{ fontSize: 10, color: '#9ca3af' }}>Meta $90K</span>
+                              <span style={{ fontSize: 10, color: a.progreso >= 100 ? '#065f46' : '#9ca3af' }}>{Math.round(a.progreso)}%</span>
                             </div>
-                            <div style={{ background: '#1a1a1a', borderRadius: 99, height: 4 }}>
-                              <div style={{ height: '100%', borderRadius: 99, background: a.progreso >= 100 ? '#00e676' : a.progreso >= 50 ? '#ffab00' : barColor, width: `${a.progreso}%`, transition: 'width 1s ease' }} />
+                            <div style={{ background: '#f3f4f6', borderRadius: 99, height: 5 }}>
+                              <div style={{ height: '100%', borderRadius: 99, background: a.progreso >= 100 ? '#065f46' : '#b91c3c', width: `${a.progreso}%`, transition: 'width 1s ease' }} />
                             </div>
                           </div>
-                          <div style={{ display: 'flex', gap: 16 }}>
-                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>CITAS <span style={{ color: '#ffab00' }}>{a.citas_efectivas}</span></span>
-                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>INGRESOS <span style={{ color: '#00e676' }}>{fmt(a.ingresos)}</span></span>
-                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444' }}>CONV <span style={{ color: a.conversion >= 15 ? '#00e676' : '#555' }}>{a.conversion}%</span></span>
+                          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 11, color: '#9ca3af' }}>Citas <strong style={{ color: '#4a4a4a' }}>{a.citas_efectivas}</strong></span>
+                            <span style={{ fontSize: 11, color: '#9ca3af' }}>Ingresos <strong style={{ color: '#065f46' }}>{fmt(a.ingresos)}</strong></span>
+                            <span style={{ fontSize: 11, color: '#9ca3af' }}>Conv <strong style={{ color: a.conversion >= 15 ? '#065f46' : '#9ca3af' }}>{a.conversion}%</strong></span>
                           </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, lineHeight: 1, color: a.operaciones > 0 ? barColor : '#222', letterSpacing: 2 }}>{a.operaciones}</div>
-                          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#333', letterSpacing: 1 }}>CIERRES</div>
+                          <div style={{ fontSize: 48, fontWeight: 900, lineHeight: 1, color: a.operaciones > 0 ? '#b91c3c' : '#e5e7eb' }}>{a.operaciones}</div>
+                          <div style={{ fontSize: 10, color: '#9ca3af' }}>CIERRES</div>
                         </div>
                       </div>
                     </div>
@@ -264,11 +250,11 @@ export default function KPIsDashboard() {
               {ASESORES.map(nombre => {
                 const s = statsAsesor(nombre)
                 return (
-                  <div key={nombre} className={animado ? 'card' : ''} style={{ opacity: animado ? 1 : 0, background: '#111', borderRadius: 12, padding: 16, border: '1px solid #1a1a1a' }}>
+                  <div key={nombre} className={animado ? 'card' : ''} style={{ opacity: animado ? 1 : 0, background: '#fff', borderRadius: 12, padding: 16, border: '1px solid #e5e7eb' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
                       <div>
-                        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, letterSpacing: 2 }}>{nombre.toUpperCase()}</div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#444', marginTop: 2 }}>{s.diasCapturados} DÍAS</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: '#4a4a4a' }}>{nombre}</div>
+                        <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{s.diasCapturados} días capturados</div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
                         <Semaforo ok={s.citasDiariasPromedio >= META_CITAS_DIARIAS} label="Citas" />
@@ -277,28 +263,28 @@ export default function KPIsDashboard() {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 8 }}>
                       {[
-                        { l: 'AGEND', v: s.citas_agendadas, c: '#00e676' },
-                        { l: 'EFECT', v: s.citas_efectivas, c: '#ffab00' },
-                        { l: 'CALIF', v: s.citas_calificadas, c: '#ff6b6b' },
+                        { l: 'Agend', v: s.citas_agendadas, c: '#065f46', bg: '#f0fdf4' },
+                        { l: 'Efect', v: s.citas_efectivas, c: '#92400e', bg: '#fffbeb' },
+                        { l: 'Calif', v: s.citas_calificadas, c: '#b91c3c', bg: '#fff0f3' },
                       ].map((x, i) => (
-                        <div key={i} style={{ background: '#0a0a0a', borderRadius: 6, padding: '6px 8px', textAlign: 'center' }}>
-                          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#333' }}>{x.l}</div>
-                          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: x.c, letterSpacing: 1 }}>{x.v}</div>
+                        <div key={i} style={{ background: x.bg, borderRadius: 8, padding: '6px 8px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 9, color: '#9ca3af', marginBottom: 2 }}>{x.l}</div>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: x.c }}>{x.v}</div>
                         </div>
                       ))}
                     </div>
-                    <div style={{ background: '#0a0a0a', borderRadius: 6, padding: '8px 10px', display: 'flex', justifyContent: 'space-between' }}>
+                    <div style={{ background: '#f8f8f8', borderRadius: 8, padding: '8px 10px', display: 'flex', justifyContent: 'space-between' }}>
                       <div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#333' }}>CIERRES</div>
-                        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: s.operaciones > 0 ? '#00e676' : '#333' }}>{s.operaciones}</div>
+                        <div style={{ fontSize: 9, color: '#9ca3af' }}>Cierres</div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: s.operaciones > 0 ? '#b91c3c' : '#e5e7eb' }}>{s.operaciones}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#333' }}>INGRESOS</div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: s.ingresos > 0 ? '#00e676' : '#333' }}>{fmt(s.ingresos)}</div>
+                        <div style={{ fontSize: 9, color: '#9ca3af' }}>Ingresos</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: s.ingresos > 0 ? '#065f46' : '#e5e7eb' }}>{fmt(s.ingresos)}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#333' }}>CONV</div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: s.conversion >= 15 ? '#00e676' : '#555' }}>{s.conversion}%</div>
+                        <div style={{ fontSize: 9, color: '#9ca3af' }}>Conv</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: s.conversion >= 15 ? '#065f46' : '#9ca3af' }}>{s.conversion}%</div>
                       </div>
                     </div>
                   </div>
@@ -310,34 +296,29 @@ export default function KPIsDashboard() {
           {/* HOY */}
           {vista === 'hoy' && (
             <div>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#333', letterSpacing: 2, marginBottom: 16 }}>
-                {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}
-              </div>
+              <p style={{ fontSize: 11, color: '#9ca3af', letterSpacing: 1, marginBottom: 16, textTransform: 'uppercase' }}>
+                {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {ASESORES.map((nombre, i) => {
+                {ASESORES.map((nombre) => {
                   const reg = kpisHoy.find(k => k.asesor === nombre)
                   return (
-                    <div key={nombre} className={animado ? 'card' : ''} style={{ opacity: animado ? 1 : 0,
-                      background: reg ? '#0a1a0a' : '#111',
-                      border: `1px solid ${reg ? '#00e67633' : '#1a1a1a'}`,
-                      borderRadius: 10, padding: '14px 18px',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    }}>
+                    <div key={nombre} className={animado ? 'card' : ''} style={{ opacity: animado ? 1 : 0, background: reg ? '#fff0f3' : '#fff', border: `1px solid ${reg ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 10, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: reg ? '#00e676' : '#222', boxShadow: reg ? '0 0 8px #00e676' : 'none' }} />
-                        <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, letterSpacing: 2, color: reg ? '#f0f0f0' : '#444' }}>{nombre.toUpperCase()}</span>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: reg ? '#b91c3c' : '#e5e7eb' }} />
+                        <span style={{ fontSize: 15, fontWeight: 700, color: reg ? '#4a4a4a' : '#9ca3af' }}>{nombre}</span>
                       </div>
                       {reg ? (
                         <div style={{ display: 'flex', gap: 20 }}>
-                          {[['AG', reg.citas_agendadas, '#00e676'], ['EF', reg.citas_efectivas, '#ffab00'], ['CAL', reg.citas_calificadas, '#ff6b6b']].map(([l, v, c]) => (
+                          {[['AG', reg.citas_agendadas, '#065f46'], ['EF', reg.citas_efectivas, '#92400e'], ['CAL', reg.citas_calificadas, '#b91c3c']].map(([l, v, c]) => (
                             <div key={l} style={{ textAlign: 'center' }}>
-                              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: c, letterSpacing: 1 }}>{v}</div>
-                              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: '#444' }}>{l}</div>
+                              <div style={{ fontSize: 20, fontWeight: 800, color: c }}>{v}</div>
+                              <div style={{ fontSize: 9, color: '#9ca3af' }}>{l}</div>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#333', letterSpacing: 1 }}>SIN CAPTURA</span>
+                        <span style={{ fontSize: 12, color: '#9ca3af' }}>Sin captura hoy</span>
                       )}
                     </div>
                   )
@@ -350,62 +331,53 @@ export default function KPIsDashboard() {
           {vista === 'detalle' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#333', letterSpacing: 2 }}>
-                  REGISTRO DIARIO — {meses[mesSeleccionado - 1].toUpperCase()}
-                </div>
+                <p style={{ fontSize: 11, color: '#9ca3af', letterSpacing: 1, textTransform: 'uppercase' }}>Registro diario — {meses[mesSeleccionado - 1]}</p>
                 <select value={filtroAsesor} onChange={e => setFiltroAsesor(e.target.value)}
-                  style={{ background: '#111', border: '1px solid #222', borderRadius: 6, padding: '6px 10px', color: '#888', fontFamily: "'DM Mono', monospace", fontSize: 11, cursor: 'pointer' }}>
-                  <option value="Todos">TODOS LOS ASESORES</option>
-                  {ASESORES.map(a => <option key={a} value={a}>{a.toUpperCase()}</option>)}
+                  style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', color: '#4a4a4a', fontSize: 13, cursor: 'pointer' }}>
+                  <option value="Todos">Todos los asesores</option>
+                  {ASESORES.map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
               </div>
-
               {detallesFiltrados.length === 0 && (
-                <div style={{ background: '#111', borderRadius: 12, padding: 40, textAlign: 'center', border: '1px solid #1a1a1a' }}>
-                  <p style={{ color: '#333', fontFamily: "'DM Mono', monospace" }}>SIN REGISTROS</p>
+                <div style={{ background: '#fff', borderRadius: 12, padding: 40, textAlign: 'center', border: '1px solid #e5e7eb' }}>
+                  <p style={{ color: '#9ca3af' }}>Sin registros este periodo</p>
                 </div>
               )}
-
-              <div style={{ background: '#111', borderRadius: 12, overflow: 'hidden', border: '1px solid #1a1a1a' }}>
-                {detallesFiltrados.length > 0 && (
+              {detallesFiltrados.length > 0 && (
+                <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
-                      <tr style={{ background: '#1a1a1a' }}>
-                        {['FECHA', 'ASESOR', 'AGENDADAS', 'EFECTIVAS', 'CALIFICADAS', 'CIERRES', 'INGRESOS', '✓ META'].map(h => (
-                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#555', letterSpacing: 1 }}>{h}</th>
+                      <tr style={{ background: '#f8f8f8' }}>
+                        {['Fecha', 'Asesor', 'Agend', 'Efect', 'Calif', 'Cierres', 'Ingresos', '✓'].map(h => (
+                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {detallesFiltrados.map((r, i) => {
+                      {detallesFiltrados.map((r) => {
                         const cumpleMeta = r.citas_efectivas >= META_CITAS_DIARIAS
                         const vendedorKey = VENDEDOR_MAP[r.asesor] || r.asesor.toLowerCase()
                         const cierresDia = cierres.filter(c => (c.vendedor || '').toLowerCase() === vendedorKey && c.fecha_cierre === r.fecha)
                         const ingresosDia = cierresDia.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0)
                         return (
-                          <tr key={r.id} style={{ borderTop: '1px solid #1a1a1a', background: cumpleMeta ? '#0a1a0a' : 'transparent' }}>
-                            <td style={{ padding: '10px 14px', fontFamily: "'DM Mono', monospace", fontSize: 11, color: '#666' }}>{r.fecha}</td>
-                            <td style={{ padding: '10px 14px', fontFamily: "'Bebas Neue', sans-serif", fontSize: 14, letterSpacing: 1, color: '#f0f0f0' }}>{r.asesor}</td>
-                            <td style={{ padding: '10px 14px', fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: '#00e676', letterSpacing: 1 }}>{r.citas_agendadas}</td>
-                            <td style={{ padding: '10px 14px', fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: '#ffab00', letterSpacing: 1 }}>{r.citas_efectivas}</td>
-                            <td style={{ padding: '10px 14px', fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: '#ff6b6b', letterSpacing: 1 }}>{r.citas_calificadas}</td>
-                            <td style={{ padding: '10px 14px', fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: cierresDia.length > 0 ? '#7c6aff' : '#333', letterSpacing: 1 }}>{cierresDia.length || '—'}</td>
-                            <td style={{ padding: '10px 14px', fontFamily: "'DM Mono', monospace", fontSize: 11, color: ingresosDia > 0 ? '#00e676' : '#333' }}>{ingresosDia > 0 ? fmt(ingresosDia) : '—'}</td>
-                            <td style={{ padding: '10px 14px', fontFamily: "'DM Mono', monospace", fontSize: 12 }}>
-                              {cumpleMeta
-                                ? <span style={{ color: '#00e676' }}>✓</span>
-                                : <span style={{ color: '#ff4444' }}>✗</span>}
-                            </td>
+                          <tr key={r.id} style={{ borderTop: '1px solid #f3f4f6', background: cumpleMeta ? '#fff0f3' : 'transparent' }}>
+                            <td style={{ padding: '10px 14px', fontSize: 12, color: '#9ca3af' }}>{r.fecha}</td>
+                            <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: '#4a4a4a' }}>{r.asesor}</td>
+                            <td style={{ padding: '10px 14px', fontSize: 15, fontWeight: 800, color: '#065f46' }}>{r.citas_agendadas}</td>
+                            <td style={{ padding: '10px 14px', fontSize: 15, fontWeight: 800, color: '#92400e' }}>{r.citas_efectivas}</td>
+                            <td style={{ padding: '10px 14px', fontSize: 15, fontWeight: 800, color: '#b91c3c' }}>{r.citas_calificadas}</td>
+                            <td style={{ padding: '10px 14px', fontSize: 15, fontWeight: 800, color: cierresDia.length > 0 ? '#7c3aed' : '#e5e7eb' }}>{cierresDia.length || '—'}</td>
+                            <td style={{ padding: '10px 14px', fontSize: 12, color: ingresosDia > 0 ? '#065f46' : '#e5e7eb', fontWeight: 600 }}>{ingresosDia > 0 ? fmt(ingresosDia) : '—'}</td>
+                            <td style={{ padding: '10px 14px', fontSize: 14 }}>{cumpleMeta ? <span style={{ color: '#065f46' }}>✓</span> : <span style={{ color: '#b91c3c' }}>✗</span>}</td>
                           </tr>
                         )
                       })}
                     </tbody>
                   </table>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
-
         </div>
       </div>
     </>
