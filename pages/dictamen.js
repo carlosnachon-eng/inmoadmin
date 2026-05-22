@@ -152,7 +152,8 @@ async function generarPDF(data, sb) {
       const { blob, mime } = b64ToBlob(val);
       const ext = mime.split("/")[1]?.replace("jpeg", "jpg") || "pdf";
       const path = `${storagePath}.${ext}`;
-      await sb.storage.from("poliza-docs").upload(path, blob, { upsert: true, contentType: mime });
+      await sb.storage.from("poliza-docs").remove([path]).catch(() => {});
+      await sb.storage.from("poliza-docs").upload(path, blob, { contentType: mime });
       // Actualizar BD con el path para futuras generaciones
       if (solicitudId && dbField) {
         await sb.from("solicitudes_inquilino")
