@@ -65,7 +65,9 @@ async function generarPDF(data) {
   const rel = data.relacion_ingreso_renta || "";
   const multMatch = rel.match(/(\d+(?:\.\d+)?)x/);
   const mult = multMatch ? parseFloat(multMatch[1]) : 0;
-  const score = mult >= 4 ? 95 : mult >= 3 ? 80 : mult >= 2.5 ? 65 : mult >= 2 ? 50 : 35;
+  const scoreRaw = mult >= 4 ? 95 : mult >= 3 ? 80 : mult >= 2.5 ? 65 : mult >= 2 ? 60 : 35;
+  // Si el dictamen es APROBADO, el índice nunca puede mostrar "PERFIL DE RIESGO"
+  const score = dict === "APROBADO" ? Math.max(scoreRaw, 70) : dict === "APROBADO CON CONDICIONES" ? Math.max(scoreRaw, 45) : scoreRaw;
   const scoreLabel = score >= 75 ? "PERFIL SÓLIDO" : score >= 55 ? "PERFIL ACEPTABLE" : "PERFIL DE RIESGO";
   const scoreColor = score >= 75 ? "#065f46" : score >= 55 ? "#92400e" : "#991b1b";
 
@@ -144,7 +146,7 @@ async function generarPDF(data) {
   <div style="width:794px;font-family:'Montserrat',system-ui,sans-serif;background:#f8f8f8;color:${GR1}">
 
     <!-- PORTADA -->
-    <div style="background:#fff;min-height:1123px;position:relative;display:flex;flex-direction:column;page-break-after:always">
+    <div style="background:#fff;height:1123px;position:relative;display:flex;flex-direction:column;page-break-after:always">
       
       <!-- Header portada -->
       <div style="padding:24px 40px 20px;border-bottom:3px solid ${ROJO};position:relative">
@@ -160,7 +162,7 @@ async function generarPDF(data) {
       </div>
 
       <!-- Cuerpo portada -->
-      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 60px;gap:32px">
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:space-evenly;padding:20px 60px">
         
         <!-- Área jurídica -->
         <div style="text-align:center">
@@ -353,7 +355,7 @@ async function generarPDF(data) {
   // Esperar a que carguen fuentes e imágenes
   await new Promise(r => setTimeout(r, 1500));
 
-  const pages = container.querySelectorAll("div[style*='min-height:1123px'], div[style*='min-height: 1123px']");
+  const pages = container.querySelectorAll("div[style*='min-height:1123px'], div[style*='min-height: 1123px'], div[style*='height:1123px'], div[style*='height: 1123px']");
   const doc = new jsPDFClass({ unit: "mm", format: "letter", orientation: "portrait" });
 
   for (let i = 0; i < pages.length; i++) {
