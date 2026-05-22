@@ -291,8 +291,9 @@ export default function Cierres() {
 
   if (!session || session.user.email !== CARLOS) {
     return (
-      <div style={{ minHeight: "100vh", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ background: "#fff", borderRadius: 16, padding: 40, textAlign: "center" }}>
+      <div style={{ minHeight: "100vh", background: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ background: "#fff", borderRadius: 16, padding: 40, textAlign: "center", boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
+          <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 40, objectFit: "contain", marginBottom: 16 }} />
           <p style={{ fontSize: 32, margin: "0 0 16px" }}>🔒</p>
           <p style={{ color: "#6b7280" }}>Acceso restringido</p>
           <a href="/" style={{ color: "#C8102E", fontWeight: 700 }}>← Ir al panel</a>
@@ -316,13 +317,17 @@ export default function Cierres() {
       {toast && <div style={{ position: "fixed", top: 20, right: 20, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 3000 }}>{toast.msg}</div>}
 
       {/* Header */}
-      <div style={{ background: "#1a1a2e", padding: isMobile ? "12px 16px" : "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <p style={{ margin: 0, fontSize: 11, color: "#C8102E", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>Emporio Inmobiliario</p>
-          <h1 style={{ margin: "2px 0 0", fontSize: isMobile ? 16 : 20, fontWeight: 800, color: "#fff" }}>📊 Cierres</h1>
+      <div style={{ background: "#fff", borderBottom: "3px solid #C8102E", padding: isMobile ? "12px 16px" : "0 28px", display: "flex", justifyContent: "space-between", alignItems: "center", height: isMobile ? "auto" : 64 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 36, objectFit: "contain" }} />
+          <div style={{ width: 1, height: 32, background: "#e5e7eb" }} />
+          <div>
+            <p style={{ margin: 0, fontSize: 9, color: "#C8102E", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase" }}>Área Financiera</p>
+            <h1 style={{ margin: 0, fontSize: isMobile ? 15 : 18, fontWeight: 800, color: "#1a1a2e" }}>Cierres</h1>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {!isMobile && <a href="/" style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>← Panel</a>}
+          {!isMobile && <a href="/" style={{ color: "#9ca3af", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>← Panel</a>}
           <button onClick={() => { setEditando(null); setForm(emptyForm); setShowModal(true); }} style={{ background: "#C8102E", color: "#fff", border: "none", borderRadius: 10, padding: isMobile ? "8px 14px" : "10px 20px", fontWeight: 700, fontSize: isMobile ? 13 : 14, cursor: "pointer" }}>+ Nuevo</button>
         </div>
       </div>
