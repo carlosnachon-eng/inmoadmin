@@ -4,12 +4,12 @@ import Head from 'next/head'
 import { supabase } from '../../../lib/supabase'
 
 const C = {
-  bg: '#0F0F0F', card: '#161616', border: '#222', border2: '#2E2E2E',
-  gold: '#C8973A', goldLight: '#C8973A20', goldText: '#E8B86D',
-  green: '#2A5C3F', greenText: '#5EC98A', greenBg: '#1A2E20',
-  red: '#8B3A3A', redText: '#E07070', redBg: '#2A1A1A',
-  blue: '#1A3A5C', blueText: '#70A8E0', blueBg: '#1A2A3A',
-  text: '#E8E8E8', muted: '#888', faint: '#444', white: '#FFFFFF',
+  bg: '#f8f8f8', card: '#ffffff', border: '#e5e7eb', border2: '#e5e7eb',
+  gold: '#b91c3c', goldLight: '#fff0f3', goldText: '#b91c3c',
+  green: '#065f46', greenText: '#065f46', greenBg: '#f0fdf4',
+  red: '#991b1b', redText: '#991b1b', redBg: '#fee2e2',
+  blue: '#1e40af', blueText: '#1e40af', blueBg: '#dbeafe',
+  text: '#374151', muted: '#9ca3af', faint: '#d1d5db', white: '#FFFFFF',
 }
 
 const STATUS_CONFIG = {
@@ -24,11 +24,11 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-MX', { day: '2-dig
 
 const Seccion = ({ titulo, numero, children }) => (
   <div style={{ marginBottom: 32 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, paddingBottom: 12, borderBottom: `2px solid ${C.gold}` }}>
-      <div style={{ width: 32, height: 32, borderRadius: '50%', background: C.gold, color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, flexShrink: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, paddingBottom: 12, borderBottom: '2px solid #b91c3c' }}>
+      <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#b91c3c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, flexShrink: 0 }}>
         {numero}
       </div>
-      <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{titulo}</h2>
+      <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#374151', fontFamily: 'Georgia, serif' }}>{titulo}</h2>
     </div>
     {children}
   </div>
@@ -42,16 +42,16 @@ const Grid = ({ children, cols = 3 }) => (
 
 const Campo = ({ label, value, highlight }) => (
   <div style={{ marginBottom: 4 }}>
-    <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</p>
-    <p style={{ margin: '3px 0 0', fontSize: 14, color: highlight ? C.goldText : (value ? C.text : C.faint), fontWeight: highlight ? 700 : 400 }}>
+    <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</p>
+    <p style={{ margin: '3px 0 0', fontSize: 14, color: highlight ? '#b91c3c' : (value ? '#374151' : '#d1d5db'), fontWeight: highlight ? 700 : 400 }}>
       {value || '—'}
     </p>
   </div>
 )
 
 const Referencia = ({ num, tipo, nombre, rel, telefono }) => (
-  <div style={{ background: '#111', borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}>
-    <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: C.goldText, textTransform: 'uppercase' }}>
+  <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}>
+    <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: '#b91c3c', textTransform: 'uppercase' }}>
       {tipo} {num}
     </p>
     <Grid cols={3}>
@@ -98,13 +98,13 @@ export default function FichaSolicitud() {
   const handlePrint = () => window.print()
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontFamily: 'system-ui' }}>
+    <div style={{ minHeight: '100vh', background: '#f8f8f8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontFamily: 'system-ui' }}>
       Cargando...
     </div>
   )
 
   if (!sol) return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontFamily: 'system-ui' }}>
+    <div style={{ minHeight: '100vh', background: '#f8f8f8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontFamily: 'system-ui' }}>
       Solicitud no encontrada.
     </div>
   )
@@ -126,11 +126,11 @@ export default function FichaSolicitud() {
         `}</style>
       </Head>
 
-      <div style={{ minHeight: '100vh', background: C.bg, fontFamily: "'DM Sans', system-ui, sans-serif", color: C.text }}>
+      <div style={{ minHeight: '100vh', background: '#f8f8f8', fontFamily: "system-ui, sans-serif", color: '#374151' }}>
 
         {/* Header */}
-        <div className="no-print" style={{ background: C.card, borderBottom: `1px solid ${C.border}`, padding: '14px 28px', display: 'flex', alignItems: 'center', gap: 16, position: 'sticky', top: 0, zIndex: 100 }}>
-          <button onClick={() => router.back()} style={{ background: 'transparent', border: `1px solid ${C.border2}`, borderRadius: 8, padding: '6px 14px', color: C.muted, fontSize: 13, cursor: 'pointer' }}>
+        <div className="no-print" style={{ background: '#ffffff', borderBottom: '1px solid #e5e7eb', padding: '14px 28px', display: 'flex', alignItems: 'center', gap: 16, position: 'sticky', top: 0, zIndex: 100 }}>
+          <button onClick={() => router.back()} style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 14px', color: '#9ca3af', fontSize: 13, cursor: 'pointer' }}>
             ← Volver
           </button>
           <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="" style={{ height: 28, objectFit: 'contain' }} />
@@ -138,12 +138,12 @@ export default function FichaSolicitud() {
             <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: C.white }}>{nombre}</p>
             <p style={{ margin: 0, fontSize: 11, color: C.muted }}>Ficha de investigación · {fmtDate(sol.created_at)}</p>
           </div>
-          <button onClick={handlePrint} style={{ background: '#1A1A1A', border: `1px solid ${C.border2}`, borderRadius: 8, padding: '8px 16px', color: C.muted, fontSize: 13, cursor: 'pointer' }}>
+          <button onClick={handlePrint} style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 16px', color: '#9ca3af', fontSize: 13, cursor: 'pointer' }}>
             🖨️ Imprimir
           </button>
           <button
             onClick={() => window.open(`/dictamen?solicitud_id=${id}`, '_blank')}
-            style={{ background: '#2A1A1A', border: '1px solid #8B3A3A', borderRadius: 8, padding: '8px 16px', color: '#E07070', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}
+            style={{ background: '#fff0f3', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 16px', color: '#b91c3c', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}
           >
             📋 Generar dictamen
           </button>
@@ -152,7 +152,7 @@ export default function FichaSolicitud() {
         <div style={{ maxWidth: 960, margin: '0 auto', padding: '28px 20px' }}>
 
           {/* Status banner */}
-          <div className="no-print" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: '20px 24px', marginBottom: 28, display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div className="no-print" style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '20px 24px', marginBottom: 28, display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ flex: 1 }}>
               <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status de la investigación</p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -175,24 +175,24 @@ export default function FichaSolicitud() {
                 onChange={e => setNotas(e.target.value)}
                 rows={3}
                 placeholder="Observaciones del dictamen, verificación de referencias, notas de investigación..."
-                style={{ width: '100%', background: '#1E1E1E', border: `1px solid ${C.border2}`, borderRadius: 8, padding: '10px 14px', color: C.text, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                style={{ width: '100%', background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px', color: '#374151', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
               />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 20 }}>
-              <button onClick={handleSave} disabled={saving} style={{ background: C.gold, color: '#000', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+              <button onClick={handleSave} disabled={saving} style={{ background: '#b91c3c', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
                 {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar'}
               </button>
             </div>
           </div>
 
           {/* Ficha */}
-          <div className="print-card" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: '32px 36px' }}>
+          <div className="print-card" style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '32px 36px' }}>
 
             {/* Encabezado imprimible */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
               <div>
-                <p style={{ margin: 0, fontSize: 11, color: C.gold, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Emporio Inmobiliario</p>
-                <h1 style={{ margin: '4px 0 0', fontSize: 24, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>Solicitud de Investigación</h1>
+                <p style={{ margin: 0, fontSize: 11, color: '#b91c3c', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Emporio Inmobiliario</p>
+                <h1 style={{ margin: '4px 0 0', fontSize: 24, fontWeight: 700, color: '#374151', fontFamily: 'Georgia, serif' }}>Solicitud de Investigación</h1>
                 <p style={{ margin: '4px 0 0', fontSize: 13, color: C.muted }}>{nombre} · {fmtDate(sol.created_at)}</p>
               </div>
               <div style={{ textAlign: 'right' }}>
@@ -327,7 +327,7 @@ export default function FichaSolicitud() {
             {/* 8. Documentos */}
             <Seccion numero="8" titulo="Documentos adjuntos">
               <Grid cols={2}>
-                <div style={{ background: '#111', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ fontSize: 24 }}>{sol.doc_identificacion_b64 || sol.doc_identificacion ? '✅' : '❌'}</span>
                   <div>
                     <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>Identificación oficial</p>
@@ -344,13 +344,13 @@ export default function FichaSolicitud() {
                             .then(({ data }) => data?.signedUrl && window.open(data.signedUrl, '_blank'))
                         }
                       }}
-                      style={{ marginLeft: 'auto', background: C.goldLight, border: `1px solid ${C.gold}`, color: C.goldText, borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
+                      style={{ marginLeft: 'auto', background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
                     >
                       Ver
                     </button>
                   )}
                 </div>
-                <div style={{ background: '#111', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ fontSize: 24 }}>{sol.doc_comprobante_ingresos_b64 || sol.doc_comprobante_ingresos ? '✅' : '❌'}</span>
                   <div>
                     <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>Comprobante de ingresos</p>
@@ -367,7 +367,7 @@ export default function FichaSolicitud() {
                             .then(({ data }) => data?.signedUrl && window.open(data.signedUrl, '_blank'))
                         }
                       }}
-                      style={{ marginLeft: 'auto', background: C.goldLight, border: `1px solid ${C.gold}`, color: C.goldText, borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
+                      style={{ marginLeft: 'auto', background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
                     >
                       Ver
                     </button>
@@ -379,8 +379,8 @@ export default function FichaSolicitud() {
             {/* Notas jurídicas (visible en impresión) */}
             {notas && (
               <Seccion numero="9" titulo="Notas jurídicas">
-                <div style={{ background: '#111', borderRadius: 8, padding: '16px 20px' }}>
-                  <p style={{ margin: 0, fontSize: 14, color: C.text, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{notas}</p>
+                <div style={{ background: '#f9fafb', borderRadius: 8, padding: '16px 20px' }}>
+                  <p style={{ margin: 0, fontSize: 14, color: '#374151', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{notas}</p>
                 </div>
               </Seccion>
             )}
