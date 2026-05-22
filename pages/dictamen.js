@@ -33,7 +33,8 @@ function SecTitle({ children }) {
 }
 
 async function generarPDF(data) {
-  const { jsPDF } = await import("jspdf");
+  const jspdfModule = await import("jspdf");
+  const jsPDF = jspdfModule.jsPDF || jspdfModule.default?.jsPDF || jspdfModule.default;
   const doc = new jsPDF({ unit: "mm", format: "letter" });
   const W = 215.9, H = 279.4, M = 18, AW = W - M * 2;
   let y = 0;
