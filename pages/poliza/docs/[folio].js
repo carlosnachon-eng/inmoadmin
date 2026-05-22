@@ -35,16 +35,16 @@ export default function DocsPublico() {
   useEffect(() => {
     if (!autenticado || !folio) return;
     setCargando(true);
-    // El folio son los primeros 8 chars del solicitud_id en mayúsculas
+    const prefix = folio.toLowerCase();
     supabase
       .from("solicitudes_inquilino")
       .select("id, nombre_completo, razon_social, nombre_representante, doc_identificacion, doc_comprobante_ingresos, doc_buro_mexico, doc_identificacion_b64, doc_comprobante_ingresos_b64")
-      .ilike("id", `${folio.toLowerCase()}%`)
-      .single()
-      .then(async ({ data: s }) => {
-        if (s) {
-          await procesarSolicitud(s);
-        }
+      .gte("id", prefix)
+      .lte("id", prefix + "-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz")
+      .limit(1)
+      .then(async ({ data }) => {
+        const s = data?.[0];
+        if (s) await procesarSolicitud(s);
         setCargando(false);
       });
   }, [autenticado, folio]);
