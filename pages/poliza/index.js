@@ -91,27 +91,27 @@ const st = {
   page: { minHeight: '100vh', background: C.bg, fontFamily: "'DM Sans', system-ui, sans-serif", color: C.text },
   header: { background: C.card, borderBottom: `1px solid ${C.border}`, padding: '0 28px', display: 'flex', alignItems: 'center', gap: 20, height: 60 },
   logo: { height: 32, objectFit: 'contain' },
-  headerTitle: { fontSize: 15, fontWeight: 700, color: C.white },
+  headerTitle: { fontSize: 15, fontWeight: 700, color: C.text },
   headerSub: { fontSize: 12, color: C.muted },
   nav: { display: 'flex', gap: 4, marginLeft: 32 },
   navBtn: { padding: '6px 16px', borderRadius: 8, border: 'none', background: 'transparent', color: C.muted, fontSize: 13, cursor: 'pointer', fontWeight: 500 },
   navBtnActive: { background: C.goldLight, color: C.goldText },
   main: { maxWidth: 1100, margin: '0 auto', padding: '28px 20px' },
-  sectionTitle: { fontSize: 20, fontWeight: 700, color: C.white, margin: '0 0 4px', fontFamily: 'Georgia, serif' },
+  sectionTitle: { fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 4px', fontFamily: 'Georgia, serif' },
   sectionSub: { fontSize: 13, color: C.muted, margin: '0 0 24px' },
   card: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden' },
-  tableHead: { background: '#111', borderBottom: `1px solid ${C.border}` },
+  tableHead: { background: '#f9fafb', borderBottom: `1px solid ${C.border}` },
   th: { padding: '12px 16px', fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'left' },
   td: { padding: '14px 16px', fontSize: 13, borderBottom: `1px solid ${C.border}`, verticalAlign: 'middle' },
   trHover: { cursor: 'pointer', transition: 'background 0.15s' },
   btn: { padding: '9px 18px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'opacity 0.15s' },
-  btnGold: { background: C.gold, color: '#000' },
+  btnGold: { background: C.gold, color: '#fff' },
   btnGhost: { background: 'transparent', border: `1px solid ${C.border2}`, color: C.muted },
   btnGreen: { background: C.green, color: C.greenText },
   btnRed: { background: C.red, color: C.redText },
-  input: { width: '100%', background: '#1E1E1E', border: `1px solid ${C.border2}`, borderRadius: 8, padding: '10px 14px', color: C.text, fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' },
+  input: { width: '100%', background: '#ffffff', border: `1px solid ${C.border2}`, borderRadius: 8, padding: '10px 14px', color: C.text, fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' },
   label: { display: 'block', fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 6, letterSpacing: '0.3px' },
-  modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, overflowY: 'auto', padding: '40px 16px' },
+  modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, overflowY: 'auto', padding: '40px 16px' },
   modalCard: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, width: '100%', maxWidth: 720, padding: 32 },
   divider: { height: 1, background: C.border, margin: '24px 0' },
   grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 },
@@ -152,26 +152,26 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
   set('credencial_comprador', c.folio_identificacion_comprador || '')
 }
 
-  const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #333', background: '#1a1a2e', color: '#fff', fontSize: 13, boxSizing: 'border-box', fontFamily: 'system-ui' }
+  const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#ffffff', color: '#374151', fontSize: 13, boxSizing: 'border-box', fontFamily: 'system-ui' }
   const lbl = { display: 'block', fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }
   const fld = { marginBottom: 12 }
-  const sec = { color: '#c8a96e', fontWeight: 700, fontSize: 13, margin: '20px 0 10px', borderBottom: '1px solid #333', paddingBottom: 6 }
+  const sec = { color: '#b91c3c', fontWeight: 700, fontSize: 13, margin: '20px 0 10px', borderBottom: '1px solid #e5e7eb', paddingBottom: 6 }
   const grid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 16 }}>
-      <div style={{ background: '#111', border: '1px solid #333', borderRadius: 16, width: '100%', maxWidth: 680, maxHeight: '92vh', overflowY: 'auto', padding: 28, color: '#e8e8e8' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 16 }}>
+      <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 16, width: '100%', maxWidth: 680, maxHeight: '92vh', overflowY: 'auto', padding: 28, color: '#374151' }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#fff' }}>Promesa de Compraventa</h2>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#374151' }}>Promesa de Compraventa</h2>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af' }}>{v.nombre_propietario} · {v.direccion_inmueble}</p>
           </div>
-          <button onClick={onClose} style={{ background: '#222', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 16 }}>✕</button>
+          <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', color: '#374151', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 16 }}>✕</button>
         </div>
 
-        <div style={{ background: '#1a1a2e', border: '1px solid #c8a96e40', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
-          <p style={{ margin: 0, fontSize: 12, color: '#c8a96e' }}>Precio: <strong>{fmt(v.precio_venta)}</strong> · Gravamen: <strong>{v.libre_gravamen ? 'Libre' : (v.institucion_gravamen || 'Con hipoteca')}</strong></p>
+        <div style={{ background: '#fff0f3', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+          <p style={{ margin: 0, fontSize: 12, color: '#b91c3c' }}>Precio: <strong>{fmt(v.precio_venta)}</strong> · Gravamen: <strong>{v.libre_gravamen ? 'Libre' : (v.institucion_gravamen || 'Con hipoteca')}</strong></p>
         </div>
 {compradores.length > 0 && (
   <div style={fld}>
@@ -220,7 +220,7 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
           <div style={{ display: 'flex', gap: 8 }}>
             {[{ v: 'contado', l: 'Contado' }, { v: 'infonavit', l: 'INFONAVIT' }, { v: 'bancario', l: 'Crédito bancario' }].map(op => (
               <button key={op.v} onClick={() => set('tipo_credito', op.v)}
-                style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${form.tipo_credito === op.v ? '#c8a96e' : '#333'}`, background: form.tipo_credito === op.v ? '#c8a96e20' : '#1a1a1a', color: form.tipo_credito === op.v ? '#c8a96e' : '#9ca3af', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${form.tipo_credito === op.v ? '#c8a96e' : '#333'}`, background: form.tipo_credito === op.v ? '#fff0f3' : '#f9fafb', color: form.tipo_credito === op.v ? '#b91c3c' : '#9ca3af', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                 {op.l}
               </button>
             ))}
@@ -230,8 +230,8 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
           <div style={fld}><label style={lbl}>Nombre del banco</label><input style={inp} value={form.nombre_banco} onChange={e => set('nombre_banco', e.target.value)} placeholder="Ej: BBVA, Banorte, Scotiabank" /></div>
         )}
 
-        <div style={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 10, padding: 14, marginBottom: 10 }}>
-          <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#c8a96e' }}>Pago 1 — Anticipo/Garantía</p>
+        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10 }}>
+          <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#b91c3c' }}>Pago 1 — Anticipo/Garantía</p>
           <div style={grid2}>
             <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago1_monto} onChange={e => set('pago1_monto', e.target.value)} placeholder="0" /></div>
             <div style={fld}><label style={lbl}>Fecha</label><input style={inp} type="date" value={form.pago1_fecha} onChange={e => set('pago1_fecha', e.target.value)} /></div>
@@ -241,13 +241,13 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
 
         <div style={{ marginBottom: 10 }}>
           <button onClick={() => set('tiene_pago2', !form.tiene_pago2)}
-            style={{ background: 'none', border: '1px dashed #555', borderRadius: 8, color: '#9ca3af', padding: '8px 14px', cursor: 'pointer', fontSize: 12, width: '100%' }}>
+            style={{ background: 'none', border: '1px dashed #d1d5db', borderRadius: 8, color: '#9ca3af', padding: '8px 14px', cursor: 'pointer', fontSize: 12, width: '100%' }}>
             {form.tiene_pago2 ? '✕ Quitar segundo pago' : '+ Agregar segundo pago en efectivo'}
           </button>
         </div>
         {form.tiene_pago2 && (
-          <div style={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 10, padding: 14, marginBottom: 10 }}>
-            <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#c8a96e' }}>Pago 2 — Segundo pago en efectivo</p>
+          <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10 }}>
+            <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#b91c3c' }}>Pago 2 — Segundo pago en efectivo</p>
             <div style={grid2}>
               <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago2_monto} onChange={e => set('pago2_monto', e.target.value)} placeholder="0" /></div>
               <div style={fld}><label style={lbl}>Fecha</label><input style={inp} type="date" value={form.pago2_fecha} onChange={e => set('pago2_fecha', e.target.value)} /></div>
@@ -256,7 +256,7 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
           </div>
         )}
 
-        <div style={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 10, padding: 14, marginBottom: 10 }}>
+        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10 }}>
           <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#c8a96e' }}>Pago 3 — Resto ({form.tipo_credito === 'contado' ? 'Contado' : form.tipo_credito === 'infonavit' ? 'INFONAVIT' : form.nombre_banco || 'Banco'})</p>
           <div style={grid2}>
             <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago3_monto} onChange={e => set('pago3_monto', e.target.value)} placeholder="0" /></div>
@@ -275,13 +275,13 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
         <div style={fld}><label style={lbl}>Fecha (texto)</label><input style={inp} value={form.fecha_firma} onChange={e => set('fecha_firma', e.target.value)} placeholder="Ej: diecisiete de abril del año dos mil veintiséis" /></div>
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
-          <button onClick={onClose} style={{ background: '#222', border: '1px solid #333', color: '#9ca3af', borderRadius: 10, padding: '11px 20px', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
+          <button onClick={onClose} style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', color: '#9ca3af', borderRadius: 10, padding: '11px 20px', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
           <button onClick={() => {
             if (!form.nombre_comprador) { alert('El nombre del comprador es requerido'); return }
             if (!form.pago1_monto) { alert('El anticipo es requerido'); return }
             if (!form.pago3_monto) { alert('El resto del precio es requerido'); return }
             onGenerar(form)
-          }} style={{ background: '#c8a96e', color: '#000', border: 'none', borderRadius: 10, padding: '11px 24px', cursor: 'pointer', fontWeight: 800, fontSize: 14 }}>
+          }} style={{ background: '#b91c3c', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 24px', cursor: 'pointer', fontWeight: 800, fontSize: 14 }}>
             🖹 Generar Promesa
           </button>
         </div>
@@ -475,10 +475,10 @@ function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect }) {
             {expedientes.map(e => (
               <tr key={e.id} onClick={() => onSelect(e)}
                 style={st.trHover}
-                onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
+                onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
                 onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
                 <td style={st.td}>
-                  <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{e.nombre_arrendatario || '—'}</p>
+                  <p style={{ margin: 0, fontWeight: 600, color: C.text }}>{e.nombre_arrendatario || '—'}</p>
                   <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{e.nombre_arrendador || '—'}</p>
                 </td>
                 <td style={st.td}>
@@ -506,8 +506,8 @@ function TabPropietarios({ propietarios, onSelect }) {
       <p style={{ fontSize: 40, margin: '0 0 12px' }}>🏠</p>
       <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin propietarios registrados</p>
       <p>Comparte el link de registro con los propietarios</p>
-      <div style={{ marginTop: 16, background: '#1A1A1A', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
-        <code style={{ color: C.goldText, fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-propietario</code>
+      <div style={{ marginTop: 16, background: '#f3f4f6', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
+        <code style={{ color: '#b91c3c', fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-propietario</code>
       </div>
     </div>
   )
@@ -532,10 +532,10 @@ function TabPropietarios({ propietarios, onSelect }) {
             {propietarios.map(p => (
               <tr key={p.id} onClick={() => onSelect(p)}
                 style={st.trHover}
-                onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
+                onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
                 onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
                 <td style={st.td}>
-                  <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{p.nombre_propietario}</p>
+                  <p style={{ margin: 0, fontWeight: 600, color: C.text }}>{p.nombre_propietario}</p>
                   <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{p.telefono_propietario}</p>
                 </td>
                 <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{p.direccion_inmueble}</span></td>
@@ -561,8 +561,8 @@ function TabSolicitudes({ solicitudes, onSelect, onNuevoExp }) {
       <p style={{ fontSize: 40, margin: '0 0 12px' }}>📋</p>
       <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin solicitudes aún</p>
       <p>Comparte el link con los inquilinos interesados</p>
-      <div style={{ marginTop: 16, background: '#1A1A1A', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
-        <code style={{ color: C.goldText, fontSize: 13 }}>app.emporioinmobiliario.com.mx/solicitud-inquilino</code>
+      <div style={{ marginTop: 16, background: '#f3f4f6', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
+        <code style={{ color: '#b91c3c', fontSize: 13 }}>app.emporioinmobiliario.com.mx/solicitud-inquilino</code>
       </div>
     </div>
   )
@@ -587,10 +587,10 @@ function TabSolicitudes({ solicitudes, onSelect, onNuevoExp }) {
             {solicitudes.map(sol => (
               <tr key={sol.id}
                 style={st.trHover}
-                onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
+                onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
                 onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
                 <td style={st.td} onClick={() => onSelect(sol)}>
-                  <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{sol.nombre_completo || sol.razon_social || '—'}</p>
+                  <p style={{ margin: 0, fontWeight: 600, color: C.text }}>{sol.nombre_completo || sol.razon_social || '—'}</p>
                   <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{sol.telefono}</p>
                 </td>
                 <td style={st.td} onClick={() => onSelect(sol)}><span style={{ fontSize: 12, color: C.muted }}>{sol.inmueble_interes || '—'}</span></td>
@@ -792,8 +792,8 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
             <p style={{ fontSize: 40, margin: '0 0 12px' }}>🏠</p>
             <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin vendedores registrados</p>
             <p>Comparte el link con los propietarios que quieran vender</p>
-            <div style={{ marginTop: 16, background: '#1A1A1A', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
-              <code style={{ color: C.goldText, fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-vendedor</code>
+            <div style={{ marginTop: 16, background: '#f3f4f6', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
+              <code style={{ color: '#b91c3c', fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-vendedor</code>
             </div>
           </div>
         ) : (
@@ -813,10 +813,10 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
                 {vendedores.map(v => (
                   <tr key={v.id} onClick={() => onSelectVendedor(v)}
                     style={st.trHover}
-                    onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
+                    onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
                     onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
                     <td style={st.td}>
-                      <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{v.nombre_propietario}</p>
+                      <p style={{ margin: 0, fontWeight: 600, color: C.text }}>{v.nombre_propietario}</p>
                       <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{v.telefono_propietario}</p>
                       {v.tipo_persona_propietario === 'moral' && (
                         <span style={{ fontSize: 10, background: '#1A2A3A', color: C.blueText, padding: '2px 6px', borderRadius: 4 }}>Persona moral</span>
@@ -848,8 +848,8 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
             <p style={{ fontSize: 40, margin: '0 0 12px' }}>👤</p>
             <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin compradores registrados</p>
             <p>Comparte el link con los compradores interesados</p>
-            <div style={{ marginTop: 16, background: '#1A1A1A', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
-              <code style={{ color: C.goldText, fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-comprador</code>
+            <div style={{ marginTop: 16, background: '#f3f4f6', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
+              <code style={{ color: '#b91c3c', fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-comprador</code>
             </div>
           </div>
         ) : (
@@ -869,10 +869,10 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
                 {compradores.map(comp => (
                   <tr key={comp.id} onClick={() => onSelectComprador(comp)}
                     style={st.trHover}
-                    onMouseEnter={el => el.currentTarget.style.background = '#1A1A1A'}
+                    onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
                     onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
                     <td style={st.td}>
-                      <p style={{ margin: 0, fontWeight: 600, color: C.white }}>{comp.nombre_comprador}</p>
+                      <p style={{ margin: 0, fontWeight: 600, color: C.text }}>{comp.nombre_comprador}</p>
                       <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{comp.celular_comprador}</p>
                     </td>
                     <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{comp.inmueble_interes || '—'}</span></td>
@@ -982,7 +982,7 @@ const generarPromesaFinal = async (formData) => {
       <div style={st.modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{v.nombre_propietario}</h2>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{v.nombre_propietario}</h2>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>{v.tipo_persona_propietario === 'moral' ? `Persona moral — ${v.razon_social_propietario}` : 'Persona física'}</p>
           </div>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
@@ -1010,8 +1010,8 @@ const generarPromesaFinal = async (formData) => {
               {v.tipo_copropiedad === 'conyuge' ? 'Cónyuge' : 'Copropietarios'}
             </p>
             {[1, 2, 3].map(i => v[`copropietario_${i}_nombre`] ? (
-              <div key={i} style={{ background: '#1A1A1A', borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
-                <p style={{ margin: 0, fontWeight: 600, color: C.white, fontSize: 13 }}>{v[`copropietario_${i}_nombre`]}</p>
+              <div key={i} style={{ background: '#f9fafb', borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
+                <p style={{ margin: 0, fontWeight: 600, color: C.text, fontSize: 13 }}>{v[`copropietario_${i}_nombre`]}</p>
                 <p style={{ margin: '4px 0 0', fontSize: 11, color: C.muted }}>{v[`copropietario_${i}_telefono`]} · {v[`copropietario_${i}_correo`]} · RFC: {v[`copropietario_${i}_rfc`]}</p>
               </div>
             ) : null)}
@@ -1031,12 +1031,12 @@ const generarPromesaFinal = async (formData) => {
         <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 12px' }}>Generar documentos</p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={handleGenerarPromocion} disabled={!!generando}
-            style={{ ...st.btn, background: '#1A1A3A', color: '#A070E0', border: '1px solid #3A2A5C', opacity: generando ? 0.6 : 1 }}>
+            style={{ ...st.btn, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #c4b5fd', opacity: generando ? 0.6 : 1 }}>
             {generando === 'promocion' ? 'Generando...' : '📄 Contrato de promoción'}
           </button>
 
             <button onClick={handleGenerarPromesaCV} disabled={!!generando}
-  style={{ ...st.btn, background: '#1A2A1A', color: C.greenText, border: `1px solid ${C.green}`, opacity: generando ? 0.6 : 1 }}>
+  style={{ ...st.btn, background: '#f0fdf4', color: C.greenText, border: `1px solid #6ee7b7`, opacity: generando ? 0.6 : 1 }}>
   {generando === 'promesacv' ? 'Generando...' : '🖹 Promesa de compraventa'}
 </button>
         </div>
@@ -1060,7 +1060,7 @@ function ModalCompradorCV({ comprador: comp, onClose, onSaved }) {
       <div style={st.modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{comp.nombre_comprador}</h2>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{comp.nombre_comprador}</h2>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>{comp.ocupacion_comprador} — {comp.empresa_comprador}</p>
           </div>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
@@ -1094,8 +1094,8 @@ function ModalCompradorCV({ comprador: comp, onClose, onSaved }) {
           <>
             <div style={{ ...st.divider, margin: '16px 0' }} />
             <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Cónyuge</p>
-            <div style={{ background: '#1A1A1A', borderRadius: 8, padding: '10px 14px' }}>
-              <p style={{ margin: 0, fontWeight: 600, color: C.white, fontSize: 13 }}>{comp.conyuge_nombre}</p>
+            <div style={{ background: '#f9fafb', borderRadius: 8, padding: '10px 14px' }}>
+              <p style={{ margin: 0, fontWeight: 600, color: C.text, fontSize: 13 }}>{comp.conyuge_nombre}</p>
               <p style={{ margin: '4px 0 0', fontSize: 11, color: C.muted }}>{comp.conyuge_telefono} · {comp.conyuge_correo} · RFC: {comp.conyuge_rfc}</p>
             </div>
           </>
@@ -1297,7 +1297,7 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={st.modalCard} ref={formRef}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>Nuevo expediente</h2>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>Nuevo expediente</h2>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
 
@@ -1499,11 +1499,11 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
   </div>
 
         {form.fecha_inicio && (
-          <div style={{ background: '#111', borderRadius: 8, padding: '12px 16px', marginTop: 8 }}>
+          <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 16px', marginTop: 8 }}>
             <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 700, color: C.muted }}>PAGARÉS — 12 fechas calculadas automáticamente</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {Object.entries(calcularPagares(form.fecha_inicio)).map(([k, v]) => (
-                <span key={k} style={{ background: '#1A1A1A', border: `1px solid ${C.border}`, borderRadius: 6, padding: '3px 10px', fontSize: 11, color: C.muted }}>
+                <span key={k} style={{ background: '#f3f4f6', border: `1px solid ${C.border}`, borderRadius: 6, padding: '3px 10px', fontSize: 11, color: C.muted }}>
                   {fmtDate(v)}
                 </span>
               ))}
@@ -1679,7 +1679,7 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
       <div style={st.modalCard} ref={formRef}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>
               {form.nombre_arrendatario || 'Expediente'}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>ID: {expediente.id.slice(0, 8).toUpperCase()}</p>
@@ -1904,35 +1904,35 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
           <button
             onClick={() => handleGenerar('contrato')}
             disabled={!!generando}
-            style={{ ...st.btn, background: '#1A3A1A', color: '#5EC98A', border: '1px solid #2A5C3F', opacity: generando ? 0.6 : 1 }}
+            style={{ ...st.btn, background: '#f0fdf4', color: '#065f46', border: '1px solid #6ee7b7', opacity: generando ? 0.6 : 1 }}
           >
             {generando === 'contrato' ? 'Generando...' : '📄 Contrato de arrendamiento'}
           </button>
           <button
             onClick={() => handleGenerar('pagares')}
             disabled={!!generando}
-            style={{ ...st.btn, background: '#1A1A3A', color: '#70A8E0', border: '1px solid #1A3A5C', opacity: generando ? 0.6 : 1 }}
+            style={{ ...st.btn, background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd', opacity: generando ? 0.6 : 1 }}
           >
             {generando === 'pagares' ? 'Generando...' : '📄 Pagarés (12)'}
           </button>
           <button
             onClick={() => handleGenerar('poliza')}
             disabled={!!generando}
-            style={{ ...st.btn, background: '#2A1A3A', color: '#C070E0', border: '1px solid #5A2A7A', opacity: generando ? 0.6 : 1 }}
+            style={{ ...st.btn, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #c4b5fd', opacity: generando ? 0.6 : 1 }}
           >
             {generando === 'poliza' ? 'Generando...' : '📄 Póliza jurídica'}
           </button>
           <button
             onClick={() => handleGenerar('recibo')}
             disabled={!!generando}
-            style={{ ...st.btn, background: '#1A2A1A', color: '#5EC98A', border: '1px solid #2A5C3F', opacity: generando ? 0.6 : 1 }}
+            style={{ ...st.btn, background: '#f0fdf4', color: '#065f46', border: '1px solid #6ee7b7', opacity: generando ? 0.6 : 1 }}
           >
             {generando === 'recibo' ? 'Generando...' : '🧾 Recibo de póliza'}
           </button>
           <button
             onClick={() => handleGenerar('administracion')}
             disabled={!!generando}
-            style={{ ...st.btn, background: '#1A2E1A', color: '#70C870', border: '1px solid #2A5C2A', opacity: generando ? 0.6 : 1 }}
+            style={{ ...st.btn, background: '#f0fdf4', color: '#065f46', border: '1px solid #86efac', opacity: generando ? 0.6 : 1 }}
           >
             {generando === 'administracion' ? 'Generando...' : '📄 Contrato administración'}
           </button>
@@ -1983,7 +1983,7 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={st.modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{p.nombre_propietario}</h2>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{p.nombre_propietario}</h2>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
 
@@ -2033,7 +2033,7 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
           <button
             onClick={handleGenerarPromocion}
             disabled={generando}
-            style={{ ...st.btn, background: '#1A1A3A', color: '#A070E0', border: '1px solid #3A2A5C', opacity: generando ? 0.6 : 1 }}
+            style={{ ...st.btn, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #c4b5fd', opacity: generando ? 0.6 : 1 }}
           >
             {generando ? 'Generando...' : '📄 Contrato promoción'}
           </button>
@@ -2088,7 +2088,7 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={st.modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.white, fontFamily: 'Georgia, serif' }}>{sol.nombre_completo || sol.razon_social}</h2>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{sol.nombre_completo || sol.razon_social}</h2>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
 
@@ -2139,7 +2139,7 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
 
         {/* Cobro investigación cuando es rechazado */}
         {status === 'rechazado' && !sol.cobro_investigacion && (
-          <div style={{ background: '#2A1A1A', border: '1px solid #8B3A3A', borderRadius: 8, padding: '14px 16px', marginTop: 16 }}>
+          <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, padding: '14px 16px', marginTop: 16 }}>
             <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700, color: C.redText }}>💰 Cobrar investigación ($1,000)</p>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <select value={metodoInv} onChange={e => setMetodoInv(e.target.value)}
@@ -2155,7 +2155,7 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
           </div>
         )}
         {sol.cobro_investigacion && (
-          <div style={{ background: '#1A2E1A', border: '1px solid #2A5C3F', borderRadius: 8, padding: '10px 14px', marginTop: 16 }}>
+          <div style={{ background: '#f0fdf4', border: '1px solid #6ee7b7', borderRadius: 8, padding: '10px 14px', marginTop: 16 }}>
             <p style={{ margin: 0, fontSize: 12, color: C.greenText }}>✅ Cobro de investigación registrado — $1,000</p>
           </div>
         )}
@@ -2164,7 +2164,7 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cancelar</button>
           <button
             onClick={() => { onClose(); window.open('/poliza/solicitud/' + sol.id, '_blank') }}
-            style={{ ...st.btn, background: '#1A2A3A', border: '1px solid #1A3A5C', color: '#70A8E0' }}
+            style={{ ...st.btn, background: '#dbeafe', border: '1px solid #93c5fd', color: '#1e40af' }}
           >
             📋 Ver ficha completa
           </button>
