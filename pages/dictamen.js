@@ -65,9 +65,7 @@ async function generarPDF(data) {
   const rel = data.relacion_ingreso_renta || "";
   const multMatch = rel.match(/(\d+(?:\.\d+)?)x/);
   const mult = multMatch ? parseFloat(multMatch[1]) : 0;
-  const scoreRaw = mult >= 4 ? 95 : mult >= 3 ? 80 : mult >= 2.5 ? 65 : mult >= 2 ? 60 : 35;
-  // Si el dictamen es APROBADO, el índice nunca puede mostrar "PERFIL DE RIESGO"
-  const score = dict === "APROBADO" ? Math.max(scoreRaw, 70) : dict === "APROBADO CON CONDICIONES" ? Math.max(scoreRaw, 45) : scoreRaw;
+  const score = mult >= 4 ? 95 : mult >= 3 ? 80 : mult >= 2.5 ? 65 : mult >= 2 ? 50 : 35;
   const scoreLabel = score >= 75 ? "PERFIL SÓLIDO" : score >= 55 ? "PERFIL ACEPTABLE" : "PERFIL DE RIESGO";
   const scoreColor = score >= 75 ? "#065f46" : score >= 55 ? "#92400e" : "#991b1b";
 
@@ -125,28 +123,45 @@ async function generarPDF(data) {
   // ── Documentos ───────────────────────────────────────
   const docIdent = data.doc_identificacion_b64 || data.doc_identificacion;
   const docComp  = data.doc_comprobante_ingresos_b64 || data.doc_comprobante_ingresos;
+  const docBuro  = data.doc_buro_mexico || "";
 
-  const renderDocHTML = (b64, titulo) => {
-    if (!b64) return "";
-    const isImg = b64.startsWith("data:image/");
-    return `
-      <div style="margin-bottom:16px">
-        <div style="font-size:9px;font-weight:700;color:${GR2};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">${titulo}</div>
-        ${isImg
-          ? `<img src="${b64}" style="width:100%;max-height:200px;object-fit:contain;border:1px solid ${GR3};border-radius:8px;background:#fafafa" />`
-          : `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;text-align:center;color:#1e40af;font-weight:700;font-size:12px">
-              📄 DOCUMENTO PDF ADJUNTO<br><span style="font-size:10px;font-weight:400;color:#6b7280;margin-top:4px;display:block">${titulo}</span>
-            </div>`
-        }
-      </div>`;
+  // Generar URLs firmadas para paths de Storage (no base64)
+  const getSignedUrl = async (path) => {
+    if (!path || path.startsWith("data:")) return path;
+    const { createClient } = await import("@supabase/supabase-js");
+    const sb = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    );
+    const { data: d } = await sb.storage.from("poliza-docs").createSignedUrl(path, 300);
+    return d?.signedUrl || "";
   };
+
+  // Resolver URLs de los docs
+  const [urlIdent, urlComp, urlBuro] = await Promise.all([
+    docIdent && !docIdent.startsWith("data:") ? getSignedUrl(docIdent) : Promise.resolve(docIdent || ""),
+    docComp  && !docComp.startsWith("data:")  ? getSignedUrl(docComp)  : Promise.resolve(docComp  || ""),
+    docBuro  ? getSignedUrl(docBuro) : Promise.resolve(""),
+  ]);
+
+  const renderDocItem = (label, icono, url, disponible) => `
+    <div style="display:flex;align-items:center;gap:14px;background:#fff;border:1px solid ${GR3};border-radius:10px;padding:14px 18px;margin-bottom:10px">
+      <div style="width:40px;height:40px;border-radius:8px;background:${disponible ? '#f0fdf4' : '#f9fafb'};border:1px solid ${disponible ? '#6ee7b7' : GR3};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${icono}</div>
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:700;color:${GR1}">${label}</div>
+        <div style="font-size:10px;color:${GR2};margin-top:2px">${disponible ? 'Documento verificado y analizado' : 'No se adjuntó en esta solicitud'}</div>
+      </div>
+      <div style="font-size:11px;font-weight:800;color:${disponible ? '#065f46' : GR2}">${disponible ? '✓ PRESENTADO' : '— N/A'}</div>
+    </div>`;
+
+  const hayDocs = urlIdent || urlComp || urlBuro;
 
   // ── HTML COMPLETO ────────────────────────────────────
   const html = `
   <div style="width:794px;font-family:'Montserrat',system-ui,sans-serif;background:#f8f8f8;color:${GR1}">
 
     <!-- PORTADA -->
-    <div style="background:#fff;height:1123px;position:relative;display:flex;flex-direction:column;page-break-after:always">
+    <div style="background:#fff;min-height:1123px;position:relative;display:flex;flex-direction:column;page-break-after:always">
       
       <!-- Header portada -->
       <div style="padding:24px 40px 20px;border-bottom:3px solid ${ROJO};position:relative">
@@ -162,7 +177,7 @@ async function generarPDF(data) {
       </div>
 
       <!-- Cuerpo portada -->
-      <div style="flex:1;display:flex;flex-direction:column;justify-content:space-evenly;padding:20px 60px">
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 60px;gap:32px">
         
         <!-- Área jurídica -->
         <div style="text-align:center">
@@ -330,19 +345,40 @@ async function generarPDF(data) {
       </div>
     </div>
 
-    ${(docIdent || docComp) ? `
-    <!-- DOCUMENTOS -->
+    <!-- DOCUMENTOS ANALIZADOS -->
     <div style="background:#fff;padding:32px 40px;min-height:1123px">
       <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;border-bottom:2px solid ${ROJO};margin-bottom:4px">
         <img src="${logoSrc}" style="height:28px;object-fit:contain" crossorigin="anonymous" />
-        <div style="font-size:9px;color:${GR2};text-transform:uppercase;letter-spacing:0.08em">Documentos Adjuntos</div>
+        <div style="font-size:9px;color:${GR2};text-transform:uppercase;letter-spacing:0.08em">Documentos Analizados</div>
         <div style="font-size:9px;font-weight:800;color:${ROJO}">${data.folio || ""}</div>
       </div>
-      <div style="height:1.5px;background:${BORG};margin-bottom:20px"></div>
-      <div style="font-size:10px;color:${GR2};margin-bottom:16px">Los siguientes documentos fueron presentados por el solicitante como parte de la investigación.</div>
-      ${renderDocHTML(docIdent, "Identificación oficial — INE / Pasaporte / Cédula")}
-      ${docComp ? `<div style="margin-top:16px">${renderDocHTML(docComp, "Comprobante de ingresos — Nómina / Estados de cuenta / CFDI")}</div>` : ""}
-    </div>` : ""}
+      <div style="height:1.5px;background:${BORG};margin-bottom:24px"></div>
+
+      <div style="margin-bottom:20px">
+        <div style="font-size:13px;font-weight:800;color:${GR1};margin-bottom:4px">Documentación revisada durante la investigación</div>
+        <div style="font-size:10px;color:${GR2}">Los siguientes documentos fueron recibidos y analizados por el Área Jurídica de Emporio Inmobiliario como parte del proceso de verificación del solicitante.</div>
+      </div>
+
+      ${renderDocItem("Identificación oficial — INE / Pasaporte / Cédula", "🪪", urlIdent, !!urlIdent)}
+      ${renderDocItem("Comprobante de ingresos — Nómina / Estados de cuenta / CFDI", "💼", urlComp, !!urlComp)}
+      ${renderDocItem("Reporte Buró México — Antecedentes crediticios y legales", "📋", urlBuro, !!urlBuro)}
+
+      ${urlIdent || urlComp || urlBuro ? `
+      <div style="margin-top:28px;background:#f8faff;border:1px solid #bfdbfe;border-radius:10px;padding:18px 20px">
+        <div style="font-size:10px;font-weight:800;color:#1e40af;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">🔗 Acceso digital a los documentos</div>
+        <div style="font-size:9px;color:#374151;margin-bottom:10px">Los documentos originales están disponibles en la plataforma segura de Emporio Inmobiliario. Solicite acceso a su asesor.</div>
+        ${urlIdent ? `<div style="margin-bottom:6px;font-size:9px;color:#1e40af">• <strong>Identificación:</strong> ${urlIdent}</div>` : ""}
+        ${urlComp  ? `<div style="margin-bottom:6px;font-size:9px;color:#1e40af">• <strong>Comprobante de ingresos:</strong> ${urlComp}</div>` : ""}
+        ${urlBuro  ? `<div style="margin-bottom:6px;font-size:9px;color:#1e40af">• <strong>Reporte Buró México:</strong> ${urlBuro}</div>` : ""}
+        <div style="font-size:8px;color:${GR2};margin-top:10px">⏱ Los enlaces tienen vigencia de 5 minutos por seguridad. Solicite nuevos enlaces a su asesor si han expirado.</div>
+      </div>` : ""}
+
+      <!-- Footer -->
+      <div style="position:absolute;bottom:24px;left:40px;right:40px;padding-top:12px;border-top:1px solid ${GR3};display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:8px;color:${GR2}">Emporio Inmobiliario · Reserva Territorial Atlixcayotl, San Andrés Cholula, Puebla · 222 257 3237 · ventas@emporioinmobiliario.mx</div>
+        <div style="font-size:8px;font-weight:800;color:${ROJO};text-transform:uppercase">Confidencial</div>
+      </div>
+    </div>
 
   </div>`;
 
@@ -402,6 +438,7 @@ export default function Dictamen() {
     observaciones_analista: "",
     dictamen: "APROBADO", condiciones: "",
     analista: "LIC. ZAYETZY MONTES LUNA",
+    doc_buro_mexico: "",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -467,6 +504,7 @@ export default function Dictamen() {
           ref2_nombre: s.ref_per2_nombre || s.ref_fam2_nombre || "",
           ref2_telefono: s.ref_per2_telefono || s.ref_fam2_telefono || "",
           ref2_relacion: s.ref_per2_relacion || s.ref_fam2_parentesco || "",
+          doc_buro_mexico: s.doc_buro_mexico || "",
         }));
         setCargando(false);
       });
