@@ -93,7 +93,7 @@ export default function DocsPublico() {
         <div style={{ background: "#fff", borderBottom: "3px solid #b91c3c", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/emporio-logo.png" alt="Emporio Inmobiliario" style={{ height: 36, objectFit: "contain" }}
+            <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio Inmobiliario" style={{ height: 36, objectFit: "contain" }}
               onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }}
             />
             <span style={{ display:'none', fontWeight:900, fontSize:14, color:'#b91c3c', letterSpacing:'0.05em' }}>EMPORIO INMOBILIARIO</span>
