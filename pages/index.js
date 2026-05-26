@@ -106,6 +106,7 @@ function ModalServicios({ property, onClose, showToast }) {
   const [saving, setSaving] = useState(false);
   const [modalPago, setModalPago] = useState(null);
   const [pagoForm, setPagoForm] = useState({ monto: "", notas: "", fecha_limite: "" });
+  const [uploadingComp, setUploadingComp] = useState(null);
   const [filtroTipo, setFiltroTipo] = useState("todos");
   const [filtroPeriodo, setFiltroPeriodo] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("todos");
@@ -154,6 +155,27 @@ function ModalServicios({ property, onClose, showToast }) {
     setModalPago(null);
     setPagoForm({ monto: "", notas: "", fecha_limite: "" });
     loadServicios();
+  };
+
+  const subirComprobanteAdmin = async (servicio, file) => {
+    setUploadingComp(servicio.tipo);
+    try {
+      const ext = file.name.split(".").pop();
+      const fileName = `servicios/admin_${property.name}_${servicio.tipo}_${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("receipts").upload(fileName, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(fileName);
+      const periodo = periodoActual();
+      const pagoExistente = pagos.find(p => p.tipo === servicio.tipo && p.periodo === periodo);
+      if (pagoExistente) {
+        await supabase.from("pagos_servicios").update({ comprobante_url: publicUrl, status: "en_revision" }).eq("id", pagoExistente.id);
+      } else {
+        await supabase.from("pagos_servicios").insert({ property_name: property.name, tipo: servicio.tipo, periodo, status: "en_revision", comprobante_url: publicUrl, subido_por: "admin" });
+      }
+      showToast("Comprobante subido");
+      loadServicios();
+    } catch (e) { showToast("Error: " + e.message, false); }
+    setUploadingComp(null);
   };
 
   const pagoDelPeriodo = (tipo) => {
@@ -242,11 +264,21 @@ function ModalServicios({ property, onClose, showToast }) {
                               <a href={pago.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, display: "inline-block", marginBottom: 6 }}>📄 Ver comprobante</a>
                             )}
                             {pago?.monto && <p style={{ margin: "0 0 8px", fontSize: 12, color: "#6b7280" }}>Monto registrado: {fmt(pago.monto)}</p>}
-                            {quienPaga !== "incluido" && (!pago || pago.status === "pendiente" || pago.status === "atrasado") && (
-                              <button onClick={() => { setModalPago(serv); setPagoForm({ monto: "", notas: "", fecha_limite: "" }); }}
-                                style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, marginTop: 4 }}>
-                                ✓ Registrar pago
-                              </button>
+                            {quienPaga !== "incluido" && (
+                              <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+                                {(!pago || pago.status === "pendiente" || pago.status === "atrasado") && (
+                                  <button onClick={() => { setModalPago(serv); setPagoForm({ monto: "", notas: "", fecha_limite: "" }); }}
+                                    style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                                    ✓ Registrar pago
+                                  </button>
+                                )}
+                                <label style={{ cursor: "pointer" }}>
+                                  <input type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={e => e.target.files[0] && subirComprobanteAdmin(serv, e.target.files[0])} disabled={!!uploadingComp} />
+                                  <span style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "inline-block" }}>
+                                    {uploadingComp === serv.tipo ? "⏳ Subiendo..." : "📎 Subir comprobante"}
+                                  </span>
+                                </label>
+                              </div>
                             )}
                           </div>
                         );
@@ -524,6 +556,7 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
   const [serviciosProperty, setServiciosProperty] = useState(null);
   const [serviciosResumen, setServiciosResumen] = useState({});
+  const [comprobantesRevision, setComprobantesRevision] = useState([]);
 
   const emptyProp = { name: "", address: "", property_type: "depto", rent_amount: "", status: "disponible", notes: "", owner_email: "", owner_phone: "" };
   const emptyExpense = { property_name: "", category: "condominio", description: "", amount: "", paid_by: "propietario", payment_method: "transferencia", date: new Date().toISOString().split("T")[0], notes: "" };
@@ -596,6 +629,13 @@ export default function Home() {
       resumen[p.name] = atrasado ? "atrasado" : revision ? "revision" : todos ? "ok" : "pendiente";
     });
     setServiciosResumen(resumen);
+    // Cargar comprobantes en revisión
+    const { data: enRevision } = await supabase
+      .from("pagos_servicios")
+      .select("*")
+      .eq("status", "en_revision")
+      .in("property_name", props.map(p => p.name));
+    setComprobantesRevision(enRevision || []);
   };
 
   useEffect(() => { if (session) loadData(); }, [session]);
@@ -742,6 +782,50 @@ export default function Home() {
                 </div>
               ))}
             </div>
+            {comprobantesRevision.length > 0 && (
+              <div style={{ background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 14, padding: 20, marginBottom: 24 }}>
+                <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 700, color: "#1e40af" }}>🔍 Comprobantes de servicios en revisión ({comprobantesRevision.length})</h3>
+                {comprobantesRevision.map(p => {
+                  const config = [
+                    { tipo: "luz", label: "⚡ Luz (CFE)" }, { tipo: "agua", label: "💧 Agua" },
+                    { tipo: "gas_mensual", label: "🔥 Gas (mensual)" }, { tipo: "gas_recarga", label: "🔥 Gas (recarga)" },
+                    { tipo: "mantenimiento", label: "🏢 Mantenimiento" }, { tipo: "internet", label: "🌐 Internet" },
+                    { tipo: "predial", label: "🏛️ Predial/Limpia" },
+                  ].find(c => c.tipo === p.tipo);
+                  return (
+                    <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #bfdbfe" }}>
+                      <div>
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: "#1e3a5f" }}>{p.property_name}</p>
+                        <p style={{ margin: "2px 0 0", fontSize: 11, color: "#3b82f6" }}>{config?.label || p.tipo} · Periodo: {p.periodo}</p>
+                        <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>Subido por: {p.subido_por === "admin" ? "admin" : "inquilino/propietario"}</p>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        {p.comprobante_url && (
+                          <a href={p.comprobante_url} target="_blank" rel="noreferrer"
+                            style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, textDecoration: "none", background: "#dbeafe", padding: "4px 10px", borderRadius: 6 }}>
+                            📄 Ver
+                          </a>
+                        )}
+                        <button onClick={async () => {
+                          await supabase.from("pagos_servicios").update({ status: "pagado" }).eq("id", p.id);
+                          showToast("✅ Aprobado");
+                          loadData();
+                        }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                          ✅
+                        </button>
+                        <button onClick={async () => {
+                          await supabase.from("pagos_servicios").update({ status: "pendiente" }).eq("id", p.id);
+                          showToast("Rechazado", false);
+                          loadData();
+                        }} style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                          ✗
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
               <div style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f0f0f0" }}>
                 <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 700, color: brand.gray }}>Cobros este mes ({pagosMes.length})</h3>
