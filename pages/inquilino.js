@@ -472,6 +472,18 @@ export default function InquilinoPortal() {
                 <span style={{ fontSize: 14, fontWeight: 700, color: "#4a4a4a" }}>{v}</span>
               </div>
             ))}
+            {contract.contrato_url && (
+              <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #f3f4f6" }}>
+                <button
+                  onClick={async () => {
+                    const { data } = await supabase.storage.from("contratos").createSignedUrl(contract.contrato_url, 60);
+                    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+                  }}
+                  style={{ width: "100%", background: "#b91c3c", color: "#fff", border: "none", borderRadius: 10, padding: "12px", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>
+                  📄 Ver mi contrato PDF
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
