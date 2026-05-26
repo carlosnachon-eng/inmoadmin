@@ -153,6 +153,8 @@ export default function PropietarioPortal() {
   const [loading, setLoading] = useState(false);
   const [generandoPDF, setGenerandoPDF] = useState(false);
   const [ownerName, setOwnerName] = useState("");
+  const [uploadingServicio, setUploadingServicio] = useState(null);
+  const [toastProp, setToastProp] = useState(null);
 
   const periodoActual = () => {
     const hoy = new Date();
@@ -210,6 +212,30 @@ export default function PropietarioPortal() {
   };
 
   const logout = async () => { await supabase.auth.signOut(); setSession(null); };
+  const showToastProp = (msg, ok = true) => { setToastProp({ msg, ok }); setTimeout(() => setToastProp(null), 3500); };
+
+  const subirComprobantePropietario = async (propName, servicio, file) => {
+    setUploadingServicio(servicio.tipo + propName);
+    try {
+      const ext = file.name.split(".").pop();
+      const fileName = `servicios/prop_${propName}_${servicio.tipo}_${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("receipts").upload(fileName, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(fileName);
+      const periodo = periodoActual();
+      const pagosActuales = pagosPorPropiedad[propName] || [];
+      const pagoExistente = pagosActuales.find(p => p.tipo === servicio.tipo && p.periodo === periodo);
+      if (pagoExistente) {
+        await supabase.from("pagos_servicios").update({ comprobante_url: publicUrl, status: "en_revision" }).eq("id", pagoExistente.id);
+      } else {
+        await supabase.from("pagos_servicios").insert({ property_name: propName, tipo: servicio.tipo, periodo, status: "en_revision", comprobante_url: publicUrl, subido_por: session.user.email });
+      }
+      showToastProp("✅ Comprobante enviado, lo revisaremos pronto");
+      loadOwnerData();
+    } catch (e) { showToastProp("❌ Error: " + e.message, false); }
+    setUploadingServicio(null);
+  };
+
   const handlePDF = async () => { setGenerandoPDF(true); try { await generarPDF(ownerName, properties, contracts, payments, liquidaciones, tickets, propertyExpenses); } catch (e) { console.error(e); } setGenerandoPDF(false); };
 
   const totalRenta = contracts.reduce((a, c) => a + (c.monthly_rent || 0), 0);
@@ -246,6 +272,11 @@ export default function PropietarioPortal() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8f8f8", fontFamily: "system-ui, sans-serif" }}>
+      {toastProp && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, background: toastProp.ok ? "#065f46" : "#b91c3c", color: "#fff", padding: "16px 20px", fontWeight: 700, fontSize: 15, zIndex: 2000, textAlign: "center" }}>
+          {toastProp.msg}
+        </div>
+      )}
       <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "14px 20px" }}>
         <div style={{ maxWidth: 700, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 36, objectFit: "contain" }} />
@@ -422,9 +453,17 @@ export default function PropietarioPortal() {
                             {serv.numero_cuenta && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>No. cuenta: {serv.numero_cuenta}</p>}
                           </div>
                           <div style={{ textAlign: "right" }}>
-                            <span style={{ background: sem.bg, color: sem.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{sem.label}</span>
+                            <span style={{ background: sem.bg, color: sem.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700, display: "block", marginBottom: 4 }}>{sem.label}</span>
                             {pago?.comprobante_url && (
-                              <a href={pago.comprobante_url} target="_blank" rel="noreferrer" style={{ display: "block", fontSize: 11, color: "#1e40af", marginTop: 4 }}>📄 Ver comprobante</a>
+                              <a href={pago.comprobante_url} target="_blank" rel="noreferrer" style={{ display: "block", fontSize: 11, color: "#1e40af", marginBottom: 4 }}>📄 Ver</a>
+                            )}
+                            {quienPaga === "propietario" && (!pago || pago.status === "pendiente" || pago.status === "atrasado") && (
+                              <label style={{ cursor: "pointer" }}>
+                                <input type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={e => e.target.files[0] && subirComprobantePropietario(prop.name, serv, e.target.files[0])} disabled={!!uploadingServicio} />
+                                <span style={{ background: "#fff0f3", color: "#b91c3c", border: "1px solid #fca5a5", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "inline-block" }}>
+                                  {uploadingServicio === serv.tipo + prop.name ? "⏳..." : "📎 Subir"}
+                                </span>
+                              </label>
                             )}
                           </div>
                         </div>
