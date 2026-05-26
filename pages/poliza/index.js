@@ -479,29 +479,20 @@ function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect, onRe
   const enviarRecordatorio = async (e) => {
     setEnviando(e.id)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-const res = await fetch('https://bnzrnizrmonjxlktbhlp.supabase.co/functions/v1/recordatorio-renovacion', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${session.access_token}`,
-  },
-  body: JSON.stringify({
-    expediente_id: e.id,
-    nombre_arrendatario: e.nombre_arrendatario,
-    nombre_arrendador: e.nombre_arrendador,
-    correo_arrendatario: e.correo_arrendatario,
-    correo_arrendador: e.correo_arrendador,
-    direccion_inmueble: e.direccion_inmueble,
-    fecha_vigencia: e.fecha_vigencia,
-    dias_restantes: e.diasRestantes,
-    renta_mensual: e.renta_mensual,
-  })
-})
-if (!res.ok) {
-  const err = await res.json()
-  throw new Error(err.error || 'Error en Edge Function')
-}
+      const { error } = await supabase.functions.invoke('recordatorio-renovacion', {
+        body: {
+          expediente_id: e.id,
+          nombre_arrendatario: e.nombre_arrendatario,
+          nombre_arrendador: e.nombre_arrendador,
+          correo_arrendatario: e.correo_arrendatario,
+          correo_arrendador: e.correo_arrendador,
+          direccion_inmueble: e.direccion_inmueble,
+          fecha_vigencia: e.fecha_vigencia,
+          dias_restantes: e.diasRestantes,
+          renta_mensual: e.renta_mensual,
+        }
+      })
+      if (error) throw error
       // Marcar recordatorio enviado
       await supabase.from('poliza_expedientes').update({
         fecha_ultimo_recordatorio: new Date().toISOString(),
@@ -558,18 +549,38 @@ if (!res.ok) {
                       {vencido ? `⚠️ Vencido hace ${Math.abs(e.diasRestantes)} días` : `⏳ Vence en ${e.diasRestantes} días`}
                     </p>
                     <p style={{ margin: '2px 0 6px', fontSize: 11, color: C.muted }}>{fmtDate(e.fecha_vigencia)}</p>
-                    {yaEnvio ? (
-                      <span style={{ fontSize: 11, color: C.greenText, background: C.greenBg, padding: '3px 8px', borderRadius: 6 }}>
-                        ✓ Recordatorio enviado
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => enviarRecordatorio(e)}
-                        disabled={enviando === e.id}
-                        style={{ ...st.btn, padding: '5px 12px', fontSize: 11, background: vencido ? C.red : C.gold, color: '#fff', opacity: enviando === e.id ? 0.6 : 1 }}>
-                        {enviando === e.id ? 'Enviando...' : '📧 Enviar recordatorio'}
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                      {yaEnvio ? (
+                        <span style={{ fontSize: 11, color: C.greenText, background: C.greenBg, padding: '3px 8px', borderRadius: 6 }}>
+                          ✓ Recordatorio enviado
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => enviarRecordatorio(e)}
+                          disabled={enviando === e.id}
+                          style={{ ...st.btn, padding: '5px 12px', fontSize: 11, background: vencido ? C.red : C.gold, color: '#fff', opacity: enviando === e.id ? 0.6 : 1 }}>
+                          {enviando === e.id ? 'Enviando...' : '📧 Enviar recordatorio'}
+                        </button>
+                      )}
+                      {e.telefono_arrendatario && (
+                        <a
+                          href={`https://wa.me/52${e.telefono_arrendatario.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${e.nombre_arrendatario}, te contactamos de Emporio Blindaje Legal. Tu contrato de arrendamiento del inmueble en ${e.direccion_inmueble} vence el ${fmtDate(e.fecha_vigencia)}. Por favor comunícate con nosotros para gestionar tu renovación. 📞 2222573237`)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ ...st.btn, padding: '5px 12px', fontSize: 11, background: '#25D366', color: '#fff', textDecoration: 'none', display: 'inline-block' }}>
+                          💬 WA Inquilino
+                        </a>
+                      )}
+                      {e.telefono_arrendador && (
+                        <a
+                          href={`https://wa.me/52${e.telefono_arrendador.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${e.nombre_arrendador}, te contactamos de Emporio Blindaje Legal. El contrato de arrendamiento del inmueble en ${e.direccion_inmueble} vence el ${fmtDate(e.fecha_vigencia)}. Por favor comunícate con nosotros para coordinar la renovación. 📞 2222573237`)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ ...st.btn, padding: '5px 12px', fontSize: 11, background: '#128C7E', color: '#fff', textDecoration: 'none', display: 'inline-block' }}>
+                          💬 WA Propietario
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
               )
