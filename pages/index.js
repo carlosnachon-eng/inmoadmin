@@ -232,22 +232,59 @@ function ModalServicios({ property, onClose, showToast }) {
 
               {tabServ === "configurar" && (
                 <div>
-                  <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6b7280" }}>Activa los servicios que aplican para <strong>{property.name}</strong>:</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6b7280" }}>Activa los servicios que aplican para <strong>{property.name}</strong> y configura su fecha límite de pago:</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {SERVICIOS_CONFIG.map(config => {
                       const activo = servicios.find(s => s.tipo === config.tipo);
                       return (
-                        <div key={config.tipo} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: activo ? "#f0fdf4" : "#f9fafb", border: `1px solid ${activo ? "#6ee7b7" : "#e5e7eb"}`, borderRadius: 10, padding: "12px 16px" }}>
-                          <div>
-                            <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#374151" }}>{config.label}</p>
-                            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>
-                              {config.periodicidad} · {config.propietario ? "Cargo del propietario" : "Cargo del inquilino"}
-                            </p>
+                        <div key={config.tipo} style={{ background: activo ? "#f0fdf4" : "#f9fafb", border: `1px solid ${activo ? "#6ee7b7" : "#e5e7eb"}`, borderRadius: 10, padding: "12px 16px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: activo ? 10 : 0 }}>
+                            <div>
+                              <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#374151" }}>{config.label}</p>
+                              <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                                {config.periodicidad} · {config.propietario ? "Cargo del propietario" : "Cargo del inquilino"}
+                                {activo?.dia_limite_pago ? ` · Límite: día ${activo.dia_limite_pago}` : ""}
+                              </p>
+                            </div>
+                            <button onClick={() => toggleServicio(config.tipo, config.periodicidad)}
+                              style={{ background: activo ? "#065f46" : "#e5e7eb", color: activo ? "#fff" : "#9ca3af", border: "none", borderRadius: 20, padding: "6px 16px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                              {activo ? "✓ Activo" : "Activar"}
+                            </button>
                           </div>
-                          <button onClick={() => toggleServicio(config.tipo, config.periodicidad)}
-                            style={{ background: activo ? "#065f46" : "#e5e7eb", color: activo ? "#fff" : "#9ca3af", border: "none", borderRadius: 20, padding: "6px 16px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                            {activo ? "✓ Activo" : "Activar"}
-                          </button>
+                          {activo && (
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                              <div>
+                                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Día límite de pago</label>
+                                <input
+                                  type="number"
+                                  min="1" max="31"
+                                  placeholder="Ej: 25"
+                                  defaultValue={activo.dia_limite_pago || ""}
+                                  onBlur={async (e) => {
+                                    const val = parseInt(e.target.value);
+                                    if (val >= 1 && val <= 31) {
+                                      await supabase.from("servicios_inmueble").update({ dia_limite_pago: val }).eq("id", activo.id);
+                                      loadServicios();
+                                    }
+                                  }}
+                                  style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, boxSizing: "border-box" }}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Notas</label>
+                                <input
+                                  type="text"
+                                  placeholder="Ej: Bimestre ene-feb"
+                                  defaultValue={activo.notas || ""}
+                                  onBlur={async (e) => {
+                                    await supabase.from("servicios_inmueble").update({ notas: e.target.value }).eq("id", activo.id);
+                                    loadServicios();
+                                  }}
+                                  style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, boxSizing: "border-box" }}
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -265,19 +302,41 @@ function ModalServicios({ property, onClose, showToast }) {
                         const config = SERVICIOS_CONFIG.find(c => c.tipo === p.tipo);
                         const sem = semaforo(p.status);
                         return (
-                          <div key={p.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 16px" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div key={p.id} style={{ background: "#f9fafb", border: `1px solid ${p.status === "en_revision" ? "#93c5fd" : "#e5e7eb"}`, borderRadius: 10, padding: "12px 16px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                               <div>
                                 <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: "#374151" }}>{config?.label || p.tipo}</p>
                                 <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>Periodo: {p.periodo} · {new Date(p.created_at).toLocaleDateString("es-MX")}</p>
                                 {p.monto && <p style={{ margin: "2px 0 0", fontSize: 12, color: "#374151" }}>{fmt(p.monto)}</p>}
                                 {p.notas && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>{p.notas}</p>}
+                                {p.subido_por && p.subido_por !== "admin" && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>Subido por: {p.subido_por}</p>}
                               </div>
-                              <div style={{ textAlign: "right" }}>
-                                <span style={{ background: sem.bg, color: sem.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700, display: "block", marginBottom: 4 }}>{sem.label}</span>
-                                {p.comprobante_url && <a href={p.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#1e40af" }}>📄 Ver</a>}
-                              </div>
+                              <span style={{ background: sem.bg, color: sem.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{sem.label}</span>
                             </div>
+                            {p.comprobante_url && (
+                              <a href={p.comprobante_url} target="_blank" rel="noreferrer"
+                                style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, display: "inline-block", marginBottom: 8 }}>
+                                📄 Ver comprobante
+                              </a>
+                            )}
+                            {p.status === "en_revision" && (
+                              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                                <button onClick={async () => {
+                                  await supabase.from("pagos_servicios").update({ status: "pagado" }).eq("id", p.id);
+                                  showToast("Comprobante aprobado ✅");
+                                  loadServicios();
+                                }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                                  ✅ Aprobar
+                                </button>
+                                <button onClick={async () => {
+                                  await supabase.from("pagos_servicios").update({ status: "pendiente" }).eq("id", p.id);
+                                  showToast("Comprobante rechazado", false);
+                                  loadServicios();
+                                }} style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                                  ✗ Rechazar
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
