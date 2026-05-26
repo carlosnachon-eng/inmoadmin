@@ -252,50 +252,52 @@ function ModalServicios({ property, onClose, showToast }) {
                             </button>
                           </div>
                           {activo && (
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                              <div>
-                                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Día límite de pago</label>
-                                <input
-                                  type="number"
-                                  min="1" max="31"
-                                  placeholder="Ej: 25"
-                                  defaultValue={activo.dia_limite_pago || ""}
-                                  onBlur={async (e) => {
-                                    const val = parseInt(e.target.value);
-                                    if (val >= 1 && val <= 31) {
-                                      await supabase.from("servicios_inmueble").update({ dia_limite_pago: val }).eq("id", activo.id);
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                                <div>
+                                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Día límite de pago</label>
+                                  <input
+                                    type="number"
+                                    min="1" max="31"
+                                    placeholder="Ej: 25"
+                                    defaultValue={activo.dia_limite_pago || ""}
+                                    onBlur={async (e) => {
+                                      const val = parseInt(e.target.value);
+                                      if (val >= 1 && val <= 31) {
+                                        await supabase.from("servicios_inmueble").update({ dia_limite_pago: val }).eq("id", activo.id);
+                                        loadServicios();
+                                      }
+                                    }}
+                                    style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, boxSizing: "border-box" }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Notas</label>
+                                  <input
+                                    type="text"
+                                    placeholder="Ej: Bimestre ene-feb"
+                                    defaultValue={activo.notas || ""}
+                                    onBlur={async (e) => {
+                                      await supabase.from("servicios_inmueble").update({ notas: e.target.value }).eq("id", activo.id);
                                       loadServicios();
-                                    }
-                                  }}
-                                  style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, boxSizing: "border-box" }}
-                                />
+                                    }}
+                                    style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, boxSizing: "border-box" }}
+                                  />
+                                </div>
                               </div>
                               <div>
-                                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Notas</label>
+                                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>No. de cuenta / contrato</label>
                                 <input
                                   type="text"
-                                  placeholder="Ej: Bimestre ene-feb"
-                                  defaultValue={activo.notas || ""}
+                                  placeholder="Ej: CFE: 123456789 / Predial: PU-29330"
+                                  defaultValue={activo.numero_cuenta || ""}
                                   onBlur={async (e) => {
-                                    await supabase.from("servicios_inmueble").update({ notas: e.target.value }).eq("id", activo.id);
+                                    await supabase.from("servicios_inmueble").update({ numero_cuenta: e.target.value }).eq("id", activo.id);
                                     loadServicios();
                                   }}
                                   style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, boxSizing: "border-box" }}
                                 />
                               </div>
-                            </div>
-                            <div style={{ marginTop: 8 }}>
-                              <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>No. de cuenta / contrato</label>
-                              <input
-                                type="text"
-                                placeholder="Ej: CFE: 123456789 / Predial: PU-29330"
-                                defaultValue={activo.numero_cuenta || ""}
-                                onBlur={async (e) => {
-                                  await supabase.from("servicios_inmueble").update({ numero_cuenta: e.target.value }).eq("id", activo.id);
-                                  loadServicios();
-                                }}
-                                style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, boxSizing: "border-box" }}
-                              />
                             </div>
                           )}
                         </div>
