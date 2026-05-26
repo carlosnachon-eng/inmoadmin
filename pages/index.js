@@ -106,6 +106,9 @@ function ModalServicios({ property, onClose, showToast }) {
   const [saving, setSaving] = useState(false);
   const [modalPago, setModalPago] = useState(null);
   const [pagoForm, setPagoForm] = useState({ monto: "", notas: "", fecha_limite: "" });
+  const [filtroTipo, setFiltroTipo] = useState("todos");
+  const [filtroPeriodo, setFiltroPeriodo] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState("todos");
 
   const periodoActual = () => {
     const hoy = new Date();
@@ -128,7 +131,7 @@ function ModalServicios({ property, onClose, showToast }) {
     if (existe) {
       await supabase.from("servicios_inmueble").delete().eq("id", existe.id);
     } else {
-      await supabase.from("servicios_inmueble").insert({ property_name: property.name, tipo, periodicidad, aplica: true });
+      await supabase.from("servicios_inmueble").insert({ property_name: property.name, tipo, periodicidad, aplica: true, quien_paga: "inquilino" });
     }
     loadServicios();
   };
@@ -160,6 +163,24 @@ function ModalServicios({ property, onClose, showToast }) {
 
   const serviciosActivos = servicios.filter(s => s.aplica);
 
+  // Periodos disponibles para filtro
+  const periodosDisponibles = [...new Set(pagos.map(p => p.periodo))].sort((a, b) => b.localeCompare(a));
+
+  // Pagos filtrados para historial
+  const pagosFiltrados = pagos.filter(p => {
+    if (filtroTipo !== "todos" && p.tipo !== filtroTipo) return false;
+    if (filtroPeriodo && p.periodo !== filtroPeriodo) return false;
+    if (filtroStatus !== "todos" && p.status !== filtroStatus) return false;
+    return true;
+  });
+
+  // Agrupar por servicio para historial
+  const pagosAgrupados = SERVICIOS_CONFIG.reduce((acc, config) => {
+    const pagosDelServicio = pagosFiltrados.filter(p => p.tipo === config.tipo);
+    if (pagosDelServicio.length > 0) acc[config.tipo] = pagosDelServicio;
+    return acc;
+  }, {});
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 1000, padding: 20, overflowY: "auto" }}>
       <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 640, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", marginTop: 20 }}>
@@ -184,6 +205,7 @@ function ModalServicios({ property, onClose, showToast }) {
         <div style={{ padding: 24 }}>
           {loading ? <p style={{ color: "#9ca3af", textAlign: "center", padding: 32 }}>Cargando...</p> : (
             <>
+              {/* ── TAB ESTADO ── */}
               {tabServ === "estado" && (
                 <div>
                   {serviciosActivos.length === 0 ? (
@@ -200,6 +222,7 @@ function ModalServicios({ property, onClose, showToast }) {
                         const config = SERVICIOS_CONFIG.find(c => c.tipo === serv.tipo);
                         const pago = pagoDelPeriodo(serv.tipo);
                         const sem = semaforo(pago?.status);
+                        const quienPaga = serv.quien_paga || "inquilino";
                         return (
                           <div key={serv.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "14px 16px" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -207,8 +230,11 @@ function ModalServicios({ property, onClose, showToast }) {
                                 <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#374151" }}>{config?.label || serv.tipo}</p>
                                 <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>
                                   {serv.periodicidad}
-                                  {config?.propietario ? " · Cargo del propietario" : " · Cargo del inquilino"}
+                                  {serv.dia_limite_pago ? ` · Límite: día ${serv.dia_limite_pago}` : ""}
+                                  {" · "}
+                                  {quienPaga === "incluido" ? "Incluido en renta" : quienPaga === "propietario" ? "Cargo del propietario" : "Cargo del inquilino"}
                                 </p>
+                                {serv.numero_cuenta && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>No. cuenta: {serv.numero_cuenta}</p>}
                               </div>
                               <span style={{ background: sem.bg, color: sem.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{sem.label}</span>
                             </div>
@@ -216,7 +242,7 @@ function ModalServicios({ property, onClose, showToast }) {
                               <a href={pago.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, display: "inline-block", marginBottom: 6 }}>📄 Ver comprobante</a>
                             )}
                             {pago?.monto && <p style={{ margin: "0 0 8px", fontSize: 12, color: "#6b7280" }}>Monto registrado: {fmt(pago.monto)}</p>}
-                            {(!pago || pago.status === "pendiente" || pago.status === "atrasado") && (
+                            {quienPaga !== "incluido" && (!pago || pago.status === "pendiente" || pago.status === "atrasado") && (
                               <button onClick={() => { setModalPago(serv); setPagoForm({ monto: "", notas: "", fecha_limite: "" }); }}
                                 style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, marginTop: 4 }}>
                                 ✓ Registrar pago
@@ -230,9 +256,10 @@ function ModalServicios({ property, onClose, showToast }) {
                 </div>
               )}
 
+              {/* ── TAB CONFIGURAR ── */}
               {tabServ === "configurar" && (
                 <div>
-                  <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6b7280" }}>Activa los servicios que aplican para <strong>{property.name}</strong> y configura su fecha límite de pago:</p>
+                  <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6b7280" }}>Activa los servicios que aplican para <strong>{property.name}</strong>:</p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {SERVICIOS_CONFIG.map(config => {
                       const activo = servicios.find(s => s.tipo === config.tipo);
@@ -242,7 +269,7 @@ function ModalServicios({ property, onClose, showToast }) {
                             <div>
                               <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#374151" }}>{config.label}</p>
                               <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>
-                                {config.periodicidad} · {config.propietario ? "Cargo del propietario" : "Cargo del inquilino"}
+                                {config.periodicidad}
                                 {activo?.dia_limite_pago ? ` · Límite: día ${activo.dia_limite_pago}` : ""}
                               </p>
                             </div>
@@ -252,14 +279,27 @@ function ModalServicios({ property, onClose, showToast }) {
                             </button>
                           </div>
                           {activo && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                              {/* Quién paga */}
+                              <div>
+                                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>¿Quién paga?</label>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  {[{ v: "inquilino", l: "Inquilino" }, { v: "propietario", l: "Propietario" }, { v: "incluido", l: "Incluido en renta" }].map(op => (
+                                    <button key={op.v}
+                                      onClick={async () => {
+                                        await supabase.from("servicios_inmueble").update({ quien_paga: op.v }).eq("id", activo.id);
+                                        loadServicios();
+                                      }}
+                                      style={{ flex: 1, padding: "6px 4px", borderRadius: 8, border: `1px solid ${(activo.quien_paga || "inquilino") === op.v ? "#b91c3c" : "#e5e7eb"}`, background: (activo.quien_paga || "inquilino") === op.v ? "#fff0f3" : "#f9fafb", color: (activo.quien_paga || "inquilino") === op.v ? "#b91c3c" : "#9ca3af", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
+                                      {op.l}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                                 <div>
                                   <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Día límite de pago</label>
-                                  <input
-                                    type="number"
-                                    min="1" max="31"
-                                    placeholder="Ej: 25"
+                                  <input type="number" min="1" max="31" placeholder="Ej: 25"
                                     defaultValue={activo.dia_limite_pago || ""}
                                     onBlur={async (e) => {
                                       const val = parseInt(e.target.value);
@@ -273,9 +313,7 @@ function ModalServicios({ property, onClose, showToast }) {
                                 </div>
                                 <div>
                                   <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Notas</label>
-                                  <input
-                                    type="text"
-                                    placeholder="Ej: Bimestre ene-feb"
+                                  <input type="text" placeholder="Ej: Bimestre ene-feb"
                                     defaultValue={activo.notas || ""}
                                     onBlur={async (e) => {
                                       await supabase.from("servicios_inmueble").update({ notas: e.target.value }).eq("id", activo.id);
@@ -287,9 +325,7 @@ function ModalServicios({ property, onClose, showToast }) {
                               </div>
                               <div>
                                 <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>No. de cuenta / contrato</label>
-                                <input
-                                  type="text"
-                                  placeholder="Ej: CFE: 123456789 / Predial: PU-29330"
+                                <input type="text" placeholder="Ej: CFE: 123456789 / Predial: PU-29330"
                                   defaultValue={activo.numero_cuenta || ""}
                                   onBlur={async (e) => {
                                     await supabase.from("servicios_inmueble").update({ numero_cuenta: e.target.value }).eq("id", activo.id);
@@ -307,51 +343,95 @@ function ModalServicios({ property, onClose, showToast }) {
                 </div>
               )}
 
+              {/* ── TAB HISTORIAL ── */}
               {tabServ === "historial" && (
                 <div>
-                  {pagos.length === 0 ? (
-                    <p style={{ color: "#9ca3af", textAlign: "center", padding: 32 }}>Sin registros aún</p>
+                  {/* Filtros */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Servicio</label>
+                      <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}
+                        style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12, background: "#fff" }}>
+                        <option value="todos">Todos</option>
+                        {SERVICIOS_CONFIG.map(c => <option key={c.tipo} value={c.tipo}>{c.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Periodo</label>
+                      <select value={filtroPeriodo} onChange={e => setFiltroPeriodo(e.target.value)}
+                        style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12, background: "#fff" }}>
+                        <option value="">Todos</option>
+                        {periodosDisponibles.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Status</label>
+                      <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}
+                        style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12, background: "#fff" }}>
+                        <option value="todos">Todos</option>
+                        <option value="pagado">Pagado</option>
+                        <option value="pendiente">Pendiente</option>
+                        <option value="en_revision">En revisión</option>
+                        <option value="atrasado">Atrasado</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {pagosFiltrados.length === 0 ? (
+                    <p style={{ color: "#9ca3af", textAlign: "center", padding: 32 }}>Sin registros</p>
                   ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {pagos.map(p => {
-                        const config = SERVICIOS_CONFIG.find(c => c.tipo === p.tipo);
-                        const sem = semaforo(p.status);
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      {Object.entries(pagosAgrupados).map(([tipo, pagosServicio]) => {
+                        const config = SERVICIOS_CONFIG.find(c => c.tipo === tipo);
                         return (
-                          <div key={p.id} style={{ background: "#f9fafb", border: `1px solid ${p.status === "en_revision" ? "#93c5fd" : "#e5e7eb"}`, borderRadius: 10, padding: "12px 16px" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                              <div>
-                                <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: "#374151" }}>{config?.label || p.tipo}</p>
-                                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>Periodo: {p.periodo} · {new Date(p.created_at).toLocaleDateString("es-MX")}</p>
-                                {p.monto && <p style={{ margin: "2px 0 0", fontSize: 12, color: "#374151" }}>{fmt(p.monto)}</p>}
-                                {p.notas && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>{p.notas}</p>}
-                                {p.subido_por && p.subido_por !== "admin" && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>Subido por: {p.subido_por}</p>}
-                              </div>
-                              <span style={{ background: sem.bg, color: sem.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{sem.label}</span>
+                          <div key={tipo}>
+                            <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#374151", borderBottom: "1px solid #f0f0f0", paddingBottom: 6 }}>
+                              {config?.label || tipo}
+                            </p>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                              {pagosServicio.map(p => {
+                                const sem = semaforo(p.status);
+                                return (
+                                  <div key={p.id} style={{ background: p.status === "en_revision" ? "#eff6ff" : "#f9fafb", border: `1px solid ${p.status === "en_revision" ? "#93c5fd" : "#e5e7eb"}`, borderRadius: 8, padding: "10px 14px" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                      <div>
+                                        <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#374151" }}>
+                                          Periodo: {p.periodo}
+                                          {p.monto ? ` · ${fmt(p.monto)}` : ""}
+                                        </p>
+                                        {p.notas && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>{p.notas}</p>}
+                                        {p.subido_por && p.subido_por !== "admin" && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>Subido por inquilino</p>}
+                                      </div>
+                                      <span style={{ background: sem.bg, color: sem.color, padding: "2px 8px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{sem.label}</span>
+                                    </div>
+                                    {p.comprobante_url && (
+                                      <a href={p.comprobante_url} target="_blank" rel="noreferrer"
+                                        style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, display: "inline-block", marginBottom: p.status === "en_revision" ? 8 : 0 }}>
+                                        📄 Ver comprobante
+                                      </a>
+                                    )}
+                                    {p.status === "en_revision" && (
+                                      <div style={{ display: "flex", gap: 8 }}>
+                                        <button onClick={async () => {
+                                          await supabase.from("pagos_servicios").update({ status: "pagado" }).eq("id", p.id);
+                                          showToast("Comprobante aprobado ✅");
+                                          loadServicios();
+                                        }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                                          ✅ Aprobar
+                                        </button>
+                                        <button onClick={async () => {
+                                          await supabase.from("pagos_servicios").update({ status: "pendiente" }).eq("id", p.id);
+                                          showToast("Comprobante rechazado", false);
+                                          loadServicios();
+                                        }} style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                                          ✗ Rechazar
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
-                            {p.comprobante_url && (
-                              <a href={p.comprobante_url} target="_blank" rel="noreferrer"
-                                style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, display: "inline-block", marginBottom: 8 }}>
-                                📄 Ver comprobante
-                              </a>
-                            )}
-                            {p.status === "en_revision" && (
-                              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                                <button onClick={async () => {
-                                  await supabase.from("pagos_servicios").update({ status: "pagado" }).eq("id", p.id);
-                                  showToast("Comprobante aprobado ✅");
-                                  loadServicios();
-                                }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                                  ✅ Aprobar
-                                </button>
-                                <button onClick={async () => {
-                                  await supabase.from("pagos_servicios").update({ status: "pendiente" }).eq("id", p.id);
-                                  showToast("Comprobante rechazado", false);
-                                  loadServicios();
-                                }} style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                                  ✗ Rechazar
-                                </button>
-                              </div>
-                            )}
                           </div>
                         );
                       })}
@@ -392,6 +472,7 @@ function ModalServicios({ property, onClose, showToast }) {
     </div>
   );
 }
+
 
 const LoginScreen = ({ onLogin }) => {
   const [email, setEmail] = useState("");
