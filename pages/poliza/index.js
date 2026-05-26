@@ -46,7 +46,7 @@ const Badge = ({ status }) => {
 const fmt = (n) => n ? `$${Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '—'
 const fmtDate = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
-// ─── Número a letra (básico para montos) ──────────────────
+// ─── Número a letra ────────────────────────────────────────
 const UNIDADES = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE',
   'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE']
 const DECENAS = ['', '', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA']
@@ -73,7 +73,7 @@ function numeroALetra(n) {
   return r.trim() + ' ' + String(cents).padStart(2, '0') + '/100 M.N.'
 }
 
-// ─── Calcular 12 fechas de pagarés ───────────────────────
+// ─── Calcular 12 fechas de pagarés ────────────────────────
 function calcularPagares(fechaInicio) {
   if (!fechaInicio) return {}
   const dates = {}
@@ -84,6 +84,14 @@ function calcularPagares(fechaInicio) {
     dates[`fecha_pagare_${i}`] = d.toISOString().split('T')[0]
   }
   return dates
+}
+
+// ─── Calcular fecha vigencia ───────────────────────────────
+function calcularFechaVigencia(fechaInicio, meses) {
+  if (!fechaInicio) return ''
+  const d = new Date(fechaInicio + 'T12:00:00')
+  d.setMonth(d.getMonth() + (parseInt(meses) || 12))
+  return d.toISOString().split('T')[0]
 }
 
 // ─── Estilos base ─────────────────────────────────────────
@@ -124,6 +132,10 @@ const CORREOS_PERMITIDOS = [
   'juridico@emporioinmobiliario.mx',
   'carlos.nachon@emporioinmobiliario.mx',
 ]
+
+// ═══════════════════════════════════════════════════════════
+// MODAL PROMESA CV
+// ═══════════════════════════════════════════════════════════
 function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
   const fmt = (n) => n ? `$${Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : ''
 
@@ -143,14 +155,14 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
 
   const set = (k, val) => setForm(p => ({ ...p, [k]: val }))
   const seleccionarComprador = (id) => {
-  const c = compradores.find(x => x.id === id)
-  if (!c) return
-  set('nombre_comprador', c.nombre_comprador || '')
-  set('domicilio_comprador', c.domicilio_comprador || '')
-  set('curp_comprador', c.curp_comprador || '')
-  set('rfc_comprador', c.rfc_comprador || '')
-  set('credencial_comprador', c.folio_identificacion_comprador || '')
-}
+    const c = compradores.find(x => x.id === id)
+    if (!c) return
+    set('nombre_comprador', c.nombre_comprador || '')
+    set('domicilio_comprador', c.domicilio_comprador || '')
+    set('curp_comprador', c.curp_comprador || '')
+    set('rfc_comprador', c.rfc_comprador || '')
+    set('credencial_comprador', c.folio_identificacion_comprador || '')
+  }
 
   const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#ffffff', color: '#374151', fontSize: 13, boxSizing: 'border-box', fontFamily: 'system-ui' }
   const lbl = { display: 'block', fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }
@@ -161,7 +173,6 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 16 }}>
       <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 16, width: '100%', maxWidth: 680, maxHeight: '92vh', overflowY: 'auto', padding: 28, color: '#374151' }}>
-
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#374151' }}>Promesa de Compraventa</h2>
@@ -173,17 +184,19 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
         <div style={{ background: '#fff0f3', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
           <p style={{ margin: 0, fontSize: 12, color: '#b91c3c' }}>Precio: <strong>{fmt(v.precio_venta)}</strong> · Gravamen: <strong>{v.libre_gravamen ? 'Libre' : (v.institucion_gravamen || 'Con hipoteca')}</strong></p>
         </div>
-{compradores.length > 0 && (
-  <div style={fld}>
-    <label style={lbl}>Seleccionar comprador registrado</label>
-    <select style={{...inp, color: '#fff'}} onChange={e => seleccionarComprador(e.target.value)} defaultValue="">
-      <option value="">-- Selecciona un comprador --</option>
-      {compradores.map(c => (
-        <option key={c.id} value={c.id}>{c.nombre_comprador} · {c.celular_comprador}</option>
-      ))}
-    </select>
-  </div>
-)}
+
+        {compradores.length > 0 && (
+          <div style={fld}>
+            <label style={lbl}>Seleccionar comprador registrado</label>
+            <select style={{...inp, color: '#fff'}} onChange={e => seleccionarComprador(e.target.value)} defaultValue="">
+              <option value="">-- Selecciona un comprador --</option>
+              {compradores.map(c => (
+                <option key={c.id} value={c.id}>{c.nombre_comprador} · {c.celular_comprador}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <p style={sec}>📋 Datos adicionales del vendedor</p>
         <div style={grid2}>
           <div style={fld}><label style={lbl}>CURP del vendedor</label><input style={inp} value={form.curp_vendedor} onChange={e => set('curp_vendedor', e.target.value)} placeholder="XXXX000000XXXXXX" /></div>
@@ -191,29 +204,29 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
         </div>
 
         <p style={sec}>👤 Datos del comprador</p>
-        <div style={fld}><label style={lbl}>Nombre completo *</label><input style={inp} value={form.nombre_comprador} onChange={e => set('nombre_comprador', e.target.value)} placeholder="Como aparece en identificación" /></div>
-        <div style={fld}><label style={lbl}>Domicilio</label><input style={inp} value={form.domicilio_comprador} onChange={e => set('domicilio_comprador', e.target.value)} placeholder="Calle, número, colonia, ciudad" /></div>
+        <div style={fld}><label style={lbl}>Nombre completo *</label><input style={inp} value={form.nombre_comprador} onChange={e => set('nombre_comprador', e.target.value)} /></div>
+        <div style={fld}><label style={lbl}>Domicilio</label><input style={inp} value={form.domicilio_comprador} onChange={e => set('domicilio_comprador', e.target.value)} /></div>
         <div style={grid2}>
-          <div style={fld}><label style={lbl}>CURP</label><input style={inp} value={form.curp_comprador} onChange={e => set('curp_comprador', e.target.value)} placeholder="XXXX000000XXXXXX" /></div>
-          <div style={fld}><label style={lbl}>RFC</label><input style={inp} value={form.rfc_comprador} onChange={e => set('rfc_comprador', e.target.value)} placeholder="XXXX000000XXX" /></div>
+          <div style={fld}><label style={lbl}>CURP</label><input style={inp} value={form.curp_comprador} onChange={e => set('curp_comprador', e.target.value)} /></div>
+          <div style={fld}><label style={lbl}>RFC</label><input style={inp} value={form.rfc_comprador} onChange={e => set('rfc_comprador', e.target.value)} /></div>
         </div>
-        <div style={fld}><label style={lbl}>No. Credencial INE</label><input style={inp} value={form.credencial_comprador} onChange={e => set('credencial_comprador', e.target.value)} placeholder="Número de folio" /></div>
+        <div style={fld}><label style={lbl}>No. Credencial INE</label><input style={inp} value={form.credencial_comprador} onChange={e => set('credencial_comprador', e.target.value)} /></div>
 
         <p style={sec}>🏠 Antecedentes del inmueble</p>
-        <div style={fld}><label style={lbl}>Superficie</label><input style={inp} value={form.superficie} onChange={e => set('superficie', e.target.value)} placeholder="Ej: CIENTO SESENTA Y NUEVE PUNTO NOVENTA METROS CUADRADOS" /></div>
+        <div style={fld}><label style={lbl}>Superficie</label><input style={inp} value={form.superficie} onChange={e => set('superficie', e.target.value)} /></div>
         <div style={grid2}>
-          <div style={fld}><label style={lbl}>Volumen de escritura</label><input style={inp} value={form.volumen_escritura} onChange={e => set('volumen_escritura', e.target.value)} placeholder="Ej: OCHOCIENTOS CUARENTA" /></div>
-          <div style={fld}><label style={lbl}>Instrumento No.</label><input style={inp} value={form.instrumento_escritura} onChange={e => set('instrumento_escritura', e.target.value)} placeholder="Ej: CUARENTA MIL TRESCIENTOS..." /></div>
+          <div style={fld}><label style={lbl}>Volumen de escritura</label><input style={inp} value={form.volumen_escritura} onChange={e => set('volumen_escritura', e.target.value)} /></div>
+          <div style={fld}><label style={lbl}>Instrumento No.</label><input style={inp} value={form.instrumento_escritura} onChange={e => set('instrumento_escritura', e.target.value)} /></div>
         </div>
         <div style={grid2}>
-          <div style={fld}><label style={lbl}>Fecha de escritura</label><input style={inp} value={form.fecha_escritura} onChange={e => set('fecha_escritura', e.target.value)} placeholder="Ej: DIEZ DE JUNIO DEL AÑO DOS MIL VEINTIDÓS" /></div>
-          <div style={fld}><label style={lbl}>Cuenta predial</label><input style={inp} value={form.cuenta_predial} onChange={e => set('cuenta_predial', e.target.value)} placeholder="Ej: PU-29330" /></div>
+          <div style={fld}><label style={lbl}>Fecha de escritura</label><input style={inp} value={form.fecha_escritura} onChange={e => set('fecha_escritura', e.target.value)} /></div>
+          <div style={fld}><label style={lbl}>Cuenta predial</label><input style={inp} value={form.cuenta_predial} onChange={e => set('cuenta_predial', e.target.value)} /></div>
         </div>
-        <div style={fld}><label style={lbl}>Notario</label><input style={inp} value={form.notario} onChange={e => set('notario', e.target.value)} placeholder="Ej: DOCTOR EN DERECHO ERNESTO JOAQUÍN BRIONES AMADOR" /></div>
-        <div style={fld}><label style={lbl}>Notaría</label><input style={inp} value={form.notaria} onChange={e => set('notaria', e.target.value)} placeholder="Ej: NOTARÍA PÚBLICA NÚMERO CUARENTA Y SEIS" /></div>
+        <div style={fld}><label style={lbl}>Notario</label><input style={inp} value={form.notario} onChange={e => set('notario', e.target.value)} /></div>
+        <div style={fld}><label style={lbl}>Notaría</label><input style={inp} value={form.notaria} onChange={e => set('notaria', e.target.value)} /></div>
 
         <p style={sec}>💰 Operación y pagos</p>
-        <div style={fld}><label style={lbl}>Precio total en letras</label><input style={inp} value={form.precio_total_letras} onChange={e => set('precio_total_letras', e.target.value)} placeholder="Ej: TRES MILLONES QUINIENTOS MIL PESOS 00/100 M.N." /></div>
+        <div style={fld}><label style={lbl}>Precio total en letras</label><input style={inp} value={form.precio_total_letras} onChange={e => set('precio_total_letras', e.target.value)} /></div>
 
         <div style={fld}>
           <label style={lbl}>Forma de pago del resto</label>
@@ -227,16 +240,16 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
           </div>
         </div>
         {form.tipo_credito === 'bancario' && (
-          <div style={fld}><label style={lbl}>Nombre del banco</label><input style={inp} value={form.nombre_banco} onChange={e => set('nombre_banco', e.target.value)} placeholder="Ej: BBVA, Banorte, Scotiabank" /></div>
+          <div style={fld}><label style={lbl}>Nombre del banco</label><input style={inp} value={form.nombre_banco} onChange={e => set('nombre_banco', e.target.value)} /></div>
         )}
 
         <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10 }}>
           <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#b91c3c' }}>Pago 1 — Anticipo/Garantía</p>
           <div style={grid2}>
-            <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago1_monto} onChange={e => set('pago1_monto', e.target.value)} placeholder="0" /></div>
+            <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago1_monto} onChange={e => set('pago1_monto', e.target.value)} /></div>
             <div style={fld}><label style={lbl}>Fecha</label><input style={inp} type="date" value={form.pago1_fecha} onChange={e => set('pago1_fecha', e.target.value)} /></div>
           </div>
-          <div style={fld}><label style={lbl}>Monto en letras</label><input style={inp} value={form.pago1_letras} onChange={e => set('pago1_letras', e.target.value)} placeholder="Ej: TRESCIENTOS CINCUENTA MIL PESOS 00/100 M.N." /></div>
+          <div style={fld}><label style={lbl}>Monto en letras</label><input style={inp} value={form.pago1_letras} onChange={e => set('pago1_letras', e.target.value)} /></div>
         </div>
 
         <div style={{ marginBottom: 10 }}>
@@ -247,32 +260,32 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
         </div>
         {form.tiene_pago2 && (
           <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10 }}>
-            <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#b91c3c' }}>Pago 2 — Segundo pago en efectivo</p>
+            <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#b91c3c' }}>Pago 2</p>
             <div style={grid2}>
-              <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago2_monto} onChange={e => set('pago2_monto', e.target.value)} placeholder="0" /></div>
+              <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago2_monto} onChange={e => set('pago2_monto', e.target.value)} /></div>
               <div style={fld}><label style={lbl}>Fecha</label><input style={inp} type="date" value={form.pago2_fecha} onChange={e => set('pago2_fecha', e.target.value)} /></div>
             </div>
-            <div style={fld}><label style={lbl}>Monto en letras</label><input style={inp} value={form.pago2_letras} onChange={e => set('pago2_letras', e.target.value)} placeholder="En letras..." /></div>
+            <div style={fld}><label style={lbl}>Monto en letras</label><input style={inp} value={form.pago2_letras} onChange={e => set('pago2_letras', e.target.value)} /></div>
           </div>
         )}
 
         <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 10 }}>
-          <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#c8a96e' }}>Pago 3 — Resto ({form.tipo_credito === 'contado' ? 'Contado' : form.tipo_credito === 'infonavit' ? 'INFONAVIT' : form.nombre_banco || 'Banco'})</p>
+          <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#c8a96e' }}>Pago 3 — Resto</p>
           <div style={grid2}>
-            <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago3_monto} onChange={e => set('pago3_monto', e.target.value)} placeholder="0" /></div>
+            <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pago3_monto} onChange={e => set('pago3_monto', e.target.value)} /></div>
             <div style={fld}><label style={lbl}>Fecha límite</label><input style={inp} type="date" value={form.pago3_fecha} onChange={e => set('pago3_fecha', e.target.value)} /></div>
           </div>
-          <div style={fld}><label style={lbl}>Monto en letras</label><input style={inp} value={form.pago3_letras} onChange={e => set('pago3_letras', e.target.value)} placeholder="En letras..." /></div>
+          <div style={fld}><label style={lbl}>Monto en letras</label><input style={inp} value={form.pago3_letras} onChange={e => set('pago3_letras', e.target.value)} /></div>
         </div>
 
         <p style={sec}>⚖️ Pena convencional</p>
         <div style={grid2}>
-          <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pena_convencional} onChange={e => set('pena_convencional', e.target.value)} placeholder="100000" /></div>
-          <div style={fld}><label style={lbl}>En letras</label><input style={inp} value={form.pena_letras} onChange={e => set('pena_letras', e.target.value)} placeholder="CIEN MIL PESOS 00/100 M.N." /></div>
+          <div style={fld}><label style={lbl}>Monto $</label><input style={inp} type="number" value={form.pena_convencional} onChange={e => set('pena_convencional', e.target.value)} /></div>
+          <div style={fld}><label style={lbl}>En letras</label><input style={inp} value={form.pena_letras} onChange={e => set('pena_letras', e.target.value)} /></div>
         </div>
 
         <p style={sec}>📅 Fecha de firma</p>
-        <div style={fld}><label style={lbl}>Fecha (texto)</label><input style={inp} value={form.fecha_firma} onChange={e => set('fecha_firma', e.target.value)} placeholder="Ej: diecisiete de abril del año dos mil veintiséis" /></div>
+        <div style={fld}><label style={lbl}>Fecha (texto)</label><input style={inp} value={form.fecha_firma} onChange={e => set('fecha_firma', e.target.value)} /></div>
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
           <button onClick={onClose} style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', color: '#9ca3af', borderRadius: 10, padding: '11px 20px', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
@@ -289,6 +302,10 @@ function ModalPromesaCV({ vendedor: v, compradores = [], onClose, onGenerar }) {
     </div>
   )
 }
+
+// ═══════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════
 export default function PolizaPanel() {
   const router = useRouter()
   const [tab, setTab] = useState('expedientes')
@@ -298,12 +315,10 @@ export default function PolizaPanel() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null)
   const [selected, setSelected] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [saveMsg, setSaveMsg] = useState('')
-  const [acceso, setAcceso] = useState(null) // null=verificando, true=ok, false=denegado
+  const [acceso, setAcceso] = useState(null)
   const [caja, setCaja] = useState([])
   const [compradores, setCompradores] = useState([])
-  const [subTabCV, setSubTabCV] = useState('vendedores') // vendedores | compradores | expedientes_cv
+  const [subTabCV, setSubTabCV] = useState('vendedores')
 
   useEffect(() => {
     const verificarAcceso = async () => {
@@ -337,7 +352,6 @@ export default function PolizaPanel() {
     setLoading(false)
   }
 
-  // ── Tabs ──────────────────────────────────────────────────
   const tabs = [
     { id: 'expedientes', label: `Expedientes (${expedientes.length})` },
     { id: 'propietarios', label: `Propietarios (${propietarios.length})` },
@@ -348,7 +362,6 @@ export default function PolizaPanel() {
 
   return (
     <div style={st.page}>
-      {/* Header */}
       <header style={st.header}>
         <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={st.logo} />
         <div>
@@ -376,7 +389,7 @@ export default function PolizaPanel() {
           <div style={st.emptyState}><p>Cargando...</p></div>
         ) : (
           <>
-            {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={e => { setSelected(e); setModal('expediente') }} />}
+            {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={e => { setSelected(e); setModal('expediente') }} onReload={loadAll} />}
             {tab === 'propietarios' && <TabPropietarios propietarios={propietarios.filter(p => p.tipo_operacion !== 'venta')} onSelect={p => { setSelected(p); setModal('propietario') }} />}
             {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected({ _solicitud: sol }); setModal('nuevo') }} />}
             {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} />}
@@ -397,8 +410,8 @@ export default function PolizaPanel() {
 
       {/* Modales */}
       {modal === 'vendedor_cv' && selected && (
-  <ModalVendedorCV vendedor={selected} compradores={compradores} onClose={() => { setModal(null); setSelected(null) }} onSaved={() => { setModal(null); setSelected(null); loadAll() }} />
-)}
+        <ModalVendedorCV vendedor={selected} compradores={compradores} onClose={() => { setModal(null); setSelected(null) }} onSaved={() => { setModal(null); setSelected(null); loadAll() }} />
+      )}
       {modal === 'comprador_cv' && selected && (
         <ModalCompradorCV comprador={selected} onClose={() => { setModal(null); setSelected(null) }} onSaved={() => { setModal(null); setSelected(null); loadAll() }} />
       )}
@@ -441,9 +454,60 @@ export default function PolizaPanel() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// TAB EXPEDIENTES
+// TAB EXPEDIENTES — con alertas de renovación
 // ═══════════════════════════════════════════════════════════
-function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect }) {
+function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect, onReload }) {
+  const [enviando, setEnviando] = useState(null)
+
+  // ── Calcular próximas renovaciones ──────────────────────
+  const hoy = new Date()
+  const proximasRenovaciones = expedientes
+    .filter(e => {
+      if (!e.fecha_vigencia) return false
+      const vigencia = new Date(e.fecha_vigencia + 'T12:00:00')
+      const diasRestantes = Math.ceil((vigencia - hoy) / (1000 * 60 * 60 * 24))
+      return diasRestantes <= 60 && diasRestantes >= -30
+    })
+    .map(e => {
+      const vigencia = new Date(e.fecha_vigencia + 'T12:00:00')
+      const diasRestantes = Math.ceil((vigencia - hoy) / (1000 * 60 * 60 * 24))
+      return { ...e, diasRestantes }
+    })
+    .sort((a, b) => a.diasRestantes - b.diasRestantes)
+
+  // ── Enviar recordatorio manual ───────────────────────────
+  const enviarRecordatorio = async (e) => {
+    setEnviando(e.id)
+    try {
+      const { error } = await supabase.functions.invoke('recordatorio-renovacion', {
+        body: {
+          expediente_id: e.id,
+          nombre_arrendatario: e.nombre_arrendatario,
+          nombre_arrendador: e.nombre_arrendador,
+          correo_arrendatario: e.correo_arrendatario,
+          correo_arrendador: e.correo_arrendador,
+          direccion_inmueble: e.direccion_inmueble,
+          fecha_vigencia: e.fecha_vigencia,
+          dias_restantes: e.diasRestantes,
+          renta_mensual: e.renta_mensual,
+        }
+      })
+      if (error) throw error
+      // Marcar recordatorio enviado
+      await supabase.from('poliza_expedientes').update({
+        fecha_ultimo_recordatorio: new Date().toISOString(),
+        recordatorio_60_enviado: e.diasRestantes <= 60,
+        recordatorio_30_enviado: e.diasRestantes <= 30,
+      }).eq('id', e.id)
+      onReload()
+      alert('✅ Recordatorio enviado correctamente')
+    } catch (err) {
+      alert('Error enviando recordatorio: ' + err.message)
+    } finally {
+      setEnviando(null)
+    }
+  }
+
   if (expedientes.length === 0) return (
     <div style={st.emptyState}>
       <p style={{ fontSize: 40, margin: '0 0 12px' }}>📁</p>
@@ -452,11 +516,60 @@ function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect }) {
     </div>
   )
 
-  const getProp = (id) => propietarios.find(p => p.id === id)
-  const getSol = (id) => solicitudes.find(s => st.id === id)
-
   return (
     <div>
+      {/* ── Alertas de renovación ── */}
+      {proximasRenovaciones.length > 0 && (
+        <div style={{ marginBottom: 32 }}>
+          <p style={{ ...st.sectionTitle, color: C.goldText, marginBottom: 4 }}>⏰ Próximas renovaciones</p>
+          <p style={{ ...st.sectionSub, marginBottom: 16 }}>Contratos que vencen en los próximos 60 días o vencidos recientemente</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {proximasRenovaciones.map(e => {
+              const vencido = e.diasRestantes < 0
+              const urgente = e.diasRestantes <= 30 && e.diasRestantes >= 0
+              const bg = vencido ? C.redBg : urgente ? '#fff7ed' : C.goldLight
+              const borderColor = vencido ? '#fca5a5' : urgente ? '#fed7aa' : '#fecdd3'
+              const color = vencido ? C.redText : urgente ? '#c2410c' : C.goldText
+              const yaEnvio = e.fecha_ultimo_recordatorio
+                ? new Date(e.fecha_ultimo_recordatorio) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+                : false
+
+              return (
+                <div key={e.id}
+                  style={{ background: bg, border: `1px solid ${borderColor}`, borderRadius: 10, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => onSelect(e)}>
+                    <p style={{ margin: 0, fontWeight: 700, color: C.text, fontSize: 14 }}>{e.nombre_arrendatario}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: C.muted }}>{e.direccion_inmueble}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: 11, color: C.muted }}>
+                      Arrendador: {e.nombre_arrendador || '—'} · Renta: {fmt(e.renta_mensual)}
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'right', minWidth: 160 }}>
+                    <p style={{ margin: 0, fontWeight: 800, color, fontSize: 13 }}>
+                      {vencido ? `⚠️ Vencido hace ${Math.abs(e.diasRestantes)} días` : `⏳ Vence en ${e.diasRestantes} días`}
+                    </p>
+                    <p style={{ margin: '2px 0 6px', fontSize: 11, color: C.muted }}>{fmtDate(e.fecha_vigencia)}</p>
+                    {yaEnvio ? (
+                      <span style={{ fontSize: 11, color: C.greenText, background: C.greenBg, padding: '3px 8px', borderRadius: 6 }}>
+                        ✓ Recordatorio enviado
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => enviarRecordatorio(e)}
+                        disabled={enviando === e.id}
+                        style={{ ...st.btn, padding: '5px 12px', fontSize: 11, background: vencido ? C.red : C.gold, color: '#fff', opacity: enviando === e.id ? 0.6 : 1 }}>
+                        {enviando === e.id ? 'Enviando...' : '📧 Enviar recordatorio'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Tabla de expedientes ── */}
       <p style={st.sectionTitle}>Expedientes de póliza</p>
       <p style={st.sectionSub}>Haz clic en un expediente para editarlo o generar documentos</p>
       <div style={st.card}>
@@ -467,29 +580,47 @@ function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect }) {
               <th style={st.th}>Inmueble</th>
               <th style={st.th}>Renta</th>
               <th style={st.th}>Inicio</th>
+              <th style={st.th}>Vigencia</th>
               <th style={st.th}>Tipo</th>
               <th style={st.th}>Status</th>
             </tr>
           </thead>
           <tbody>
-            {expedientes.map(e => (
-              <tr key={e.id} onClick={() => onSelect(e)}
-                style={st.trHover}
-                onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
-                onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
-                <td style={st.td}>
-                  <p style={{ margin: 0, fontWeight: 600, color: C.text }}>{e.nombre_arrendatario || '—'}</p>
-                  <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{e.nombre_arrendador || '—'}</p>
-                </td>
-                <td style={st.td}>
-                  <p style={{ margin: 0, fontSize: 12, color: C.muted, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.direccion_inmueble || '—'}</p>
-                </td>
-                <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(e.renta_mensual)}</span></td>
-                <td style={st.td}><span style={{ color: C.muted, fontSize: 12 }}>{fmtDate(e.fecha_inicio)}</span></td>
-                <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{e.tipo_contrato?.replace(/_/g, ' ') || '—'}</span></td>
-                <td style={st.td}><Badge status={e.status} /></td>
-              </tr>
-            ))}
+            {expedientes.map(e => {
+              // Calcular estado de vigencia para color en tabla
+              const vigenciaColor = (() => {
+                if (!e.fecha_vigencia) return C.muted
+                const dias = Math.ceil((new Date(e.fecha_vigencia + 'T12:00:00') - new Date()) / (1000 * 60 * 60 * 24))
+                if (dias < 0) return C.redText
+                if (dias <= 30) return '#c2410c'
+                if (dias <= 60) return C.goldText
+                return C.greenText
+              })()
+
+              return (
+                <tr key={e.id} onClick={() => onSelect(e)}
+                  style={st.trHover}
+                  onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
+                  <td style={st.td}>
+                    <p style={{ margin: 0, fontWeight: 600, color: C.text }}>{e.nombre_arrendatario || '—'}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{e.nombre_arrendador || '—'}</p>
+                  </td>
+                  <td style={st.td}>
+                    <p style={{ margin: 0, fontSize: 12, color: C.muted, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.direccion_inmueble || '—'}</p>
+                  </td>
+                  <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(e.renta_mensual)}</span></td>
+                  <td style={st.td}><span style={{ color: C.muted, fontSize: 12 }}>{fmtDate(e.fecha_inicio)}</span></td>
+                  <td style={st.td}>
+                    <span style={{ color: vigenciaColor, fontSize: 12, fontWeight: e.fecha_vigencia ? 600 : 400 }}>
+                      {e.fecha_vigencia ? fmtDate(e.fecha_vigencia) : '—'}
+                    </span>
+                  </td>
+                  <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{e.tipo_contrato?.replace(/_/g, ' ') || '—'}</span></td>
+                  <td style={st.td}><Badge status={e.status} /></td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -560,7 +691,6 @@ function TabSolicitudes({ solicitudes, onSelect, onNuevoExp }) {
     <div style={st.emptyState}>
       <p style={{ fontSize: 40, margin: '0 0 12px' }}>📋</p>
       <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin solicitudes aún</p>
-      <p>Comparte el link con los inquilinos interesados</p>
       <div style={{ marginTop: 16, background: '#f3f4f6', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
         <code style={{ color: '#b91c3c', fontSize: 13 }}>app.emporioinmobiliario.com.mx/solicitud-inquilino</code>
       </div>
@@ -585,8 +715,7 @@ function TabSolicitudes({ solicitudes, onSelect, onNuevoExp }) {
           </thead>
           <tbody>
             {solicitudes.map(sol => (
-              <tr key={sol.id}
-                style={st.trHover}
+              <tr key={sol.id} style={st.trHover}
                 onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
                 onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
                 <td style={st.td} onClick={() => onSelect(sol)}>
@@ -614,9 +743,6 @@ function TabSolicitudes({ solicitudes, onSelect, onNuevoExp }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// MODAL NUEVO EXPEDIENTE
-// ═══════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════
 // TAB CAJA PÓLIZA
 // ═══════════════════════════════════════════════════════════
 function TabCajaPoliza({ movimientos, onReload }) {
@@ -629,21 +755,14 @@ function TabCajaPoliza({ movimientos, onReload }) {
   const saldo    = ingresos - egresos
 
   const CONCEPTOS = {
-    investigacion: 'Investigación',
-    anticipo_poliza: 'Anticipo póliza',
-    pago_poliza: 'Pago póliza',
-    saldo_poliza: 'Saldo póliza',
-    otro: 'Otro',
+    investigacion: 'Investigación', anticipo_poliza: 'Anticipo póliza',
+    pago_poliza: 'Pago póliza', saldo_poliza: 'Saldo póliza', otro: 'Otro',
   }
 
   const handleSave = async () => {
     if (!form.monto || !form.descripcion) return
     setSaving(true)
-    await supabase.from('poliza_caja').insert({
-      ...form,
-      monto: parseFloat(form.monto),
-      fecha: new Date().toISOString().split('T')[0],
-    })
+    await supabase.from('poliza_caja').insert({ ...form, monto: parseFloat(form.monto), fecha: new Date().toISOString().split('T')[0] })
     setSaving(false)
     setShowForm(false)
     setForm({ tipo: 'ingreso', concepto: 'pago_poliza', descripcion: '', monto: '', metodo_pago: 'efectivo' })
@@ -654,8 +773,6 @@ function TabCajaPoliza({ movimientos, onReload }) {
     <div>
       <p style={st.sectionTitle}>Caja — Póliza Jurídica</p>
       <p style={st.sectionSub}>Registro de cobros y pagos del área jurídica</p>
-
-      {/* Resumen */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
         {[
           { label: 'Total ingresos', value: fmt(ingresos), color: C.greenText, bg: C.greenBg },
@@ -668,17 +785,13 @@ function TabCajaPoliza({ movimientos, onReload }) {
           </div>
         ))}
       </div>
-
-      {/* Botón nuevo movimiento */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <button onClick={() => setShowForm(!showForm)} style={{ ...st.btn, ...st.btnGold }}>
           {showForm ? 'Cancelar' : '+ Movimiento manual'}
         </button>
       </div>
-
-      {/* Formulario manual */}
       {showForm && (
-        <div style={{ ...st.card, marginBottom: 20 }}>
+        <div style={{ ...st.card, marginBottom: 20, padding: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={st.label}>Tipo</label>
@@ -704,13 +817,11 @@ function TabCajaPoliza({ movimientos, onReload }) {
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={st.label}>Descripción</label>
-              <input value={form.descripcion} onChange={e => setForm(f => ({...f, descripcion: e.target.value}))}
-                placeholder="Ej: Pago póliza — Juan Pérez" style={st.input} />
+              <input value={form.descripcion} onChange={e => setForm(f => ({...f, descripcion: e.target.value}))} style={st.input} />
             </div>
             <div>
               <label style={st.label}>Monto</label>
-              <input type="number" value={form.monto} onChange={e => setForm(f => ({...f, monto: e.target.value}))}
-                placeholder="0.00" style={st.input} />
+              <input type="number" value={form.monto} onChange={e => setForm(f => ({...f, monto: e.target.value}))} style={st.input} />
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -720,8 +831,6 @@ function TabCajaPoliza({ movimientos, onReload }) {
           </div>
         </div>
       )}
-
-      {/* Tabla de movimientos */}
       <div style={st.card}>
         {movimientos.length === 0 ? (
           <p style={{ color: C.faint, textAlign: 'center', padding: 32 }}>Sin movimientos registrados</p>
@@ -741,7 +850,7 @@ function TabCajaPoliza({ movimientos, onReload }) {
               {movimientos.map(m => (
                 <tr key={m.id} style={{ borderTop: `1px solid ${C.border}` }}>
                   <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.fecha}</span></td>
-                  <td style={st.td}><Badge status={m.tipo === 'ingreso' ? 'activo' : 'rechazado'} label={m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} /></td>
+                  <td style={st.td}><Badge status={m.tipo === 'ingreso' ? 'activo' : 'rechazado'} /></td>
                   <td style={st.td}><span style={{ fontSize: 12 }}>{CONCEPTOS[m.concepto] || m.concepto}</span></td>
                   <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.descripcion}</span></td>
                   <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.metodo_pago}</span></td>
@@ -756,7 +865,6 @@ function TabCajaPoliza({ movimientos, onReload }) {
   )
 }
 
-
 // ═══════════════════════════════════════════════════════════
 // TAB COMPRAVENTA
 // ═══════════════════════════════════════════════════════════
@@ -765,17 +873,14 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
     { id: 'vendedores', label: `🏠 Vendedores (${vendedores.length})` },
     { id: 'compradores', label: `👤 Compradores (${compradores.length})` },
   ]
-
   return (
     <div>
       <p style={st.sectionTitle}>Compraventa</p>
       <p style={st.sectionSub}>Vendedores, compradores y expedientes de compraventa</p>
-
-      {/* Sub-tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: `1px solid ${C.border}`, paddingBottom: 0 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: `1px solid ${C.border}` }}>
         {subTabs.map(t => (
           <button key={t.id} onClick={() => onSubTab(t.id)}
-            style={{ padding: '10px 18px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
+            style={{ padding: '10px 18px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
               background: subTab === t.id ? C.gold : 'transparent',
               color: subTab === t.id ? '#000' : C.muted,
               borderBottom: subTab === t.id ? `2px solid ${C.gold}` : '2px solid transparent',
@@ -784,18 +889,9 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
           </button>
         ))}
       </div>
-
-      {/* Vendedores */}
       {subTab === 'vendedores' && (
         vendedores.length === 0 ? (
-          <div style={st.emptyState}>
-            <p style={{ fontSize: 40, margin: '0 0 12px' }}>🏠</p>
-            <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin vendedores registrados</p>
-            <p>Comparte el link con los propietarios que quieran vender</p>
-            <div style={{ marginTop: 16, background: '#f3f4f6', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
-              <code style={{ color: '#b91c3c', fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-vendedor</code>
-            </div>
-          </div>
+          <div style={st.emptyState}><p style={{ fontSize: 40 }}>🏠</p><p>Sin vendedores registrados</p></div>
         ) : (
           <div style={st.card}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -811,27 +907,17 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
               </thead>
               <tbody>
                 {vendedores.map(v => (
-                  <tr key={v.id} onClick={() => onSelectVendedor(v)}
-                    style={st.trHover}
+                  <tr key={v.id} onClick={() => onSelectVendedor(v)} style={st.trHover}
                     onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
                     onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
                     <td style={st.td}>
                       <p style={{ margin: 0, fontWeight: 600, color: C.text }}>{v.nombre_propietario}</p>
                       <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{v.telefono_propietario}</p>
-                      {v.tipo_persona_propietario === 'moral' && (
-                        <span style={{ fontSize: 10, background: '#1A2A3A', color: C.blueText, padding: '2px 6px', borderRadius: 4 }}>Persona moral</span>
-                      )}
                     </td>
                     <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{v.direccion_inmueble}</span></td>
                     <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(v.precio_venta)}</span></td>
-                    <td style={st.td}>
-                      <Badge status={v.libre_gravamen ? 'activo' : 'con_gravamen'} label={v.libre_gravamen ? 'Libre de gravamen' : 'Con gravamen'} />
-                    </td>
-                    <td style={st.td}>
-                      {v.tipo_copropiedad && v.tipo_copropiedad !== 'no'
-                        ? <Badge status="pendiente" label={v.tipo_copropiedad === 'conyuge' ? 'Cónyuge' : 'Copropietario'} />
-                        : <span style={{ color: C.faint, fontSize: 11 }}>Solo propietario</span>}
-                    </td>
+                    <td style={st.td}><Badge status={v.libre_gravamen ? 'activo' : 'pendiente'} /></td>
+                    <td style={st.td}>{v.tipo_copropiedad && v.tipo_copropiedad !== 'no' ? <Badge status="pendiente" /> : <span style={{ color: C.faint, fontSize: 11 }}>Solo propietario</span>}</td>
                     <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(v.created_at?.split('T')[0])}</span></td>
                   </tr>
                 ))}
@@ -840,18 +926,9 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
           </div>
         )
       )}
-
-      {/* Compradores */}
       {subTab === 'compradores' && (
         compradores.length === 0 ? (
-          <div style={st.emptyState}>
-            <p style={{ fontSize: 40, margin: '0 0 12px' }}>👤</p>
-            <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin compradores registrados</p>
-            <p>Comparte el link con los compradores interesados</p>
-            <div style={{ marginTop: 16, background: '#f3f4f6', borderRadius: 8, padding: '10px 18px', display: 'inline-block' }}>
-              <code style={{ color: '#b91c3c', fontSize: 13 }}>app.emporioinmobiliario.com.mx/registro-comprador</code>
-            </div>
-          </div>
+          <div style={st.emptyState}><p style={{ fontSize: 40 }}>👤</p><p>Sin compradores registrados</p></div>
         ) : (
           <div style={st.card}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -867,8 +944,7 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
               </thead>
               <tbody>
                 {compradores.map(comp => (
-                  <tr key={comp.id} onClick={() => onSelectComprador(comp)}
-                    style={st.trHover}
+                  <tr key={comp.id} onClick={() => onSelectComprador(comp)} style={st.trHover}
                     onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
                     onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
                     <td style={st.td}>
@@ -878,11 +954,7 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
                     <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{comp.inmueble_interes || '—'}</span></td>
                     <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(comp.precio_pactado)}</span></td>
                     <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{comp.forma_pago_compra || '—'}</span></td>
-                    <td style={st.td}>
-                      {comp.tiene_conyuge
-                        ? <Badge status="pendiente" label="Con cónyuge" />
-                        : <span style={{ color: C.faint, fontSize: 11 }}>No</span>}
-                    </td>
+                    <td style={st.td}>{comp.tiene_conyuge ? <Badge status="pendiente" /> : <span style={{ color: C.faint, fontSize: 11 }}>No</span>}</td>
                     <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(comp.created_at?.split('T')[0])}</span></td>
                   </tr>
                 ))}
@@ -900,82 +972,42 @@ function TabCompraventa({ vendedores, compradores, subTab, onSubTab, onSelectVen
 // ═══════════════════════════════════════════════════════════
 function ModalVendedorCV({ vendedor: v, onClose, onSaved, compradores = [] }) {
   const [generando, setGenerando] = useState(false)
-const [showPromesaForm, setShowPromesaForm] = React.useState(false)
-const [promesaData, setPromesaData] = React.useState(null)
+  const [showPromesaForm, setShowPromesaForm] = React.useState(false)
+
   const handleGenerarPromocion = async () => {
-    setGenerando(true)
+    setGenerando('promocion')
     try {
-      await generarContratoPromocion({
-        nombre_arrendador: v.nombre_propietario,
-        domicilio_arrendador: v.domicilio_propietario,
-        telefono_arrendador: v.telefono_propietario,
-        direccion_inmueble: v.direccion_inmueble,
-        renta_mensual: v.precio_venta,
-      })
+      await generarContratoPromocion({ nombre_arrendador: v.nombre_propietario, domicilio_arrendador: v.domicilio_propietario, telefono_arrendador: v.telefono_propietario, direccion_inmueble: v.direccion_inmueble, renta_mensual: v.precio_venta })
     } catch(e) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
 
-  const handleGenerarContratoCV = async () => {
-    setGenerando(true)
+  const generarPromesaFinal = async (formData) => {
+    setGenerando('promesacv')
+    setShowPromesaForm(false)
     try {
-      await generarContratoCompraventa({
-        nombre_propietario: v.nombre_propietario,
-        domicilio_propietario: v.domicilio_propietario,
-        telefono_propietario: v.telefono_propietario,
-        direccion_inmueble: v.direccion_inmueble,
-        precio_venta: v.precio_venta,
+      await generarPromesaCompraventa({
+        nombre_vendedor: v.nombre_propietario, domicilio_vendedor: v.domicilio_propietario,
+        telefono_vendedor: v.telefono_propietario, curp_vendedor: formData.curp_vendedor,
+        rfc_vendedor: v.rfc_propietario, credencial_vendedor: formData.credencial_vendedor,
+        nombre_comprador: formData.nombre_comprador, domicilio_comprador: formData.domicilio_comprador,
+        curp_comprador: formData.curp_comprador, rfc_comprador: formData.rfc_comprador,
+        credencial_comprador: formData.credencial_comprador, direccion_inmueble: v.direccion_inmueble,
+        superficie: formData.superficie, volumen_escritura: formData.volumen_escritura,
+        instrumento_escritura: formData.instrumento_escritura, fecha_escritura: formData.fecha_escritura,
+        notario: formData.notario, notaria: formData.notaria, cuenta_predial: formData.cuenta_predial,
+        precio_total: v.precio_venta, precio_total_letras: formData.precio_total_letras,
+        tipo_credito: formData.tipo_credito, nombre_banco: formData.nombre_banco,
+        pago1_monto: formData.pago1_monto, pago1_letras: formData.pago1_letras, pago1_fecha: formData.pago1_fecha,
+        pago2_monto: formData.tiene_pago2 ? formData.pago2_monto : null, pago2_letras: formData.pago2_letras, pago2_fecha: formData.pago2_fecha,
+        pago3_monto: formData.pago3_monto, pago3_letras: formData.pago3_letras, pago3_fecha: formData.pago3_fecha,
+        pena_convencional: formData.pena_convencional, pena_letras: formData.pena_letras,
+        gravamen: v.libre_gravamen ? '' : (v.institucion_gravamen || 'hipoteca'),
+        fecha_firma: formData.fecha_firma,
       })
     } catch(e) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
-  const handleGenerarPromesaCV = () => setShowPromesaForm(true)
-
-const generarPromesaFinal = async (formData) => {
-  setGenerando('promesacv')
-  setShowPromesaForm(false)
-  try {
-    await generarPromesaCompraventa({
-      nombre_vendedor:       v.nombre_propietario,
-      domicilio_vendedor:    v.domicilio_propietario,
-      telefono_vendedor:     v.telefono_propietario,
-      curp_vendedor:         formData.curp_vendedor,
-      rfc_vendedor:          v.rfc_propietario,
-      credencial_vendedor:   formData.credencial_vendedor,
-      nombre_comprador:      formData.nombre_comprador,
-      domicilio_comprador:   formData.domicilio_comprador,
-      curp_comprador:        formData.curp_comprador,
-      rfc_comprador:         formData.rfc_comprador,
-      credencial_comprador:  formData.credencial_comprador,
-      direccion_inmueble:    v.direccion_inmueble,
-      superficie:            formData.superficie,
-      volumen_escritura:     formData.volumen_escritura,
-      instrumento_escritura: formData.instrumento_escritura,
-      fecha_escritura:       formData.fecha_escritura,
-      notario:               formData.notario,
-      notaria:               formData.notaria,
-      cuenta_predial:        formData.cuenta_predial,
-      precio_total:          v.precio_venta,
-      precio_total_letras:   formData.precio_total_letras,
-      tipo_credito:          formData.tipo_credito,
-      nombre_banco:          formData.nombre_banco,
-      pago1_monto:           formData.pago1_monto,
-      pago1_letras:          formData.pago1_letras,
-      pago1_fecha:           formData.pago1_fecha,
-      pago2_monto:           formData.tiene_pago2 ? formData.pago2_monto : null,
-      pago2_letras:          formData.pago2_letras,
-      pago2_fecha:           formData.pago2_fecha,
-      pago3_monto:           formData.pago3_monto,
-      pago3_letras:          formData.pago3_letras,
-      pago3_fecha:           formData.pago3_fecha,
-      pena_convencional:     formData.pena_convencional,
-      pena_letras:           formData.pena_letras,
-      gravamen:              v.libre_gravamen ? '' : (v.institucion_gravamen || 'hipoteca'),
-      fecha_firma:           formData.fecha_firma,
-    })
-  } catch(e) { alert('Error: ' + e.message) }
-  setGenerando(false)
-}
 
   return (
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -987,7 +1019,6 @@ const generarPromesaFinal = async (formData) => {
           </div>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
-
         <div style={st.grid2}>
           <InfoRow label="Teléfono" value={v.telefono_propietario} />
           <InfoRow label="Correo" value={v.correo_propietario} />
@@ -996,60 +1027,25 @@ const generarPromesaFinal = async (formData) => {
         </div>
         <InfoRow label="Dirección del inmueble" value={v.direccion_inmueble} />
         <InfoRow label="Domicilio del propietario" value={v.domicilio_propietario} />
-        <InfoRow label="Descripción" value={v.descripcion_inmueble} />
-        <div style={st.grid2}>
-          <InfoRow label="Gravamen" value={v.libre_gravamen ? 'Libre de gravamen' : `Con gravamen — ${v.institucion_gravamen || ''}`} />
-          <InfoRow label="Copropietarios" value={v.tipo_copropiedad === 'no' || !v.tipo_copropiedad ? 'Solo propietario' : v.tipo_copropiedad === 'conyuge' ? `Cónyuge: ${v.copropietario_1_nombre}` : `Copropietario: ${v.copropietario_1_nombre}`} />
-        </div>
-
-        {/* Copropietarios detalle */}
-        {v.tipo_copropiedad && v.tipo_copropiedad !== 'no' && (
-          <>
-            <div style={{ ...st.divider, margin: '16px 0' }} />
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>
-              {v.tipo_copropiedad === 'conyuge' ? 'Cónyuge' : 'Copropietarios'}
-            </p>
-            {[1, 2, 3].map(i => v[`copropietario_${i}_nombre`] ? (
-              <div key={i} style={{ background: '#f9fafb', borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
-                <p style={{ margin: 0, fontWeight: 600, color: C.text, fontSize: 13 }}>{v[`copropietario_${i}_nombre`]}</p>
-                <p style={{ margin: '4px 0 0', fontSize: 11, color: C.muted }}>{v[`copropietario_${i}_telefono`]} · {v[`copropietario_${i}_correo`]} · RFC: {v[`copropietario_${i}_rfc`]}</p>
-              </div>
-            ) : null)}
-          </>
-        )}
-
         <div style={{ ...st.divider, margin: '16px 0' }} />
-        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 12px' }}>Documentos</p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-          {v.doc_identificacion_b64 && <DocChipB64 label="Identificación" data={v.doc_identificacion_b64} />}
-          {v.doc_comprobante_domicilio_b64 && <DocChipB64 label="Comprobante domicilio" data={v.doc_comprobante_domicilio_b64} />}
-          {v.doc_predial_b64 && <DocChipB64 label="Predial" data={v.doc_predial_b64} />}
-          {v.doc_escritura_b64 && <DocChipB64 label="Escritura" data={v.doc_escritura_b64} />}
-        </div>
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 12px' }}>Generar documentos</p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={handleGenerarPromocion} disabled={!!generando}
             style={{ ...st.btn, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #c4b5fd', opacity: generando ? 0.6 : 1 }}>
             {generando === 'promocion' ? 'Generando...' : '📄 Contrato de promoción'}
           </button>
-
-            <button onClick={handleGenerarPromesaCV} disabled={!!generando}
-  style={{ ...st.btn, background: '#f0fdf4', color: C.greenText, border: `1px solid #6ee7b7`, opacity: generando ? 0.6 : 1 }}>
-  {generando === 'promesacv' ? 'Generando...' : '🖹 Promesa de compraventa'}
-</button>
+          <button onClick={() => setShowPromesaForm(true)} disabled={!!generando}
+            style={{ ...st.btn, background: '#f0fdf4', color: C.greenText, border: `1px solid #6ee7b7`, opacity: generando ? 0.6 : 1 }}>
+            {generando === 'promesacv' ? 'Generando...' : '🖹 Promesa de compraventa'}
+          </button>
         </div>
-
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
         </div>
       </div>
- {showPromesaForm && <ModalPromesaCV vendedor={v} compradores={compradores} onClose={() => setShowPromesaForm(false)} onGenerar={generarPromesaFinal} />}
-   </div>
- 
+      {showPromesaForm && <ModalPromesaCV vendedor={v} compradores={compradores} onClose={() => setShowPromesaForm(false)} onGenerar={generarPromesaFinal} />}
+    </div>
   )
- }
+}
 
 // ═══════════════════════════════════════════════════════════
 // MODAL COMPRADOR CV
@@ -1059,74 +1055,17 @@ function ModalCompradorCV({ comprador: comp, onClose, onSaved }) {
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={st.modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{comp.nombre_comprador}</h2>
-            <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>{comp.ocupacion_comprador} — {comp.empresa_comprador}</p>
-          </div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{comp.nombre_comprador}</h2>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
-
         <div style={st.grid2}>
           <InfoRow label="Celular" value={comp.celular_comprador} />
-          <InfoRow label="Teléfono fijo" value={comp.telefono_fijo_comprador} />
           <InfoRow label="Correo" value={comp.correo_comprador} />
           <InfoRow label="RFC" value={comp.rfc_comprador} />
           <InfoRow label="CURP" value={comp.curp_comprador} />
-          <InfoRow label="NSS" value={comp.nss_comprador} />
-          <InfoRow label="Fecha de nacimiento" value={comp.fecha_nacimiento_comprador} />
-          <InfoRow label="Lugar de nacimiento" value={comp.lugar_nacimiento_comprador} />
-          <InfoRow label="Estado civil" value={comp.estado_civil_comprador} />
-          <InfoRow label="Régimen conyugal" value={comp.regimen_conyugal} />
-          <InfoRow label="Identificación" value={`${comp.tipo_identificacion_comprador} — ${comp.folio_identificacion_comprador}`} />
-          <InfoRow label="Asesor" value={comp.asesor_ventas} />
-        </div>
-
-        <div style={{ ...st.divider, margin: '16px 0' }} />
-        <div style={st.grid2}>
           <InfoRow label="Inmueble de interés" value={comp.inmueble_interes} />
           <InfoRow label="Precio pactado" value={fmt(comp.precio_pactado)} />
-          <InfoRow label="Forma de pago" value={comp.forma_pago_compra} />
-          <InfoRow label="Notaría" value={comp.notaria} />
-          <InfoRow label="Fecha de apartado" value={comp.fecha_apartado} />
         </div>
-
-        {comp.tiene_conyuge && (
-          <>
-            <div style={{ ...st.divider, margin: '16px 0' }} />
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Cónyuge</p>
-            <div style={{ background: '#f9fafb', borderRadius: 8, padding: '10px 14px' }}>
-              <p style={{ margin: 0, fontWeight: 600, color: C.text, fontSize: 13 }}>{comp.conyuge_nombre}</p>
-              <p style={{ margin: '4px 0 0', fontSize: 11, color: C.muted }}>{comp.conyuge_telefono} · {comp.conyuge_correo} · RFC: {comp.conyuge_rfc}</p>
-            </div>
-          </>
-        )}
-
-      <>
-  <div style={{ ...st.divider, margin: '16px 0' }} />
-  <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Documentos</p>
-  {comp.doc_identificacion_b64 ? (
-    <DocChipB64 label="Identificación" data={comp.doc_identificacion_b64} />
-  ) : (
-    <label style={{ cursor: 'pointer' }}>
-      <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
-        onChange={async (e) => {
-          const file = e.target.files[0]
-          if (!file) return
-          const reader = new FileReader()
-          reader.onload = async () => {
-            await supabase.from('compradores').update({ doc_identificacion_b64: reader.result }).eq('id', comp.id)
-            onSaved()
-            onClose()
-          }
-          reader.readAsDataURL(file)
-        }}
-      />
-      <span style={{ ...st.btn, ...st.btnGhost, fontSize: 12, padding: '6px 12px', display: 'inline-block' }}>
-        📎 Subir INE / Pasaporte
-      </span>
-    </label>
-  )}
-</>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
         </div>
@@ -1135,52 +1074,34 @@ function ModalCompradorCV({ comprador: comp, onClose, onSaved }) {
   )
 }
 
-// Helper para documentos base64
-const DocChipB64 = ({ label, data }) => {
-  const handleView = () => {
-    const win = window.open()
-    win.document.write(`<iframe src="${data}" width="100%" height="100%" style="border:none"></iframe>`)
-  }
-  return (
-    <button onClick={handleView} style={{ ...st.btn, ...st.btnGhost, fontSize: 12, padding: '6px 12px', marginRight: 6, marginBottom: 6 }}>
-      📄 {label}
-    </button>
-  )
-}
-
-
+// ═══════════════════════════════════════════════════════════
+// MODAL NUEVO EXPEDIENTE
+// ═══════════════════════════════════════════════════════════
 function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onSaved }) {
-  const [propId, setPropId] = useState(prefill ? '' : '')
+  const [propId, setPropId] = useState('')
   const [solId, setSolId] = useState(prefill?.id || '')
   const [form, setForm] = useState({
     tipo_contrato: 'habitacional_sin_muebles',
     incluye_administracion: false,
-    // Arrendador
     nombre_arrendador: '', domicilio_arrendador: '', rfc_arrendador: '',
     clave_elector_arrendador: '', telefono_arrendador: '', correo_arrendador: '',
-    // Arrendatario
     nombre_arrendatario: '', domicilio_arrendatario: '', rfc_arrendatario: '',
     clave_elector_arrendatario: '', telefono_arrendatario: '', correo_arrendatario: '',
     ocupacion_arrendatario: '', comprobante_ingresos: '',
-    // Inmueble
     direccion_inmueble: '', ciudad_estado_inmueble: 'San Andrés Cholula, Puebla',
-    // Económico
     renta_mensual: '', cuota_mantenimiento: '', deposito_garantia: '', forma_pago: 'efectivo',
     banco_receptor: '', clabe_interbancaria: '', dia_limite_pago: '5',
-    // Fechas
-    fecha_inicio: '', fecha_firma: '',
-    fecha_entrega_posesion: '',
-    // Mascotas
+    fecha_inicio: '', fecha_firma: '', fecha_entrega_posesion: '',
     mascotas_permitidas: 'no', detalle_mascotas: '',
-    // Póliza
     monto_poliza: '',
+    // ── NUEVO: vigencia ──
+    duracion_contrato_meses: 12,
     status: 'borrador',
   })
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const formRef = useRef(null)
 
-  // Helper to read all uncontrolled inputs from DOM
   const getFormValues = () => {
     if (!formRef.current) return {}
     const inputs = formRef.current.querySelectorAll('[data-field]')
@@ -1191,62 +1112,33 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  // Pre-llenar desde propietario
   useEffect(() => {
     if (!propId) return
     const p = propietarios.find(x => x.id === propId)
     if (!p) return
-    setForm(f => ({
-      ...f,
-      nombre_arrendador: p.nombre_propietario || '',
-      domicilio_arrendador: p.domicilio_propietario || '',
-      rfc_arrendador: p.rfc_propietario || '',
-      telefono_arrendador: p.telefono_propietario || '',
-      correo_arrendador: p.correo_propietario || '',
-      clave_elector_arrendador: p.clave_elector_propietario || '',
-      direccion_inmueble: p.direccion_inmueble || '',
-      renta_mensual: p.monto_renta || '',
-      forma_pago: p.forma_pago || 'efectivo',
-      banco_receptor: p.banco || '',
-      clabe_interbancaria: p.clabe || '',
-      mascotas_permitidas: p.mascotas_permitidas || 'no',
-      detalle_mascotas: p.detalle_mascotas || '',
-      incluye_administracion: p.contrato_administracion || false,
-    }))
+    setForm(f => ({ ...f, nombre_arrendador: p.nombre_propietario || '', domicilio_arrendador: p.domicilio_propietario || '', rfc_arrendador: p.rfc_propietario || '', telefono_arrendador: p.telefono_propietario || '', correo_arrendador: p.correo_propietario || '', clave_elector_arrendador: p.clave_elector_propietario || '', direccion_inmueble: p.direccion_inmueble || '', renta_mensual: p.monto_renta || '', forma_pago: p.forma_pago || 'efectivo', banco_receptor: p.banco || '', clabe_interbancaria: p.clabe || '', mascotas_permitidas: p.mascotas_permitidas || 'no', detalle_mascotas: p.detalle_mascotas || '', incluye_administracion: p.contrato_administracion || false }))
   }, [propId])
 
-  // Pre-llenar desde solicitud
   useEffect(() => {
     if (!solId) return
     const sol = solicitudes.find(x => x.id === solId)
     if (!sol) return
-    setForm(f => ({
-      ...f,
-      nombre_arrendatario: sol.nombre_completo || sol.razon_social || '',
-      domicilio_arrendatario: sol.domicilio_actual || '',
-      rfc_arrendatario: sol.rfc || sol.rfc_empresa || '',
-      telefono_arrendatario: sol.telefono || '',
-      correo_arrendatario: sol.correo || '',
-      clave_elector_arrendatario: sol.clave_elector || '',
-      ocupacion_arrendatario: sol.empresa_labora || sol.giro_empresa || '',
-      comprobante_ingresos: sol.tipo_ingresos || '',
-    }))
+    setForm(f => ({ ...f, nombre_arrendatario: sol.nombre_completo || sol.razon_social || '', domicilio_arrendatario: sol.domicilio_actual || '', rfc_arrendatario: sol.rfc || sol.rfc_empresa || '', telefono_arrendatario: sol.telefono || '', correo_arrendatario: sol.correo || '', clave_elector_arrendatario: sol.clave_elector || '', ocupacion_arrendatario: sol.empresa_labora || sol.giro_empresa || '', comprobante_ingresos: sol.tipo_ingresos || '' }))
   }, [solId])
 
-  // Auto-calcular depósito y mora al cambiar renta
   useEffect(() => {
     const r = parseFloat(form.renta_mensual)
     if (!r) return
-    setForm(f => ({
-      ...f,
-      deposito_garantia: r,
-      mora_diaria: (r * 0.01).toFixed(2),
-    }))
+    setForm(f => ({ ...f, deposito_garantia: r, mora_diaria: (r * 0.01).toFixed(2) }))
   }, [form.renta_mensual])
 
-  // Auto-calcular fecha término
   const fechaTermino = form.fecha_inicio
     ? (() => { const d = new Date(form.fecha_inicio + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0] })()
+    : ''
+
+  // ── Fecha vigencia calculada ──────────────────────────────
+  const fechaVigenciaCalc = form.fecha_inicio
+    ? calcularFechaVigencia(form.fecha_inicio, form.duracion_contrato_meses)
     : ''
 
   const handleSave = async () => {
@@ -1263,6 +1155,8 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
       const dep = parseFloat(merged.deposito_garantia) || 0
       const mora = parseFloat((r * 0.01).toFixed(2))
       const pagares = calcularPagares(merged.fecha_inicio)
+      const meses = parseInt(merged.duracion_contrato_meses) || 12
+      const fechaVigencia = calcularFechaVigencia(merged.fecha_inicio, meses)
 
       const payload = {
         ...merged,
@@ -1279,9 +1173,13 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         monto_poliza_letra: merged.monto_poliza ? numeroALetra(parseFloat(merged.monto_poliza)) : null,
         dia_limite_pago: parseInt(form.dia_limite_pago) || 5,
         fecha_termino: fechaTermino || null,
+        // ── NUEVO ──
+        duracion_contrato_meses: meses,
+        fecha_vigencia: fechaVigencia || null,
+        recordatorio_30_enviado: false,
+        recordatorio_60_enviado: false,
         ...pagares,
       }
-      delete payload.mora_diaria_campo // limpieza
 
       const { error } = await supabase.from('poliza_expedientes').insert(payload)
       if (error) throw error
@@ -1301,7 +1199,6 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
 
-        {/* Selector propietario / solicitud */}
         <div style={st.grid2}>
           <div>
             <label style={st.label}>Propietario registrado</label>
@@ -1325,11 +1222,7 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         <div style={{ marginBottom: 20 }}>
           <label style={st.label}>Tipo de contrato</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {[
-              { v: 'habitacional_sin_muebles', l: 'Casa sin muebles' },
-              { v: 'habitacional_amueblada', l: 'Casa amueblada' },
-              { v: 'comercial', l: 'Comercial' },
-            ].map(opt => (
+            {[{ v: 'habitacional_sin_muebles', l: 'Casa sin muebles' }, { v: 'habitacional_amueblada', l: 'Casa amueblada' }, { v: 'comercial', l: 'Comercial' }].map(opt => (
               <button key={opt.v} type="button" onClick={() => set('tipo_contrato', opt.v)}
                 style={{ ...st.btn, ...(form.tipo_contrato === opt.v ? st.btnGold : st.btnGhost), padding: '7px 14px', fontSize: 12 }}>
                 {opt.l}
@@ -1341,34 +1234,16 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         {/* ARRENDADOR */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Arrendador (Dueño)</p>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Nombre completo</label>
-    <input type="text" defaultValue={form.nombre_arrendador || ''} data-field='nombre_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>RFC</label>
-    <input type="text" defaultValue={form.rfc_arrendador || ''} data-field='rfc_arrendador' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Nombre completo</label><input type="text" defaultValue={form.nombre_arrendador || ''} data-field='nombre_arrendador' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>RFC</label><input type="text" defaultValue={form.rfc_arrendador || ''} data-field='rfc_arrendador' style={st.input} /></div>
         </div>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Clave de elector</label>
-    <input type="text" defaultValue={form.clave_elector_arrendador || ''} data-field='clave_elector_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Teléfono</label>
-    <input type="text" defaultValue={form.telefono_arrendador || ''} data-field='telefono_arrendador' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Clave de elector</label><input type="text" defaultValue={form.clave_elector_arrendador || ''} data-field='clave_elector_arrendador' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Teléfono</label><input type="text" defaultValue={form.telefono_arrendador || ''} data-field='telefono_arrendador' style={st.input} /></div>
         </div>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Correo</label>
-    <input type="text" defaultValue={form.correo_arrendador || ''} data-field='correo_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Domicilio</label>
-    <input type="text" defaultValue={form.domicilio_arrendador || ''} data-field='domicilio_arrendador' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Correo</label><input type="text" defaultValue={form.correo_arrendador || ''} data-field='correo_arrendador' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Domicilio</label><input type="text" defaultValue={form.domicilio_arrendador || ''} data-field='domicilio_arrendador' style={st.input} /></div>
         </div>
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
@@ -1376,76 +1251,40 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
         {/* ARRENDATARIO */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Arrendatario (Inquilino)</p>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Nombre completo</label>
-    <input type="text" defaultValue={form.nombre_arrendatario || ''} data-field='nombre_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>RFC</label>
-    <input type="text" defaultValue={form.rfc_arrendatario || ''} data-field='rfc_arrendatario' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Nombre completo</label><input type="text" defaultValue={form.nombre_arrendatario || ''} data-field='nombre_arrendatario' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>RFC</label><input type="text" defaultValue={form.rfc_arrendatario || ''} data-field='rfc_arrendatario' style={st.input} /></div>
         </div>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Clave de elector</label>
-    <input type="text" defaultValue={form.clave_elector_arrendatario || ''} data-field='clave_elector_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Teléfono</label>
-    <input type="text" defaultValue={form.telefono_arrendatario || ''} data-field='telefono_arrendatario' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Clave de elector</label><input type="text" defaultValue={form.clave_elector_arrendatario || ''} data-field='clave_elector_arrendatario' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Teléfono</label><input type="text" defaultValue={form.telefono_arrendatario || ''} data-field='telefono_arrendatario' style={st.input} /></div>
         </div>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Correo</label>
-    <input type="text" defaultValue={form.correo_arrendatario || ''} data-field='correo_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Ocupación / Actividad</label>
-    <input type="text" defaultValue={form.ocupacion_arrendatario || ''} data-field='ocupacion_arrendatario' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Correo</label><input type="text" defaultValue={form.correo_arrendatario || ''} data-field='correo_arrendatario' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Ocupación</label><input type="text" defaultValue={form.ocupacion_arrendatario || ''} data-field='ocupacion_arrendatario' style={st.input} /></div>
         </div>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Comprobante de ingresos presentado</label>
-    <input type="text" defaultValue={form.comprobante_ingresos || ''} data-field='comprobante_ingresos' placeholder="Ej: Estados de cuenta, Recibos de nómina..." style={st.input} />
-  </div>
+        <div style={{ marginBottom: 14 }}><label style={st.label}>Comprobante de ingresos</label><input type="text" defaultValue={form.comprobante_ingresos || ''} data-field='comprobante_ingresos' style={st.input} /></div>
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
 
         {/* INMUEBLE */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inmueble</p>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Dirección completa</label>
-    <input type="text" defaultValue={form.direccion_inmueble || ''} data-field='direccion_inmueble' style={st.input} />
-  </div>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Ciudad y estado</label>
-    <input type="text" defaultValue={form.ciudad_estado_inmueble || ''} data-field='ciudad_estado_inmueble' style={st.input} />
-  </div>
+        <div style={{ marginBottom: 14 }}><label style={st.label}>Dirección completa</label><input type="text" defaultValue={form.direccion_inmueble || ''} data-field='direccion_inmueble' style={st.input} /></div>
+        <div style={{ marginBottom: 14 }}><label style={st.label}>Ciudad y estado</label><input type="text" defaultValue={form.ciudad_estado_inmueble || ''} data-field='ciudad_estado_inmueble' style={st.input} /></div>
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
 
         {/* CONDICIONES ECONÓMICAS */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Condiciones económicas</p>
         <div style={st.grid3}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Renta mensual $</label>
-    <input type="number" defaultValue={form.renta_mensual || ''} data-field='renta_mensual' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Cuota mantenimiento $</label>
-    <input type="number" defaultValue={form.cuota_mantenimiento || ''} data-field='cuota_mantenimiento' placeholder="0 si no aplica" style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Depósito en garantía $</label>
-    <input type="number" defaultValue={form.deposito_garantia || ''} data-field='deposito_garantia' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Renta mensual $</label><input type="number" defaultValue={form.renta_mensual || ''} data-field='renta_mensual' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Cuota mantenimiento $</label><input type="number" defaultValue={form.cuota_mantenimiento || ''} data-field='cuota_mantenimiento' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Depósito en garantía $</label><input type="number" defaultValue={form.deposito_garantia || ''} data-field='deposito_garantia' style={st.input} /></div>
         </div>
         <div style={st.grid3}>
           <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Mora diaria 1% $</label>
-    <input type="number" value={form.mora_diaria || (parseFloat(form.renta_mensual) * 0.01).toFixed(2) || '' || ''} onChange={e => set('mora_diaria', e.target.value)} style={st.input} />
-  </div>
+            <label style={st.label}>Mora diaria 1% $</label>
+            <input type="number" value={form.mora_diaria || (parseFloat(form.renta_mensual) * 0.01).toFixed(2) || ''} onChange={e => set('mora_diaria', e.target.value)} style={st.input} />
+          </div>
           <div>
             <label style={st.label}>Forma de pago</label>
             <select value={form.forma_pago} onChange={e => set('forma_pago', e.target.value)} style={st.input}>
@@ -1454,58 +1293,55 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
               <option value="deposito">Depósito</option>
             </select>
           </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Banco receptor</label>
-    <input type="text" defaultValue={form.banco_receptor || ''} data-field='banco_receptor' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Día límite de pago</label>
-    <input type="number" defaultValue={form.dia_limite_pago || ''} data-field='dia_limite_pago' placeholder="Ej: 5" style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Banco receptor</label><input type="text" defaultValue={form.banco_receptor || ''} data-field='banco_receptor' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Día límite de pago</label><input type="number" defaultValue={form.dia_limite_pago || ''} data-field='dia_limite_pago' style={st.input} /></div>
         </div>
         {(form.forma_pago === 'transferencia' || form.forma_pago === 'deposito') && (
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>CLABE interbancaria</label>
-    <input type="text" defaultValue={form.clabe_interbancaria || ''} data-field='clabe_interbancaria' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>CLABE interbancaria</label><input type="text" defaultValue={form.clabe_interbancaria || ''} data-field='clabe_interbancaria' style={st.input} /></div>
         )}
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Monto de póliza $</label>
-    <input type="number" defaultValue={form.monto_poliza || ''} data-field='monto_poliza' placeholder="Costo del servicio de póliza jurídica" style={st.input} />
-  </div>
+        <div style={{ marginBottom: 14 }}><label style={st.label}>Monto de póliza $</label><input type="number" defaultValue={form.monto_poliza || ''} data-field='monto_poliza' style={st.input} /></div>
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
 
         {/* FECHAS */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Fechas</p>
         <div style={st.grid3}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Fecha de inicio</label>
-    <input type="date" defaultValue={form.fecha_inicio || ''} data-field='fecha_inicio' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Fecha de inicio</label><input type="date" defaultValue={form.fecha_inicio || ''} data-field='fecha_inicio' onChange={e => set('fecha_inicio', e.target.value)} style={st.input} /></div>
           <div>
-            <label style={st.label}>Fecha de término</label>
+            <label style={st.label}>Fecha de término (1 año)</label>
             <input value={fechaTermino} readOnly style={{ ...st.input, color: C.muted, cursor: 'not-allowed' }} />
-            <p style={{ margin: '4px 0 0', fontSize: 10, color: C.faint }}>Se calcula automáticamente (1 año)</p>
+          </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Entrega de posesión</label><input type="date" defaultValue={form.fecha_entrega_posesion || ''} data-field='fecha_entrega_posesion' style={st.input} /></div>
+        </div>
+        <div style={{ marginBottom: 14 }}><label style={st.label}>Fecha de firma del contrato</label><input type="date" defaultValue={form.fecha_firma || ''} data-field='fecha_firma' style={st.input} /></div>
+
+        {/* ── NUEVO: VIGENCIA ── */}
+        <div style={{ ...st.divider, margin: '16px 0' }} />
+        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>⏰ Vigencia del contrato</p>
+        <div style={st.grid2}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={st.label}>Duración del contrato</label>
+            <select value={form.duracion_contrato_meses} onChange={e => set('duracion_contrato_meses', parseInt(e.target.value))} style={st.input}>
+              <option value={6}>6 meses</option>
+              <option value={12}>12 meses (1 año)</option>
+              <option value={24}>24 meses (2 años)</option>
+              <option value={36}>36 meses (3 años)</option>
+            </select>
           </div>
           <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Entrega de posesión</label>
-    <input type="date" defaultValue={form.fecha_entrega_posesion || ''} data-field='fecha_entrega_posesion' style={st.input} />
-  </div>
+            <label style={st.label}>Fecha de vencimiento (calculada)</label>
+            <input value={fechaVigenciaCalc ? fmtDate(fechaVigenciaCalc) : '— Selecciona fecha de inicio —'} readOnly
+              style={{ ...st.input, color: fechaVigenciaCalc ? C.goldText : C.faint, cursor: 'not-allowed', fontWeight: fechaVigenciaCalc ? 700 : 400 }} />
+            <p style={{ margin: '4px 0 0', fontSize: 10, color: C.faint }}>Recordatorios automáticos 60 y 30 días antes</p>
+          </div>
         </div>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Fecha de firma del contrato</label>
-    <input type="date" defaultValue={form.fecha_firma || ''} data-field='fecha_firma' style={st.input} />
-  </div>
 
         {form.fecha_inicio && (
-          <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 16px', marginTop: 8 }}>
+          <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 16px', marginTop: 8, marginBottom: 16 }}>
             <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 700, color: C.muted }}>PAGARÉS — 12 fechas calculadas automáticamente</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {Object.entries(calcularPagares(form.fecha_inicio)).map(([k, v]) => (
-                <span key={k} style={{ background: '#f3f4f6', border: `1px solid ${C.border}`, borderRadius: 6, padding: '3px 10px', fontSize: 11, color: C.muted }}>
-                  {fmtDate(v)}
-                </span>
+                <span key={k} style={{ background: '#f3f4f6', border: `1px solid ${C.border}`, borderRadius: 6, padding: '3px 10px', fontSize: 11, color: C.muted }}>{fmtDate(v)}</span>
               ))}
             </div>
           </div>
@@ -1524,14 +1360,10 @@ function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onS
             </select>
           </div>
           {form.mascotas_permitidas !== 'no' && (
-            <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Detalle mascotas</label>
-    <input type="text" defaultValue={form.detalle_mascotas || ''} data-field='detalle_mascotas' style={st.input} />
-  </div>
+            <div style={{ marginBottom: 14 }}><label style={st.label}>Detalle mascotas</label><input type="text" defaultValue={form.detalle_mascotas || ''} data-field='detalle_mascotas' style={st.input} /></div>
           )}
         </div>
 
-        {/* Administración */}
         <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
           <input type="checkbox" id="admin" checked={form.incluye_administracion} onChange={e => set('incluye_administracion', e.target.checked)} style={{ accentColor: C.gold, width: 16, height: 16 }} />
           <label htmlFor="admin" style={{ fontSize: 13, color: C.muted, cursor: 'pointer' }}>Incluye contrato de administración</label>
@@ -1559,6 +1391,7 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
   const [msg, setMsg] = useState('')
   const formRef = useRef(null)
   const [generando, setGenerando] = useState('')
+
   const getFormValues = () => {
     if (!formRef.current) return {}
     const inputs = formRef.current.querySelectorAll('[data-field]')
@@ -1567,6 +1400,14 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
     return vals
   }
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Recalcular fecha vigencia cuando cambia duración
+  useEffect(() => {
+    if (form.fecha_inicio && form.duracion_contrato_meses) {
+      const nuevaVigencia = calcularFechaVigencia(form.fecha_inicio, form.duracion_contrato_meses)
+      setForm(f => ({ ...f, fecha_vigencia: nuevaVigencia }))
+    }
+  }, [form.duracion_contrato_meses])
 
   const handleGenerar = async (tipo) => {
     const domVals = getFormValues()
@@ -1592,23 +1433,18 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
     try {
       const domVals = getFormValues()
       const merged = { ...form, ...domVals }
-
-      // Limpieza de campos numéricos — string vacío → null
       const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n }
-
-      const r   = num(merged.renta_mensual) || 0
+      const r = num(merged.renta_mensual) || 0
       const dep = num(merged.deposito_garantia) || 0
       const mora = parseFloat((r * 0.01).toFixed(2))
       const pagares = merged.fecha_inicio ? calcularPagares(merged.fecha_inicio) : {}
       const fechaTermino = merged.fecha_inicio
         ? (() => { const d = new Date(merged.fecha_inicio + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0] })()
         : merged.fecha_termino || null
+      const meses = parseInt(merged.duracion_contrato_meses) || 12
+      const fechaVigencia = merged.fecha_inicio ? calcularFechaVigencia(merged.fecha_inicio, meses) : merged.fecha_vigencia || null
 
-      // Limpiar todos los campos numéricos del merged antes de enviar
-      const camposNumericos = [
-        'cuota_mantenimiento', 'mora_diaria', 'monto_poliza', 'anticipo_poliza',
-        'deposito_garantia', 'renta_mensual', 'monto_adeudo',
-      ]
+      const camposNumericos = ['cuota_mantenimiento', 'mora_diaria', 'monto_poliza', 'anticipo_poliza', 'deposito_garantia', 'renta_mensual', 'monto_adeudo']
       const cleanMerged = { ...merged }
       camposNumericos.forEach(k => {
         if (cleanMerged[k] === '' || cleanMerged[k] === undefined) cleanMerged[k] = null
@@ -1626,6 +1462,9 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
         monto_poliza: num(merged.monto_poliza),
         monto_poliza_letra: num(merged.monto_poliza) ? numeroALetra(num(merged.monto_poliza)) : null,
         fecha_termino: fechaTermino,
+        // ── NUEVO ──
+        duracion_contrato_meses: meses,
+        fecha_vigencia: fechaVigencia,
         status_expediente: merged.status_expediente || 'pendiente_firma',
         anticipo_poliza: num(merged.anticipo_poliza),
         anticipo_pagado: merged.anticipo_pagado || false,
@@ -1635,35 +1474,14 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
       }).eq('id', expediente.id)
       if (error) throw error
 
-      // Registrar anticipo en caja si se acaba de marcar
       if (merged.anticipo_pagado && !expediente.anticipo_pagado && parseFloat(merged.anticipo_poliza) > 0) {
-        await supabase.from('poliza_caja').insert({
-          tipo: 'ingreso',
-          concepto: 'anticipo_poliza',
-          descripcion: `Anticipo póliza — ${merged.nombre_arrendatario || ''}`,
-          monto: parseFloat(merged.anticipo_poliza),
-          metodo_pago: merged.metodo_pago_completo || 'efectivo',
-          expediente_id: expediente.id,
-          nombre_cliente: merged.nombre_arrendatario || '',
-          fecha: new Date().toISOString().split('T')[0],
-        })
+        await supabase.from('poliza_caja').insert({ tipo: 'ingreso', concepto: 'anticipo_poliza', descripcion: `Anticipo póliza — ${merged.nombre_arrendatario || ''}`, monto: parseFloat(merged.anticipo_poliza), metodo_pago: merged.metodo_pago_completo || 'efectivo', expediente_id: expediente.id, nombre_cliente: merged.nombre_arrendatario || '', fecha: new Date().toISOString().split('T')[0] })
       }
-
-      // Registrar pago completo en caja si se acaba de marcar
       if (merged.saldo_pagado && !expediente.saldo_pagado) {
         const montoPoliza = parseFloat(merged.monto_poliza) || 0
         const anticipo = parseFloat(merged.anticipo_poliza) || 0
         const saldo = montoPoliza - anticipo
-        await supabase.from('poliza_caja').insert({
-          tipo: 'ingreso',
-          concepto: anticipo > 0 ? 'saldo_poliza' : 'pago_poliza',
-          descripcion: `${anticipo > 0 ? 'Saldo' : 'Pago'} póliza — ${merged.nombre_arrendatario || ''}`,
-          monto: anticipo > 0 ? saldo : montoPoliza,
-          metodo_pago: merged.metodo_pago_completo || 'efectivo',
-          expediente_id: expediente.id,
-          nombre_cliente: merged.nombre_arrendatario || '',
-          fecha: new Date().toISOString().split('T')[0],
-        })
+        await supabase.from('poliza_caja').insert({ tipo: 'ingreso', concepto: anticipo > 0 ? 'saldo_poliza' : 'pago_poliza', descripcion: `${anticipo > 0 ? 'Saldo' : 'Pago'} póliza — ${merged.nombre_arrendatario || ''}`, monto: anticipo > 0 ? saldo : montoPoliza, metodo_pago: merged.metodo_pago_completo || 'efectivo', expediente_id: expediente.id, nombre_cliente: merged.nombre_arrendatario || '', fecha: new Date().toISOString().split('T')[0] })
       }
 
       onSaved()
@@ -1679,133 +1497,102 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
       <div style={st.modalCard} ref={formRef}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>
-              {form.nombre_arrendatario || 'Expediente'}
-            </h2>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{form.nombre_arrendatario || 'Expediente'}</h2>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>ID: {expediente.id.slice(0, 8).toUpperCase()}</p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <select value={form.status} onChange={e => set('status', e.target.value)} style={{ ...st.input, width: 'auto', fontSize: 12 }}>
-              {['borrador', 'completo', 'firmado', 'activo', 'vencido', 'cancelado'].map(st => (
-                <option key={st} value={st}>{st}</option>
-              ))}
+              {['borrador', 'completo', 'firmado', 'activo', 'vencido', 'cancelado'].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
           </div>
         </div>
 
-        {/* Mismos campos que nuevo pero con datos pre-llenados */}
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Arrendador</p>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Nombre</label>
-    <input type="text" defaultValue={form.nombre_arrendador || ''} data-field='nombre_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>RFC</label>
-    <input type="text" defaultValue={form.rfc_arrendador || ''} data-field='rfc_arrendador' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Nombre</label><input type="text" defaultValue={form.nombre_arrendador || ''} data-field='nombre_arrendador' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>RFC</label><input type="text" defaultValue={form.rfc_arrendador || ''} data-field='rfc_arrendador' style={st.input} /></div>
         </div>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Clave de elector</label>
-    <input type="text" defaultValue={form.clave_elector_arrendador || ''} data-field='clave_elector_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Teléfono</label>
-    <input type="text" defaultValue={form.telefono_arrendador || ''} data-field='telefono_arrendador' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Clave de elector</label><input type="text" defaultValue={form.clave_elector_arrendador || ''} data-field='clave_elector_arrendador' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Teléfono</label><input type="text" defaultValue={form.telefono_arrendador || ''} data-field='telefono_arrendador' style={st.input} /></div>
         </div>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Correo</label>
-    <input type="text" defaultValue={form.correo_arrendador || ''} data-field='correo_arrendador' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Domicilio</label>
-    <input type="text" defaultValue={form.domicilio_arrendador || ''} data-field='domicilio_arrendador' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Correo</label><input type="text" defaultValue={form.correo_arrendador || ''} data-field='correo_arrendador' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Domicilio</label><input type="text" defaultValue={form.domicilio_arrendador || ''} data-field='domicilio_arrendador' style={st.input} /></div>
         </div>
 
         <div style={st.divider} />
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Arrendatario</p>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Nombre</label>
-    <input type="text" defaultValue={form.nombre_arrendatario || ''} data-field='nombre_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>RFC</label>
-    <input type="text" defaultValue={form.rfc_arrendatario || ''} data-field='rfc_arrendatario' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Nombre</label><input type="text" defaultValue={form.nombre_arrendatario || ''} data-field='nombre_arrendatario' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>RFC</label><input type="text" defaultValue={form.rfc_arrendatario || ''} data-field='rfc_arrendatario' style={st.input} /></div>
         </div>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Clave de elector</label>
-    <input type="text" defaultValue={form.clave_elector_arrendatario || ''} data-field='clave_elector_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Teléfono</label>
-    <input type="text" defaultValue={form.telefono_arrendatario || ''} data-field='telefono_arrendatario' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Clave de elector</label><input type="text" defaultValue={form.clave_elector_arrendatario || ''} data-field='clave_elector_arrendatario' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Teléfono</label><input type="text" defaultValue={form.telefono_arrendatario || ''} data-field='telefono_arrendatario' style={st.input} /></div>
         </div>
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Correo</label>
-    <input type="text" defaultValue={form.correo_arrendatario || ''} data-field='correo_arrendatario' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Ocupación</label>
-    <input type="text" defaultValue={form.ocupacion_arrendatario || ''} data-field='ocupacion_arrendatario' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Correo</label><input type="text" defaultValue={form.correo_arrendatario || ''} data-field='correo_arrendatario' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Ocupación</label><input type="text" defaultValue={form.ocupacion_arrendatario || ''} data-field='ocupacion_arrendatario' style={st.input} /></div>
         </div>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Comprobante de ingresos</label>
-    <input type="text" defaultValue={form.comprobante_ingresos || ''} data-field='comprobante_ingresos' style={st.input} />
-  </div>
+        <div style={{ marginBottom: 14 }}><label style={st.label}>Comprobante de ingresos</label><input type="text" defaultValue={form.comprobante_ingresos || ''} data-field='comprobante_ingresos' style={st.input} /></div>
 
         <div style={st.divider} />
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Inmueble y condiciones</p>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Dirección</label>
-    <input type="text" defaultValue={form.direccion_inmueble || ''} data-field='direccion_inmueble' style={st.input} />
-  </div>
+        <div style={{ marginBottom: 14 }}><label style={st.label}>Dirección</label><input type="text" defaultValue={form.direccion_inmueble || ''} data-field='direccion_inmueble' style={st.input} /></div>
         <div style={st.grid3}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Renta mensual $</label>
-    <input type="number" defaultValue={form.renta_mensual || ''} data-field='renta_mensual' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Cuota mantenimiento $</label>
-    <input type="number" defaultValue={form.cuota_mantenimiento || ''} data-field='cuota_mantenimiento' placeholder="0 si no aplica" style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Depósito $</label>
-    <input type="number" defaultValue={form.deposito_garantia || ''} data-field='deposito_garantia' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Monto póliza $</label>
-    <input type="number" defaultValue={form.monto_poliza || ''} data-field='monto_poliza' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Renta mensual $</label><input type="number" defaultValue={form.renta_mensual || ''} data-field='renta_mensual' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Cuota mantenimiento $</label><input type="number" defaultValue={form.cuota_mantenimiento || ''} data-field='cuota_mantenimiento' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Depósito $</label><input type="number" defaultValue={form.deposito_garantia || ''} data-field='deposito_garantia' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Monto póliza $</label><input type="number" defaultValue={form.monto_poliza || ''} data-field='monto_poliza' style={st.input} /></div>
         </div>
         <div style={st.grid3}>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Fecha inicio</label>
-    <input type="date" defaultValue={form.fecha_inicio || ''} data-field='fecha_inicio' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Fecha firma</label>
-    <input type="date" defaultValue={form.fecha_firma || ''} data-field='fecha_firma' style={st.input} />
-  </div>
-          <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Entrega posesión</label>
-    <input type="date" defaultValue={form.fecha_entrega_posesion || ''} data-field='fecha_entrega_posesion' style={st.input} />
-  </div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Fecha inicio</label><input type="date" defaultValue={form.fecha_inicio || ''} data-field='fecha_inicio' onChange={e => set('fecha_inicio', e.target.value)} style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Fecha firma</label><input type="date" defaultValue={form.fecha_firma || ''} data-field='fecha_firma' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>Entrega posesión</label><input type="date" defaultValue={form.fecha_entrega_posesion || ''} data-field='fecha_entrega_posesion' style={st.input} /></div>
         </div>
-        <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>Notas</label>
-    <input type="text" defaultValue={form.notas || ''} data-field='notas' placeholder="Observaciones internas..." style={st.input} />
-  </div>
+        <div style={{ marginBottom: 14 }}><label style={st.label}>Notas</label><input type="text" defaultValue={form.notas || ''} data-field='notas' style={st.input} /></div>
+
+        {/* ── NUEVO: VIGENCIA EN EXPEDIENTE ── */}
+        <div style={{ ...st.divider, margin: '16px 0' }} />
+        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>⏰ Vigencia del contrato</p>
+        <div style={st.grid2}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={st.label}>Duración del contrato</label>
+            <select value={form.duracion_contrato_meses || 12} onChange={e => set('duracion_contrato_meses', parseInt(e.target.value))} style={st.input}>
+              <option value={6}>6 meses</option>
+              <option value={12}>12 meses (1 año)</option>
+              <option value={24}>24 meses (2 años)</option>
+              <option value={36}>36 meses (3 años)</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={st.label}>Fecha de vencimiento</label>
+            <input
+              type="date"
+              value={form.fecha_vigencia || ''}
+              onChange={e => set('fecha_vigencia', e.target.value)}
+              style={{ ...st.input, color: C.goldText, fontWeight: 600 }}
+            />
+            <p style={{ margin: '4px 0 0', fontSize: 10, color: C.faint }}>Se recalcula al cambiar duración. Editable manualmente.</p>
+          </div>
+        </div>
+        {form.fecha_vigencia && (() => {
+          const dias = Math.ceil((new Date(form.fecha_vigencia + 'T12:00:00') - new Date()) / (1000 * 60 * 60 * 24))
+          const vencido = dias < 0
+          const urgente = dias <= 30 && dias >= 0
+          const bg = vencido ? C.redBg : urgente ? '#fff7ed' : C.greenBg
+          const color = vencido ? C.redText : urgente ? '#c2410c' : C.greenText
+          return (
+            <div style={{ background: bg, borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color }}>
+                {vencido ? `⚠️ Contrato vencido hace ${Math.abs(dias)} días` : urgente ? `🔴 Vence en ${dias} días — urgente` : `✅ Vigente — vence en ${dias} días`}
+              </p>
+            </div>
+          )
+        })()}
+
         <div style={{ ...st.divider, margin: '16px 0' }} />
         <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 12px' }}>Tipo de contrato</p>
         <div style={st.grid3}>
@@ -1826,26 +1613,10 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={st.label}>Giro comercial</label>
-            <input type="text" value={form.giro_comercial || ''} onChange={e => set('giro_comercial', e.target.value)}
-              placeholder="Solo si es comercial" style={st.input} />
+            <input type="text" value={form.giro_comercial || ''} onChange={e => set('giro_comercial', e.target.value)} style={st.input} />
           </div>
         </div>
-        {form.tipo_arrendatario === 'moral' && (
-          <div style={st.grid2}>
-            <div style={{ marginBottom: 14 }}>
-              <label style={st.label}>Razón social</label>
-              <input type="text" value={form.razon_social_arrendatario || ''} onChange={e => set('razon_social_arrendatario', e.target.value)}
-                placeholder="Nombre de la empresa" style={st.input} />
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={st.label}>Representante legal</label>
-              <input type="text" value={form.representante_legal_arrendatario || ''} onChange={e => set('representante_legal_arrendatario', e.target.value)}
-                placeholder="Nombre del representante" style={st.input} />
-            </div>
-          </div>
-        )}
 
-        {/* Status y cobros de póliza */}
         <div style={{ ...st.divider, margin: '16px 0' }} />
         <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 12px' }}>Status y cobros</p>
         <div style={st.grid3}>
@@ -1859,8 +1630,7 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={st.label}>Anticipo póliza $</label>
-            <input type="number" value={form.anticipo_poliza || ''} onChange={e => set('anticipo_poliza', e.target.value)}
-              placeholder="0 si no hay anticipo" style={st.input} />
+            <input type="number" value={form.anticipo_poliza || ''} onChange={e => set('anticipo_poliza', e.target.value)} style={st.input} />
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={st.label}>¿Anticipo cobrado?</label>
@@ -1887,12 +1657,9 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
           </div>
         </div>
 
-        {/* Botón registrar cobro en caja */}
         {form.saldo_pagado && !expediente.saldo_pagado && (
           <div style={{ background: C.greenBg, border: `1px solid ${C.green}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
-            <p style={{ margin: 0, fontSize: 12, color: C.greenText }}>
-              💰 Al guardar, se registrará el cobro de la póliza en Caja Póliza automáticamente.
-            </p>
+            <p style={{ margin: 0, fontSize: 12, color: C.greenText }}>💰 Al guardar, se registrará el cobro en Caja Póliza automáticamente.</p>
           </div>
         )}
 
@@ -1901,41 +1668,18 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
         <div style={{ ...st.divider, margin: '20px 0' }} />
         <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 12px' }}>Generar documentos</p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 }}>
-          <button
-            onClick={() => handleGenerar('contrato')}
-            disabled={!!generando}
-            style={{ ...st.btn, background: '#f0fdf4', color: '#065f46', border: '1px solid #6ee7b7', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando === 'contrato' ? 'Generando...' : '📄 Contrato de arrendamiento'}
-          </button>
-          <button
-            onClick={() => handleGenerar('pagares')}
-            disabled={!!generando}
-            style={{ ...st.btn, background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando === 'pagares' ? 'Generando...' : '📄 Pagarés (12)'}
-          </button>
-          <button
-            onClick={() => handleGenerar('poliza')}
-            disabled={!!generando}
-            style={{ ...st.btn, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #c4b5fd', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando === 'poliza' ? 'Generando...' : '📄 Póliza jurídica'}
-          </button>
-          <button
-            onClick={() => handleGenerar('recibo')}
-            disabled={!!generando}
-            style={{ ...st.btn, background: '#f0fdf4', color: '#065f46', border: '1px solid #6ee7b7', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando === 'recibo' ? 'Generando...' : '🧾 Recibo de póliza'}
-          </button>
-          <button
-            onClick={() => handleGenerar('administracion')}
-            disabled={!!generando}
-            style={{ ...st.btn, background: '#f0fdf4', color: '#065f46', border: '1px solid #86efac', opacity: generando ? 0.6 : 1 }}
-          >
-            {generando === 'administracion' ? 'Generando...' : '📄 Contrato administración'}
-          </button>
+          {[
+            { tipo: 'contrato', label: '📄 Contrato de arrendamiento', bg: '#f0fdf4', color: '#065f46', border: '#6ee7b7' },
+            { tipo: 'pagares', label: '📄 Pagarés (12)', bg: '#dbeafe', color: '#1e40af', border: '#93c5fd' },
+            { tipo: 'poliza', label: '📄 Póliza jurídica', bg: '#f5f3ff', color: '#7c3aed', border: '#c4b5fd' },
+            { tipo: 'recibo', label: '🧾 Recibo de póliza', bg: '#f0fdf4', color: '#065f46', border: '#6ee7b7' },
+            { tipo: 'administracion', label: '📄 Contrato administración', bg: '#f0fdf4', color: '#065f46', border: '#86efac' },
+          ].map(d => (
+            <button key={d.tipo} onClick={() => handleGenerar(d.tipo)} disabled={!!generando}
+              style={{ ...st.btn, background: d.bg, color: d.color, border: `1px solid ${d.border}`, opacity: generando ? 0.6 : 1 }}>
+              {generando === d.tipo ? 'Generando...' : d.label}
+            </button>
+          ))}
         </div>
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
@@ -1950,7 +1694,7 @@ function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSav
 }
 
 // ═══════════════════════════════════════════════════════════
-// MODAL PROPIETARIO (ver detalle)
+// MODAL PROPIETARIO
 // ═══════════════════════════════════════════════════════════
 function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
   const [status, setStatus] = useState(p.status || 'activo')
@@ -1967,14 +1711,7 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
   const handleGenerarPromocion = async () => {
     setGenerando(true)
     try {
-      await generarContratoPromocionArrendamiento({
-  nombre_arrendador:    p.nombre_propietario,
-  domicilio_arrendador: p.domicilio_propietario,
-  telefono_arrendador:  p.telefono_propietario,
-  direccion_inmueble:   p.direccion_inmueble,
-  renta_mensual:        p.monto_renta,
-  renta_mensual_letra:  p.monto_renta_letra,
-})
+      await generarContratoPromocionArrendamiento({ nombre_arrendador: p.nombre_propietario, domicilio_arrendador: p.domicilio_propietario, telefono_arrendador: p.telefono_propietario, direccion_inmueble: p.direccion_inmueble, renta_mensual: p.monto_renta, renta_mensual_letra: p.monto_renta_letra })
     } catch(e) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
@@ -1986,19 +1723,13 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{p.nombre_propietario}</h2>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
-
         <div style={st.grid2}>
           <InfoRow label="Teléfono" value={p.telefono_propietario} />
           <InfoRow label="Correo" value={p.correo_propietario} />
           <InfoRow label="RFC" value={p.rfc_propietario} />
-          <InfoRow label="Clave elector" value={p.clave_elector_propietario} />
           <InfoRow label="Renta" value={fmt(p.monto_renta)} />
-          <InfoRow label="Forma de pago" value={p.forma_pago} />
         </div>
-        {p.banco && <InfoRow label="Banco / CLABE" value={`${p.banco} · ${p.clabe}`} />}
         <InfoRow label="Inmueble" value={p.direccion_inmueble} />
-        <InfoRow label="Domicilio propietario" value={p.domicilio_propietario} />
-
         <div style={{ ...st.divider, margin: '16px 0' }} />
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <div style={{ flex: 1 }}>
@@ -2015,26 +1746,8 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
             </button>
           </div>
         </div>
-
-        {/* Documentos */}
-        {(p.doc_identificacion || p.doc_comprobante_domicilio || p.doc_predial) && (
-          <>
-            <div style={{ ...st.divider, margin: '16px 0' }} />
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Documentos</p>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {p.doc_identificacion && <DocChip label="Identificación" path={p.doc_identificacion} />}
-              {p.doc_comprobante_domicilio && <DocChip label="Comprobante domicilio" path={p.doc_comprobante_domicilio} />}
-              {p.doc_predial && <DocChip label="Predial" path={p.doc_predial} />}
-            </div>
-          </>
-        )}
-
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24, flexWrap: 'wrap' }}>
-          <button
-            onClick={handleGenerarPromocion}
-            disabled={generando}
-            style={{ ...st.btn, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #c4b5fd', opacity: generando ? 0.6 : 1 }}
-          >
+          <button onClick={handleGenerarPromocion} disabled={generando} style={{ ...st.btn, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #c4b5fd', opacity: generando ? 0.6 : 1 }}>
             {generando ? 'Generando...' : '📄 Contrato promoción'}
           </button>
           <button onClick={onNuevoExp} style={{ ...st.btn, ...st.btnGold }}>+ Crear expediente</button>
@@ -2045,7 +1758,7 @@ function ModalPropietario({ propietario: p, onClose, onSaved, onNuevoExp }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// MODAL SOLICITUD (ver detalle + cambiar status)
+// MODAL SOLICITUD
 // ═══════════════════════════════════════════════════════════
 function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
   const [status, setStatus] = useState(sol.status || 'pendiente')
@@ -2064,22 +1777,8 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
   const handleCobrarInvestigacion = async () => {
     setCobrando(true)
     const monto = 1000
-    await supabase.from('poliza_caja').insert({
-      tipo: 'ingreso',
-      concepto: 'investigacion',
-      descripcion: `Cobro de investigación — ${sol.nombre_completo || sol.razon_social}`,
-      monto,
-      metodo_pago: metodoInv,
-      solicitud_id: sol.id,
-      nombre_cliente: sol.nombre_completo || sol.razon_social,
-      fecha: new Date().toISOString().split('T')[0],
-    })
-    await supabase.from('solicitudes_inquilino').update({
-      cobro_investigacion: true,
-      fecha_cobro_investigacion: new Date().toISOString().split('T')[0],
-      monto_investigacion: monto,
-      metodo_cobro_investigacion: metodoInv,
-    }).eq('id', sol.id)
+    await supabase.from('poliza_caja').insert({ tipo: 'ingreso', concepto: 'investigacion', descripcion: `Cobro de investigación — ${sol.nombre_completo || sol.razon_social}`, monto, metodo_pago: metodoInv, solicitud_id: sol.id, nombre_cliente: sol.nombre_completo || sol.razon_social, fecha: new Date().toISOString().split('T')[0] })
+    await supabase.from('solicitudes_inquilino').update({ cobro_investigacion: true, fecha_cobro_investigacion: new Date().toISOString().split('T')[0], monto_investigacion: monto, metodo_cobro_investigacion: metodoInv }).eq('id', sol.id)
     setCobrando(false)
     onSaved()
   }
@@ -2091,21 +1790,13 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{sol.nombre_completo || sol.razon_social}</h2>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
-
         <div style={st.grid2}>
           <InfoRow label="Teléfono" value={sol.telefono} />
           <InfoRow label="Correo" value={sol.correo} />
-          <InfoRow label="RFC" value={sol.rfc || sol.rfc_empresa} />
-          <InfoRow label="Estado civil" value={sol.estado_civil} />
           <InfoRow label="Ingresos mensuales" value={fmt(sol.ingresos_mensuales || sol.ingresos_empresa)} />
           <InfoRow label="Tipo de ingresos" value={sol.tipo_ingresos} />
-          <InfoRow label="Empresa" value={sol.empresa_labora || sol.razon_social} />
-          <InfoRow label="Mascotas" value={sol.tiene_mascotas ? `Sí — ${sol.detalle_mascotas || ''}` : 'No'} />
         </div>
-        <InfoRow label="Domicilio actual" value={sol.domicilio_actual} />
         <InfoRow label="Inmueble de interés" value={sol.inmueble_interes} />
-        <InfoRow label="Uso del inmueble" value={sol.uso_inmueble} />
-
         <div style={{ ...st.divider, margin: '16px 0' }} />
         <div style={st.grid2}>
           <div>
@@ -2120,54 +1811,24 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
         </div>
         <div style={{ marginTop: 16 }}>
           <label style={st.label}>Notas jurídicas internas</label>
-          <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={3}
-            style={{ ...st.input, resize: 'vertical' }}
-            placeholder="Observaciones del dictamen, notas de investigación..." />
+          <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={3} style={{ ...st.input, resize: 'vertical' }} />
         </div>
-
-        {/* Documentos */}
-        {(sol.doc_identificacion || sol.doc_comprobante_ingresos) && (
-          <>
-            <div style={{ ...st.divider, margin: '16px 0' }} />
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', margin: '0 0 10px' }}>Documentos</p>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {sol.doc_identificacion && <DocChip label="Identificación" path={sol.doc_identificacion} />}
-              {sol.doc_comprobante_ingresos && <DocChip label="Comprobante ingresos" path={sol.doc_comprobante_ingresos} />}
-            </div>
-          </>
-        )}
-
-        {/* Cobro investigación cuando es rechazado */}
         {status === 'rechazado' && !sol.cobro_investigacion && (
           <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, padding: '14px 16px', marginTop: 16 }}>
             <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700, color: C.redText }}>💰 Cobrar investigación ($1,000)</p>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <select value={metodoInv} onChange={e => setMetodoInv(e.target.value)}
-                style={{ ...st.input, width: 'auto', fontSize: 12, padding: '6px 10px' }}>
+              <select value={metodoInv} onChange={e => setMetodoInv(e.target.value)} style={{ ...st.input, width: 'auto', fontSize: 12, padding: '6px 10px' }}>
                 <option value="efectivo">Efectivo</option>
                 <option value="transferencia">Transferencia</option>
               </select>
-              <button onClick={handleCobrarInvestigacion} disabled={cobrando}
-                style={{ ...st.btn, background: C.red, color: C.redText, border: `1px solid ${C.red}`, opacity: cobrando ? 0.6 : 1 }}>
+              <button onClick={handleCobrarInvestigacion} disabled={cobrando} style={{ ...st.btn, background: C.red, color: '#fff', opacity: cobrando ? 0.6 : 1 }}>
                 {cobrando ? 'Registrando...' : 'Registrar cobro $1,000'}
               </button>
             </div>
           </div>
         )}
-        {sol.cobro_investigacion && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #6ee7b7', borderRadius: 8, padding: '10px 14px', marginTop: 16 }}>
-            <p style={{ margin: 0, fontSize: 12, color: C.greenText }}>✅ Cobro de investigación registrado — $1,000</p>
-          </div>
-        )}
-
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24, flexWrap: 'wrap' }}>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cancelar</button>
-          <button
-            onClick={() => { onClose(); window.open('/poliza/solicitud/' + sol.id, '_blank') }}
-            style={{ ...st.btn, background: '#dbeafe', border: '1px solid #93c5fd', color: '#1e40af' }}
-          >
-            📋 Ver ficha completa
-          </button>
           <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGreen }}>
             {saving ? 'Guardando...' : 'Guardar notas'}
           </button>
@@ -2180,16 +1841,7 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
   )
 }
 
-// ─── Componentes helper ───────────────────────────────────
-const FField = ({ label, value, onChange, type = 'text', placeholder }) => (
-  <div style={{ marginBottom: 14 }}>
-    <label style={st.label}>{label}</label>
-    <input type={type} value={value || ''} onChange={e => onChange(e.target.value)}
-      placeholder={placeholder}
-      style={st.input} />
-  </div>
-)
-
+// ─── Helpers ──────────────────────────────────────────────
 const InfoRow = ({ label, value }) => (
   <div style={{ marginBottom: 12 }}>
     <p style={{ margin: 0, fontSize: 11, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{label}</p>
@@ -2197,13 +1849,25 @@ const InfoRow = ({ label, value }) => (
   </div>
 )
 
+const DocChipB64 = ({ label, data }) => {
+  const handleView = () => {
+    const win = window.open()
+    win.document.write(`<iframe src="${data}" width="100%" height="100%" style="border:none"></iframe>`)
+  }
+  return (
+    <button onClick={handleView} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'transparent', color: '#9ca3af', fontSize: 12, cursor: 'pointer', marginRight: 6, marginBottom: 6 }}>
+      📄 {label}
+    </button>
+  )
+}
+
 const DocChip = ({ label, path }) => {
   const handleView = async () => {
     const { data } = await supabase.storage.from('poliza-docs').createSignedUrl(path, 60)
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
   return (
-    <button onClick={handleView} style={{ ...st.btn, ...st.btnGhost, fontSize: 12, padding: '6px 12px' }}>
+    <button onClick={handleView} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'transparent', color: '#9ca3af', fontSize: 12, cursor: 'pointer' }}>
       📄 {label}
     </button>
   )
