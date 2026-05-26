@@ -81,6 +81,244 @@ const categoryLabels = {
   pago_proveedor: "Pago proveedor", material: "Material/Refacción", otro: "Otro",
 };
 
+const SERVICIOS_CONFIG = [
+  { tipo: "luz",           label: "⚡ Luz (CFE)",       periodicidad: "bimestral" },
+  { tipo: "agua",          label: "💧 Agua",            periodicidad: "mensual"   },
+  { tipo: "gas_mensual",   label: "🔥 Gas (mensual)",   periodicidad: "mensual"   },
+  { tipo: "gas_recarga",   label: "🔥 Gas (recarga)",   periodicidad: "recarga"   },
+  { tipo: "mantenimiento", label: "🏢 Mantenimiento",   periodicidad: "mensual"   },
+  { tipo: "internet",      label: "🌐 Internet",        periodicidad: "mensual"   },
+  { tipo: "predial",       label: "🏛️ Predial/Limpia",  periodicidad: "anual", propietario: true },
+];
+
+const semaforo = (status) => {
+  if (status === "pagado")      return { color: "#065f46", bg: "#d1fae5", label: "✅ Pagado" };
+  if (status === "en_revision") return { color: "#1e40af", bg: "#dbeafe", label: "🔍 En revisión" };
+  if (status === "atrasado")    return { color: "#991b1b", bg: "#fee2e2", label: "🔴 Atrasado" };
+  return { color: "#92400e", bg: "#fef3c7", label: "⏳ Pendiente" };
+};
+
+function ModalServicios({ property, onClose, showToast }) {
+  const [servicios, setServicios] = useState([]);
+  const [pagos, setPagos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tabServ, setTabServ] = useState("estado");
+  const [saving, setSaving] = useState(false);
+  const [modalPago, setModalPago] = useState(null);
+  const [pagoForm, setPagoForm] = useState({ monto: "", notas: "", fecha_limite: "" });
+
+  const periodoActual = () => {
+    const hoy = new Date();
+    return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+  };
+
+  const loadServicios = async () => {
+    setLoading(true);
+    const { data: servData } = await supabase.from("servicios_inmueble").select("*").eq("property_name", property.name);
+    const { data: pagosData } = await supabase.from("pagos_servicios").select("*").eq("property_name", property.name).order("created_at", { ascending: false });
+    setServicios(servData || []);
+    setPagos(pagosData || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadServicios(); }, []);
+
+  const toggleServicio = async (tipo, periodicidad) => {
+    const existe = servicios.find(s => s.tipo === tipo);
+    if (existe) {
+      await supabase.from("servicios_inmueble").delete().eq("id", existe.id);
+    } else {
+      await supabase.from("servicios_inmueble").insert({ property_name: property.name, tipo, periodicidad, aplica: true });
+    }
+    loadServicios();
+  };
+
+  const registrarPago = async (servicio) => {
+    setSaving(true);
+    const { error } = await supabase.from("pagos_servicios").insert({
+      property_name: property.name,
+      tipo: servicio.tipo,
+      periodo: periodoActual(),
+      status: "pagado",
+      monto: parseFloat(pagoForm.monto) || null,
+      notas: pagoForm.notas,
+      fecha_limite: pagoForm.fecha_limite || null,
+      subido_por: "admin",
+    });
+    setSaving(false);
+    if (error) { showToast("Error: " + error.message, false); return; }
+    showToast("Pago registrado");
+    setModalPago(null);
+    setPagoForm({ monto: "", notas: "", fecha_limite: "" });
+    loadServicios();
+  };
+
+  const pagoDelPeriodo = (tipo) => {
+    const periodo = periodoActual();
+    return pagos.find(p => p.tipo === tipo && p.periodo === periodo);
+  };
+
+  const serviciosActivos = servicios.filter(s => s.aplica);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 1000, padding: 20, overflowY: "auto" }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 640, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", marginTop: 20 }}>
+        <div style={{ background: "linear-gradient(135deg, #7f1d2e, #b91c3c)", borderRadius: "16px 16px 0 0", padding: "20px 24px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#fff" }}>🔌 Servicios</h2>
+              <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(255,255,255,0.7)" }}>{property.name}</p>
+            </div>
+            <button onClick={onClose} style={{ background: "rgba(255,255,255,0.2)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 16, color: "#fff" }}>✕</button>
+          </div>
+          <div style={{ display: "flex", gap: 4, marginTop: 16 }}>
+            {[{ id: "estado", label: "📊 Estado" }, { id: "configurar", label: "⚙️ Configurar" }, { id: "historial", label: "📋 Historial" }].map(t => (
+              <button key={t.id} onClick={() => setTabServ(t.id)}
+                style={{ padding: "6px 14px", borderRadius: "6px 6px 0 0", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: tabServ === t.id ? "#fff" : "rgba(255,255,255,0.15)", color: tabServ === t.id ? "#b91c3c" : "rgba(255,255,255,0.8)" }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: 24 }}>
+          {loading ? <p style={{ color: "#9ca3af", textAlign: "center", padding: 32 }}>Cargando...</p> : (
+            <>
+              {tabServ === "estado" && (
+                <div>
+                  {serviciosActivos.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: 40 }}>
+                      <p style={{ fontSize: 32, margin: "0 0 8px" }}>⚙️</p>
+                      <p style={{ color: "#9ca3af" }}>No hay servicios configurados para esta propiedad</p>
+                      <button onClick={() => setTabServ("configurar")} style={{ marginTop: 12, background: "#b91c3c", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+                        Configurar servicios →
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {serviciosActivos.map(serv => {
+                        const config = SERVICIOS_CONFIG.find(c => c.tipo === serv.tipo);
+                        const pago = pagoDelPeriodo(serv.tipo);
+                        const sem = semaforo(pago?.status);
+                        return (
+                          <div key={serv.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "14px 16px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                              <div>
+                                <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#374151" }}>{config?.label || serv.tipo}</p>
+                                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                                  {serv.periodicidad}
+                                  {config?.propietario ? " · Cargo del propietario" : " · Cargo del inquilino"}
+                                </p>
+                              </div>
+                              <span style={{ background: sem.bg, color: sem.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{sem.label}</span>
+                            </div>
+                            {pago?.comprobante_url && (
+                              <a href={pago.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, display: "inline-block", marginBottom: 6 }}>📄 Ver comprobante</a>
+                            )}
+                            {pago?.monto && <p style={{ margin: "0 0 8px", fontSize: 12, color: "#6b7280" }}>Monto registrado: {fmt(pago.monto)}</p>}
+                            {(!pago || pago.status === "pendiente" || pago.status === "atrasado") && (
+                              <button onClick={() => { setModalPago(serv); setPagoForm({ monto: "", notas: "", fecha_limite: "" }); }}
+                                style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, marginTop: 4 }}>
+                                ✓ Registrar pago
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {tabServ === "configurar" && (
+                <div>
+                  <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6b7280" }}>Activa los servicios que aplican para <strong>{property.name}</strong>:</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {SERVICIOS_CONFIG.map(config => {
+                      const activo = servicios.find(s => s.tipo === config.tipo);
+                      return (
+                        <div key={config.tipo} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: activo ? "#f0fdf4" : "#f9fafb", border: `1px solid ${activo ? "#6ee7b7" : "#e5e7eb"}`, borderRadius: 10, padding: "12px 16px" }}>
+                          <div>
+                            <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#374151" }}>{config.label}</p>
+                            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                              {config.periodicidad} · {config.propietario ? "Cargo del propietario" : "Cargo del inquilino"}
+                            </p>
+                          </div>
+                          <button onClick={() => toggleServicio(config.tipo, config.periodicidad)}
+                            style={{ background: activo ? "#065f46" : "#e5e7eb", color: activo ? "#fff" : "#9ca3af", border: "none", borderRadius: 20, padding: "6px 16px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                            {activo ? "✓ Activo" : "Activar"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {tabServ === "historial" && (
+                <div>
+                  {pagos.length === 0 ? (
+                    <p style={{ color: "#9ca3af", textAlign: "center", padding: 32 }}>Sin registros aún</p>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {pagos.map(p => {
+                        const config = SERVICIOS_CONFIG.find(c => c.tipo === p.tipo);
+                        const sem = semaforo(p.status);
+                        return (
+                          <div key={p.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 16px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div>
+                                <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: "#374151" }}>{config?.label || p.tipo}</p>
+                                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>Periodo: {p.periodo} · {new Date(p.created_at).toLocaleDateString("es-MX")}</p>
+                                {p.monto && <p style={{ margin: "2px 0 0", fontSize: 12, color: "#374151" }}>{fmt(p.monto)}</p>}
+                                {p.notas && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>{p.notas}</p>}
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                <span style={{ background: sem.bg, color: sem.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700, display: "block", marginBottom: 4 }}>{sem.label}</span>
+                                {p.comprobante_url && <a href={p.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#1e40af" }}>📄 Ver</a>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {modalPago && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 400 }}>
+            <h3 style={{ margin: "0 0 20px", fontSize: 16, fontWeight: 800, color: "#374151" }}>
+              Registrar pago — {SERVICIOS_CONFIG.find(c => c.tipo === modalPago.tipo)?.label}
+            </h3>
+            <Field label="Monto (opcional)">
+              <Input type="number" placeholder="0" value={pagoForm.monto} onChange={e => setPagoForm({ ...pagoForm, monto: e.target.value })} />
+            </Field>
+            <Field label="Fecha límite (opcional)">
+              <Input type="date" value={pagoForm.fecha_limite} onChange={e => setPagoForm({ ...pagoForm, fecha_limite: e.target.value })} />
+            </Field>
+            <Field label="Notas">
+              <Input placeholder="Ej: Pagó en ventanilla CFE" value={pagoForm.notas} onChange={e => setPagoForm({ ...pagoForm, notas: e.target.value })} />
+            </Field>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+              <button onClick={() => setModalPago(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "10px 18px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+              <button onClick={() => registrarPago(modalPago)} disabled={saving}
+                style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", cursor: "pointer", fontWeight: 700, opacity: saving ? 0.6 : 1 }}>
+                {saving ? "Guardando..." : "✓ Confirmar pago"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const LoginScreen = ({ onLogin }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -129,6 +367,8 @@ export default function Home() {
   const [editing, setEditing] = useState(null);
   const [uploadingContrato, setUploadingContrato] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [serviciosProperty, setServiciosProperty] = useState(null);
+  const [serviciosResumen, setServiciosResumen] = useState({});
 
   const emptyProp = { name: "", address: "", property_type: "depto", rent_amount: "", status: "disponible", notes: "", owner_email: "", owner_phone: "" };
   const emptyExpense = { property_name: "", category: "condominio", description: "", amount: "", paid_by: "propietario", payment_method: "transferencia", date: new Date().toISOString().split("T")[0], notes: "" };
@@ -181,6 +421,26 @@ export default function Home() {
     setCashMovements(cm.data || []);
     setPropertyExpenses(pe.data || []);
     setLoading(false);
+    loadServiciosResumen(p.data || []);
+  };
+
+  const loadServiciosResumen = async (props) => {
+    if (!props.length) return;
+    const hoy = new Date();
+    const periodo = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+    const { data: servData } = await supabase.from("servicios_inmueble").select("*").in("property_name", props.map(p => p.name));
+    const { data: pagosData } = await supabase.from("pagos_servicios").select("*").eq("periodo", periodo).in("property_name", props.map(p => p.name));
+    const resumen = {};
+    props.forEach(p => {
+      const servs = (servData || []).filter(s => s.property_name === p.name && s.aplica);
+      const pagos = (pagosData || []).filter(pg => pg.property_name === p.name);
+      if (servs.length === 0) { resumen[p.name] = null; return; }
+      const atrasado = servs.some(s => { const pg = pagos.find(pg => pg.tipo === s.tipo); return !pg || pg.status === "atrasado"; });
+      const revision = !atrasado && servs.some(s => { const pg = pagos.find(pg => pg.tipo === s.tipo); return pg?.status === "en_revision"; });
+      const todos = servs.every(s => { const pg = pagos.find(pg => pg.tipo === s.tipo); return pg?.status === "pagado"; });
+      resumen[p.name] = atrasado ? "atrasado" : revision ? "revision" : todos ? "ok" : "pendiente";
+    });
+    setServiciosResumen(resumen);
   };
 
   useEffect(() => { if (session) loadData(); }, [session]);
@@ -265,7 +525,6 @@ export default function Home() {
     });
   };
 
-  // ── CÁLCULOS DASHBOARD ────────────────────────────────────────────────────
   const totalEntradas = cashMovements.filter(m => m.type === "entrada").reduce((a, m) => a + (m.amount || 0), 0);
   const totalSalidas  = cashMovements.filter(m => m.type === "salida").reduce((a, m) => a + (m.amount || 0), 0);
   const saldoCaja     = totalEntradas - totalSalidas;
@@ -306,23 +565,21 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── DASHBOARD ── */}
         {!loading && view === "dashboard" && (
           <div>
             <div style={{ marginBottom: 24 }}>
               <h2 style={{ margin: "0 0 4px", fontSize: isMobile ? 18 : 22, fontWeight: 800, color: brand.gray }}>Panel de Control</h2>
               <p style={{ margin: 0, fontSize: 13, color: brand.grayLight }}>{new Date().toLocaleDateString("es-MX", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
             </div>
-
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 24 }}>
               {[
-                { label: "Renta mensual",    value: fmt(totalRent),              color: brand.gray,      bg: "#fff" },
-                { label: "Cobrado",          value: fmt(paid),                   color: "#065f46",       bg: "#f0fdf4" },
-                { label: "Pendiente",        value: fmt(pending),                color: "#92400e",       bg: "#fffbeb" },
-                { label: "Atrasado",         value: fmt(overdue),                color: "#991b1b",       bg: "#fff5f5" },
-                { label: "Comisiones/mes",   value: fmt(totalComisiones),        color: brand.redDark,   bg: "#fff0f3" },
-                { label: "Com. pendientes",  value: fmt(comisionesPendientes),   color: "#92400e",       bg: "#fffbeb" },
-                { label: "Saldo caja",       value: fmt(saldoCaja),              color: saldoCaja >= 0 ? "#065f46" : "#dc2626", bg: saldoCaja >= 0 ? "#f0fdf4" : "#fff5f5" },
+                { label: "Renta mensual",   value: fmt(totalRent),            color: brand.gray,    bg: "#fff" },
+                { label: "Cobrado",         value: fmt(paid),                 color: "#065f46",     bg: "#f0fdf4" },
+                { label: "Pendiente",       value: fmt(pending),              color: "#92400e",     bg: "#fffbeb" },
+                { label: "Atrasado",        value: fmt(overdue),              color: "#991b1b",     bg: "#fff5f5" },
+                { label: "Comisiones/mes",  value: fmt(totalComisiones),      color: brand.redDark, bg: "#fff0f3" },
+                { label: "Com. pendientes", value: fmt(comisionesPendientes), color: "#92400e",     bg: "#fffbeb" },
+                { label: "Saldo caja",      value: fmt(saldoCaja),            color: saldoCaja >= 0 ? "#065f46" : "#dc2626", bg: saldoCaja >= 0 ? "#f0fdf4" : "#fff5f5" },
               ].map((s, i) => (
                 <div key={i} style={{ background: s.bg, borderRadius: 14, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f0f0f0" }}>
                   <p style={{ margin: "0 0 6px", fontSize: 10, color: brand.grayLight, fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
@@ -330,7 +587,6 @@ export default function Home() {
                 </div>
               ))}
             </div>
-
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
               <div style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f0f0f0" }}>
                 <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 700, color: brand.gray }}>Cobros este mes ({pagosMes.length})</h3>
@@ -367,7 +623,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── PROPIEDADES ── */}
         {!loading && view === "properties" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
@@ -378,6 +633,10 @@ export default function Home() {
               {properties.map(p => {
                 const gastosPropiedad = propertyExpenses.filter(e => e.property_name === p.name);
                 const totalGastos = gastosPropiedad.reduce((a, e) => a + (e.amount || 0), 0);
+                const servStatus = serviciosResumen[p.name];
+                const servColor = servStatus === "ok" ? "#065f46" : servStatus === "revision" ? "#1e40af" : servStatus === "atrasado" ? "#991b1b" : servStatus === "pendiente" ? "#92400e" : "#9ca3af";
+                const servBg    = servStatus === "ok" ? "#d1fae5" : servStatus === "revision" ? "#dbeafe" : servStatus === "atrasado" ? "#fee2e2" : servStatus === "pendiente" ? "#fef3c7" : "#f3f4f6";
+                const servLabel = servStatus === "ok" ? "✅ Servicios al día" : servStatus === "revision" ? "🔍 En revisión" : servStatus === "atrasado" ? "🔴 Servicios pendientes" : servStatus === "pendiente" ? "⏳ Servicios pendientes" : "🔌 Sin configurar";
                 return (
                   <div key={p.id} style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f0f0f0" }}>
                     <div style={{ background: `linear-gradient(135deg, ${brand.redDark}, ${brand.red})`, height: 56, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>
@@ -390,10 +649,18 @@ export default function Home() {
                       </div>
                       <p style={{ margin: "0 0 4px", fontSize: 11, color: brand.grayLight }}>📍 {p.address || "Sin dirección"}</p>
                       {p.owner_email && <p style={{ margin: "0 0 8px", fontSize: 11, color: brand.grayLight }}>{p.owner_email}</p>}
-                      <div style={{ paddingTop: 8, borderTop: "1px solid #f3f4f6", marginBottom: 10 }}>
+                      <div style={{ paddingTop: 8, borderTop: "1px solid #f3f4f6", marginBottom: 8 }}>
                         <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: brand.gray }}>{fmt(p.rent_amount)}</p>
                         {totalGastos > 0 && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#dc2626" }}>Gastos: {fmt(totalGastos)}</p>}
                       </div>
+
+                      {/* Semáforo servicios */}
+                      <div style={{ marginBottom: 10 }}>
+                        <span style={{ background: servBg, color: servColor, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 600 }}>
+                          {servLabel}
+                        </span>
+                      </div>
+
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <Btn small variant="secondary" onClick={() => {
                           setEditing({ type: "property", id: p.id });
@@ -401,8 +668,13 @@ export default function Home() {
                           setShowModal("property");
                         }}>Editar</Btn>
                         <Btn small variant="secondary" onClick={() => { setExpenseForm({ ...emptyExpense, property_name: p.name }); setShowModal("expense"); }}>+ Gasto</Btn>
+                        <button onClick={() => setServiciosProperty(p)}
+                          style={{ background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          🔌 Servicios
+                        </button>
                         {isAdmin && <Btn small variant="danger" onClick={() => deleteItem("property", p.id, `Eliminar "${p.name}"`)}>X</Btn>}
                       </div>
+
                       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f3f4f6" }}>
                         {p.contrato_url ? (
                           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
@@ -425,6 +697,7 @@ export default function Home() {
                           </label>
                         )}
                       </div>
+
                       {gastosPropiedad.length > 0 && (
                         <div style={{ marginTop: 8, borderTop: "1px solid #f3f4f6", paddingTop: 8 }}>
                           {gastosPropiedad.slice(0, 3).map(e => (
@@ -447,7 +720,14 @@ export default function Home() {
         )}
       </div>
 
-      {/* MODAL PROPIEDAD */}
+      {serviciosProperty && (
+        <ModalServicios
+          property={serviciosProperty}
+          onClose={() => { setServiciosProperty(null); loadData(); }}
+          showToast={showToast}
+        />
+      )}
+
       {showModal === "property" && (
         <Modal title={editing ? "Editar Propiedad" : "Nueva Propiedad"} onClose={closeModal}>
           <Field label="Nombre"><Input value={propForm.name} onChange={e => setPropForm({ ...propForm, name: e.target.value })} /></Field>
@@ -479,7 +759,6 @@ export default function Home() {
         </Modal>
       )}
 
-      {/* MODAL GASTO */}
       {showModal === "expense" && (
         <Modal title="Registrar Gasto Operativo" onClose={closeModal}>
           <Field label="Propiedad">
