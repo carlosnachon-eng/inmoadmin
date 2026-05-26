@@ -284,6 +284,19 @@ function ModalServicios({ property, onClose, showToast }) {
                                 />
                               </div>
                             </div>
+                            <div style={{ marginTop: 8 }}>
+                              <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>No. de cuenta / contrato</label>
+                              <input
+                                type="text"
+                                placeholder="Ej: CFE: 123456789 / Predial: PU-29330"
+                                defaultValue={activo.numero_cuenta || ""}
+                                onBlur={async (e) => {
+                                  await supabase.from("servicios_inmueble").update({ numero_cuenta: e.target.value }).eq("id", activo.id);
+                                  loadServicios();
+                                }}
+                                style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, boxSizing: "border-box" }}
+                              />
+                            </div>
                           )}
                         </div>
                       );
