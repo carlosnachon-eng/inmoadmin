@@ -3,6 +3,23 @@ import { supabase } from "../lib/supabase";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
+const SERVICIOS_CONFIG = [
+  { tipo: "luz",           label: "⚡ Luz (CFE)",       periodicidad: "bimestral" },
+  { tipo: "agua",          label: "💧 Agua",            periodicidad: "mensual"   },
+  { tipo: "gas_mensual",   label: "🔥 Gas (mensual)",   periodicidad: "mensual"   },
+  { tipo: "gas_recarga",   label: "🔥 Gas (recarga)",   periodicidad: "recarga"   },
+  { tipo: "mantenimiento", label: "🏢 Mantenimiento",   periodicidad: "mensual"   },
+  { tipo: "internet",      label: "🌐 Internet",        periodicidad: "mensual"   },
+  { tipo: "predial",       label: "🏛️ Predial/Limpia",  periodicidad: "anual"     },
+];
+
+const semaforo = (status) => {
+  if (status === "pagado")      return { color: "#065f46", bg: "#d1fae5", label: "✅ Pagado" };
+  if (status === "en_revision") return { color: "#1e40af", bg: "#dbeafe", label: "🔍 En revisión" };
+  if (status === "atrasado")    return { color: "#991b1b", bg: "#fee2e2", label: "🔴 Atrasado" };
+  return { color: "#92400e", bg: "#fef3c7", label: "⏳ Pendiente" };
+};
+
 const StatusBadge = ({ status }) => {
   const map = {
     pagado: { bg: "#d1fae5", color: "#065f46", label: "Pagado" },
@@ -75,106 +92,41 @@ const generarPDF = async (ownerName, properties, contracts, payments, liquidacio
   const doc = new jsPDF();
   const hoy = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
   const mes = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long" });
-
   const totalRenta = contracts.reduce((a, c) => a + (c.monthly_rent || 0), 0);
   const totalCom = contracts.reduce((a, c) => a + calcComision(c), 0);
   const costoMantPropietario = (tickets || []).filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
   const gastosOp = (propertyExpenses || []).reduce((a, e) => a + (e.amount || 0), 0);
   const totalLiqProp = totalRenta - totalCom - costoMantPropietario - gastosOp;
   const totalPagadoProp = (liquidaciones || []).filter(l => l.status === "pagado").reduce((a, l) => a + (l.amount_paid || 0), 0);
-
-  // Header branding Emporio
   doc.setFillColor(185, 28, 60); doc.rect(0, 0, 210, 42, "F");
   doc.setFillColor(127, 29, 46); doc.rect(0, 36, 210, 6, "F");
   doc.setTextColor(255, 255, 255); doc.setFontSize(18); doc.setFont("helvetica", "bold");
   doc.text("EMPORIO", 20, 16);
   doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(255, 200, 200);
-  doc.text("INMOBILIARIO", 20, 23);
-  doc.text("Reporte de Propietario", 20, 31);
+  doc.text("INMOBILIARIO", 20, 23); doc.text("Reporte de Propietario", 20, 31);
   doc.setFontSize(8); doc.text(`Generado: ${hoy}`, 210 - 20, 31, { align: "right" });
-
   doc.setTextColor(74, 74, 74); doc.setFontSize(16); doc.setFont("helvetica", "bold");
   doc.text(ownerName, 20, 57);
   doc.setFontSize(11); doc.setFont("helvetica", "normal"); doc.setTextColor(122, 122, 122);
   doc.text(`Periodo: ${mes}`, 20, 65);
-
   let y = 78;
-  const extraLines = (costoMantPropietario > 0 ? 1 : 0) + (gastosOp > 0 ? 1 : 0);
-  const boxH = 32 + extraLines * 7;
-  doc.setFillColor(255, 240, 243); doc.rect(15, y, 180, boxH, "F");
-  doc.setDrawColor(185, 28, 60); doc.setLineWidth(0.5); doc.rect(15, y, 180, boxH, "S");
+  const headStyle = { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" };
+  const altRow = { fillColor: [249, 250, 251] };
+  doc.setFillColor(255, 240, 243); doc.rect(15, y, 180, 32, "F");
+  doc.setDrawColor(185, 28, 60); doc.setLineWidth(0.5); doc.rect(15, y, 180, 32, "S");
   doc.setTextColor(74, 74, 74); doc.setFontSize(10); doc.setFont("helvetica", "bold");
   doc.text("RESUMEN FINANCIERO", 20, y + 8);
   doc.setFont("helvetica", "normal"); doc.setFontSize(9);
   doc.text(`Renta mensual total: ${fmt(totalRenta)}`, 20, y + 16);
   doc.text(`Comisión administración: -${fmt(totalCom)}`, 20, y + 23);
   doc.setTextColor(30, 64, 175); doc.text(`Total liquidado histórico: ${fmt(totalPagadoProp)}`, 110, y + 16);
-  let lineY = y + 30;
-  if (costoMantPropietario > 0) { doc.setTextColor(153, 27, 27); doc.text(`Mantenimiento: -${fmt(costoMantPropietario)}`, 20, lineY); lineY += 7; }
-  if (gastosOp > 0) { doc.setTextColor(153, 27, 27); doc.text(`Gastos operativos: -${fmt(gastosOp)}`, 20, lineY); lineY += 7; }
   doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
-  doc.text(`Líquido a recibir: ${fmt(totalLiqProp)}`, 20, lineY);
-  y += boxH + 10;
-
-  const headStyle = { fillColor: [185, 28, 60], textColor: [255, 255, 255], fontStyle: "bold" };
-  const altRow = { fillColor: [249, 250, 251] };
-
+  doc.text(`Líquido a recibir: ${fmt(totalLiqProp)}`, 20, y + 30);
+  y += 42;
   doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
   doc.text("Mis Propiedades", 20, y); y += 6;
-  autoTable(doc, {
-    startY: y,
-    head: [["Propiedad", "Inquilino", "Renta", "Comisión", "Líquido", "Día pago"]],
-    body: properties.map(prop => {
-      const c = contracts.find(c => c.property_name === prop.name);
-      const com = c ? calcComision(c) : 0;
-      return [prop.name, c?.tenant_name || "—", fmt(prop.rent_amount), fmt(com), fmt((prop.rent_amount || 0) - com), c ? `Día ${c.payment_day}` : "—"];
-    }),
-    styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: { left: 15, right: 15 },
-  });
+  autoTable(doc, { startY: y, head: [["Propiedad", "Inquilino", "Renta", "Comisión", "Líquido"]], body: properties.map(prop => { const c = contracts.find(c => c.property_name === prop.name); const com = c ? calcComision(c) : 0; return [prop.name, c?.tenant_name || "—", fmt(prop.rent_amount), fmt(com), fmt((prop.rent_amount || 0) - com)]; }), styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: { left: 15, right: 15 } });
   y = doc.lastAutoTable.finalY + 12; if (y > 220) { doc.addPage(); y = 20; }
-
-  const pagosMes = payments.filter(p => { if (!p.due_date) return false; const d = new Date(p.due_date); const h = new Date(); return d.getMonth() === h.getMonth() && d.getFullYear() === h.getFullYear(); });
-  doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
-  doc.text("Pagos del Mes", 20, y); y += 6;
-  autoTable(doc, {
-    startY: y,
-    head: [["Inquilino", "Propiedad", "Monto", "Vencimiento", "Estado"]],
-    body: pagosMes.length > 0 ? pagosMes.map(p => [p.tenant_name || "—", p.property_name || "—", fmt(p.amount), p.due_date || "—", p.status === "pagado" ? "Pagado" : p.status === "atrasado" ? "Atrasado" : "Pendiente"]) : [["Sin pagos este mes", "", "", "", ""]],
-    styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: { left: 15, right: 15 },
-  });
-  y = doc.lastAutoTable.finalY + 12; if (y > 220) { doc.addPage(); y = 20; }
-
-  doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
-  doc.text("Historial de Liquidaciones", 20, y); y += 6;
-  autoTable(doc, {
-    startY: y,
-    head: [["Periodo", "Renta", "Comisión", "Te pagamos", "Fecha", "Estado"]],
-    body: (liquidaciones || []).length > 0 ? (liquidaciones || []).map(l => [l.period_description || "—", fmt(l.total_rent), fmt(l.total_commission), fmt(l.amount_paid), l.payment_date || "—", l.status === "pagado" ? "Pagado" : "Pendiente"]) : [["Sin liquidaciones", "", "", "", "", ""]],
-    styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: { left: 15, right: 15 },
-  });
-  y = doc.lastAutoTable.finalY + 12; if (y > 220) { doc.addPage(); y = 20; }
-
-  doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
-  doc.text("Mantenimiento", 20, y); y += 6;
-  autoTable(doc, {
-    startY: y,
-    head: [["Título", "Propiedad", "Quién paga", "Costo", "Estado", "Fecha"]],
-    body: (tickets || []).length > 0 ? (tickets || []).map(t => [t.title || "—", t.property_name || "—", t.payer === "propietario" ? "Propietario" : t.payer === "inquilino" ? "Inquilino" : "Inmobiliaria", t.payer === "propietario" && t.charged_amount > 0 ? fmt(t.charged_amount) : "—", t.status === "resuelto" || t.status === "cerrado" ? "Resuelto" : "Abierto", new Date(t.created_at).toLocaleDateString("es-MX")]) : [["Sin reportes", "", "", "", "", ""]],
-    styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: { left: 15, right: 15 },
-  });
-
-  if ((propertyExpenses || []).length > 0) {
-    y = doc.lastAutoTable.finalY + 12; if (y > 220) { doc.addPage(); y = 20; }
-    doc.setTextColor(74, 74, 74); doc.setFontSize(13); doc.setFont("helvetica", "bold");
-    doc.text("Gastos Operativos", 20, y); y += 6;
-    autoTable(doc, {
-      startY: y,
-      head: [["Concepto", "Propiedad", "Descripción", "Monto", "Fecha"]],
-      body: (propertyExpenses || []).map(e => [e.category || "—", e.property_name || "—", e.description || "—", fmt(e.amount), e.date || "—"]),
-      styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: { left: 15, right: 15 },
-    });
-  }
-
   const totalPaginas = doc.internal.getNumberOfPages();
   for (let i = 1; i <= totalPaginas; i++) {
     doc.setPage(i);
@@ -196,9 +148,16 @@ export default function PropietarioPortal() {
   const [tickets, setTickets] = useState([]);
   const [liquidaciones, setLiquidaciones] = useState([]);
   const [propertyExpenses, setPropertyExpenses] = useState([]);
+  const [serviciosPorPropiedad, setServiciosPorPropiedad] = useState({});
+  const [pagosPorPropiedad, setPagosPorPropiedad] = useState({});
   const [loading, setLoading] = useState(false);
   const [generandoPDF, setGenerandoPDF] = useState(false);
   const [ownerName, setOwnerName] = useState("");
+
+  const periodoActual = () => {
+    const hoy = new Date();
+    return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); setAuthLoading(false); });
@@ -215,21 +174,38 @@ export default function PropietarioPortal() {
     if (propsData && propsData.length > 0) {
       setProperties(propsData);
       const propNames = propsData.map(p => p.name);
-      const { data: contractsData } = await supabase.from("contracts").select("*").in("property_name", propNames).eq("status", "activo");
+      const [{ data: contractsData }, { data: ticketsData }, { data: liqData }, { data: expData }, { data: servData }, { data: pagosServData }] = await Promise.all([
+        supabase.from("contracts").select("*").in("property_name", propNames).eq("status", "activo"),
+        supabase.from("maintenance_tickets").select("*").in("property_name", propNames).order("created_at", { ascending: false }),
+        supabase.from("owner_payments").select("*").eq("owner_email", email).order("created_at", { ascending: false }),
+        supabase.from("property_expenses").select("*").in("property_name", propNames).order("date", { ascending: false }),
+        supabase.from("servicios_inmueble").select("*").in("property_name", propNames).eq("aplica", true),
+        supabase.from("pagos_servicios").select("*").in("property_name", propNames).eq("periodo", periodoActual()),
+      ]);
       setContracts(contractsData || []);
+      setTickets(ticketsData || []);
+      setLiquidaciones(liqData || []);
+      setPropertyExpenses(expData || []);
+      setOwnerName(contractsData?.[0]?.owner_name || email.split("@")[0]);
+
       if (contractsData && contractsData.length > 0) {
         const contractIds = contractsData.map(c => c.id);
         const { data: paymentsData } = await supabase.from("payments").select("*").in("contract_id", contractIds).order("due_date", { ascending: false });
         setPayments(paymentsData || []);
-        setOwnerName(contractsData[0].owner_name || email.split("@")[0]);
-      } else { setOwnerName(email.split("@")[0]); }
-      const { data: ticketsData } = await supabase.from("maintenance_tickets").select("*").in("property_name", propNames).order("created_at", { ascending: false });
-      setTickets(ticketsData || []);
-      const { data: liqData } = await supabase.from("owner_payments").select("*").eq("owner_email", email).order("created_at", { ascending: false });
-      setLiquidaciones(liqData || []);
-      const { data: expData } = await supabase.from("property_expenses").select("*").in("property_name", propNames).order("date", { ascending: false });
-      setPropertyExpenses(expData || []);
-    } else { setOwnerName(email.split("@")[0]); }
+      }
+
+      // Organizar servicios y pagos por propiedad
+      const servPorProp = {};
+      const pagosPorProp = {};
+      propNames.forEach(name => {
+        servPorProp[name] = (servData || []).filter(s => s.property_name === name);
+        pagosPorProp[name] = (pagosServData || []).filter(p => p.property_name === name);
+      });
+      setServiciosPorPropiedad(servPorProp);
+      setPagosPorPropiedad(pagosPorProp);
+    } else {
+      setOwnerName(email.split("@")[0]);
+    }
     setLoading(false);
   };
 
@@ -259,11 +235,17 @@ export default function PropietarioPortal() {
     </div>
   );
 
-  const TABS = [{ id: "inicio", label: "📊 Resumen" }, { id: "propiedades", label: "🏠 Propiedades" }, { id: "pagos", label: "💰 Pagos" }, { id: "liquidaciones", label: "🏦 Liquidaciones" }, { id: "mantenimiento", label: "🔧 Mantenimiento" }];
+  const TABS = [
+    { id: "inicio", label: "📊 Resumen" },
+    { id: "propiedades", label: "🏠 Propiedades" },
+    { id: "servicios", label: "🔌 Servicios" },
+    { id: "pagos", label: "💰 Pagos" },
+    { id: "liquidaciones", label: "🏦 Liquidaciones" },
+    { id: "mantenimiento", label: "🔧 Mantenimiento" },
+  ];
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8f8f8", fontFamily: "system-ui, sans-serif" }}>
-      {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "14px 20px" }}>
         <div style={{ maxWidth: 700, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 36, objectFit: "contain" }} />
@@ -274,7 +256,6 @@ export default function PropietarioPortal() {
         </div>
       </div>
 
-      {/* Hero */}
       <div style={{ background: "#b91c3c", padding: "20px 20px 0" }}>
         <div style={{ maxWidth: 700, margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
@@ -285,15 +266,14 @@ export default function PropietarioPortal() {
             <div style={{ textAlign: "right" }}>
               <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.6)" }}>Líquido mensual</p>
               <p style={{ margin: "2px 0 0", fontSize: 22, fontWeight: 800, color: "#fff" }}>{fmt(totalLiquido)}</p>
-              {costoMant > 0 && <p style={{ margin: "2px 0 0", fontSize: 10, color: "rgba(255,200,200,0.9)" }}>incl. -{fmt(costoMant)} mant.</p>}
-              <button onClick={handlePDF} disabled={generandoPDF} style={{ marginTop: 8, background: generandoPDF ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.2)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "6px 14px", cursor: generandoPDF ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700 }}>
+              <button onClick={handlePDF} disabled={generandoPDF} style={{ marginTop: 8, background: "rgba(255,255,255,0.2)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "6px 14px", cursor: generandoPDF ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700 }}>
                 {generandoPDF ? "Generando..." : "📄 Descargar PDF"}
               </button>
             </div>
           </div>
           <div style={{ display: "flex", gap: 4, overflowX: "auto" }}>
             {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "8px 16px", borderRadius: "8px 8px 0 0", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", background: tab === t.id ? "#fff" : "rgba(255,255,255,0.15)", color: tab === t.id ? "#b91c3c" : "rgba(255,255,255,0.8)" }}>
+              <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "8px 14px", borderRadius: "8px 8px 0 0", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", background: tab === t.id ? "#fff" : "rgba(255,255,255,0.15)", color: tab === t.id ? "#b91c3c" : "rgba(255,255,255,0.8)" }}>
                 {t.label}
               </button>
             ))}
@@ -302,6 +282,7 @@ export default function PropietarioPortal() {
       </div>
 
       <div style={{ maxWidth: 700, margin: "0 auto", padding: "24px 20px" }}>
+
         {tab === "inicio" && (
           <div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 20 }}>
@@ -319,17 +300,15 @@ export default function PropietarioPortal() {
                 </div>
               ))}
             </div>
-            {costoMant > 0 && (
-              <div style={{ background: "#fff0f3", border: "2px solid #fca5a5", borderRadius: 14, padding: "14px 18px", marginBottom: 16 }}>
-                <p style={{ margin: 0, fontSize: 13, color: "#b91c3c", fontWeight: 700 }}>⚠️ Mantenimientos a tu cargo: {fmt(costoMant)}</p>
-                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#b91c3c" }}>Se descontarán de tu próxima liquidación</p>
-              </div>
-            )}
             <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#4a4a4a" }}>Estado de este mes</h3>
             {properties.map(prop => {
               const contrato = contracts.find(c => c.property_name === prop.name);
               const pagoMes = payments.find(p => { if (!p.due_date) return false; const d = new Date(p.due_date); return d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear() && p.property_name === prop.name; });
               const comision = contrato ? calcComision(contrato) : 0;
+              // Semáforo servicios de esta propiedad
+              const servs = serviciosPorPropiedad[prop.name] || [];
+              const pagos = pagosPorPropiedad[prop.name] || [];
+              const servAtrasados = servs.filter(s => { const p = pagos.find(p => p.tipo === s.tipo); return !p || p.status === "pendiente" || p.status === "atrasado"; }).length;
               return (
                 <div key={prop.id} style={{ background: "#fff", borderRadius: 14, padding: "16px 18px", marginBottom: 10, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f0f0f0" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
@@ -337,7 +316,14 @@ export default function PropietarioPortal() {
                       <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#4a4a4a" }}>{prop.name}</h4>
                       {contrato && <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>👤 {contrato.tenant_name} · Día {contrato.payment_day}</p>}
                     </div>
-                    {pagoMes && <StatusBadge status={pagoMes.status} />}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+                      {pagoMes && <StatusBadge status={pagoMes.status} />}
+                      {servs.length > 0 && (
+                        <span style={{ background: servAtrasados > 0 ? "#fee2e2" : "#d1fae5", color: servAtrasados > 0 ? "#991b1b" : "#065f46", padding: "2px 8px", borderRadius: 99, fontSize: 11, fontWeight: 600 }}>
+                          {servAtrasados > 0 ? `⚠️ ${servAtrasados} servicios pend.` : "✅ Servicios al día"}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {contrato && (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
@@ -373,9 +359,7 @@ export default function PropietarioPortal() {
                     {prop.property_type === "casa" ? "🏠" : "🏢"}
                   </div>
                   <div style={{ padding: "16px 18px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                      <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#4a4a4a" }}>{prop.name}</h4>
-                    </div>
+                    <h4 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: "#4a4a4a" }}>{prop.name}</h4>
                     {prop.address && <p style={{ margin: "0 0 12px", fontSize: 12, color: "#9ca3af" }}>📍 {prop.address}</p>}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, paddingTop: 12, borderTop: "1px solid #f3f4f6" }}>
                       {[
@@ -397,6 +381,55 @@ export default function PropietarioPortal() {
                         </p>
                       </div>
                     )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── TAB SERVICIOS ── */}
+        {tab === "servicios" && (
+          <div>
+            <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700, color: "#4a4a4a" }}>Estado de servicios</h3>
+            <p style={{ margin: "0 0 20px", fontSize: 13, color: "#9ca3af" }}>Periodo actual: {periodoActual()}</p>
+            {properties.map(prop => {
+              const servs = serviciosPorPropiedad[prop.name] || [];
+              const pagos = pagosPorPropiedad[prop.name] || [];
+              if (servs.length === 0) return (
+                <div key={prop.id} style={{ background: "#fff", borderRadius: 14, padding: "16px 18px", marginBottom: 12, border: "1px solid #f0f0f0" }}>
+                  <h4 style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 700, color: "#4a4a4a" }}>{prop.name}</h4>
+                  <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>Sin servicios configurados</p>
+                </div>
+              );
+              return (
+                <div key={prop.id} style={{ background: "#fff", borderRadius: 14, padding: "16px 18px", marginBottom: 16, border: "1px solid #f0f0f0" }}>
+                  <h4 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#4a4a4a" }}>{prop.name}</h4>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {servs.map(serv => {
+                      const config = SERVICIOS_CONFIG.find(c => c.tipo === serv.tipo);
+                      const pago = pagos.find(p => p.tipo === serv.tipo);
+                      const sem = semaforo(pago?.status);
+                      const quienPaga = serv.quien_paga || "inquilino";
+                      return (
+                        <div key={serv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f9fafb", borderRadius: 8, padding: "10px 14px" }}>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#374151" }}>{config?.label || serv.tipo}</p>
+                            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                              {quienPaga === "incluido" ? "Incluido en renta" : quienPaga === "propietario" ? "A tu cargo" : "Cargo del inquilino"}
+                              {serv.dia_limite_pago ? ` · Límite: día ${serv.dia_limite_pago}` : ""}
+                            </p>
+                            {serv.numero_cuenta && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>No. cuenta: {serv.numero_cuenta}</p>}
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <span style={{ background: sem.bg, color: sem.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{sem.label}</span>
+                            {pago?.comprobante_url && (
+                              <a href={pago.comprobante_url} target="_blank" rel="noreferrer" style={{ display: "block", fontSize: 11, color: "#1e40af", marginTop: 4 }}>📄 Ver comprobante</a>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
