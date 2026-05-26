@@ -479,20 +479,29 @@ function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect, onRe
   const enviarRecordatorio = async (e) => {
     setEnviando(e.id)
     try {
-      const { error } = await supabase.functions.invoke('recordatorio-renovacion', {
-        body: {
-          expediente_id: e.id,
-          nombre_arrendatario: e.nombre_arrendatario,
-          nombre_arrendador: e.nombre_arrendador,
-          correo_arrendatario: e.correo_arrendatario,
-          correo_arrendador: e.correo_arrendador,
-          direccion_inmueble: e.direccion_inmueble,
-          fecha_vigencia: e.fecha_vigencia,
-          dias_restantes: e.diasRestantes,
-          renta_mensual: e.renta_mensual,
-        }
-      })
-      if (error) throw error
+      const { data: { session } } = await supabase.auth.getSession()
+const res = await fetch('https://bnzrnizrmonjxlktbhlp.supabase.co/functions/v1/recordatorio-renovacion', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${session.access_token}`,
+  },
+  body: JSON.stringify({
+    expediente_id: e.id,
+    nombre_arrendatario: e.nombre_arrendatario,
+    nombre_arrendador: e.nombre_arrendador,
+    correo_arrendatario: e.correo_arrendatario,
+    correo_arrendador: e.correo_arrendador,
+    direccion_inmueble: e.direccion_inmueble,
+    fecha_vigencia: e.fecha_vigencia,
+    dias_restantes: e.diasRestantes,
+    renta_mensual: e.renta_mensual,
+  })
+})
+if (!res.ok) {
+  const err = await res.json()
+  throw new Error(err.error || 'Error en Edge Function')
+}
       // Marcar recordatorio enviado
       await supabase.from('poliza_expedientes').update({
         fecha_ultimo_recordatorio: new Date().toISOString(),
