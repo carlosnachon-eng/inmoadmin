@@ -3,6 +3,23 @@ import { supabase } from "../lib/supabase";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
+const SERVICIOS_CONFIG = [
+  { tipo: "luz",           label: "⚡ Luz (CFE)",       periodicidad: "bimestral" },
+  { tipo: "agua",          label: "💧 Agua",            periodicidad: "mensual"   },
+  { tipo: "gas_mensual",   label: "🔥 Gas (mensual)",   periodicidad: "mensual"   },
+  { tipo: "gas_recarga",   label: "🔥 Gas (recarga)",   periodicidad: "recarga"   },
+  { tipo: "mantenimiento", label: "🏢 Mantenimiento",   periodicidad: "mensual"   },
+  { tipo: "internet",      label: "🌐 Internet",        periodicidad: "mensual"   },
+  { tipo: "predial",       label: "🏛️ Predial/Limpia",  periodicidad: "anual"     },
+];
+
+const semaforo = (status) => {
+  if (status === "pagado")      return { color: "#065f46", bg: "#d1fae5", label: "✅ Pagado" };
+  if (status === "en_revision") return { color: "#1e40af", bg: "#dbeafe", label: "🔍 En revisión" };
+  if (status === "atrasado")    return { color: "#991b1b", bg: "#fee2e2", label: "🔴 Atrasado" };
+  return { color: "#92400e", bg: "#fef3c7", label: "⏳ Pendiente" };
+};
+
 const StatusBadge = ({ status }) => {
   const map = {
     pagado: { bg: "#d1fae5", color: "#065f46", label: "Pagado" },
@@ -69,13 +86,21 @@ export default function InquilinoPortal() {
   const [contract, setContract] = useState(null);
   const [payments, setPayments] = useState([]);
   const [tickets, setTickets] = useState([]);
+  const [servicios, setServicios] = useState([]);
+  const [pagosServicios, setPagosServicios] = useState([]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [ticketForm, setTicketForm] = useState({ title: "", description: "", category: "otro", priority: "media" });
   const [saving, setSaving] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(null);
+  const [uploadingServicio, setUploadingServicio] = useState(null);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
+
+  const periodoActual = () => {
+    const hoy = new Date();
+    return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); setAuthLoading(false); });
@@ -91,10 +116,16 @@ export default function InquilinoPortal() {
     const { data: contractData } = await supabase.from("contracts").select("*").eq("tenant_email", email).eq("status", "activo").single();
     if (contractData) {
       setContract(contractData);
-      const { data: paymentsData } = await supabase.from("payments").select("*").eq("contract_id", contractData.id).order("due_date", { ascending: true });
+      const [{ data: paymentsData }, { data: ticketsData }, { data: servData }, { data: pagosServData }] = await Promise.all([
+        supabase.from("payments").select("*").eq("contract_id", contractData.id).order("due_date", { ascending: true }),
+        supabase.from("maintenance_tickets").select("*").eq("tenant_name", contractData.tenant_name).order("created_at", { ascending: false }),
+        supabase.from("servicios_inmueble").select("*").eq("property_name", contractData.property_name).eq("aplica", true),
+        supabase.from("pagos_servicios").select("*").eq("property_name", contractData.property_name).order("created_at", { ascending: false }),
+      ]);
       setPayments(paymentsData || []);
-      const { data: ticketsData } = await supabase.from("maintenance_tickets").select("*").eq("tenant_name", contractData.tenant_name).order("created_at", { ascending: false });
       setTickets(ticketsData || []);
+      setServicios((servData || []).filter(s => s.quien_paga === "inquilino"));
+      setPagosServicios(pagosServData || []);
     }
     setLoading(false);
   };
@@ -130,12 +161,50 @@ export default function InquilinoPortal() {
     setUploadingFile(null);
   };
 
+  const uploadComprobanteServicio = async (servicio, file) => {
+    setUploadingServicio(servicio.tipo);
+    try {
+      const ext = file.name.split(".").pop();
+      const fileName = `servicios/${contract.property_name}_${servicio.tipo}_${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("receipts").upload(fileName, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(fileName);
+
+      // Verificar si ya existe un pago del periodo actual
+      const periodo = periodoActual();
+      const pagoExistente = pagosServicios.find(p => p.tipo === servicio.tipo && p.periodo === periodo);
+      if (pagoExistente) {
+        await supabase.from("pagos_servicios").update({ comprobante_url: publicUrl, status: "en_revision" }).eq("id", pagoExistente.id);
+      } else {
+        await supabase.from("pagos_servicios").insert({
+          property_name: contract.property_name,
+          tipo: servicio.tipo,
+          periodo,
+          status: "en_revision",
+          comprobante_url: publicUrl,
+          subido_por: session.user.email,
+        });
+      }
+      showToast("✅ Comprobante enviado, lo revisaremos pronto");
+      loadTenantData();
+    } catch (e) { showToast("❌ Error al subir: " + e.message, false); }
+    setUploadingServicio(null);
+  };
+
   const logout = async () => { await supabase.auth.signOut(); setSession(null); };
 
   const hoy = new Date();
   const pagosMes = payments.filter(p => { if (!p.due_date) return false; const d = new Date(p.due_date); return d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear(); });
   const pagoPendiente = pagosMes.find(p => ["pendiente", "atrasado"].includes(p.status));
   const totalPagado = payments.filter(p => p.status === "pagado").length;
+
+  // Servicios con su estado del periodo actual
+  const serviciosConEstado = servicios.map(s => {
+    const periodo = periodoActual();
+    const pago = pagosServicios.find(p => p.tipo === s.tipo && p.periodo === periodo);
+    return { ...s, pago };
+  });
+  const serviciosPendientes = serviciosConEstado.filter(s => !s.pago || s.pago.status === "pendiente" || s.pago.status === "atrasado").length;
 
   if (authLoading) return (
     <div style={{ minHeight: "100vh", background: "#f8f8f8", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -157,7 +226,13 @@ export default function InquilinoPortal() {
     </div>
   );
 
-  const TABS = [{ id: "inicio", label: "🏠 Inicio" }, { id: "pagos", label: "💰 Pagos" }, { id: "mantenimiento", label: "🔧 Mantenimiento" }, { id: "contrato", label: "📋 Contrato" }];
+  const TABS = [
+    { id: "inicio", label: "🏠 Inicio" },
+    { id: "pagos", label: "💰 Pagos" },
+    { id: "servicios", label: `🔌 Servicios${serviciosPendientes > 0 ? ` (${serviciosPendientes})` : ""}` },
+    { id: "mantenimiento", label: "🔧 Mantenimiento" },
+    { id: "contrato", label: "📋 Contrato" },
+  ];
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8f8f8", fontFamily: "system-ui, sans-serif" }}>
@@ -167,7 +242,6 @@ export default function InquilinoPortal() {
         </div>
       )}
 
-      {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "14px 20px" }}>
         <div style={{ maxWidth: 600, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 36, objectFit: "contain" }} />
@@ -178,7 +252,6 @@ export default function InquilinoPortal() {
         </div>
       </div>
 
-      {/* Hero */}
       <div style={{ background: "#b91c3c", padding: "20px 20px 0" }}>
         <div style={{ maxWidth: 600, margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
@@ -194,7 +267,7 @@ export default function InquilinoPortal() {
           </div>
           <div style={{ display: "flex", gap: 4, overflowX: "auto" }}>
             {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "8px 16px", borderRadius: "8px 8px 0 0", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", background: tab === t.id ? "#fff" : "rgba(255,255,255,0.15)", color: tab === t.id ? "#b91c3c" : "rgba(255,255,255,0.8)" }}>
+              <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "8px 14px", borderRadius: "8px 8px 0 0", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", background: tab === t.id ? "#fff" : "rgba(255,255,255,0.15)", color: tab === t.id ? "#b91c3c" : "rgba(255,255,255,0.8)" }}>
                 {t.label}
               </button>
             ))}
@@ -203,6 +276,7 @@ export default function InquilinoPortal() {
       </div>
 
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "24px 20px" }}>
+
         {tab === "inicio" && (
           <div>
             {pagoPendiente ? (
@@ -210,7 +284,6 @@ export default function InquilinoPortal() {
                 <p style={{ margin: "0 0 4px", fontSize: 12, color: "#92400e", fontWeight: 700, textTransform: "uppercase" }}>⚠️ Pago pendiente este mes</p>
                 <p style={{ margin: "0 0 16px", fontSize: 26, fontWeight: 800, color: "#4a4a4a" }}>{fmt(pagoPendiente.amount)}</p>
                 <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6b7280" }}>Vence el {pagoPendiente.due_date}</p>
-                <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 600, color: "#374151" }}>¿Ya pagaste? Sube tu comprobante:</p>
                 <label style={{ display: "flex", alignItems: "center", gap: 10, background: "#b91c3c", color: "#fff", padding: "12px 20px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 14, width: "fit-content" }}>
                   {uploadingFile === pagoPendiente.id ? "Subiendo..." : "📎 Subir comprobante"}
                   <input type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={e => e.target.files[0] && uploadReceipt(pagoPendiente.id, e.target.files[0])} disabled={!!uploadingFile} />
@@ -221,18 +294,20 @@ export default function InquilinoPortal() {
                 <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                   <span style={{ fontSize: 40 }}>✅</span>
                   <div>
-                    <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#065f46" }}>¡Estás al corriente!</p>
+                    <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#065f46" }}>¡Estás al corriente con la renta!</p>
                     <p style={{ margin: "4px 0 0", fontSize: 13, color: "#047857" }}>No tienes pagos pendientes este mes</p>
                   </div>
                 </div>
               </div>
             )}
-            {pagosMes.filter(p => p.status === "en_revision").map(p => (
-              <div key={p.id} style={{ background: "#dbeafe", borderRadius: 14, padding: 16, marginBottom: 12, border: "1px solid #93c5fd" }}>
-                <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: "#1e40af" }}>🔍 Comprobante en revisión — {fmt(p.amount)}</p>
-                <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#1e40af", fontWeight: 600 }}>📄 Ver comprobante enviado</a>
+
+            {serviciosPendientes > 0 && (
+              <div style={{ background: "#fff", borderRadius: 16, padding: 16, marginBottom: 16, border: "2px solid #fcd34d", cursor: "pointer" }} onClick={() => setTab("servicios")}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#92400e" }}>⚠️ Tienes {serviciosPendientes} servicio{serviciosPendientes > 1 ? "s" : ""} pendiente{serviciosPendientes > 1 ? "s" : ""} de comprobar</p>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9ca3af" }}>Toca aquí para subir tus comprobantes →</p>
               </div>
-            ))}
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
               <div style={{ background: "#fff", borderRadius: 14, padding: 18 }}>
                 <p style={{ margin: "0 0 4px", fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase" }}>Pagos realizados</p>
@@ -265,12 +340,70 @@ export default function InquilinoPortal() {
                     <input type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={e => e.target.files[0] && uploadReceipt(p.id, e.target.files[0])} disabled={!!uploadingFile} />
                   </label>
                 )}
-                {p.status === "en_revision" && <div style={{ background: "#dbeafe", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#1e40af", fontWeight: 600, marginBottom: 6 }}>🔍 Tu comprobante está en revisión</div>}
+                {p.status === "en_revision" && <div style={{ background: "#dbeafe", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#1e40af", fontWeight: 600 }}>🔍 Tu comprobante está en revisión</div>}
                 {p.receipt_url && ["en_revision", "pagado"].includes(p.status) && (
-                  <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#065f46", textDecoration: "none", display: "inline-block", background: "#d1fae5", padding: "6px 12px", borderRadius: 8, fontWeight: 600 }}>📄 Ver comprobante</a>
+                  <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#065f46", textDecoration: "none", display: "inline-block", background: "#d1fae5", padding: "6px 12px", borderRadius: 8, fontWeight: 600, marginTop: 6 }}>📄 Ver comprobante</a>
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ── TAB SERVICIOS ── */}
+        {tab === "servicios" && (
+          <div>
+            <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700, color: "#4a4a4a" }}>Mis servicios</h3>
+            <p style={{ margin: "0 0 20px", fontSize: 13, color: "#9ca3af" }}>Sube tus comprobantes de pago de servicios</p>
+
+            {serviciosConEstado.length === 0 ? (
+              <div style={{ background: "#fff", borderRadius: 16, padding: 48, textAlign: "center", border: "1px solid #f0f0f0" }}>
+                <p style={{ fontSize: 32, margin: "0 0 8px" }}>✅</p>
+                <p style={{ color: "#9ca3af" }}>No tienes servicios asignados por el momento</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {serviciosConEstado.map(serv => {
+                  const config = SERVICIOS_CONFIG.find(c => c.tipo === serv.tipo);
+                  const sem = semaforo(serv.pago?.status);
+                  const esPendiente = !serv.pago || serv.pago.status === "pendiente" || serv.pago.status === "atrasado";
+                  return (
+                    <div key={serv.id} style={{ background: "#fff", borderRadius: 14, padding: "16px 18px", border: esPendiente ? "2px solid #fcd34d" : "1px solid #f0f0f0" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                        <div>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "#4a4a4a" }}>{config?.label || serv.tipo}</p>
+                          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>
+                            {serv.periodicidad}
+                            {serv.dia_limite_pago ? ` · Límite: día ${serv.dia_limite_pago}` : ""}
+                          </p>
+                          {serv.numero_cuenta && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>No. cuenta: {serv.numero_cuenta}</p>}
+                        </div>
+                        <span style={{ background: sem.bg, color: sem.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{sem.label}</span>
+                      </div>
+
+                      {serv.pago?.comprobante_url && (
+                        <a href={serv.pago.comprobante_url} target="_blank" rel="noreferrer"
+                          style={{ fontSize: 13, color: "#065f46", textDecoration: "none", display: "inline-block", background: "#d1fae5", padding: "6px 12px", borderRadius: 8, fontWeight: 600, marginBottom: 8 }}>
+                          📄 Ver comprobante enviado
+                        </a>
+                      )}
+
+                      {serv.pago?.status === "en_revision" && (
+                        <div style={{ background: "#dbeafe", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#1e40af", fontWeight: 600, marginBottom: 8 }}>
+                          🔍 Tu comprobante está en revisión
+                        </div>
+                      )}
+
+                      {esPendiente && (
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, background: "#f9fafb", padding: "10px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#374151", border: "1px dashed #d1d5db" }}>
+                          {uploadingServicio === serv.tipo ? "⏳ Subiendo..." : "📎 Subir comprobante de pago"}
+                          <input type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={e => e.target.files[0] && uploadComprobanteServicio(serv, e.target.files[0])} disabled={!!uploadingServicio} />
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
