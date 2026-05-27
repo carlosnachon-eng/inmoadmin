@@ -1934,7 +1934,7 @@ function ModalRenovacion({ expediente: e, onClose, onSaved }) {
       const mora = parseFloat((nuevaRenta * 0.01).toFixed(2))
 
       // Crear nuevo expediente copiando el anterior
-      const { id, created_at, updated_at, ...resto } = e
+      const { id, created_at, updated_at, diasRestantes, ...resto } = e
       const nuevoExpediente = {
         ...resto,
         renta_mensual: nuevaRenta,
