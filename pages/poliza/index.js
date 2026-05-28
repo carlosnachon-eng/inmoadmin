@@ -351,8 +351,8 @@ export default function PolizaPanel() {
     setCompradores(comp || [])
     setLoading(false)
   }
-const propietariosFiltrados = propietarios.filter(p => !p.tipo_operacion || p.tipo_operacion === 'renta')
-const vendedoresFiltrados = propietarios.filter(p => p.tipo_operacion === 'venta')
+  const propietariosFiltrados = propietarios.filter(p => !p.tipo_operacion || p.tipo_operacion === 'renta')
+  const vendedoresFiltrados = propietarios.filter(p => p.tipo_operacion === 'venta')
   const tabs = [
     { id: 'expedientes', label: `Expedientes (${expedientes.length})` },
     { id: 'propietarios', label: `Propietarios (${propietariosFiltrados.length})` },
