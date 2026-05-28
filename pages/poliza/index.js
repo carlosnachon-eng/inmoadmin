@@ -346,6 +346,7 @@ export default function PolizaPanel() {
     ])
     setExpedientes(exp || [])
     setPropietarios(prop || [])
+console.log('propietarios cargados:', prop)
     setSolicitudes(sol || [])
     setCaja(caj || [])
     setCompradores(comp || [])
