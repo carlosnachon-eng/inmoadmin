@@ -339,7 +339,9 @@ export default function PolizaPanel() {
     setLoading(true)
     const [{ data: exp }, { data: prop }, { data: sol }, { data: caj }, { data: comp }] = await Promise.all([
       supabase.from('poliza_expedientes').select('*').order('created_at', { ascending: false }),
-      supabase.from('propietarios_inmuebles').select('*').order('created_at', { ascending: false }),
+      supabase.from('propietarios_inmuebles')
+  .select('id, nombre_propietario, telefono_propietario, correo_propietario, domicilio_propietario, rfc_propietario, direccion_inmueble, tipo_inmueble, monto_renta, precio_venta, tipo_operacion, tipo_persona_propietario, razon_social_propietario, status, notas_internas, created_at, contrato_administracion, forma_pago, banco, clabe, cuenta_bancaria, libre_gravamen, descripcion_inmueble')
+  .order('created_at', { ascending: false }),
       supabase.from('solicitudes_inquilino').select('*').order('created_at', { ascending: false }),
       supabase.from('poliza_caja').select('*').order('fecha', { ascending: false }),
       supabase.from('compradores').select('*').order('created_at', { ascending: false }),
