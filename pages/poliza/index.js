@@ -1830,7 +1830,7 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
           <InfoRow label="Tipo de ingresos" value={sol.tipo_ingresos} />
         </div>
         <InfoRow label="Inmueble de interés" value={sol.inmueble_interes} />
-  <button onClick={() => window.open(`/poliza/solicitudes/${sol.id}`, '_blank')} style={{ ...st.btn, width: '100%', background: C.blueBg, color: C.blueText, border: '1px solid #93c5fd', marginBottom: 16, marginTop: 8 }}>🔍 Ver ficha completa del solicitante →</button>
+  <button onClick={() => window.open(`/poliza/solicitud/${sol.id}`, '_blank')} style={{ ...st.btn, width: '100%', background: C.blueBg, color: C.blueText, border: '1px solid #93c5fd', marginBottom: 16, marginTop: 8 }}>🔍 Ver ficha completa del solicitante →</button>
         <div style={{ ...st.divider, margin: '16px 0' }} />
         <div style={st.grid2}>
           <div>
