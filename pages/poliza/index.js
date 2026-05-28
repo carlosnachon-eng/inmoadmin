@@ -355,7 +355,7 @@ const propietariosFiltrados = propietarios.filter(p => !p.tipo_operacion || p.ti
 const vendedoresFiltrados = propietarios.filter(p => p.tipo_operacion === 'venta')
   const tabs = [
     { id: 'expedientes', label: `Expedientes (${expedientes.length})` },
-    { id: 'propietarios', label: `Propietarios (${propietarios.length})` },
+    { id: 'propietarios', label: `Propietarios (${propietariosFiltrados.length})` },
     { id: 'solicitudes', label: `Solicitudes (${solicitudes.length})` },
     { id: 'caja', label: '💰 Caja Póliza' },
     { id: 'compraventa', label: '🔑 Compraventa' },
