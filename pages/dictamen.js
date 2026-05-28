@@ -668,6 +668,20 @@ export default function Dictamen() {
             <Campo label="Fecha de nacimiento"><input value={form.fecha_nacimiento} onChange={e => set("fecha_nacimiento", e.target.value)} placeholder="DD/MM/AAAA" style={inp} /></Campo>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+            <Campo label="RFC"><input value={form.rfc_solicitante || ""} onChange={e => set("rfc_solicitante", e.target.value)} placeholder="XXXX000000XXX" style={inp} /></Campo>
+            <Campo label="Estado civil">
+              <select value={form.estado_civil || ""} onChange={e => set("estado_civil", e.target.value)} style={sel}>
+                <option value="">— Selecciona —</option>
+                <option>Soltero(a)</option>
+                <option>Casado(a)</option>
+                <option>Divorciado(a)</option>
+                <option>Viudo(a)</option>
+                <option>Unión libre</option>
+              </select>
+            </Campo>
+            <Campo label="Nombre del cónyuge"><input value={form.conyuge || ""} onChange={e => set("conyuge", e.target.value)} placeholder="Solo si aplica" style={inp} /></Campo>
+          </div>
             <Campo label="Telefono del inquilino"><input value={form.telefono_inquilino} onChange={e => set("telefono_inquilino", e.target.value)} placeholder="222 123 4567" style={inp} /></Campo>
             <Campo label="Correo electronico"><input value={form.correo_inquilino} onChange={e => set("correo_inquilino", e.target.value)} placeholder="inquilino@correo.com" style={inp} /></Campo>
           </div>
