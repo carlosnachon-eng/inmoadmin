@@ -1,17 +1,59 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { supabase } from '../../lib/supabase'
 import { generarContratoPromocion } from '../../lib/generarContratoPromocion'
 import { generarPromesaCompraventa } from '../../lib/generarPromesaCompraventa'
 import { C, st, InfoRow, fmt } from '../../lib/polizaUtils'
 import ModalPromesaCV from './ModalPromesaCV'
 
+const DocChip = ({ label, data, path }) => {
+  const handleView = async () => {
+    if (data) {
+      const win = window.open()
+      win.document.write(`<iframe src="${data}" width="100%" height="100%" style="border:none"></iframe>`)
+    } else if (path) {
+      const { data: d } = await supabase.storage.from('poliza-docs').createSignedUrl(path, 60)
+      if (d?.signedUrl) window.open(d.signedUrl, '_blank')
+    }
+  }
+  return (
+    <button onClick={handleView} style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#f9fafb', color: C.text, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+      📄 {label}
+    </button>
+  )
+}
+
 export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, compradores = [] }) {
   const [generando, setGenerando] = useState(false)
   const [showPromesaForm, setShowPromesaForm] = React.useState(false)
+  const [detalle, setDetalle] = useState(null)
+  const [cargandoDocs, setCargandoDocs] = useState(true)
+
+  useEffect(() => {
+    const cargarDetalle = async () => {
+      setCargandoDocs(true)
+      const { data } = await supabase
+        .from('propietarios_inmuebles')
+        .select('*')
+        .eq('id', v.id)
+        .single()
+      setDetalle(data)
+      setCargandoDocs(false)
+    }
+    cargarDetalle()
+  }, [v.id])
+
+  const vend = detalle || v
 
   const handleGenerarPromocion = async () => {
     setGenerando('promocion')
     try {
-      await generarContratoPromocion({ nombre_arrendador: v.nombre_propietario, domicilio_arrendador: v.domicilio_propietario, telefono_arrendador: v.telefono_propietario, direccion_inmueble: v.direccion_inmueble, renta_mensual: v.precio_venta })
+      await generarContratoPromocion({
+        nombre_arrendador: vend.nombre_propietario,
+        domicilio_arrendador: vend.domicilio_propietario,
+        telefono_arrendador: vend.telefono_propietario,
+        direccion_inmueble: vend.direccion_inmueble,
+        renta_mensual: vend.precio_venta
+      })
     } catch(e) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
@@ -21,46 +63,98 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
     setShowPromesaForm(false)
     try {
       await generarPromesaCompraventa({
-        nombre_vendedor: v.nombre_propietario, domicilio_vendedor: v.domicilio_propietario,
-        telefono_vendedor: v.telefono_propietario, curp_vendedor: formData.curp_vendedor,
-        rfc_vendedor: v.rfc_propietario, credencial_vendedor: formData.credencial_vendedor,
+        nombre_vendedor: vend.nombre_propietario, domicilio_vendedor: vend.domicilio_propietario,
+        telefono_vendedor: vend.telefono_propietario, curp_vendedor: formData.curp_vendedor,
+        rfc_vendedor: vend.rfc_propietario, credencial_vendedor: formData.credencial_vendedor,
         nombre_comprador: formData.nombre_comprador, domicilio_comprador: formData.domicilio_comprador,
         curp_comprador: formData.curp_comprador, rfc_comprador: formData.rfc_comprador,
-        credencial_comprador: formData.credencial_comprador, direccion_inmueble: v.direccion_inmueble,
+        credencial_comprador: formData.credencial_comprador, direccion_inmueble: vend.direccion_inmueble,
         superficie: formData.superficie, volumen_escritura: formData.volumen_escritura,
         instrumento_escritura: formData.instrumento_escritura, fecha_escritura: formData.fecha_escritura,
         notario: formData.notario, notaria: formData.notaria, cuenta_predial: formData.cuenta_predial,
-        precio_total: v.precio_venta, precio_total_letras: formData.precio_total_letras,
+        precio_total: vend.precio_venta, precio_total_letras: formData.precio_total_letras,
         tipo_credito: formData.tipo_credito, nombre_banco: formData.nombre_banco,
         pago1_monto: formData.pago1_monto, pago1_letras: formData.pago1_letras, pago1_fecha: formData.pago1_fecha,
         pago2_monto: formData.tiene_pago2 ? formData.pago2_monto : null, pago2_letras: formData.pago2_letras, pago2_fecha: formData.pago2_fecha,
         pago3_monto: formData.pago3_monto, pago3_letras: formData.pago3_letras, pago3_fecha: formData.pago3_fecha,
         pena_convencional: formData.pena_convencional, pena_letras: formData.pena_letras,
-        gravamen: v.libre_gravamen ? '' : (v.institucion_gravamen || 'hipoteca'),
+        gravamen: vend.libre_gravamen ? '' : (vend.institucion_gravamen || 'hipoteca'),
         fecha_firma: formData.fecha_firma,
       })
     } catch(e) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
 
+  const tieneDocs = vend.doc_identificacion_b64 || vend.doc_comprobante_domicilio_b64 || vend.doc_predial_b64 || vend.doc_escritura_b64
+
   return (
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={st.modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{v.nombre_propietario}</h2>
-            <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>{v.tipo_persona_propietario === 'moral' ? `Persona moral — ${v.razon_social_propietario}` : 'Persona física'}</p>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{vend.nombre_propietario}</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>{vend.tipo_persona_propietario === 'moral' ? `Persona moral — ${vend.razon_social_propietario}` : 'Persona física'}</p>
           </div>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
+
         <div style={st.grid2}>
-          <InfoRow label="Teléfono" value={v.telefono_propietario} />
-          <InfoRow label="Correo" value={v.correo_propietario} />
-          <InfoRow label="RFC" value={v.rfc_propietario} />
-          <InfoRow label="Precio de venta" value={fmt(v.precio_venta)} />
+          <InfoRow label="Teléfono" value={vend.telefono_propietario} />
+          <InfoRow label="Correo" value={vend.correo_propietario} />
+          <InfoRow label="RFC" value={vend.rfc_propietario} />
+          <InfoRow label="Precio de venta" value={fmt(vend.precio_venta)} />
         </div>
-        <InfoRow label="Dirección del inmueble" value={v.direccion_inmueble} />
-        <InfoRow label="Domicilio del propietario" value={v.domicilio_propietario} />
+        <InfoRow label="Dirección del inmueble" value={vend.direccion_inmueble} />
+        <InfoRow label="Domicilio del propietario" value={vend.domicilio_propietario} />
+
+        {vend.descripcion_inmueble && <InfoRow label="Descripción del inmueble" value={vend.descripcion_inmueble} />}
+
+        <div style={{ ...st.divider, margin: '16px 0' }} />
+
+        {/* Gravamen */}
+        <div style={st.grid2}>
+          <InfoRow label="Libre de gravamen" value={vend.libre_gravamen ? 'Sí' : 'No'} />
+          {!vend.libre_gravamen && <InfoRow label="Institución" value={vend.institucion_gravamen} />}
+        </div>
+
+        {/* Copropietarios */}
+        {vend.tipo_copropiedad && vend.tipo_copropiedad !== 'no' && (
+          <>
+            <div style={{ ...st.divider, margin: '16px 0' }} />
+            <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase' }}>Copropietarios</p>
+            {vend.copropietario_1_nombre && (
+              <div style={st.grid2}>
+                <InfoRow label="Copropietario 1" value={vend.copropietario_1_nombre} />
+                <InfoRow label="Teléfono" value={vend.copropietario_1_telefono} />
+                <InfoRow label="RFC" value={vend.copropietario_1_rfc} />
+                <InfoRow label="Correo" value={vend.copropietario_1_correo} />
+              </div>
+            )}
+            {vend.copropietario_2_nombre && (
+              <div style={st.grid2}>
+                <InfoRow label="Copropietario 2" value={vend.copropietario_2_nombre} />
+                <InfoRow label="Teléfono" value={vend.copropietario_2_telefono} />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Documentos */}
+        <div style={{ ...st.divider, margin: '16px 0' }} />
+        <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Documentos</p>
+        {cargandoDocs ? (
+          <p style={{ fontSize: 12, color: C.muted }}>Cargando documentos...</p>
+        ) : tieneDocs ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {vend.doc_identificacion_b64 && <DocChip label="Identificación" data={vend.doc_identificacion_b64} />}
+            {vend.doc_comprobante_domicilio_b64 && <DocChip label="Comprobante domicilio" data={vend.doc_comprobante_domicilio_b64} />}
+            {vend.doc_predial_b64 && <DocChip label="Predial" data={vend.doc_predial_b64} />}
+            {vend.doc_escritura_b64 && <DocChip label="Escritura" data={vend.doc_escritura_b64} />}
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: C.faint }}>Sin documentos adjuntos</p>
+        )}
+
         <div style={{ ...st.divider, margin: '16px 0' }} />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={handleGenerarPromocion} disabled={!!generando}
@@ -76,7 +170,7 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
         </div>
       </div>
-      {showPromesaForm && <ModalPromesaCV vendedor={v} compradores={compradores} onClose={() => setShowPromesaForm(false)} onGenerar={generarPromesaFinal} />}
+      {showPromesaForm && <ModalPromesaCV vendedor={vend} compradores={compradores} onClose={() => setShowPromesaForm(false)} onGenerar={generarPromesaFinal} />}
     </div>
   )
 }
