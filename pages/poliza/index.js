@@ -16,6 +16,8 @@ import ModalRenovacion from '../../components/poliza/ModalRenovacion'
 import ModalVendedorCV from '../../components/poliza/ModalVendedorCV'
 import ModalCompradorCV from '../../components/poliza/ModalCompradorCV'
 
+const PROPIETARIOS_SELECT = 'id, nombre_propietario, telefono_propietario, correo_propietario, domicilio_propietario, rfc_propietario, direccion_inmueble, tipo_inmueble, monto_renta, precio_venta, tipo_operacion, tipo_persona_propietario, razon_social_propietario, status, notas_internas, created_at, contrato_administracion, forma_pago, banco, clabe, cuenta_bancaria, libre_gravamen, descripcion_inmueble, clave_elector_propietario, mascotas_permitidas, detalle_mascotas, institucion_gravamen'
+
 export default function PolizaPanel() {
   const router = useRouter()
   const [tab, setTab] = useState('expedientes')
@@ -37,7 +39,7 @@ export default function PolizaPanel() {
       const email = session.user.email
       if (CORREOS_PERMITIDOS.includes(email)) {
         setAcceso(true)
-        loadAll()
+        loadTab('expedientes')
       } else {
         setAcceso(false)
       }
@@ -45,23 +47,43 @@ export default function PolizaPanel() {
     verificarAcceso()
   }, [])
 
-  const loadAll = async () => {
+  const loadTab = async (tabId) => {
     setLoading(true)
-    const [{ data: exp }, { data: prop }, { data: sol }, { data: caj }, { data: comp }] = await Promise.all([
-      supabase.from('poliza_expedientes').select('*').order('created_at', { ascending: false }),
-      supabase.from('propietarios_inmuebles')
-        .select('id, nombre_propietario, telefono_propietario, correo_propietario, domicilio_propietario, rfc_propietario, direccion_inmueble, tipo_inmueble, monto_renta, precio_venta, tipo_operacion, tipo_persona_propietario, razon_social_propietario, status, notas_internas, created_at, contrato_administracion, forma_pago, banco, clabe, cuenta_bancaria, libre_gravamen, descripcion_inmueble, clave_elector_propietario, mascotas_permitidas, detalle_mascotas, institucion_gravamen')
-        .order('created_at', { ascending: false }),
-      supabase.from('solicitudes_inquilino').select('*').order('created_at', { ascending: false }),
-      supabase.from('poliza_caja').select('*').order('fecha', { ascending: false }),
-      supabase.from('compradores').select('*').order('created_at', { ascending: false }),
-    ])
-    setExpedientes(exp || [])
-    setPropietarios(prop || [])
-    setSolicitudes(sol || [])
-    setCaja(caj || [])
-    setCompradores(comp || [])
+    if (tabId === 'expedientes') {
+      const { data } = await supabase.from('poliza_expedientes').select('*').order('created_at', { ascending: false })
+      setExpedientes(data || [])
+    }
+    if (tabId === 'propietarios' && propietarios.length === 0) {
+      const { data } = await supabase.from('propietarios_inmuebles')
+        .select(PROPIETARIOS_SELECT)
+        .order('created_at', { ascending: false })
+      setPropietarios(data || [])
+    }
+    if (tabId === 'solicitudes' && solicitudes.length === 0) {
+      const { data } = await supabase.from('solicitudes_inquilino').select('*').order('created_at', { ascending: false })
+      setSolicitudes(data || [])
+    }
+    if (tabId === 'caja' && caja.length === 0) {
+      const { data } = await supabase.from('poliza_caja').select('*').order('fecha', { ascending: false })
+      setCaja(data || [])
+    }
+    if (tabId === 'compraventa' && propietarios.length === 0) {
+      const [{ data: prop }, { data: comp }] = await Promise.all([
+        supabase.from('propietarios_inmuebles').select(PROPIETARIOS_SELECT).order('created_at', { ascending: false }),
+        supabase.from('compradores').select('*').order('created_at', { ascending: false }),
+      ])
+      setPropietarios(prop || [])
+      setCompradores(comp || [])
+    }
+    if (tabId === 'compraventa' && compradores.length === 0) {
+      const { data } = await supabase.from('compradores').select('*').order('created_at', { ascending: false })
+      setCompradores(data || [])
+    }
     setLoading(false)
+  }
+
+  const loadAll = async () => {
+    await loadTab(tab)
   }
 
   const propietariosFiltrados = propietarios.filter(p => !p.tipo_operacion || p.tipo_operacion === 'renta')
@@ -76,7 +98,12 @@ export default function PolizaPanel() {
   ]
 
   const closeModal = () => { setModal(null); setSelected(null) }
-  const closeAndReload = () => { closeModal(); loadAll() }
+  const closeAndReload = () => { closeModal(); loadTab(tab) }
+
+  const cambiarTab = (tabId) => {
+    setTab(tabId)
+    loadTab(tabId)
+  }
 
   return (
     <div style={st.page}>
@@ -88,7 +115,7 @@ export default function PolizaPanel() {
         </div>
         <nav style={st.nav}>
           {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
+            <button key={t.id} onClick={() => cambiarTab(t.id)}
               style={{ ...st.navBtn, ...(tab === t.id ? st.navBtnActive : {}) }}>
               {t.label}
             </button>
