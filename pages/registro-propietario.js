@@ -36,6 +36,14 @@ const SectionTitle = ({ title, subtitle }) => (
   </div>
 )
 
+const uploadDoc = async (file, folder, fileName) => {
+  const ext = file.name.split('.').pop()
+  const path = `${folder}/${fileName}.${ext}`
+  const { error } = await supabase.storage.from('poliza-docs').upload(path, file, { upsert: true })
+  if (error) throw error
+  return path
+}
+
 export default function RegistroPropietario() {
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
@@ -59,7 +67,6 @@ export default function RegistroPropietario() {
   }
   const saveCurrentStep = () => { if (!formRef.current) return; formRef.current.querySelectorAll('input[name], textarea[name]').forEach(el => { savedValues.current[el.name] = el.value }) }
   const handleFile = (field, file) => { setFiles(f => ({ ...f, [field]: file })); setErrors(e => ({ ...e, [field]: undefined })) }
-  const fileToBase64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file) })
 
   const validateStep1 = () => {
     const v = getValues(); const e = {}
@@ -111,14 +118,32 @@ export default function RegistroPropietario() {
       }
       const { data, error } = await supabase.from('propietarios_inmuebles').insert(payload).select('id').single()
       if (error) throw error
+
+      const id = data.id
+      const folder = `propietarios/${id}`
       const docUpdates = {}
-      if (files.doc_identificacion) docUpdates.doc_identificacion_b64 = await fileToBase64(files.doc_identificacion)
-      if (files.doc_comprobante_domicilio) docUpdates.doc_comprobante_domicilio_b64 = await fileToBase64(files.doc_comprobante_domicilio)
-      if (files.doc_predial) docUpdates.doc_predial_b64 = await fileToBase64(files.doc_predial)
-      if (Object.keys(docUpdates).length > 0) await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', data.id)
-      setSubmitId(data.id); setStep(4)
-    } catch (err) { console.error(err); setErrors({ global: 'Ocurrió un error. Por favor intenta de nuevo.' }) }
-    finally { setLoading(false) }
+
+      const [pathId, pathComp, pathPred] = await Promise.all([
+        files.doc_identificacion ? uploadDoc(files.doc_identificacion, folder, 'identificacion') : Promise.resolve(null),
+        files.doc_comprobante_domicilio ? uploadDoc(files.doc_comprobante_domicilio, folder, 'comprobante_domicilio') : Promise.resolve(null),
+        files.doc_predial ? uploadDoc(files.doc_predial, folder, 'predial') : Promise.resolve(null),
+      ])
+
+      if (pathId) docUpdates.doc_identificacion_b64 = pathId
+      if (pathComp) docUpdates.doc_comprobante_domicilio_b64 = pathComp
+      if (pathPred) docUpdates.doc_predial_b64 = pathPred
+
+      if (Object.keys(docUpdates).length > 0) {
+        await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', id)
+      }
+
+      setSubmitId(id); setStep(4)
+    } catch (err) {
+      console.error(err)
+      setErrors({ global: 'Ocurrió un error al subir los documentos. Por favor intenta de nuevo.' })
+    } finally {
+      setLoading(false)
+    }
   }
 
   const totalSteps = 3
@@ -131,7 +156,7 @@ export default function RegistroPropietario() {
         <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={e => handleFile(field, e.target.files[0])} />
         <span style={{ display: 'block', fontSize: 22, marginBottom: 6, color: files[field] ? '#065f46' : '#b91c3c' }}>{files[field] ? '✓' : '↑'}</span>
         <span style={{ display: 'block', fontSize: 13, color: '#374151', fontWeight: 500, marginBottom: 3 }}>{files[field] ? files[field].name : hint}</span>
-        <span style={{ display: 'block', fontSize: 11, color: '#9ca3af' }}>{files[field] ? 'Toca para cambiar' : 'PDF, JPG o PNG · máx 10 MB'}</span>
+        <span style={{ display: 'block', fontSize: 11, color: '#9ca3af' }}>{files[field] ? 'Toca para cambiar' : 'PDF, JPG o PNG · máx 50 MB'}</span>
       </div>
     </Field>
   )
@@ -143,8 +168,6 @@ export default function RegistroPropietario() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
       <div style={{ minHeight: '100vh', background: '#f8f8f8', fontFamily: 'system-ui, sans-serif', paddingBottom: 60 }}>
-
-        {/* Header */}
         <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '14px 20px' }}>
           <div style={{ maxWidth: 580, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio Inmobiliario" style={{ height: 36, objectFit: 'contain' }} />
@@ -156,14 +179,7 @@ export default function RegistroPropietario() {
             )}
           </div>
         </div>
-        {/* Barra de progreso */}
-        {step < 4 && (
-          <div style={{ background: '#f3f4f6', height: 4 }}>
-            <div style={{ background: '#b91c3c', height: 4, width: `${(step / totalSteps) * 100}%`, transition: 'width 0.3s ease' }} />
-          </div>
-        )}
-
-        {/* Steps indicador */}
+        {step < 4 && (<div style={{ background: '#f3f4f6', height: 4 }}><div style={{ background: '#b91c3c', height: 4, width: `${(step / totalSteps) * 100}%`, transition: 'width 0.3s ease' }} /></div>)}
         {step < 4 && (
           <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '20px 20px 0' }}>
             {STEPS.map((s, i) => (
@@ -177,138 +193,67 @@ export default function RegistroPropietario() {
             ))}
           </div>
         )}
-
         <div style={{ maxWidth: 580, margin: '20px auto', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16, padding: '28px 24px', marginLeft: 16, marginRight: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }} ref={formRef}>
-
-          {/* PASO 1 — Sus datos */}
-          {step === 1 && (
-            <>
-              <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: '#4a4a4a' }}>Sus datos personales</h2>
-              <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>Esta información aparecerá en su contrato de prestación de servicios.</p>
-
-              <Field label="Nombre completo" required error={errors.nombre_propietario}>
-                <Input name="nombre_propietario" placeholder="Como aparece en su identificación oficial" error={errors.nombre_propietario} />
-              </Field>
-              <Field label="Teléfono de contacto" required error={errors.telefono_propietario}>
-                <Input name="telefono_propietario" type="tel" placeholder="10 dígitos" error={errors.telefono_propietario} />
-              </Field>
-              <Field label="Correo electrónico" required error={errors.correo_propietario}>
-                <Input name="correo_propietario" type="email" placeholder="correo@ejemplo.com" error={errors.correo_propietario} />
-              </Field>
-              <Field label="Domicilio particular" required error={errors.domicilio_propietario}>
-                <textarea name="domicilio_propietario" placeholder="Calle, número, colonia, ciudad, estado" rows={3}
-                  style={{ width: '100%', background: '#fff', border: `1px solid ${errors.domicilio_propietario ? '#b91c3c' : '#e5e7eb'}`, borderRadius: 8, padding: '11px 14px', color: '#374151', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
-                {errors.domicilio_propietario && <p style={{ color: '#b91c3c', fontSize: 12, margin: '6px 0 0', fontWeight: 600 }}>{errors.domicilio_propietario}</p>}
-              </Field>
-              <Field label="RFC"><Input name="rfc_propietario" placeholder="XXXX000000XXX" /></Field>
-              <Field label="Clave de elector (INE)"><Input name="clave_elector_propietario" placeholder="Clave de elector" /></Field>
-
-              <SectionTitle title="Datos para recibir su renta" />
-              <Field label="Forma de pago preferida">
-                <RadioGroup value={formaPago} onChange={setFormaPago} options={[
-                  { value: 'transferencia', label: 'Transferencia bancaria' },
-                  { value: 'efectivo', label: 'Efectivo' },
-                ]} />
-              </Field>
-              {formaPago === 'transferencia' && (
-                <>
-                  <Field label="Banco"><Input name="banco" placeholder="Ej: BBVA, Banorte, HSBC..." /></Field>
-                  <Field label="CLABE interbancaria" required error={errors.clabe}>
-                    <Input name="clabe" placeholder="18 dígitos" maxLength={18} error={errors.clabe} />
-                  </Field>
-                  <Field label="Número de cuenta"><Input name="cuenta_bancaria" placeholder="Opcional" /></Field>
-                </>
-              )}
-            </>
-          )}
-
-          {/* PASO 2 — El inmueble */}
-          {step === 2 && (
-            <>
-              <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: '#4a4a4a' }}>Datos del inmueble</h2>
-              <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>Con esta información promocionaremos su propiedad.</p>
-
-              <Field label="Dirección del inmueble" required error={errors.direccion_inmueble}>
-                <textarea name="direccion_inmueble" placeholder="Calle, número, colonia, municipio, estado" rows={3}
-                  style={{ width: '100%', background: '#fff', border: `1px solid ${errors.direccion_inmueble ? '#b91c3c' : '#e5e7eb'}`, borderRadius: 8, padding: '11px 14px', color: '#374151', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
-                {errors.direccion_inmueble && <p style={{ color: '#b91c3c', fontSize: 12, margin: '6px 0 0', fontWeight: 600 }}>{errors.direccion_inmueble}</p>}
-              </Field>
-
-              <Field label="Tipo de inmueble">
-                <RadioGroup value={tipoInmueble} onChange={setTipoInmueble} options={[
-                  { value: 'habitacional_sin_muebles', label: 'Casa/Depto sin muebles' },
-                  { value: 'habitacional_amueblada', label: 'Casa/Depto amueblada' },
-                  { value: 'comercial', label: 'Local comercial' },
-                ]} />
-              </Field>
-
-              <Field label="Monto de renta mensual (MXN)" required error={errors.monto_renta}>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }}>$</span>
-                  <Input name="monto_renta" type="number" placeholder="0.00" style={{ paddingLeft: 28 }} error={errors.monto_renta} />
-                </div>
-              </Field>
-
-              <Field label="¿El mantenimiento está incluido en la renta?">
-                <RadioGroup value={mantenimientoIncluido} onChange={setMantenimientoIncluido} options={[
-                  { value: true, label: 'Sí, incluido' }, { value: false, label: 'No incluido' },
-                ]} />
-              </Field>
-
-              <Field label="¿Se permiten mascotas?">
-                <RadioGroup value={mascotasPermitidas} onChange={setMascotasPermitidas} options={[
-                  { value: 'si', label: 'Sí' }, { value: 'no', label: 'No' }, { value: 'condicionado', label: 'Condicionado' },
-                ]} />
-              </Field>
-              {(mascotasPermitidas === 'si' || mascotasPermitidas === 'condicionado') && (
-                <Field label="Especifique condiciones de mascotas">
-                  <Input name="detalle_mascotas" placeholder="Ej: Solo perros pequeños, sin gatos, etc." />
-                </Field>
-              )}
-
-              <Field label="Número máximo de habitantes"><Input name="num_habitantes" type="number" placeholder="Ej: 4" /></Field>
-
-              <Field label="¿Cuenta con reglamento de vecinos?">
-                <RadioGroup value={reglamento} onChange={setReglamento} options={[{ value: 'si', label: 'Sí' }, { value: 'no', label: 'No' }]} />
-              </Field>
-
-              <Field label="Condiciones para mudanza"><Input name="permiso_mudanzas" placeholder="Ej: Solo sábados 9am-5pm, avisar con 48 hrs..." /></Field>
-
-              <SectionTitle title="Servicio de administración" subtitle="¿Desea que Emporio administre su inmueble? (cobranza, mantenimiento, reportes mensuales)" />
-              <Field label="¿Contratar servicio de administración?">
-                <RadioGroup value={contratoAdmin} onChange={setContratoAdmin} options={[
-                  { value: true, label: 'Sí, me interesa' }, { value: false, label: 'Solo arrendamiento' },
-                ]} />
-              </Field>
-            </>
-          )}
-
-          {/* PASO 3 — Documentos */}
-          {step === 3 && (
-            <>
-              <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: '#4a4a4a' }}>Documentos requeridos</h2>
-              <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>Suba una foto clara o PDF de cada documento. Todos son obligatorios.</p>
-              {errors.global && <div style={{ background: '#fff0f3', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 16px', color: '#b91c3c', fontSize: 14, marginBottom: 16, fontWeight: 600 }}>{errors.global}</div>}
-
-              <FileBox field="doc_identificacion" label="Identificación oficial (INE/Pasaporte)" hint="Toca para subir identificación" fileRef={fileRef1} />
-              <FileBox field="doc_comprobante_domicilio" label="Comprobante de domicilio del inmueble (reciente)" hint="Toca para subir comprobante" fileRef={fileRef2} />
-              <FileBox field="doc_predial" label="Última boleta de predial (año en curso)" hint="Toca para subir predial" fileRef={fileRef3} />
-
-              <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.6, marginTop: 20, padding: '14px', background: '#f8f8f8', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                🔒 Al enviar este formulario, acepta nuestro{' '}
-                <a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: '#b91c3c' }}>Aviso de Privacidad</a>. Su información es confidencial.
-              </div>
-            </>
-          )}
-
-          {/* PASO 4 — Éxito */}
+          {step === 1 && (<>
+            <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: '#4a4a4a' }}>Sus datos personales</h2>
+            <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>Esta información aparecerá en su contrato de prestación de servicios.</p>
+            <Field label="Nombre completo" required error={errors.nombre_propietario}><Input name="nombre_propietario" placeholder="Como aparece en su identificación oficial" error={errors.nombre_propietario} /></Field>
+            <Field label="Teléfono de contacto" required error={errors.telefono_propietario}><Input name="telefono_propietario" type="tel" placeholder="10 dígitos" error={errors.telefono_propietario} /></Field>
+            <Field label="Correo electrónico" required error={errors.correo_propietario}><Input name="correo_propietario" type="email" placeholder="correo@ejemplo.com" error={errors.correo_propietario} /></Field>
+            <Field label="Domicilio particular" required error={errors.domicilio_propietario}>
+              <textarea name="domicilio_propietario" placeholder="Calle, número, colonia, ciudad, estado" rows={3} style={{ width: '100%', background: '#fff', border: `1px solid ${errors.domicilio_propietario ? '#b91c3c' : '#e5e7eb'}`, borderRadius: 8, padding: '11px 14px', color: '#374151', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+              {errors.domicilio_propietario && <p style={{ color: '#b91c3c', fontSize: 12, margin: '6px 0 0', fontWeight: 600 }}>{errors.domicilio_propietario}</p>}
+            </Field>
+            <Field label="RFC"><Input name="rfc_propietario" placeholder="XXXX000000XXX" /></Field>
+            <Field label="Clave de elector (INE)"><Input name="clave_elector_propietario" placeholder="Clave de elector" /></Field>
+            <SectionTitle title="Datos para recibir su renta" />
+            <Field label="Forma de pago preferida">
+              <RadioGroup value={formaPago} onChange={setFormaPago} options={[{ value: 'transferencia', label: 'Transferencia bancaria' }, { value: 'efectivo', label: 'Efectivo' }]} />
+            </Field>
+            {formaPago === 'transferencia' && (<>
+              <Field label="Banco"><Input name="banco" placeholder="Ej: BBVA, Banorte, HSBC..." /></Field>
+              <Field label="CLABE interbancaria" required error={errors.clabe}><Input name="clabe" placeholder="18 dígitos" maxLength={18} error={errors.clabe} /></Field>
+              <Field label="Número de cuenta"><Input name="cuenta_bancaria" placeholder="Opcional" /></Field>
+            </>)}
+          </>)}
+          {step === 2 && (<>
+            <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: '#4a4a4a' }}>Datos del inmueble</h2>
+            <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>Con esta información promocionaremos su propiedad.</p>
+            <Field label="Dirección del inmueble" required error={errors.direccion_inmueble}>
+              <textarea name="direccion_inmueble" placeholder="Calle, número, colonia, municipio, estado" rows={3} style={{ width: '100%', background: '#fff', border: `1px solid ${errors.direccion_inmueble ? '#b91c3c' : '#e5e7eb'}`, borderRadius: 8, padding: '11px 14px', color: '#374151', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+              {errors.direccion_inmueble && <p style={{ color: '#b91c3c', fontSize: 12, margin: '6px 0 0', fontWeight: 600 }}>{errors.direccion_inmueble}</p>}
+            </Field>
+            <Field label="Tipo de inmueble">
+              <RadioGroup value={tipoInmueble} onChange={setTipoInmueble} options={[{ value: 'habitacional_sin_muebles', label: 'Casa/Depto sin muebles' }, { value: 'habitacional_amueblada', label: 'Casa/Depto amueblada' }, { value: 'comercial', label: 'Local comercial' }]} />
+            </Field>
+            <Field label="Monto de renta mensual (MXN)" required error={errors.monto_renta}>
+              <div style={{ position: 'relative' }}><span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }}>$</span><Input name="monto_renta" type="number" placeholder="0.00" style={{ paddingLeft: 28 }} error={errors.monto_renta} /></div>
+            </Field>
+            <Field label="¿El mantenimiento está incluido en la renta?"><RadioGroup value={mantenimientoIncluido} onChange={setMantenimientoIncluido} options={[{ value: true, label: 'Sí, incluido' }, { value: false, label: 'No incluido' }]} /></Field>
+            <Field label="¿Se permiten mascotas?"><RadioGroup value={mascotasPermitidas} onChange={setMascotasPermitidas} options={[{ value: 'si', label: 'Sí' }, { value: 'no', label: 'No' }, { value: 'condicionado', label: 'Condicionado' }]} /></Field>
+            {(mascotasPermitidas === 'si' || mascotasPermitidas === 'condicionado') && (<Field label="Especifique condiciones de mascotas"><Input name="detalle_mascotas" placeholder="Ej: Solo perros pequeños, sin gatos, etc." /></Field>)}
+            <Field label="Número máximo de habitantes"><Input name="num_habitantes" type="number" placeholder="Ej: 4" /></Field>
+            <Field label="¿Cuenta con reglamento de vecinos?"><RadioGroup value={reglamento} onChange={setReglamento} options={[{ value: 'si', label: 'Sí' }, { value: 'no', label: 'No' }]} /></Field>
+            <Field label="Condiciones para mudanza"><Input name="permiso_mudanzas" placeholder="Ej: Solo sábados 9am-5pm, avisar con 48 hrs..." /></Field>
+            <SectionTitle title="Servicio de administración" subtitle="¿Desea que Emporio administre su inmueble? (cobranza, mantenimiento, reportes mensuales)" />
+            <Field label="¿Contratar servicio de administración?"><RadioGroup value={contratoAdmin} onChange={setContratoAdmin} options={[{ value: true, label: 'Sí, me interesa' }, { value: false, label: 'Solo arrendamiento' }]} /></Field>
+          </>)}
+          {step === 3 && (<>
+            <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: '#4a4a4a' }}>Documentos requeridos</h2>
+            <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>Suba una foto clara o PDF de cada documento. Todos son obligatorios.</p>
+            {errors.global && <div style={{ background: '#fff0f3', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 16px', color: '#b91c3c', fontSize: 14, marginBottom: 16, fontWeight: 600 }}>{errors.global}</div>}
+            <FileBox field="doc_identificacion" label="Identificación oficial (INE/Pasaporte)" hint="Toca para subir identificación" fileRef={fileRef1} />
+            <FileBox field="doc_comprobante_domicilio" label="Comprobante de domicilio del inmueble (reciente)" hint="Toca para subir comprobante" fileRef={fileRef2} />
+            <FileBox field="doc_predial" label="Última boleta de predial (año en curso)" hint="Toca para subir predial" fileRef={fileRef3} />
+            <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.6, marginTop: 20, padding: '14px', background: '#f8f8f8', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+              🔒 Al enviar este formulario, acepta nuestro{' '}<a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: '#b91c3c' }}>Aviso de Privacidad</a>. Su información es confidencial.
+            </div>
+          </>)}
           {step === 4 && (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
               <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fff0f3', color: '#b91c3c', fontSize: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>✓</div>
               <h2 style={{ fontSize: 24, fontWeight: 800, color: '#4a4a4a', margin: '0 0 12px' }}>¡Registro enviado!</h2>
-              <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.6, margin: '0 0 20px' }}>
-                Recibimos los datos de su inmueble. En breve nos pondremos en contacto para confirmar los detalles y comenzar la promoción.
-              </p>
+              <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.6, margin: '0 0 20px' }}>Recibimos los datos de su inmueble. En breve nos pondremos en contacto para confirmar los detalles y comenzar la promoción.</p>
               {submitId && <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 20 }}>Folio: <strong style={{ color: '#b91c3c' }}>{submitId.slice(0, 8).toUpperCase()}</strong></p>}
               <div style={{ padding: '16px 20px', background: '#f8f8f8', border: '1px solid #e5e7eb', borderRadius: 10, textAlign: 'left' }}>
                 <p style={{ margin: 0, fontWeight: 700, color: '#374151', fontSize: 14 }}>¿Tiene alguna duda?</p>
@@ -316,27 +261,16 @@ export default function RegistroPropietario() {
               </div>
             </div>
           )}
-
-          {/* Botones */}
           {step < 4 && (
             <div style={{ display: 'flex', gap: 12, marginTop: 28, justifyContent: 'flex-end' }}>
-              {step > 1 && (
-                <button onClick={() => setStep(s => s - 1)} disabled={loading}
-                  style={{ padding: '12px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'transparent', color: '#9ca3af', fontSize: 14, cursor: 'pointer' }}>
-                  ← Anterior
-                </button>
-              )}
-              <button onClick={next} disabled={loading}
-                style={{ padding: '12px 28px', borderRadius: 8, border: 'none', background: '#b91c3c', color: '#fff', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>
+              {step > 1 && (<button onClick={() => setStep(s => s - 1)} disabled={loading} style={{ padding: '12px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'transparent', color: '#9ca3af', fontSize: 14, cursor: 'pointer' }}>← Anterior</button>)}
+              <button onClick={next} disabled={loading} style={{ padding: '12px 28px', borderRadius: 8, border: 'none', background: '#b91c3c', color: '#fff', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>
                 {loading ? 'Enviando...' : step === 3 ? 'Enviar registro' : 'Siguiente →'}
               </button>
             </div>
           )}
         </div>
-
-        <footer style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12, marginTop: 20 }}>
-          © {new Date().getFullYear()} Emporio Inmobiliario · Puebla, México
-        </footer>
+        <footer style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12, marginTop: 20 }}>© {new Date().getFullYear()} Emporio Inmobiliario · Puebla, México</footer>
       </div>
     </>
   )

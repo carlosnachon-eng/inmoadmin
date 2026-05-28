@@ -82,7 +82,13 @@ export default function RegistroVendedor() {
     return v
   }
   const saveStep = () => { if (!formRef.current) return; formRef.current.querySelectorAll('input[name], textarea[name], select[name]').forEach(el => { saved.current[el.name] = el.value }) }
-  const fileToBase64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file) })
+  const uploadDoc = async (file, folder, fileName) => {
+    const ext = file.name.split('.').pop()
+    const path = `${folder}/${fileName}.${ext}`
+    const { error } = await supabase.storage.from('poliza-docs').upload(path, file, { upsert: true })
+    if (error) throw error
+    return path
+  }
 
   const validateStep1 = () => {
     const v = getVals(); const e = {}
@@ -130,13 +136,21 @@ export default function RegistroVendedor() {
       }
       const { data, error } = await supabase.from('propietarios_inmuebles').insert(payload).select('id').single()
       if (error) throw error
+      const id = data.id
+      const folder = `vendedores/${id}`
       const docUpdates = {}
-      if (files.doc_identificacion) docUpdates.doc_identificacion_b64 = await fileToBase64(files.doc_identificacion)
-      if (files.doc_comprobante_domicilio) docUpdates.doc_comprobante_domicilio_b64 = await fileToBase64(files.doc_comprobante_domicilio)
-      if (files.doc_predial) docUpdates.doc_predial_b64 = await fileToBase64(files.doc_predial)
-      if (files.doc_escritura) docUpdates.doc_escritura_b64 = await fileToBase64(files.doc_escritura)
-      if (Object.keys(docUpdates).length > 0) await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', data.id)
-      setSubmitId(data.id); setStep(3)
+      const [pathId, pathComp, pathPred, pathEsc] = await Promise.all([
+        files.doc_identificacion ? uploadDoc(files.doc_identificacion, folder, 'identificacion') : Promise.resolve(null),
+        files.doc_comprobante_domicilio ? uploadDoc(files.doc_comprobante_domicilio, folder, 'comprobante_domicilio') : Promise.resolve(null),
+        files.doc_predial ? uploadDoc(files.doc_predial, folder, 'predial') : Promise.resolve(null),
+        files.doc_escritura ? uploadDoc(files.doc_escritura, folder, 'escritura') : Promise.resolve(null),
+      ])
+      if (pathId) docUpdates.doc_identificacion_b64 = pathId
+      if (pathComp) docUpdates.doc_comprobante_domicilio_b64 = pathComp
+      if (pathPred) docUpdates.doc_predial_b64 = pathPred
+      if (pathEsc) docUpdates.doc_escritura_b64 = pathEsc
+      if (Object.keys(docUpdates).length > 0) await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', id)
+      setSubmitId(id); setStep(3)
     } catch (err) { console.error(err); setErrors({ global: 'Ocurrió un error. Por favor intenta de nuevo.' }) }
     finally { setLoading(false) }
   }
