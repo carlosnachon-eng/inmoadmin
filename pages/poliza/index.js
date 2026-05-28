@@ -351,7 +351,8 @@ export default function PolizaPanel() {
     setCompradores(comp || [])
     setLoading(false)
   }
-
+const propietariosFiltrados = propietarios.filter(p => !p.tipo_operacion || p.tipo_operacion === 'renta')
+const vendedoresFiltrados = propietarios.filter(p => p.tipo_operacion === 'venta')
   const tabs = [
     { id: 'expedientes', label: `Expedientes (${expedientes.length})` },
     { id: 'propietarios', label: `Propietarios (${propietarios.length})` },
@@ -390,7 +391,7 @@ export default function PolizaPanel() {
         ) : (
           <>
             {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={e => { setSelected(e); setModal('expediente') }} onReload={loadAll} onRenovar={e => { setSelected(e); setModal('renovar') }} />}
-            {tab === 'propietarios' && <TabPropietarios propietarios={propietarios.filter(p => p.tipo_operacion !== 'venta')} onSelect={p => { setSelected(p); setModal('propietario') }} />}
+            {tab === 'propietarios' && <TabPropietarios propietarios={propietariosFiltrados} onSelect={p => { setSelected(p); setModal('propietario') }} />}
             {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected({ _solicitud: sol }); setModal('nuevo') }} />}
             {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} />}
             {tab === 'compraventa' && (
@@ -1829,6 +1830,7 @@ function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNuevoExp }) {
           <InfoRow label="Tipo de ingresos" value={sol.tipo_ingresos} />
         </div>
         <InfoRow label="Inmueble de interés" value={sol.inmueble_interes} />
+  <button onClick={() => window.open(`/poliza/solicitudes/${sol.id}`, '_blank')} style={{ ...st.btn, width: '100%', background: C.blueBg, color: C.blueText, border: '1px solid #93c5fd', marginBottom: 16, marginTop: 8 }}>🔍 Ver ficha completa del solicitante →</button>
         <div style={{ ...st.divider, margin: '16px 0' }} />
         <div style={st.grid2}>
           <div>
