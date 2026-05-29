@@ -65,6 +65,9 @@ export default function ModalPropietario({ propietario: p, onClose, onSaved, onN
     setGenerando(false)
   }
 
+  // URL para Veridada con datos prellenados (solo Emporio)
+  const urlVeridada = `https://veridada.mx/inmobiliaria?source=emporio&key=emporio2026&direccion=${encodeURIComponent(prop.direccion_inmueble || '')}&municipio=${encodeURIComponent(prop.municipio || '')}&precio=${prop.monto_renta || ''}&operacion=renta&tipo=${encodeURIComponent(prop.tipo_inmueble || 'casa')}`
+
   const tieneDocs = prop.doc_identificacion_b64 || prop.doc_comprobante_domicilio_b64 || prop.doc_predial_b64 || prop.doc_escritura_b64
 
   return (
@@ -126,10 +129,20 @@ export default function ModalPropietario({ propietario: p, onClose, onSaved, onN
         </div>
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24, flexWrap: 'wrap' }}>
-          <button onClick={handleGenerarPromocion} disabled={generando} style={{ ...st.btn, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #c4b5fd', opacity: generando ? 0.6 : 1 }}>
+          <button onClick={handleGenerarPromocion} disabled={generando}
+            style={{ ...st.btn, background: '#f5f3ff', color: '#7c3aed', border: '1px solid #c4b5fd', opacity: generando ? 0.6 : 1 }}>
             {generando ? 'Generando...' : '📄 Contrato promoción'}
           </button>
-          <button onClick={onNuevoExp} style={{ ...st.btn, ...st.btnGold }}>+ Crear expediente</button>
+          <button onClick={onNuevoExp} style={{ ...st.btn, ...st.btnGold }}>
+            + Crear expediente
+          </button>
+          <a
+            href={urlVeridada}
+            target="_blank"
+            rel="noreferrer"
+            style={{ ...st.btn, background: '#1a1a2e', color: '#fff', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            🛡️ Enviar a Veridada
+          </a>
         </div>
       </div>
     </div>
