@@ -85,6 +85,9 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
     setGenerando(false)
   }
 
+  // URL para Veridada con datos prellenados (solo Emporio)
+  const urlVeridada = `https://veridada.mx/inmobiliaria?source=emporio&key=emporio2026&direccion=${encodeURIComponent(vend.direccion_inmueble || '')}&municipio=${encodeURIComponent(vend.municipio || '')}&precio=${vend.precio_venta || ''}&operacion=venta&tipo=casa`
+
   const tieneDocs = vend.doc_identificacion_b64 || vend.doc_comprobante_domicilio_b64 || vend.doc_predial_b64 || vend.doc_escritura_b64
 
   return (
@@ -111,13 +114,11 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
 
-        {/* Gravamen */}
         <div style={st.grid2}>
           <InfoRow label="Libre de gravamen" value={vend.libre_gravamen ? 'Sí' : 'No'} />
           {!vend.libre_gravamen && <InfoRow label="Institución" value={vend.institucion_gravamen} />}
         </div>
 
-        {/* Copropietarios */}
         {vend.tipo_copropiedad && vend.tipo_copropiedad !== 'no' && (
           <>
             <div style={{ ...st.divider, margin: '16px 0' }} />
@@ -139,7 +140,6 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
           </>
         )}
 
-        {/* Documentos */}
         <div style={{ ...st.divider, margin: '16px 0' }} />
         <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Documentos</p>
         {cargandoDocs ? (
@@ -165,6 +165,13 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
             style={{ ...st.btn, background: '#f0fdf4', color: C.greenText, border: `1px solid #6ee7b7`, opacity: generando ? 0.6 : 1 }}>
             {generando === 'promesacv' ? 'Generando...' : '🖹 Promesa de compraventa'}
           </button>
+          <a
+            href={urlVeridada}
+            target="_blank"
+            rel="noreferrer"
+            style={{ ...st.btn, background: '#1a1a2e', color: '#fff', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            🛡️ Enviar a Veridada
+          </a>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
