@@ -67,18 +67,19 @@ export default function KPIs() {
   }, [])
 
   useEffect(() => {
-  if (session && esAsesor && hoy) { cargarRegistroHoy(); cargarRanking() }
+  if (session && esAsesor && hoy) { cargarRegistroHoy(hoy); cargarRanking() }
 }, [session, hoy])
 
   useEffect(() => {
     if (vistaRanking) { setAnimado(false); setTimeout(() => setAnimado(true), 100) }
   }, [vistaRanking])
 
-  const cargarRegistroHoy = async () => {
-    const { data } = await supabase.from('kpis_diarios').select('*').eq('email', email).eq('fecha', hoy).single()
-    if (data) { setRegistroHoy(data); setForm({ citas_agendadas: data.citas_agendadas, citas_efectivas: data.citas_efectivas, citas_calificadas: data.citas_calificadas }) }
-  }
-
+  const cargarRegistroHoy = async (fechaHoy) => {
+  const fecha = fechaHoy || hoy
+  if (!fecha) return
+  const { data } = await supabase.from('kpis_diarios').select('*').eq('email', email).eq('fecha', fecha).single()
+  if (data) { setRegistroHoy(data); setForm({ citas_agendadas: data.citas_agendadas, citas_efectivas: data.citas_efectivas, citas_calificadas: data.citas_calificadas }) }
+}
   const cargarRanking = async () => {
     const anio = new Date().getFullYear()
     const mes = new Date().getMonth() + 1
