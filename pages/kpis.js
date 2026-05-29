@@ -67,8 +67,8 @@ export default function KPIs() {
   }, [])
 
   useEffect(() => {
-    if (session && esAsesor) { cargarRegistroHoy(); cargarRanking() }
-  }, [session])
+  if (session && esAsesor && hoy) { cargarRegistroHoy(); cargarRanking() }
+}, [session, hoy])
 
   useEffect(() => {
     if (vistaRanking) { setAnimado(false); setTimeout(() => setAnimado(true), 100) }
