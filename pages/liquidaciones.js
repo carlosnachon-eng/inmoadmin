@@ -373,8 +373,8 @@ export default function Liquidaciones() {
 
     // ── PAGOS DEL MES ────────────────────────────────────────────────────────
     y = sectionTitle("Pagos del Mes", y);
-    const contractIds = contratosProp.map(c => c.id);
-    const { data: pagosFrescos } = await supabase.from("payments").select("*").in("contract_id", contractIds.length > 0 ? contractIds : ["none"]);
+    const contractIdsMes = contratosProp.map(c => c.id);
+    const { data: pagosFrescos } = await supabase.from("payments").select("*").in("contract_id", contractIdsMes.length > 0 ? contractIdsMes : ["none"]);
     const pagosProp = (pagosFrescos || []);
     const pagosMesPDF = pagosProp.filter(p => {
       if (!p.due_date) return false;
