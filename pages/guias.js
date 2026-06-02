@@ -18,12 +18,44 @@ const USUARIOS_PERMITIDOS = [
 ]
 
 const SECCIONES = [
+  { id: 'descargas', label: '📥 Descargas', color: '#C8102E' },
   { id: 'compra', label: '🏠 Proceso de Compra', color: '#C8102E' },
   { id: 'renta', label: '🔑 Proceso de Renta', color: '#1a1a2e' },
   { id: 'requisitos', label: '📋 Requisitos Comprador', color: '#0369a1' },
   { id: 'poliza', label: '🛡️ Póliza Jurídica', color: '#065f46' },
   { id: 'cuenta', label: '🏦 Datos Bancarios', color: '#92400e' },
   { id: 'checklist', label: '✅ Checklist Operativo', color: '#7c3aed' },
+]
+
+const DESCARGAS = [
+  {
+    nombre: 'Brochure Torre Zaia',
+    descripcion: 'Para enviar a prospectos de compra. Tipologías, precios, amenidades y esquema de pago.',
+    archivo: '/docs/brochure-torre-zaia.pdf',
+    color: '#C8102E',
+    emoji: '🏢',
+  },
+  {
+    nombre: 'Brochure Equiah',
+    descripcion: 'Para enviar a prospectos. Modelos Encino y Sauce, amenidades y ubicación junto a Val\'Quirico.',
+    archivo: '/docs/brochure-equiah.pdf',
+    color: '#2d3a2e',
+    emoji: '🌿',
+  },
+  {
+    nombre: 'Políticas de Compra',
+    descripcion: 'Para explicar al cliente comprador. Apartado, plazos, enganche, escrituración y devoluciones.',
+    archivo: '/docs/politicas-compra.pdf',
+    color: '#1a1a2e',
+    emoji: '📋',
+  },
+  {
+    nombre: 'Políticas de Arrendamiento',
+    descripcion: 'Para explicar al arrendatario. Requisitos, condiciones, póliza jurídica y pagarés.',
+    archivo: '/docs/politicas-renta.pdf',
+    color: '#1a1a2e',
+    emoji: '🔑',
+  },
 ]
 
 const CONTENIDO = {
@@ -142,7 +174,18 @@ const CONTENIDO = {
       },
       {
         numero: '05',
-        titulo: 'Datos bancarios para pagos',
+        titulo: 'Pagarés de arrendamiento',
+        contenido: 'En todo arrendamiento se firman pagarés independientes al contrato. Son instrumentos jurídicos que respaldan el pago de rentas y permiten la recuperación expedita del inmueble en caso de incumplimiento.',
+        lista: [
+          'Se firman al momento de la firma del contrato',
+          'Son independientes al contrato — son un documento aparte',
+          'Forman parte del blindaje jurídico de la operación',
+          'Le dan al propietario una vía legal más rápida de recuperación',
+          'El inquilino debe estar informado antes de la firma',
+        ],
+        destacado: '⚠️ Nunca se firma contrato sin los pagarés correspondientes',
+        tipo: 'alerta',
+      },
         contenido: 'Mismo que compraventa:',
         destacado: 'Banbajío · CLABE: 030650900021403290\nGrupo Inmobiliario Nachón Torres S.A. de C.V.',
         tipo: 'banco',
@@ -319,7 +362,7 @@ const CONTENIDO = {
           'Forma de pago marcada (crédito o contado)',
           'Enganche explicado conforme a políticas',
           'Cobro realizado por Administración',
-          'Recibo oficial firmado por María José',
+          'Recibo oficial firmado y entregado al comprador',
           'No se prometieron excepciones',
         ],
         destacado: null,
@@ -336,6 +379,8 @@ const CONTENIDO = {
           'Póliza Jurídica cotizada y explicada al candidato',
           'Expediente enviado a Administración para investigación',
           'No se prometió fecha de firma antes del dictamen',
+          'Pagarés explicados al candidato (se firman junto con el contrato)',
+          'Candidato informado que los pagarés son independientes al contrato',
         ],
         destacado: null,
         tipo: 'checklist',
@@ -511,13 +556,50 @@ export default function Guias() {
           </div>
         </div>
 
-        {/* CONTENIDO */}
-        <div style={{ maxWidth: 680, margin: '0 auto', padding: '28px 20px 60px' }}>
-          <div style={{ marginBottom: 24 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 900, color: '#1a1a2e', margin: '0 0 4px' }}>{seccion.titulo}</h2>
-            <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>{seccion.subtitulo}</p>
-          </div>
-          {seccion.bloques.map((bloque, i) => renderBloque(bloque, i))}
+        {/* DESCARGAS */}
+          {seccionActiva === 'descargas' && (
+            <div>
+              <div style={{ marginBottom: 24 }}>
+                <h2 style={{ fontSize: 22, fontWeight: 900, color: '#1a1a2e', margin: '0 0 4px' }}>Materiales para prospectos</h2>
+                <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>Descarga y envía directamente por WhatsApp</p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {DESCARGAS.map((doc, i) => (
+                  <a key={i} href={doc.archivo} download target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                    <div style={{ background: '#fff', border: '1px solid #f3f4f6', borderRadius: 14, padding: '18px 20px', display: 'flex', gap: 16, alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
+                      onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'}
+                      onMouseLeave={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'}>
+                      <div style={{ width: 52, height: 52, borderRadius: 12, background: doc.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>
+                        {doc.emoji}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: 15, fontWeight: 800, color: '#1a1a2e', margin: '0 0 4px' }}>{doc.nombre}</p>
+                        <p style={{ fontSize: 12, color: '#9ca3af', margin: 0, lineHeight: 1.5 }}>{doc.descripcion}</p>
+                      </div>
+                      <div style={{ background: doc.color, color: '#fff', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                        ↓ PDF
+                      </div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+              <div style={{ marginTop: 20, background: '#f0fdf4', border: '1px solid #6ee7b7', borderRadius: 12, padding: '14px 18px' }}>
+                <p style={{ fontSize: 13, color: '#065f46', fontWeight: 700, margin: '0 0 4px' }}>💡 Tip</p>
+                <p style={{ fontSize: 13, color: '#064e3b', margin: 0, lineHeight: 1.6 }}>Descarga el archivo y compártelo directamente por WhatsApp. Los brochures son para prospectos; las políticas son para explicar condiciones antes del cierre.</p>
+              </div>
+            </div>
+          )}
+
+          {/* SECCIONES DE CONTENIDO */}
+          {seccionActiva !== 'descargas' && (
+            <>
+              <div style={{ marginBottom: 24 }}>
+                <h2 style={{ fontSize: 22, fontWeight: 900, color: '#1a1a2e', margin: '0 0 4px' }}>{seccion.titulo}</h2>
+                <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>{seccion.subtitulo}</p>
+              </div>
+              {seccion.bloques.map((bloque, i) => renderBloque(bloque, i))}
+            </>
+          )}
         </div>
 
       </div>
