@@ -122,7 +122,7 @@ export default function KPIs() {
       operaciones: cierresAsesor.length,
       ingresos,
       cumpleIngresos: ingresos >= META_INGRESOS,
-      cumpleCitas: citas_efectivas >= META_CITAS_MES,
+      cumpleCitas: diasCapturados > 0 ? (citas_efectivas / diasCapturados) >= 2 : false,
       citasFaltantes: Math.max(0, META_CITAS_MES - citas_efectivas),
       ingresosFaltantes: Math.max(0, META_INGRESOS - ingresos),
     }
