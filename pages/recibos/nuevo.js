@@ -188,10 +188,22 @@ async function generarPDF(data) {
   doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
   doc.text("Fecha: ___________________________", mid+20, y+48);
 
+  // QR de verificación
+  try {
+    const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent("https://www.emporioinmobiliario.com.mx/verificar/" + data.folio)}&size=80&margin=1`;
+    const qrRes = await fetch(qrUrl);
+    const qrBlob = await qrRes.blob();
+    const qrB64 = await new Promise(r => { const fr = new FileReader(); fr.onloadend = () => r(fr.result); fr.readAsDataURL(qrBlob); });
+    doc.addImage(qrB64, "PNG", W - M - 58, H - 70, 58, 58);
+    doc.setFont("helvetica","normal"); doc.setFontSize(6); doc.setTextColor(...GRAY);
+    doc.text("Escanea para", W - M - 29, H - 10, {align:"center"});
+    doc.text("verificar", W - M - 29, H - 4, {align:"center"});
+  } catch(_) {}
+
   // BOTTOM BAR
   doc.setFillColor(...RED); doc.rect(0, H-6, W, 6, "F");
   doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(...GRAY);
-  doc.text("Emporio Inmobiliario  —  Uso interno  —  2026  |  emporioinmobiliario.com.mx", W/2, H-10, {align:"center"});
+  doc.text("Emporio Inmobiliario  —  Uso interno  —  2026  |  emporioinmobiliario.com.mx", W/2 - 30, H-10, {align:"center"});
 
   return doc;
 }
