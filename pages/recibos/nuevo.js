@@ -64,11 +64,11 @@ async function generarPDF(data) {
 
   // FECHA/FOLIO top right
   doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
-  doc.text("Fecha:", W-M-165, 22); doc.setFont("helvetica","bold"); doc.setTextColor(...DARK);
-  doc.text(data.fecha, W-M-133, 22);
+  doc.text("Fecha:", W-M-155, 20); doc.setFont("helvetica","bold"); doc.setTextColor(...DARK);
+  doc.text(data.fecha, W-M-123, 20);
   doc.setFont("helvetica","normal"); doc.setTextColor(...GRAY);
-  doc.text("Folio:", W-M-64, 22); doc.setFont("helvetica","bold"); doc.setTextColor(...RED);
-  doc.text(data.folio, W-M-38, 22);
+  doc.text("Folio:", W-M-155, 32); doc.setFont("helvetica","bold"); doc.setTextColor(...RED);
+  doc.text(data.folio, W-M-123, 32);
 
   // LÍNEA ROJA
   const divY = 10 + logoH + 8;
@@ -86,7 +86,7 @@ async function generarPDF(data) {
   y += 30;
 
   // BLOQUE RECEPTOR
-  doc.setFillColor(...RED); doc.rect(M, y, 4, 52, "F");
+  doc.setFillColor(...RED); doc.rect(M, y, 4, 58, "F");
   doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
   doc.text("Recibí de:", M+12, y+12);
   doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...DARK);
@@ -100,15 +100,15 @@ async function generarPDF(data) {
   doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...DARK);
   doc.text("APARTADO para la posible "+(data.tipo==="compraventa"?"compraventa":"arrendamiento")+" del inmueble ubicado en:", M+78, y+40);
   doc.setFont("helvetica","bold"); doc.setFontSize(8);
-  doc.text(data.inmueble, M+12, y+52);
-  y += 62;
+  doc.text(data.inmueble, M+12, y+54);
+  y += 68;
 
   // SEPARADOR
-  doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W-M, y); y += 10;
+  doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W-M, y); y += 14;
 
   // CONDICIONES TÍTULO
-  doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(...RED);
-  doc.text("CONDICIONES DEL APARTADO", M, y); y += 11;
+  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...RED);
+  doc.text("CONDICIONES DEL APARTADO", M, y); y += 13;
 
   const fechaLimite = data.fecha_limite_firma
     ? new Date(data.fecha_limite_firma + "T12:00:00").toLocaleDateString("es-MX",{day:"numeric",month:"long",year:"numeric"})
@@ -137,21 +137,21 @@ async function generarPDF(data) {
     ["9. Declaración de licitud.","El cliente declara que los recursos utilizados provienen de actividades lícitas y no están relacionados con operaciones de procedencia ilícita."],
   ];
 
-  const maxW = W-2*M-8, lh = 9.5;
+  const maxW = W-2*M-8, lh = 11;
   for (const [titulo, texto] of clausulas) {
-    doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(...DARK);
+    doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(...DARK);
     doc.text(titulo, M+4, y); y += lh;
     doc.setFont("helvetica","normal"); doc.setTextColor(...GRAY);
-    y = wrapText(texto, M+4, y, maxW, lh, 7.5);
-    y += 3;
+    y = wrapText(texto, M+4, y, maxW, lh, 8.5);
+    y += 4;
   }
 
   if (data.condiciones_especiales?.trim()) {
     y += 4;
-    doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(...RED);
+    doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(...RED);
     doc.text("Condiciones especiales acordadas:", M+4, y); y += lh;
     doc.setFont("helvetica","normal"); doc.setTextColor(...DARK);
-    y = wrapText(data.condiciones_especiales.trim(), M+4, y, maxW, lh, 7.5);
+    y = wrapText(data.condiciones_especiales.trim(), M+4, y, maxW, lh, 8.5);
   }
 
   // SEPARADOR FIRMAS
