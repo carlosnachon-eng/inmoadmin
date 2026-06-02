@@ -305,6 +305,26 @@ export default function NuevoRecibo() {
         }),
       });
 
+      // Trigger módulo de firmas (solo compraventa)
+      if (tipo === "compraventa") {
+        fetch("/api/recibos/trigger-firmas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recibo_id: recibo.id,
+            folio, tipo,
+            cliente_nombre: form.cliente_nombre,
+            inmueble: form.inmueble,
+            monto: parseFloat(form.monto),
+            forma_pago: form.forma_pago,
+            es_contado: form.es_contado,
+            es_urgente: form.es_urgente,
+            creado_por: session.user.id,
+            creado_por_nombre: profile?.email,
+          }),
+        }).catch(e => console.error("Trigger firmas:", e));
+      }
+
       // Descargar PDF
       doc.save(`${folio}.pdf`);
       showToast(`Recibo ${folio} generado correctamente`);
