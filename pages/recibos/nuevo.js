@@ -164,13 +164,23 @@ async function generarPDF(data) {
   const mid = W/2, sigW = 180;
   doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...RED);
   doc.text("Por Emporio Inmobiliario", M, y);
+
+  // Firma de Carlos
+  try {
+    const firmaRes = await fetch("https://bnzrnizrmonjxlktbhlp.supabase.co/storage/v1/object/public/assets/firma_carlos.png");
+    const firmaBlob = await firmaRes.blob();
+    const firmaB64 = await new Promise(r => { const fr = new FileReader(); fr.onloadend = () => r(fr.result); fr.readAsDataURL(firmaBlob); });
+    // Firma: 927x516 ratio ~1.8 -> 90x50
+    doc.addImage(firmaB64, "PNG", M, y+2, 90, 50);
+  } catch(_) {}
+
   doc.setDrawColor(204,204,204); doc.setLineWidth(0.8);
-  doc.line(M, y+28, M+sigW, y+28);
+  doc.line(M, y+54, M+sigW, y+54);
   doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
-  doc.text("Carlos Alejandro Nachón Saldivar", M, y+38);
+  doc.text("Carlos Alejandro Nachón Saldivar", M, y+64);
   doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-  doc.text("Recibido por: "+data.recibido_por, M, y+48);
-  doc.text("Fecha: "+data.fecha, M, y+57);
+  doc.text("Recibido por: "+data.recibido_por, M, y+74);
+  doc.text("Fecha: "+data.fecha, M, y+83);
 
   doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
   doc.text(data.tipo==="compraventa"?"Nombre y firma del comprador":"Nombre y firma del cliente", mid+20, y);
