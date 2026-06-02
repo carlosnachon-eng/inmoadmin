@@ -18,13 +18,13 @@ const USUARIOS_PERMITIDOS = [
 ]
 
 const SECCIONES = [
-  { id: 'descargas', label: '📥 Descargas', color: '#C8102E' },
-  { id: 'compra', label: '🏠 Proceso de Compra', color: '#C8102E' },
-  { id: 'renta', label: '🔑 Proceso de Renta', color: '#1a1a2e' },
-  { id: 'requisitos', label: '📋 Requisitos Comprador', color: '#0369a1' },
+  { id: 'descargas', label: ' Descargas', color: '#C8102E' },
+  { id: 'compra', label: ' Proceso de Compra', color: '#C8102E' },
+  { id: 'renta', label: ' Proceso de Renta', color: '#1a1a2e' },
+  { id: 'requisitos', label: ' Requisitos Comprador', color: '#0369a1' },
   { id: 'poliza', label: 'Póliza Jurídica', color: '#065f46' },
-  { id: 'cuenta', label: '🏦 Datos Bancarios', color: '#92400e' },
-  { id: 'checklist', label: '✅ Checklist Operativo', color: '#7c3aed' },
+  { id: 'cuenta', label: ' Datos Bancarios', color: '#92400e' },
+  { id: 'checklist', label: ' Checklist Operativo', color: '#7c3aed' },
 ]
 
 const DESCARGAS = [
@@ -33,28 +33,28 @@ const DESCARGAS = [
     descripcion: 'Para enviar a prospectos de compra. Tipologías, precios, amenidades y esquema de pago.',
     archivo: '/docs/brochure-torre-zaia.pdf',
     color: '#C8102E',
-    emoji: '🏢',
+    emoji: '',
   },
   {
     nombre: 'Brochure Equiah',
     descripcion: 'Para enviar a prospectos. Modelos Encino y Sauce, amenidades y ubicación junto a Val\'Quirico.',
     archivo: '/docs/brochure-equiah.pdf',
     color: '#2d3a2e',
-    emoji: '🌿',
+    emoji: '',
   },
   {
     nombre: 'Políticas de Compra',
     descripcion: 'Para explicar al cliente comprador. Apartado, plazos, enganche, escrituración y devoluciones.',
     archivo: '/docs/politicas-compra.pdf',
     color: '#1a1a2e',
-    emoji: '📋',
+    emoji: '',
   },
   {
     nombre: 'Políticas de Arrendamiento',
     descripcion: 'Para explicar al arrendatario. Requisitos, condiciones, póliza jurídica y pagarés.',
     archivo: '/docs/politicas-renta.pdf',
     color: '#1a1a2e',
-    emoji: '🔑',
+    emoji: '',
   },
 ]
 
@@ -88,7 +88,7 @@ const CONTENIDO = {
         numero: '04',
         titulo: 'Enganche',
         contenido: 'El monto del enganche se define de mutuo acuerdo entre comprador y propietario, y queda estipulado en la promesa de compraventa. Forma parte del precio total.',
-        destacado: 'Comúnmente 10% — pactable',
+        destacado: 'Comúnmente 10% -- pactable',
         tipo: 'info',
       },
       {
@@ -102,7 +102,7 @@ const CONTENIDO = {
         numero: '06',
         titulo: 'Devolución del apartado',
         contenido: 'El apartado NO es reembolsable si el comprador cancela. Solo se devuelve si la venta no puede concretarse por causas ajenas al comprador (incumplimiento del vendedor, problema legal del inmueble).',
-        destacado: '⚠ No reembolsable por decisión del comprador',
+        destacado: '(!) No reembolsable por decisión del comprador',
         tipo: 'alerta',
       },
       {
@@ -123,7 +123,7 @@ const CONTENIDO = {
         numero: '09',
         titulo: 'Lo que debes decirle al comprador antes del apartado',
         contenido: 'Emporio actúa como intermediario. El apartado no es promesa de compraventa. El inventario no se congela sin avance real. Si no firma en 7 días, pierde el apartado.',
-        destacado: '⚠ Informar siempre antes de cobrar',
+        destacado: '(!) Informar siempre antes de cobrar',
         tipo: 'alerta',
       },
     ],
@@ -178,7 +178,7 @@ const CONTENIDO = {
         contenido: 'En todo arrendamiento se firman pagarés independientes al contrato. Son instrumentos jurídicos que respaldan el pago de rentas y permiten la recuperación expedita del inmueble en caso de incumplimiento.',
         lista: [
           'Se firman al momento de la firma del contrato',
-          'Son independientes al contrato — son un documento aparte',
+          'Son independientes al contrato -- son un documento aparte',
           'Forman parte del blindaje jurídico de la operación',
           'Le dan al propietario una vía legal más rápida de recuperación',
           'El inquilino debe estar informado antes de la firma',
@@ -220,12 +220,12 @@ const CONTENIDO = {
         titulo: 'Documentos Infonavit',
         contenido: 'Adicionales para crédito hipotecario Infonavit:',
         checklist: [
-          'Precalificación Infonavit — micuenta.infonavit.org.mx (imagen completa con encabezado y pie de página)',
+          'Precalificación Infonavit -- micuenta.infonavit.org.mx (imagen completa con encabezado y pie de página)',
           'Tabla de Amortización',
           'Confirmar registro en Afore',
           'Pantalla Mi Cuenta Infonavit con datos personales (nombre, RFC, CURP)',
-          'Curso Saber Más Para Decidir Mejor — micuenta.infonavit.org.mx',
-          'Reporte Cotizaciones IMSS — serviciosdigitales.imss.gob.mx',
+          'Curso Saber Más Para Decidir Mejor -- micuenta.infonavit.org.mx',
+          'Reporte Cotizaciones IMSS -- serviciosdigitales.imss.gob.mx',
           '3 Referencias Personales (nombre completo, teléfono, dirección y correo)',
           'Número de teléfono de oficina para validación de datos',
           'Pago de avalúo (costo según valor del inmueble)',
@@ -248,8 +248,8 @@ const CONTENIDO = {
       },
       {
         numero: null,
-        titulo: '💡 Tip para el asesor',
-        contenido: 'Pide siempre primero los documentos generales. Si el cliente va con Infonavit, agrégale la lista adicional. No esperes a tener todo para avanzar — con INE y precalificación puedes iniciar.',
+        titulo: ' Tip para el asesor',
+        contenido: 'Pide siempre primero los documentos generales. Si el cliente va con Infonavit, agrégale la lista adicional. No esperes a tener todo para avanzar -- con INE y precalificación puedes iniciar.',
         destacado: null,
         tipo: 'info',
       },
@@ -257,7 +257,7 @@ const CONTENIDO = {
   },
   poliza: {
     titulo: 'Póliza Jurídica Emporio',
-    subtitulo: 'Blindaje Legal — Precios y cobertura',
+    subtitulo: 'Blindaje Legal -- Precios y cobertura',
     bloques: [
       {
         numero: null,
@@ -298,7 +298,7 @@ const CONTENIDO = {
         numero: null,
         titulo: '¿Quién la paga?',
         contenido: 'Generalmente el inquilino. Se cobra antes de la firma del contrato. Sin póliza no se firma.',
-        destacado: '⚠ Sin póliza no hay contrato',
+        destacado: '(!) Sin póliza no hay contrato',
         tipo: 'alerta',
       },
     ],
@@ -341,7 +341,7 @@ const CONTENIDO = {
       },
       {
         numero: null,
-        titulo: '⚠ Importante',
+        titulo: '(!) Importante',
         contenido: 'Nunca proporciones otra cuenta bancaria al cliente. Si hay dudas sobre un pago, dirige al cliente a Administración.',
         destacado: null,
         tipo: 'alerta',
@@ -392,7 +392,7 @@ const CONTENIDO = {
         numero: null,
         titulo: 'Regla de oro',
         contenido: 'Ante cualquier duda o situación fuera de lo normal, no improvises. Consulta a Administración antes de comprometerte con el cliente.',
-        destacado: '📞 Administración: María José',
+        destacado: ' Administración: María José',
         tipo: 'alerta',
       },
     ],
@@ -464,7 +464,7 @@ export default function Guias() {
               <div key={j} onClick={() => toggleCheck(itemKey)}
                 style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', background: marcado ? '#f0fdf4' : '#fff', border: `1px solid ${marcado ? '#6ee7b7' : '#e5e7eb'}`, borderRadius: 10, cursor: 'pointer' }}>
                 <div style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${marcado ? '#065f46' : '#d1d5db'}`, background: marcado ? '#065f46' : '#fff', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
-                  {marcado && <span style={{ color: '#fff', fontSize: 12, fontWeight: 900 }}>✓</span>}
+                  {marcado && <span style={{ color: '#fff', fontSize: 12, fontWeight: 900 }}>v</span>}
                 </div>
                 <span style={{ fontSize: 14, color: marcado ? '#065f46' : '#374151', lineHeight: 1.5, textDecoration: marcado ? 'line-through' : 'none' }}>{item}</span>
               </div>
@@ -508,7 +508,7 @@ export default function Guias() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {bloque.lista.map((item, j) => (
                 <p key={j} style={{ fontSize: 14, color: '#374151', margin: 0, lineHeight: 1.5 }}>
-                  <span style={{ color: colorActivo, fontWeight: 900 }}>✓</span> {item}
+                  <span style={{ color: colorActivo, fontWeight: 900 }}>v</span> {item}
                 </p>
               ))}
             </div>
@@ -543,7 +543,7 @@ export default function Guias() {
                 <h1 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#4a4a4a' }}>Guías y Consultas</h1>
               </div>
             </div>
-            <a href="/kpis" style={{ fontSize: 12, color: '#9ca3af', textDecoration: 'none' }}>← KPIs</a>
+            <a href="/kpis" style={{ fontSize: 12, color: '#9ca3af', textDecoration: 'none' }}> KPIs</a>
           </div>
         </div>
 
@@ -558,6 +558,8 @@ export default function Guias() {
             ))}
           </div>
         </div>
+
+        <div style={{ maxWidth: 680, margin: '0 auto', padding: '28px 20px 60px' }}>
 
         {/* DESCARGAS */}
           {seccionActiva === 'descargas' && (
@@ -580,14 +582,14 @@ export default function Guias() {
                         <p style={{ fontSize: 12, color: '#9ca3af', margin: 0, lineHeight: 1.5 }}>{doc.descripcion}</p>
                       </div>
                       <div style={{ background: doc.color, color: '#fff', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                        ↓ PDF
+                         PDF
                       </div>
                     </div>
                   </a>
                 ))}
               </div>
               <div style={{ marginTop: 20, background: '#f0fdf4', border: '1px solid #6ee7b7', borderRadius: 12, padding: '14px 18px' }}>
-                <p style={{ fontSize: 13, color: '#065f46', fontWeight: 700, margin: '0 0 4px' }}>💡 Tip</p>
+                <p style={{ fontSize: 13, color: '#065f46', fontWeight: 700, margin: '0 0 4px' }}> Tip</p>
                 <p style={{ fontSize: 13, color: '#064e3b', margin: 0, lineHeight: 1.6 }}>Descarga el archivo y compártelo directamente por WhatsApp. Los brochures son para prospectos; las políticas son para explicar condiciones antes del cierre.</p>
               </div>
             </div>
@@ -603,6 +605,8 @@ export default function Guias() {
               {seccion.bloques.map((bloque, i) => renderBloque(bloque, i))}
             </>
           )}
+        </div>
+
         </div>
 
       </div>
