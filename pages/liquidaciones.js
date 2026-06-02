@@ -222,6 +222,14 @@ export default function Liquidaciones() {
     const costoMantProp  = ticketsProp.filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
     const gastosOpProp   = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
     const totalLiqProp   = totalRentaProp - totalComProp - costoMantProp - gastosOpProp;
+    const liqDelMes = liqProp.filter(l => {
+      const desc = (l.period_description || "").toLowerCase();
+      const mesMes = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
+      const anioStr = String(anioCorte);
+      return desc.includes(mesMes) && desc.includes(anioStr);
+    });
+    const totalAdelanto = liqDelMes.reduce((a, l) => a + (l.amount_paid || 0), 0);
+    const totalPendiente = totalLiqProp - totalAdelanto;
 
     // ── Cargar logo desde el navegador ──
     let logoDataUrl = null;
@@ -269,7 +277,7 @@ export default function Liquidaciones() {
 
     // ── RESUMEN FINANCIERO ───────────────────────────────────────────────────
     let y = 84;
-    const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0);
+    const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 ? 1 : 0);
     const boxH = 28 + extraLines * 7;
 
     // Fondo del resumen
@@ -307,11 +315,21 @@ export default function Liquidaciones() {
       lineY += 7;
     }
 
+    if (totalAdelanto > 0) {
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+      doc.text("Adelanto pagado:", 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
+      doc.text(`-${fmt(totalAdelanto)}`, 105, lineY);
+      lineY += 7;
+    }
+
     // Líquido destacado
+    const labelLiq = totalAdelanto > 0 ? "Pendiente por pagar:" : "Líquido a recibir:";
+    const montoLiq = totalAdelanto > 0 ? totalPendiente : totalLiqProp;
     doc.setFillColor(6, 95, 70); doc.rect(105, lineY - 5, 91, 10, "F");
     doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
-    doc.text("Líquido a recibir:", 108, lineY + 1);
-    doc.text(fmt(totalLiqProp), 190, lineY + 1, { align: "right" });
+    doc.text(labelLiq, 108, lineY + 1);
+    doc.text(fmt(montoLiq), 190, lineY + 1, { align: "right" });
 
     y += boxH + 14;
 
