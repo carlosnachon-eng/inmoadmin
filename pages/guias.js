@@ -543,7 +543,7 @@ export default function Guias() {
                 <h1 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#4a4a4a' }}>Guías y Consultas</h1>
               </div>
             </div>
-            <a href="/kpis" style={{ fontSize: 12, color: '#9ca3af', textDecoration: 'none' }}>← KPIs</a>
+            <a href="/kpis" style={{ fontSize: 12, color: '#9ca3af', textDecoration: 'none' }}>KPIs</a>
           </div>
         </div>
 
@@ -580,7 +580,7 @@ export default function Guias() {
                         <p style={{ fontSize: 12, color: '#9ca3af', margin: 0, lineHeight: 1.5 }}>{doc.descripcion}</p>
                       </div>
                       <div style={{ background: doc.color, color: '#fff', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                        ↓ PDF
+                        Descargar PDF
                       </div>
                     </div>
                   </a>
