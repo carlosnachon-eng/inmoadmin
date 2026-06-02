@@ -79,6 +79,8 @@ export default function Liquidaciones() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filterPropietario, setFilterPropietario] = useState("");
+  const mesAnterior = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
+  const [mesCorte, setMesCorte] = useState(mesAnterior);
 
   const today = new Date().toISOString().split("T")[0];
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
@@ -188,19 +190,33 @@ export default function Liquidaciones() {
     showToast("Eliminado"); loadData();
   };
 
-  const descargarPDF = async (ownerName, ownerEmail) => {
+  const descargarPDF = async (ownerName, ownerEmail, mesCorteParam) => {
     const { default: jsPDF } = await import("jspdf");
     const { default: autoTable } = await import("jspdf-autotable");
     const doc = new jsPDF();
+    const [anioCorte, mesNumCorte] = (mesCorteParam || mesCorte).split("-").map(Number);
+    const fechaCorte = new Date(anioCorte, mesNumCorte - 1, 1);
+    const ultimoDiaCorte = new Date(anioCorte, mesNumCorte, 0);
     const hoy = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
-    const mes = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long" });
+    const mes = fechaCorte.toLocaleDateString("es-MX", { year: "numeric", month: "long" });
 
     // Datos
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
     const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
     const liqProp = ownerPayments.filter(l => l.owner_email === ownerEmail);
-    const ticketsProp = tickets.filter(t => propsProp.some(p => p.name === t.property_name));
-    const gastosProp = propertyExpenses.filter(e => propsProp.some(p => p.name === e.property_name) && e.paid_by === "propietario");
+    const ticketsProp = tickets.filter(t => {
+      if (!propsProp.some(p => p.name === t.property_name)) return false;
+      if (!t.created_at) return true;
+      const d = new Date(t.created_at);
+      return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
+    });
+    const gastosProp = propertyExpenses.filter(e => {
+      if (!propsProp.some(p => p.name === e.property_name)) return false;
+      if (e.paid_by !== "propietario") return false;
+      if (!e.date) return true;
+      const d = new Date(e.date + "T12:00:00");
+      return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
+    });
     const totalRentaProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0), 0);
     const totalComProp   = contratosProp.reduce((a, c) => a + calcComision(c), 0);
     const costoMantProp  = ticketsProp.filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
@@ -331,11 +347,10 @@ export default function Liquidaciones() {
     const contractIds = contratosProp.map(c => c.id);
     const { data: pagosFrescos } = await supabase.from("payments").select("*").in("contract_id", contractIds.length > 0 ? contractIds : ["none"]);
     const pagosProp = (pagosFrescos || []);
-    const hoyDate = new Date();
     const pagosMesPDF = pagosProp.filter(p => {
       if (!p.due_date) return false;
       const d = new Date(p.due_date + "T12:00:00");
-      return d.getMonth() === hoyDate.getMonth() && d.getFullYear() === hoyDate.getFullYear();
+      return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
     autoTable(doc, {
       startY: y,
@@ -469,7 +484,14 @@ export default function Liquidaciones() {
           <>
             {propietariosUnicos.length > 0 && (
               <div style={{ marginBottom: 28 }}>
-                <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Propietarios activos</h2>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Propietarios activos</h2>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>Periodo del corte:</span>
+                    <input type="month" value={mesCorte} onChange={e => setMesCorte(e.target.value)}
+                      style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }} />
+                  </div>
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
                   {propietariosUnicos.map((owner, i) => {
                     const propsProp = properties.filter(p => p.owner_email === owner.email);
@@ -486,7 +508,7 @@ export default function Liquidaciones() {
                           </div>
                           <div style={{ display: "flex", gap: 6 }}>
                             <Btn small color="#065f46" onClick={() => openLiquidar(owner.name, owner.email)}>Liquidar</Btn>
-                            <Btn small color="#1e40af" onClick={() => descargarPDF(owner.name, owner.email)}>PDF</Btn>
+                            <Btn small color="#1e40af" onClick={() => descargarPDF(owner.name, owner.email, mesCorte)}>PDF</Btn>
                           </div>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
