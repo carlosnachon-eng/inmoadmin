@@ -145,9 +145,16 @@ export default function NuevaCarta() {
           <div style={row2}>
             <div style={{ flex: 2 }}>
               <label style={lbl}>Forma de pago</label>
-              <select style={{ ...inp, background: "#fff" }} value={form.forma_pago} onChange={e => set("forma_pago", e.target.value)}>
-                {["Recursos propios (100%)", "Crédito bancario", "Crédito Infonavit / Fovissste", "Mixto"].map(o => <option key={o}>{o}</option>)}
-              </select>
+              <input style={inp} value={form.forma_pago} onChange={e => set("forma_pago", e.target.value)} 
+                placeholder="Ej: Recursos propios 100% / 60% crédito + 40% propio" list="formas-pago" />
+              <datalist id="formas-pago">
+                <option value="Recursos propios (100%)" />
+                <option value="Crédito bancario (100%)" />
+                <option value="Crédito Infonavit (100%)" />
+                <option value="60% crédito bancario + 40% recursos propios" />
+                <option value="50% Infonavit + 50% recursos propios" />
+                <option value="70% crédito bancario + 30% recursos propios" />
+              </datalist>
             </div>
             <div style={{ flex: 1 }}>
               <label style={lbl}>Vigencia de la oferta (hrs)</label>
