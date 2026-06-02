@@ -217,8 +217,19 @@ export default function Liquidaciones() {
       const d = new Date(e.date + "T12:00:00");
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
-    const totalRentaProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0), 0);
-    const totalComProp   = contratosProp.reduce((a, c) => a + calcComision(c), 0);
+    // Solo pagos efectivamente recibidos en el mes del corte
+    const contractIds = contratosProp.map(c => c.id);
+    const { data: pagosMesCalc } = await supabase.from("payments").select("*").in("contract_id", contractIds.length > 0 ? contractIds : ["none"]);
+    const pagosPagadosMes = (pagosMesCalc || []).filter(p => {
+      if (p.status !== "pagado") return false;
+      if (!p.due_date) return false;
+      const d = new Date(p.due_date + "T12:00:00");
+      return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
+    });
+    const totalRentaProp = pagosPagadosMes.reduce((a, p) => a + (p.amount || 0), 0);
+    // Comisión basada en contratos que sí pagaron
+    const contratosPagados = contratosProp.filter(c => pagosPagadosMes.some(p => p.contract_id === c.id));
+    const totalComProp   = contratosPagados.reduce((a, c) => a + calcComision(c), 0);
     const costoMantProp  = ticketsProp.filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
     const gastosOpProp   = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
     const totalLiqProp   = totalRentaProp - totalComProp - costoMantProp - gastosOpProp;
