@@ -25,9 +25,9 @@ const fmt = (n) => "$" + Number(n).toLocaleString("es-MX", { minimumFractionDigi
 async function generarPDF(data) {
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const W = 612, H = 792, M = 42;
-
   const RED = [185, 28, 60], DARK = [26, 26, 46], GRAY = [120, 120, 120];
   const LGRAY = [247, 247, 247], LRED = [253, 240, 241], LINE = [220, 220, 220];
+  const fmtMXN = (n) => "$" + Number(n).toLocaleString("es-MX", {minimumFractionDigits:2});
 
   const wrapText = (text, x, y, maxW, lh, size) => {
     doc.setFontSize(size);
@@ -42,151 +42,147 @@ async function generarPDF(data) {
     return cy;
   };
 
-  // Top bar
-  doc.setFillColor(...RED); doc.rect(0, H - 6, W, 6, "F");
+  // TOP BAR
+  doc.setFillColor(...RED); doc.rect(0, 0, W, 6, "F");
 
-  // Logo
-  const logoW = 110, logoH = Math.round(110 * (959/1801));
+  // LOGO
+  const logoW = 110, logoH = Math.round(110*(959/1801));
   try {
     const res = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
     const blob = await res.blob();
     const b64 = await new Promise(r => { const fr = new FileReader(); fr.onloadend = () => r(fr.result); fr.readAsDataURL(blob); });
-    doc.addImage(b64, "PNG", M, H - 6 - logoH - 10, logoW, logoH);
+    doc.addImage(b64, "PNG", M, 10, logoW, logoH);
   } catch(_) {}
 
-  // Título al lado del logo (centrado verticalmente con el logo)
-  const tx = M + logoW + 20;
-  const logoMidY = H - 6 - logoH/2 - 10;
-  doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(...DARK);
-  doc.text("RECIBO DE APARTADO", tx, logoMidY + 6);
+  // TÍTULO
+  const tx = M + logoW + 18;
+  const logoMid = 10 + logoH/2;
+  doc.setFont("helvetica","bold"); doc.setFontSize(14); doc.setTextColor(...DARK);
+  doc.text("RECIBO DE APARTADO", tx, logoMid - 2);
   doc.setTextColor(...RED);
-  doc.text(data.tipo === "compraventa" ? "COMPRAVENTA" : "ARRENDAMIENTO", tx, logoMidY - 8);
+  doc.text(data.tipo === "compraventa" ? "COMPRAVENTA" : "ARRENDAMIENTO", tx, logoMid + 14);
 
-  // Fecha / Folio (arriba a la derecha)
-  doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
-  doc.text("Fecha:", W - M - 165, H - 28); doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK);
-  doc.text(data.fecha, W - M - 135, H - 28);
-  doc.setFont("helvetica", "normal"); doc.setTextColor(...GRAY);
-  doc.text("Folio:", W - M - 64, H - 28); doc.setFont("helvetica", "bold"); doc.setTextColor(...RED);
-  doc.text(data.folio, W - M - 38, H - 28);
+  // FECHA/FOLIO top right
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
+  doc.text("Fecha:", W-M-165, 22); doc.setFont("helvetica","bold"); doc.setTextColor(...DARK);
+  doc.text(data.fecha, W-M-133, 22);
+  doc.setFont("helvetica","normal"); doc.setTextColor(...GRAY);
+  doc.text("Folio:", W-M-64, 22); doc.setFont("helvetica","bold"); doc.setTextColor(...RED);
+  doc.text(data.folio, W-M-38, 22);
 
-  // Línea roja debajo del logo
-  const divY = H - 6 - logoH - 20;
-  doc.setDrawColor(...RED); doc.setLineWidth(2); doc.line(M, divY, W - M, divY);
+  // LÍNEA ROJA
+  const divY = 10 + logoH + 8;
+  doc.setDrawColor(...RED); doc.setLineWidth(2); doc.line(M, divY, W-M, divY);
 
-  // Barra folio/fecha — arranca justo debajo de la línea roja
-  let y = divY - 8;
-  doc.setFillColor(...LGRAY); doc.rect(M, y, W - 2*M, 26, "F");
-  doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
-  doc.text("Fecha:", M + 8, y + 16);
-  doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK);
-  doc.text(data.fecha, M + 35, y + 16);
-  doc.setFont("helvetica", "normal"); doc.setTextColor(...GRAY);
-  doc.text("Lugar:", M + 170, y + 16);
-  doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK);
-  doc.text("Puebla, Pue.", M + 197, y + 16);
-  doc.setFont("helvetica", "normal"); doc.setTextColor(...GRAY);
-  doc.text("Folio:", W - M - 80, y + 16);
-  doc.setFont("helvetica", "bold"); doc.setTextColor(...RED);
-  doc.text(data.folio, W - M - 52, y + 16);
-  y += 38;
+  // BARRA FECHA/FOLIO
+  let y = divY + 8;
+  doc.setFillColor(...LGRAY); doc.rect(M, y, W-2*M, 22, "F");
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
+  doc.text("Fecha:", M+8, y+14); doc.setFont("helvetica","bold"); doc.setTextColor(...DARK); doc.text(data.fecha, M+35, y+14);
+  doc.setFont("helvetica","normal"); doc.setTextColor(...GRAY); doc.text("Lugar:", M+170, y+14);
+  doc.setFont("helvetica","bold"); doc.setTextColor(...DARK); doc.text("Puebla, Pue.", M+197, y+14);
+  doc.setFont("helvetica","normal"); doc.setTextColor(...GRAY); doc.text("Folio:", W-M-80, y+14);
+  doc.setFont("helvetica","bold"); doc.setTextColor(...RED); doc.text(data.folio, W-M-52, y+14);
+  y += 30;
 
-  // Bloque receptor
-  doc.setFillColor(...RED); doc.rect(M, y, 4, data.tipo === "arrendamiento" && data.monto_previo > 0 ? 66 : 56, "F");
-  doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
-  doc.text("Recibí de:", M + 12, y + 12);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...DARK);
-  doc.text(data.cliente_nombre, M + 55, y + 12);
-  doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
-  doc.text("La cantidad de:", M + 12, y + 26);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...RED);
-  doc.text(fmt(data.monto), M + 75, y + 26);
-  doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
-  doc.text("Por concepto de:", M + 12, y + 40);
-  doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...DARK);
-  const conceptoTipo = data.tipo === "compraventa" ? "compraventa" : "arrendamiento";
-  doc.text(`APARTADO para la posible ${conceptoTipo} del inmueble ubicado en:`, M + 78, y + 40);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
-  doc.text(data.inmueble, M + 12, y + 52);
-  y += 56 + 10;
+  // BLOQUE RECEPTOR
+  doc.setFillColor(...RED); doc.rect(M, y, 4, 52, "F");
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
+  doc.text("Recibí de:", M+12, y+12);
+  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...DARK);
+  doc.text(data.cliente_nombre, M+55, y+12);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
+  doc.text("La cantidad de:", M+12, y+26);
+  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...RED);
+  doc.text(fmtMXN(data.monto), M+75, y+26);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
+  doc.text("Por concepto de:", M+12, y+40);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...DARK);
+  doc.text("APARTADO para la posible "+(data.tipo==="compraventa"?"compraventa":"arrendamiento")+" del inmueble ubicado en:", M+78, y+40);
+  doc.setFont("helvetica","bold"); doc.setFontSize(8);
+  doc.text(data.inmueble, M+12, y+52);
+  y += 62;
 
-  // Separador
-  doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 10;
+  // SEPARADOR
+  doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W-M, y); y += 10;
 
-  // Condiciones título
-  doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...RED);
-  doc.text("CONDICIONES DEL APARTADO", M, y); y += 12;
+  // CONDICIONES TÍTULO
+  doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(...RED);
+  doc.text("CONDICIONES DEL APARTADO", M, y); y += 11;
+
+  const fechaLimite = data.fecha_limite_firma
+    ? new Date(data.fecha_limite_firma + "T12:00:00").toLocaleDateString("es-MX",{day:"numeric",month:"long",year:"numeric"})
+    : "_______________";
 
   const clausulas = data.tipo === "compraventa" ? [
-    ["1. Carácter de intermediación.", "Emporio Inmobiliario actúa única y exclusivamente como intermediario inmobiliario entre las partes. El inmueble no es propiedad de Emporio Inmobiliario; la decisión final de venta corresponde al propietario."],
-    ["2. Naturaleza del apartado.", "El presente apartado no constituye contrato de compraventa, promesa de compraventa ni obliga a la transmisión del dominio. Su finalidad es manifestar el interés del comprador y reservar temporalmente el inmueble."],
-    ["3. Vigencia del apartado.", `El apartado tendrá una vigencia de ${data.vigencia_dias} días naturales contados a partir de la fecha de firma del presente recibo.`],
-    ["4. Plazo para firma de promesa de compraventa.", `El comprador se compromete a firmar la promesa de compraventa dentro de un plazo máximo de ${data.vigencia_dias} días naturales. En caso de incumplimiento por causas imputables al comprador, la operación se tendrá por no concretada y el apartado se perderá en su totalidad.`],
-    ["5. Carácter no reembolsable.", "El apartado es no reembolsable, salvo en los casos expresamente previstos en este documento."],
-    ["6. No concreción de la operación.", "En caso de que la operación no se concrete por causas imputables al comprador (desistimiento, falta de documentación, incumplimiento de plazos), el apartado se perderá en su totalidad."],
-    ["7. Cancelación imputable al propietario.", "Únicamente en caso de que la operación no se concrete por causas imputables al propietario, el apartado será devuelto íntegramente al comprador."],
-    ["8. Enganche.", "A la firma de la promesa de compraventa deberá realizarse el pago de un enganche cuyo porcentaje será pactado entre comprador y propietario, salvo acuerdo distinto por escrito."],
-    ["9. Forma de pago propuesta.", `El comprador manifiesta que la forma de pago propuesta para la operación será: ${data.forma_pago}.`],
-    ["10. Declaración de licitud.", "El comprador declara bajo protesta de decir verdad que los recursos utilizados para este apartado provienen de actividades lícitas."],
+    ["1. Carácter de intermediación.","Emporio Inmobiliario actúa única y exclusivamente como intermediario inmobiliario entre las partes. El inmueble no es propiedad de Emporio Inmobiliario; la decisión final de venta corresponde al propietario."],
+    ["2. Naturaleza del apartado.","El presente apartado no constituye contrato de compraventa, promesa de compraventa ni obliga a la transmisión del dominio. Su finalidad es manifestar el interés del comprador y reservar temporalmente el inmueble."],
+    ["3. Vigencia del apartado.","El apartado tendrá una vigencia de "+data.vigencia_dias+" días naturales contados a partir de la fecha de firma del presente recibo."],
+    ["4. Plazo para firma de promesa de compraventa.","El comprador se compromete a firmar la promesa de compraventa dentro de un plazo máximo de "+data.vigencia_dias+" días naturales. En caso de incumplimiento por causas imputables al comprador, la operación se tendrá por no concretada y el apartado se perderá en su totalidad."],
+    ["5. Carácter no reembolsable.","El apartado es no reembolsable, salvo en los casos expresamente previstos en este documento."],
+    ["6. No concreción de la operación.","En caso de que la operación no se concrete por causas imputables al comprador (desistimiento, falta de documentación, incumplimiento de plazos), el apartado se perderá en su totalidad."],
+    ["7. Cancelación imputable al propietario.","Únicamente en caso de que la operación no se concrete por causas imputables al propietario, el apartado será devuelto íntegramente al comprador."],
+    ["8. Enganche.","A la firma de la promesa de compraventa deberá realizarse el pago de un enganche cuyo porcentaje será pactado entre comprador y propietario, salvo acuerdo distinto por escrito."],
+    ["9. Forma de pago propuesta.","El comprador manifiesta que la forma de pago propuesta para la operación será: "+data.forma_pago+"."],
+    ["10. Declaración de licitud.","El comprador declara bajo protesta de decir verdad que los recursos utilizados para este apartado provienen de actividades lícitas."],
   ] : [
-    ["1. Naturaleza del apartado.", "El presente apartado tiene como finalidad reservar temporalmente el inmueble y dar inicio al proceso de formalización del arrendamiento. No constituye contrato de arrendamiento ni garantiza por sí mismo la ocupación del inmueble."],
-    ["2. Proceso de formalización.", "La formalización incluye la firma del contrato y la entrega de garantías que Emporio Inmobiliario y/o el propietario determinen como requisito. La negativa a cumplir con cualquiera de estos requisitos se considerará como no concreción de la operación."],
-    ["3. Fecha límite de firma.", `El cliente se compromete a concretar la firma del contrato a más tardar el día ${data.fecha_limite_firma ? new Date(data.fecha_limite_firma + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" }) : "_______________"}.`],
-    ["4. Carácter no reembolsable.", "Si la operación no se concreta por causas imputables al cliente, el monto entregado se perderá en su totalidad. La única excepción es la no aprobación de la póliza, caso en el cual se devolverá el apartado menos $1,000 por concepto de investigación."],
-    ["5. Cancelación imputable al propietario.", "Si la operación no se concreta por causas imputables al propietario, el monto entregado será reembolsado en su totalidad."],
-    ["6. Aceptación de condiciones.", "El cliente manifiesta haber sido informado de las condiciones del proceso de arrendamiento y acepta expresamente los términos del presente recibo."],
-    ["7. Solicitud de arrendamiento.", "El cliente se compromete a completar su solicitud de arrendamiento en el link proporcionado por Emporio Inmobiliario en un plazo máximo de 1 día hábil. El incumplimiento se considerará como desistimiento."],
-    ["8. No prórroga tácita.", "Cualquier comunicación posterior a la fecha límite no constituirá prórroga ni modificación de los plazos, salvo convenio por escrito firmado por ambas partes."],
-    ["9. Declaración de licitud.", "El cliente declara que los recursos utilizados provienen de actividades lícitas y no están relacionados con operaciones de procedencia ilícita."],
+    ["1. Naturaleza del apartado.","El presente apartado tiene como finalidad reservar temporalmente el inmueble y dar inicio al proceso de formalización del arrendamiento. No constituye contrato de arrendamiento ni garantiza por sí mismo la ocupación del inmueble."],
+    ["2. Proceso de formalización.","La formalización incluye la firma del contrato y la entrega de garantías que Emporio Inmobiliario y/o el propietario determinen como requisito. La negativa a cumplir con cualquiera de estos requisitos se considerará como no concreción de la operación."],
+    ["3. Fecha límite de firma.","El cliente se compromete a concretar la firma del contrato a más tardar el día "+fechaLimite+"."],
+    ["4. Carácter no reembolsable.","Si la operación no se concreta por causas imputables al cliente, el monto entregado se perderá en su totalidad. La única excepción es la no aprobación de la póliza, caso en el cual se devolverá el apartado menos $1,000 por concepto de investigación."],
+    ["5. Cancelación imputable al propietario.","Si la operación no se concreta por causas imputables al propietario, el monto entregado será reembolsado en su totalidad."],
+    ["6. Aceptación de condiciones.","El cliente manifiesta haber sido informado de las condiciones del proceso de arrendamiento y acepta expresamente los términos del presente recibo."],
+    ["7. Solicitud de arrendamiento.","El cliente se compromete a completar su solicitud de arrendamiento en el link proporcionado por Emporio Inmobiliario en un plazo máximo de 1 día hábil. El incumplimiento se considerará como desistimiento."],
+    ["8. No prórroga tácita.","Cualquier comunicación posterior a la fecha límite no constituirá prórroga ni modificación de los plazos, salvo convenio por escrito firmado por ambas partes."],
+    ["9. Declaración de licitud.","El cliente declara que los recursos utilizados provienen de actividades lícitas y no están relacionados con operaciones de procedencia ilícita."],
   ];
 
-  const maxW = W - 2*M - 8, lh = 9.5;
+  const maxW = W-2*M-8, lh = 9.5;
   for (const [titulo, texto] of clausulas) {
-    doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(...DARK);
-    doc.text(titulo, M + 4, y); y += lh;
-    doc.setFont("helvetica", "normal"); doc.setTextColor(...GRAY);
-    y = wrapText(texto, M + 4, y, maxW, lh, 7.5);
+    doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(...DARK);
+    doc.text(titulo, M+4, y); y += lh;
+    doc.setFont("helvetica","normal"); doc.setTextColor(...GRAY);
+    y = wrapText(texto, M+4, y, maxW, lh, 7.5);
     y += 3;
   }
 
-  // Condiciones especiales
   if (data.condiciones_especiales?.trim()) {
     y += 4;
-    doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(...RED);
-    doc.text("Condiciones especiales acordadas:", M + 4, y); y += lh;
-    doc.setFont("helvetica", "normal"); doc.setTextColor(...DARK);
-    y = wrapText(data.condiciones_especiales.trim(), M + 4, y, maxW, lh, 7.5);
+    doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(...RED);
+    doc.text("Condiciones especiales acordadas:", M+4, y); y += lh;
+    doc.setFont("helvetica","normal"); doc.setTextColor(...DARK);
+    y = wrapText(data.condiciones_especiales.trim(), M+4, y, maxW, lh, 7.5);
   }
 
-  // Separador
+  // SEPARADOR FIRMAS
   y += 6;
-  doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 12;
+  doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W-M, y); y += 12;
 
-  // Firmas
-  const mid = W / 2, sigW = 180;
-  doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...RED);
+  // FIRMAS
+  const mid = W/2, sigW = 180;
+  doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...RED);
   doc.text("Por Emporio Inmobiliario", M, y);
-  doc.setDrawColor(204, 204, 204); doc.setLineWidth(0.8);
-  doc.line(M, y + 28, M + sigW, y + 28);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
-  doc.text("Carlos Alejandro Nachón Saldivar", M, y + 38);
-  doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-  doc.text(`Recibido por: ${data.recibido_por}`, M, y + 48);
-  doc.text(`Fecha: ${data.fecha}`, M, y + 58);
+  doc.setDrawColor(204,204,204); doc.setLineWidth(0.8);
+  doc.line(M, y+28, M+sigW, y+28);
+  doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
+  doc.text("Carlos Alejandro Nachón Saldivar", M, y+38);
+  doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+  doc.text("Recibido por: "+data.recibido_por, M, y+48);
+  doc.text("Fecha: "+data.fecha, M, y+57);
 
-  doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
-  doc.text(data.tipo === "compraventa" ? "Nombre y firma del comprador" : "Nombre y firma del cliente", mid + 20, y);
-  doc.setDrawColor(204, 204, 204);
-  doc.line(mid + 20, y + 28, mid + 20 + sigW, y + 28);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
-  doc.text(data.cliente_nombre, mid + 20, y + 38);
-  doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-  doc.text("Fecha: ___________________________", mid + 20, y + 48);
+  doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
+  doc.text(data.tipo==="compraventa"?"Nombre y firma del comprador":"Nombre y firma del cliente", mid+20, y);
+  doc.setDrawColor(204,204,204);
+  doc.line(mid+20, y+28, mid+20+sigW, y+28);
+  doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
+  doc.text(data.cliente_nombre, mid+20, y+38);
+  doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+  doc.text("Fecha: ___________________________", mid+20, y+48);
 
-  // Bottom bar + footer
-  doc.setFillColor(...RED); doc.rect(0, H - 6, W, 6, "F");
-  doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(...GRAY);
-  doc.text("Emporio Inmobiliario  —  Uso interno  —  2026  |  emporioinmobiliario.com.mx", W/2, H - 10, { align: "center" });
+  // BOTTOM BAR
+  doc.setFillColor(...RED); doc.rect(0, H-6, W, 6, "F");
+  doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(...GRAY);
+  doc.text("Emporio Inmobiliario  —  Uso interno  —  2026  |  emporioinmobiliario.com.mx", W/2, H-10, {align:"center"});
 
   return doc;
 }
