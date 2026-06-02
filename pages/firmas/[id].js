@@ -31,6 +31,9 @@ export default function DetalleFirma() {
   const [etapaActiva, setEtapaActiva] = useState(null)
   const [loading, setLoading] = useState(true)
   const [avanzando, setAvanzando] = useState(false)
+  const [editando, setEditando] = useState(false)
+  const [editForm, setEditForm] = useState({})
+  const [guardando, setGuardando] = useState(false)
 
   useEffect(() => { if (!id) return; cargarTodo() }, [id])
 
@@ -44,6 +47,31 @@ export default function DetalleFirma() {
     setEtapas(e || [])
     setComentarios(c || [])
     setLoading(false)
+  }
+
+  function abrirEdicion() {
+    setEditForm({
+      titulo: firma.titulo || '',
+      nombre_vendedor: firma.nombre_vendedor || '',
+      modalidad_firma: firma.modalidad_firma || 'presencial',
+      monto_cierre: firma.monto_cierre || '',
+    })
+    setEditando(true)
+  }
+
+  async function guardarEdicion() {
+    setGuardando(true)
+    const { error } = await supabase.from('firmas').update({
+      titulo: editForm.titulo,
+      nombre_vendedor: editForm.nombre_vendedor,
+      modalidad_firma: editForm.modalidad_firma,
+      monto_cierre: editForm.monto_cierre ? parseFloat(editForm.monto_cierre) : null,
+    }).eq('id', id)
+    setGuardando(false)
+    if (!error) {
+      setEditando(false)
+      cargarTodo()
+    }
   }
 
   async function completarEtapa(etapa) {
@@ -87,6 +115,9 @@ export default function DetalleFirma() {
   const total = etapas.filter(e => e.status !== 'no_aplica').length
   const pct = total > 0 ? Math.round((progreso / total) * 100) : 0
 
+  const inputSt = { width: '100%', padding: '8px 10px', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', fontSize: '0.9rem', background: 'rgba(255,255,255,0.1)', color: '#fff', boxSizing: 'border-box' }
+  const labelSt = { color: '#aac4de', fontSize: '0.75rem', display: 'block', marginBottom: '4px' }
+
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
       {/* Header */}
@@ -103,6 +134,7 @@ export default function DetalleFirma() {
       </div>
       <div style={{ padding: '0 0.75rem' }}>
 
+      {/* Expediente card */}
       <div style={{ background: '#1a3c5e', borderRadius: '10px', padding: '1.25rem', marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div>
@@ -112,23 +144,26 @@ export default function DetalleFirma() {
             <h1 style={{ color: '#fff', fontSize: '1.15rem', margin: 0 }}>{firma.titulo}</h1>
             {firma.direccion && <p style={{ color: '#aac4de', fontSize: '0.85rem', margin: '4px 0 0' }}>{firma.direccion}</p>}
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-  <span style={{
-    background: firma.status === 'completado' ? '#22c55e' : firma.status === 'cancelado' ? '#ef4444' : firma.urgente ? '#f59e0b' : '#c8a45a',
-    color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600
-  }}>
-    {firma.status === 'completado' ? 'Completado' : firma.status === 'cancelado' ? 'Cancelado' : firma.urgente ? 'Urgente' : 'En proceso'}
-  </span>
-  {firma.status === 'activo' && (
-    <button onClick={async () => {
-      if (!confirm('Cancelar este expediente?')) return
-      await supabase.from('firmas').update({ status: 'cancelado' }).eq('id', id)
-      cargarTodo()
-    }} style={{ background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
-      Cancelar
-    </button>
-  )}
-</div>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={abrirEdicion} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+              ✏️ Editar
+            </button>
+            <span style={{
+              background: firma.status === 'completado' ? '#22c55e' : firma.status === 'cancelado' ? '#ef4444' : firma.urgente ? '#f59e0b' : '#c8a45a',
+              color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600
+            }}>
+              {firma.status === 'completado' ? 'Completado' : firma.status === 'cancelado' ? 'Cancelado' : firma.urgente ? 'Urgente' : 'En proceso'}
+            </span>
+            {firma.status === 'activo' && (
+              <button onClick={async () => {
+                if (!confirm('Cancelar este expediente?')) return
+                await supabase.from('firmas').update({ status: 'cancelado' }).eq('id', id)
+                cargarTodo()
+              }} style={{ background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+                Cancelar
+              </button>
+            )}
+          </div>
         </div>
 
         <div style={{ marginTop: '1rem' }}>
@@ -141,19 +176,56 @@ export default function DetalleFirma() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-          {[
-            ['Comprador/Inquilino', firma.nombre_comprador],
-            ['Propietario', firma.nombre_vendedor],
-            ['Forma de pago', firma.forma_pago],
-            ['Modalidad', firma.modalidad_firma],
-          ].map(([k, v]) => v && (
-            <div key={k}>
-              <p style={{ color: '#aac4de', fontSize: '0.72rem', margin: '0 0 2px' }}>{k}</p>
-              <p style={{ color: '#fff', fontSize: '0.85rem', margin: 0, textTransform: 'capitalize' }}>{v}</p>
+        {/* Datos del expediente */}
+        {!editando ? (
+          <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+            {[
+              ['Comprador/Inquilino', firma.nombre_comprador],
+              ['Propietario', firma.nombre_vendedor || '—  (pendiente)'],
+              ['Forma de pago', firma.forma_pago],
+              ['Modalidad', firma.modalidad_firma],
+              ['Monto de cierre', firma.monto_cierre ? '$' + Number(firma.monto_cierre).toLocaleString('es-MX') : '—  (pendiente)'],
+            ].map(([k, v]) => (
+              <div key={k}>
+                <p style={{ color: '#aac4de', fontSize: '0.72rem', margin: '0 0 2px' }}>{k}</p>
+                <p style={{ color: v?.includes('pendiente') ? '#f59e0b' : '#fff', fontSize: '0.85rem', margin: 0, textTransform: 'capitalize' }}>{v}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ marginTop: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '1rem' }}>
+            <p style={{ color: '#c8a45a', fontSize: '0.82rem', fontWeight: 700, margin: '0 0 12px' }}>Editar expediente</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={labelSt}>Título del expediente</label>
+                <input style={inputSt} value={editForm.titulo} onChange={e => setEditForm(f => ({ ...f, titulo: e.target.value }))} />
+              </div>
+              <div>
+                <label style={labelSt}>Nombre del propietario</label>
+                <input style={inputSt} value={editForm.nombre_vendedor} onChange={e => setEditForm(f => ({ ...f, nombre_vendedor: e.target.value }))} placeholder="Apellido Nombre" />
+              </div>
+              <div>
+                <label style={labelSt}>Modalidad de firma</label>
+                <select style={inputSt} value={editForm.modalidad_firma} onChange={e => setEditForm(f => ({ ...f, modalidad_firma: e.target.value }))}>
+                  <option value="presencial">Presencial</option>
+                  <option value="digital">Digital</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelSt}>Monto de cierre de la operación</label>
+                <input style={inputSt} type="number" value={editForm.monto_cierre} onChange={e => setEditForm(f => ({ ...f, monto_cierre: e.target.value }))} placeholder="3000000" />
+              </div>
             </div>
-          ))}
-        </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <button onClick={() => setEditando(false)} style={{ flex: 1, background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', padding: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              <button onClick={guardarEdicion} disabled={guardando} style={{ flex: 2, background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>
+                {guardando ? 'Guardando...' : '✓ Guardar cambios'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: typeof window !== 'undefined' && window.innerWidth < 768 ? '1fr' : '1fr 320px', gap: '1.5rem' }}>
