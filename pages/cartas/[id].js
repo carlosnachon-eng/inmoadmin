@@ -112,7 +112,7 @@ async function generarIntencion(carta, logoB64) {
   // Oferta
   doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(...RED);
   doc.text("OFERTA ECONÓMICA", M, y); y += 12;
-  doc.setFillColor(...RED); doc.roundRect(M, y, W-2*M, 56, 6, "F");
+  doc.setFillColor(...RED); doc.rect(M, y, W-2*M, 56, "F");
   doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(255,255,255);
   doc.text("PRECIO OFERTADO", W/2, y+13, {align:"center"});
   doc.setFont("helvetica","bold"); doc.setFontSize(28);
@@ -220,7 +220,7 @@ async function generarPresentacion(carta, logoB64, qrB64) {
   y += 20;
 
   // Precio box
-  doc.setFillColor(...RED); doc.roundRect(M, y, W-2*M, 62, 6, "F");
+  doc.setFillColor(...RED); doc.rect(M, y, W-2*M, 62, "F");
   doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(255,255,255);
   doc.text("PRECIO OFERTADO", W/2, y+14, {align:"center"});
   doc.setFont("helvetica","bold"); doc.setFontSize(30);
@@ -311,7 +311,7 @@ async function generarRespuesta(carta, logoB64, qrB64) {
   y += 10;
 
   // Precio box
-  doc.setFillColor(...RED); doc.roundRect(M, y, W-2*M, 68, 6, "F");
+  doc.setFillColor(...RED); doc.rect(M, y, W-2*M, 68, "F");
   doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(255,255,255);
   doc.text(esContraoferta ? "PRECIO DE CONTRAOFERTA" : "PRECIO ACEPTADO", W/2, y+14, {align:"center"});
   doc.setFont("helvetica","bold"); doc.setFontSize(30);
