@@ -62,13 +62,15 @@ async function generarPDF(data) {
   doc.setTextColor(...RED);
   doc.text(data.tipo === "compraventa" ? "COMPRAVENTA" : "ARRENDAMIENTO", tx, logoMid + 14);
 
-  // FECHA/FOLIO top right
+  // FECHA/FOLIO top right - right aligned
   doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
-  doc.text("Fecha:", W-M-155, 20); doc.setFont("helvetica","bold"); doc.setTextColor(...DARK);
-  doc.text(data.fecha, W-M-123, 20);
+  doc.text("Fecha:", W-M-148, 22);
+  doc.setFont("helvetica","bold"); doc.setTextColor(...DARK);
+  doc.text(data.fecha, W-M-116, 22);
   doc.setFont("helvetica","normal"); doc.setTextColor(...GRAY);
-  doc.text("Folio:", W-M-155, 32); doc.setFont("helvetica","bold"); doc.setTextColor(...RED);
-  doc.text(data.folio, W-M-123, 32);
+  doc.text("Folio:", W-M-148, 34);
+  doc.setFont("helvetica","bold"); doc.setTextColor(...RED);
+  doc.text(data.folio, W-M-116, 34);
 
   // LÍNEA ROJA
   const divY = 10 + logoH + 8;
@@ -108,7 +110,7 @@ async function generarPDF(data) {
 
   // CONDICIONES TÍTULO
   doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...RED);
-  doc.text("CONDICIONES DEL APARTADO", M, y); y += 13;
+  doc.text("CONDICIONES DEL APARTADO", M, y); y += 16;
 
   const fechaLimite = data.fecha_limite_firma
     ? new Date(data.fecha_limite_firma + "T12:00:00").toLocaleDateString("es-MX",{day:"numeric",month:"long",year:"numeric"})
@@ -137,13 +139,13 @@ async function generarPDF(data) {
     ["9. Declaración de licitud.","El cliente declara que los recursos utilizados provienen de actividades lícitas y no están relacionados con operaciones de procedencia ilícita."],
   ];
 
-  const maxW = W-2*M-8, lh = 11;
+  const maxW = W-2*M-8, lh = 12.5;
   for (const [titulo, texto] of clausulas) {
     doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(...DARK);
     doc.text(titulo, M+4, y); y += lh;
     doc.setFont("helvetica","normal"); doc.setTextColor(...GRAY);
     y = wrapText(texto, M+4, y, maxW, lh, 8.5);
-    y += 4;
+    y += 6;
   }
 
   if (data.condiciones_especiales?.trim()) {
