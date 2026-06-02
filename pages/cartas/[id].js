@@ -459,6 +459,7 @@ export default function CartaDetalle() {
       enganche: parseFloat(editForm.enganche) || null,
       saldo: parseFloat(editForm.saldo) || null,
       vigencia_hrs: parseInt(editForm.vigencia_hrs),
+      forma_pago: editForm.forma_pago || carta.forma_pago,
       estatus: editForm.estatus,
       notas: editForm.notas,
     }).eq("id", id);
