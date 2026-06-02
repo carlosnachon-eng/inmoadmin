@@ -412,19 +412,24 @@ export default function CartaDetalle() {
   const generarPDF = async (tipo) => {
     setGenerando(tipo);
     try {
+      // Recargar carta para tener datos más recientes
+      const { data: cartaFresh } = await supabase.from("cartas_oferta").select("*").eq("id", id).single();
+      if (cartaFresh) setCarta(cartaFresh);
+      const cartaData = cartaFresh || carta;
+
       const logoB64 = await getLogoB64();
       const qrB64 = await getQRB64(`https://www.emporioinmobiliario.com.mx/verificar-carta/${carta.folio}`);
       let doc, filename;
 
       if (tipo === "intencion") {
-        doc = await generarIntencion(carta, logoB64);
-        filename = `${carta.folio}_Intencion_Compra.pdf`;
+        doc = await generarIntencion(cartaData, logoB64);
+        filename = `${cartaData.folio}_Intencion_Compra.pdf`;
       } else if (tipo === "presentacion") {
-        doc = await generarPresentacion(carta, logoB64, qrB64);
-        filename = `${carta.folio}_Presentacion_Oferta.pdf`;
+        doc = await generarPresentacion(cartaData, logoB64, qrB64);
+        filename = `${cartaData.folio}_Presentacion_Oferta.pdf`;
       } else {
-        doc = await generarRespuesta(carta, logoB64, qrB64);
-        filename = `${carta.folio}_${carta.precio_contraoferta ? "Contraoferta" : "Aceptacion"}.pdf`;
+        doc = await generarRespuesta(cartaData, logoB64, qrB64);
+        filename = `${cartaData.folio}_${cartaData.precio_contraoferta ? "Contraoferta" : "Aceptacion"}.pdf`;
       }
 
       // Subir a Storage
@@ -486,7 +491,7 @@ export default function CartaDetalle() {
               <p style={{ color: "#aac4de", fontSize: 13, margin: 0 }}>{carta.inmueble}</p>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button onClick={() => { setEditForm({ precio_contraoferta: carta.precio_contraoferta || "", apartado: carta.apartado, enganche: carta.enganche || "", saldo: carta.saldo || "", vigencia_hrs: carta.vigencia_hrs, estatus: carta.estatus, notas: carta.notas || "" }); setEditando(!editando); }}
+              <button onClick={() => { setEditForm({ precio_contraoferta: carta.precio_contraoferta || "", apartado: carta.apartado, enganche: carta.enganche || "", saldo: carta.saldo || "", vigencia_hrs: carta.vigencia_hrs, forma_pago: carta.forma_pago || "", estatus: carta.estatus, notas: carta.notas || "" }); setEditando(!editando); }}
                 style={{ background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                 ✏️ Editar
               </button>
