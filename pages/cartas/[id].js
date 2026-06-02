@@ -134,7 +134,7 @@ async function generarIntencion(carta, logoB64) {
   for (let i = 0; i < conds.length; i++) {
     const [lbl, val, desc] = conds[i];
     doc.setFillColor(...(i%2===0 ? LGRAY : [255,255,255]));
-    doc.rect(M, y-row_h+5, W-2*M, 18, "F");
+    doc.rect(M, y-13, W-2*M, 18, "F");
     doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
     doc.text(lbl, M+4, y-4);
     doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(...DARK);
