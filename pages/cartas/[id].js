@@ -527,7 +527,13 @@ export default function CartaDetalle() {
                     <input style={{ ...inp, background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }} type={type} value={editForm[key]} onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))} />
                   </div>
                 ))}
-                <div>
+                <div style={{ gridColumn: "span 2" }}>
+                  <label style={{ color: "#aac4de", fontSize: 11, display: "block", marginBottom: 3 }}>Forma de pago</label>
+                  <input style={{ ...inp, background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }} 
+                    value={editForm.forma_pago || ""} onChange={e => setEditForm(f => ({ ...f, forma_pago: e.target.value }))}
+                    placeholder="Ej: 60% crédito + 40% recursos propios" />
+                </div>
+              <div>
                   <label style={{ color: "#aac4de", fontSize: 11, display: "block", marginBottom: 3 }}>Estatus</label>
                   <select style={{ ...inp, background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }} value={editForm.estatus} onChange={e => setEditForm(f => ({ ...f, estatus: e.target.value }))}>
                     <option value="oferta">Oferta</option>
