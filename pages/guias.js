@@ -607,8 +607,6 @@ export default function Guias() {
           )}
         </div>
 
-        </div>
-
       </div>
     </>
   )
