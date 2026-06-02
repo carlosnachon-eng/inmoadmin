@@ -18,6 +18,7 @@ export default function ModalPromesaCV({ vendedor: v, compradores = [], onClose,
   })
 
   const set = (k, val) => setForm(p => ({ ...p, [k]: val }))
+
   const seleccionarComprador = (id) => {
     const c = compradores.find(x => x.id === id)
     if (!c) return
@@ -52,7 +53,7 @@ export default function ModalPromesaCV({ vendedor: v, compradores = [], onClose,
         {compradores.length > 0 && (
           <div style={fld}>
             <label style={lbl}>Seleccionar comprador registrado</label>
-            <select style={{...inp, color: '#fff'}} onChange={e => seleccionarComprador(e.target.value)} defaultValue="">
+            <select style={{ ...inp, color: '#374151' }} onChange={e => seleccionarComprador(e.target.value)} defaultValue="">
               <option value="">-- Selecciona un comprador --</option>
               {compradores.map(c => (
                 <option key={c.id} value={c.id}>{c.nombre_comprador} · {c.celular_comprador}</option>
@@ -77,7 +78,18 @@ export default function ModalPromesaCV({ vendedor: v, compradores = [], onClose,
         <div style={fld}><label style={lbl}>No. Credencial INE</label><input style={inp} value={form.credencial_comprador} onChange={e => set('credencial_comprador', e.target.value)} /></div>
 
         <p style={sec}>🏠 Antecedentes del inmueble</p>
-        <div style={fld}><label style={lbl}>Superficie</label><input style={inp} value={form.superficie} onChange={e => set('superficie', e.target.value)} /></div>
+
+        {/* Superficie como textarea para textos largos */}
+        <div style={fld}>
+          <label style={lbl}>Superficie y colindancias</label>
+          <textarea
+            style={{ ...inp, minHeight: 100, resize: 'vertical', lineHeight: 1.5 }}
+            value={form.superficie}
+            onChange={e => set('superficie', e.target.value)}
+            placeholder="Superficie total, medidas y colindancias completas..."
+          />
+        </div>
+
         <div style={grid2}>
           <div style={fld}><label style={lbl}>Volumen de escritura</label><input style={inp} value={form.volumen_escritura} onChange={e => set('volumen_escritura', e.target.value)} /></div>
           <div style={fld}><label style={lbl}>Instrumento No.</label><input style={inp} value={form.instrumento_escritura} onChange={e => set('instrumento_escritura', e.target.value)} /></div>
@@ -86,8 +98,8 @@ export default function ModalPromesaCV({ vendedor: v, compradores = [], onClose,
           <div style={fld}><label style={lbl}>Fecha de escritura</label><input style={inp} value={form.fecha_escritura} onChange={e => set('fecha_escritura', e.target.value)} /></div>
           <div style={fld}><label style={lbl}>Cuenta predial</label><input style={inp} value={form.cuenta_predial} onChange={e => set('cuenta_predial', e.target.value)} /></div>
         </div>
-        <div style={fld}><label style={lbl}>Notario</label><input style={inp} value={form.notario} onChange={e => set('notario', e.target.value)} /></div>
-        <div style={fld}><label style={lbl}>Notaría</label><input style={inp} value={form.notaria} onChange={e => set('notaria', e.target.value)} /></div>
+        <div style={fld}><label style={lbl}>Notario</label><input style={inp} value={form.notario} onChange={e => set('notario', e.target.value)} placeholder="Ej: LIC. JUAN PÉREZ SÁNCHEZ, NOTARIO PÚBLICO No. 5" /></div>
+        <div style={fld}><label style={lbl}>Notaría</label><input style={inp} value={form.notaria} onChange={e => set('notaria', e.target.value)} placeholder="Ej: NOTARÍA PÚBLICA NÚMERO 5 DE SAN ANDRÉS CHOLULA" /></div>
 
         <p style={sec}>💰 Operación y pagos</p>
         <div style={fld}><label style={lbl}>Precio total en letras</label><input style={inp} value={form.precio_total_letras} onChange={e => set('precio_total_letras', e.target.value)} /></div>
@@ -97,7 +109,7 @@ export default function ModalPromesaCV({ vendedor: v, compradores = [], onClose,
           <div style={{ display: 'flex', gap: 8 }}>
             {[{ v: 'contado', l: 'Contado' }, { v: 'infonavit', l: 'INFONAVIT' }, { v: 'bancario', l: 'Crédito bancario' }].map(op => (
               <button key={op.v} onClick={() => set('tipo_credito', op.v)}
-                style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${form.tipo_credito === op.v ? '#c8a96e' : '#333'}`, background: form.tipo_credito === op.v ? '#fff0f3' : '#f9fafb', color: form.tipo_credito === op.v ? '#b91c3c' : '#9ca3af', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${form.tipo_credito === op.v ? '#c8a96e' : '#e5e7eb'}`, background: form.tipo_credito === op.v ? '#fff0f3' : '#f9fafb', color: form.tipo_credito === op.v ? '#b91c3c' : '#9ca3af', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                 {op.l}
               </button>
             ))}
