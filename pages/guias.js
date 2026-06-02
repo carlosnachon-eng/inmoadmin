@@ -429,7 +429,7 @@ export default function Guias() {
     </div>
   )
 
-  const seccion = CONTENIDO[seccionActiva]
+  const seccion = CONTENIDO[seccionActiva] || null
   const colorActivo = SECCIONES.find(s => s.id === seccionActiva)?.color || '#C8102E'
 
   const renderBloque = (bloque, i) => {
@@ -594,7 +594,7 @@ export default function Guias() {
           )}
 
           {/* SECCIONES DE CONTENIDO */}
-          {seccionActiva !== 'descargas' && (
+          {seccionActiva !== 'descargas' && seccion && (
             <>
               <div style={{ marginBottom: 24 }}>
                 <h2 style={{ fontSize: 22, fontWeight: 900, color: '#1a1a2e', margin: '0 0 4px' }}>{seccion.titulo}</h2>
