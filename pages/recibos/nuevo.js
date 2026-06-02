@@ -204,7 +204,7 @@ export default function NuevoRecibo() {
     inmueble: "", monto: "", monto_previo: "",
     fecha: new Date().toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" }),
     vigencia_dias: 7, fecha_limite_firma: "",
-    forma_pago: "Recursos propios (100%)",
+    forma_pago: "Transferencia",
     recibido_por: "Guillermo",
     efectivo: false, comprobante: null,
     condiciones_especiales: "",
@@ -430,7 +430,7 @@ export default function NuevoRecibo() {
               <label style={labelSt}>Forma de pago</label>
               <select style={selSt} value={form.forma_pago} onChange={e => { set("forma_pago", e.target.value); set("efectivo", e.target.value === "Efectivo"); }}>
                 {tipo === "compraventa"
-                  ? ["Recursos propios (100%)", "Crédito bancario", "Crédito Infonavit / Fovissste", "Mixto", "Efectivo"].map(o => <option key={o}>{o}</option>)
+                  ? ["Transferencia", "Efectivo", "Depósito en ventanilla"].map(o => <option key={o}>{o}</option>)
                   : ["Transferencia", "Efectivo", "Depósito en ventanilla"].map(o => <option key={o}>{o}</option>)
                 }
               </select>
