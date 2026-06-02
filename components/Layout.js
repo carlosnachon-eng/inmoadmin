@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 
-// ── COLORES EMPORIO ──────────────────────────────────────────────────────────
 export const brand = {
   red:       "#b91c3c",
   redDark:   "#7f1d2e",
@@ -14,7 +13,6 @@ export const brand = {
   border:    "#e5e7eb",
 };
 
-// ── NAV ──────────────────────────────────────────────────────────────────────
 export const nav = [
   { id: "dashboard",     label: "Panel",          icon: "📊" },
   { id: "caja",          label: "Caja",            icon: "💵",  link: "/caja" },
@@ -28,9 +26,9 @@ export const nav = [
   { id: "cierres",       label: "Cierres",         icon: "📊",  link: "/cierres" },
   { id: "firmas",        label: "Firmas",          icon: "📝",  link: "/firmas" },
   { id: "poliza",        label: "Póliza",          icon: "⚖️",  link: "/poliza" },
+  { id: "recibos",       label: "Recibos",         icon: "🧾",  link: "/recibos" },
 ];
 
-// ── LOGO SVG (corona Emporio) ─────────────────────────────────────────────────
 export const EmporioLogo = ({ size = 36 }) => (
   <img
     src="https://www.emporioinmobiliario.com.mx/logo.png"
@@ -39,7 +37,6 @@ export const EmporioLogo = ({ size = 36 }) => (
   />
 );
 
-// ── LAYOUT PRINCIPAL ─────────────────────────────────────────────────────────
 export default function Layout({ children, view = "dashboard", profile, onNavClick, onLogout }) {
   const router = useRouter();
   const [isMobile, setIsMobile] = useState(false);
@@ -61,13 +58,9 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif", background: brand.bg }}>
-
-      {/* Overlay mobile */}
       {isMobile && sidebarOpen && (
         <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 150 }} />
       )}
-
-      {/* ── SIDEBAR ── */}
       <div style={{
         width: 230, background: brand.white, display: "flex", flexDirection: "column", flexShrink: 0,
         borderRight: `1px solid ${brand.border}`,
@@ -76,8 +69,6 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
         transition: "transform 0.25s ease", zIndex: 200,
         boxShadow: isMobile && sidebarOpen ? "4px 0 20px rgba(0,0,0,0.15)" : "none",
       }}>
-
-        {/* Logo */}
         <div style={{ padding: "20px 20px 16px", borderBottom: `1px solid ${brand.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <EmporioLogo size={32} />
@@ -89,8 +80,6 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
             <button onClick={() => setSidebarOpen(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: brand.grayLight, padding: 4 }}>✕</button>
           )}
         </div>
-
-        {/* Nav */}
         <nav style={{ padding: "10px 10px", flex: 1, overflowY: "auto" }}>
           {nav.map(n => {
             const isActive = view === n.id;
@@ -111,8 +100,6 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
             );
           })}
         </nav>
-
-        {/* Usuario */}
         <div style={{ padding: "14px 16px", borderTop: `1px solid ${brand.border}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: "50%", background: brand.redLight, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: brand.red, flexShrink: 0 }}>
@@ -132,11 +119,7 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
           </button>
         </div>
       </div>
-
-      {/* ── CONTENIDO ── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
-
-        {/* Topbar mobile */}
         {isMobile && (
           <div style={{ background: brand.white, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0, position: "sticky", top: 0, zIndex: 100, borderBottom: `1px solid ${brand.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
             <button onClick={() => setSidebarOpen(true)} style={{ background: "none", border: "none", color: brand.red, fontSize: 22, cursor: "pointer", padding: 0, lineHeight: 1 }}>☰</button>
@@ -144,8 +127,6 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
             <span style={{ color: brand.gray, fontWeight: 700, fontSize: 14 }}>{currentLabel}</span>
           </div>
         )}
-
-        {/* Topbar desktop */}
         {!isMobile && (
           <div style={{ background: brand.white, padding: "12px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${brand.border}`, flexShrink: 0 }}>
             <div>
@@ -160,8 +141,6 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
             </div>
           </div>
         )}
-
-        {/* Página */}
         <div style={{ flex: 1, overflowY: "auto" }}>
           {children}
         </div>
@@ -170,7 +149,6 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
   );
 }
 
-// ── HEADER PARA PÁGINAS SEPARADAS (mantenimiento, caja, etc.) ────────────────
 export function PageHeader({ title, icon, actions }) {
   const router = useRouter();
   return (
@@ -190,7 +168,6 @@ export function PageHeader({ title, icon, actions }) {
   );
 }
 
-// ── BOTÓN ESTÁNDAR EMPORIO ───────────────────────────────────────────────────
 export function Btn({ children, onClick, variant = "primary", disabled, small }) {
   const styles = {
     primary:   { bg: brand.red,    color: "#fff" },
