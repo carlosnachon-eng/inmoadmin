@@ -209,6 +209,7 @@ const CONTENIDO = {
       },
     ],
   },
+  poliza: {
     titulo: 'Póliza Jurídica Emporio',
     subtitulo: 'Blindaje Legal — Precios y cobertura',
     bloques: [
