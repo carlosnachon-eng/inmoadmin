@@ -27,6 +27,7 @@ export const nav = [
   { id: "firmas",        label: "Firmas",          icon: "📝",  link: "/firmas" },
   { id: "poliza",        label: "Póliza",          icon: "⚖️",  link: "/poliza" },
   { id: "recibos",       label: "Recibos",         icon: "🧾",  link: "/recibos" },
+  { id: "cartas",        label: "Cartas de Oferta", icon: "📄",  link: "/cartas" },
 ];
 
 export const EmporioLogo = ({ size = 36 }) => (
