@@ -3,6 +3,10 @@
     {
       "path": "/api/cron-recordatorios",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron-vencimientos-recibos",
+      "schedule": "0 8 * * *"
     }
   ]
 }
