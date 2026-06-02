@@ -29,32 +29,18 @@ const SECCIONES = [
 
 const DESCARGAS = [
   {
-    nombre: 'Brochure Torre Zaia',
-    descripcion: 'Para enviar a prospectos de compra. Tipologías, precios, amenidades y esquema de pago.',
-    archivo: '/docs/brochure-torre-zaia.pdf',
-    color: '#C8102E',
-    emoji: '',
-  },
-  {
-    nombre: 'Brochure Equiah',
-    descripcion: 'Para enviar a prospectos. Modelos Encino y Sauce, amenidades y ubicación junto a Val\'Quirico.',
-    archivo: '/docs/brochure-equiah.pdf',
-    color: '#2d3a2e',
-    emoji: '',
-  },
-  {
-    nombre: 'Políticas de Compra',
-    descripcion: 'Para explicar al cliente comprador. Apartado, plazos, enganche, escrituración y devoluciones.',
+    nombre: 'Politicas de Compra',
+    descripcion: 'Para explicar al cliente comprador. Apartado, plazos, enganche, escrituracion y devoluciones.',
     archivo: '/docs/politicas-compra.pdf',
     color: '#1a1a2e',
-    emoji: '',
+    emoji: 'CV',
   },
   {
-    nombre: 'Políticas de Arrendamiento',
-    descripcion: 'Para explicar al arrendatario. Requisitos, condiciones, póliza jurídica y pagarés.',
+    nombre: 'Politicas de Arrendamiento',
+    descripcion: 'Para explicar al arrendatario. Requisitos, condiciones, poliza juridica y pagares.',
     archivo: '/docs/politicas-renta.pdf',
-    color: '#1a1a2e',
-    emoji: '',
+    color: '#C8102E',
+    emoji: 'AR',
   },
 ]
 
