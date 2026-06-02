@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabase";
 import { PageHeader, brand } from "../../components/Layout";
 import jsPDF from "jspdf";
+import { FIRMA_CARLOS_B64 } from "../../lib/firmaCarlos";
 
 const Field = ({ label, children, half }) => (
   <div style={{ marginBottom: 14, flex: half ? "0 0 calc(50% - 6px)" : "1 1 100%" }}>
@@ -167,11 +168,7 @@ async function generarPDF(data) {
 
   // Firma de Carlos
   try {
-    const firmaRes = await fetch("https://bnzrnizrmonjxlktbhlp.supabase.co/storage/v1/object/public/assets/firma_carlos.png");
-    const firmaBlob = await firmaRes.blob();
-    const firmaB64 = await new Promise(r => { const fr = new FileReader(); fr.onloadend = () => r(fr.result); fr.readAsDataURL(firmaBlob); });
-    // Firma: 927x516 ratio ~1.8 -> 90x50
-    doc.addImage(firmaB64, "PNG", M, y+2, 90, 50);
+    doc.addImage(FIRMA_CARLOS_B64, "PNG", M, y+2, 90, 50);
   } catch(_) {}
 
   doc.setDrawColor(204,204,204); doc.setLineWidth(0.8);
