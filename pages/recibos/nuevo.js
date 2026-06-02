@@ -43,37 +43,39 @@ async function generarPDF(data) {
   };
 
   // Top bar
-  doc.setFillColor(...RED); doc.rect(0, 0, W, 6, "F");
+  doc.setFillColor(...RED); doc.rect(0, H - 6, W, 6, "F");
 
   // Logo
+  const logoW = 110, logoH = Math.round(110 * (959/1801));
   try {
     const res = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
     const blob = await res.blob();
     const b64 = await new Promise(r => { const fr = new FileReader(); fr.onloadend = () => r(fr.result); fr.readAsDataURL(blob); });
-    doc.addImage(b64, "PNG", M, 12, 110, 110 * (959/1801));
+    doc.addImage(b64, "PNG", M, H - 6 - logoH - 10, logoW, logoH);
   } catch(_) {}
 
-  // Título
-  const tx = M + 120;
+  // Título al lado del logo (centrado verticalmente con el logo)
+  const tx = M + logoW + 20;
+  const logoMidY = H - 6 - logoH/2 - 10;
   doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(...DARK);
-  doc.text("RECIBO DE APARTADO", tx, 30);
+  doc.text("RECIBO DE APARTADO", tx, logoMidY + 6);
   doc.setTextColor(...RED);
-  doc.text(data.tipo === "compraventa" ? "COMPRAVENTA" : "ARRENDAMIENTO", tx, 46);
+  doc.text(data.tipo === "compraventa" ? "COMPRAVENTA" : "ARRENDAMIENTO", tx, logoMidY - 8);
 
-  // Fecha / Folio
+  // Fecha / Folio (arriba a la derecha)
   doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
-  doc.text("Fecha:", W - M - 160, 26); doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK);
-  doc.text(data.fecha, W - M - 130, 26);
+  doc.text("Fecha:", W - M - 165, H - 28); doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK);
+  doc.text(data.fecha, W - M - 135, H - 28);
   doc.setFont("helvetica", "normal"); doc.setTextColor(...GRAY);
-  doc.text("Folio:", W - M - 60, 26); doc.setFont("helvetica", "bold"); doc.setTextColor(...RED);
-  doc.text(data.folio, W - M - 32, 26);
+  doc.text("Folio:", W - M - 64, H - 28); doc.setFont("helvetica", "bold"); doc.setTextColor(...RED);
+  doc.text(data.folio, W - M - 38, H - 28);
 
-  // Línea roja
-  const divY = 68;
+  // Línea roja debajo del logo
+  const divY = H - 6 - logoH - 20;
   doc.setDrawColor(...RED); doc.setLineWidth(2); doc.line(M, divY, W - M, divY);
 
-  // Barra folio/fecha
-  let y = divY + 8;
+  // Barra folio/fecha — arranca justo debajo de la línea roja
+  let y = divY - 8;
   doc.setFillColor(...LGRAY); doc.rect(M, y, W - 2*M, 26, "F");
   doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
   doc.text("Fecha:", M + 8, y + 16);
@@ -129,7 +131,7 @@ async function generarPDF(data) {
   ] : [
     ["1. Naturaleza del apartado.", "El presente apartado tiene como finalidad reservar temporalmente el inmueble y dar inicio al proceso de formalización del arrendamiento. No constituye contrato de arrendamiento ni garantiza por sí mismo la ocupación del inmueble."],
     ["2. Proceso de formalización.", "La formalización incluye la firma del contrato y la entrega de garantías que Emporio Inmobiliario y/o el propietario determinen como requisito. La negativa a cumplir con cualquiera de estos requisitos se considerará como no concreción de la operación."],
-    ["3. Fecha límite de firma.", `El cliente se compromete a concretar la firma del contrato a más tardar el día ${data.fecha_limite_firma || "_______________"}.`],
+    ["3. Fecha límite de firma.", `El cliente se compromete a concretar la firma del contrato a más tardar el día ${data.fecha_limite_firma ? new Date(data.fecha_limite_firma + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" }) : "_______________"}.`],
     ["4. Carácter no reembolsable.", "Si la operación no se concreta por causas imputables al cliente, el monto entregado se perderá en su totalidad. La única excepción es la no aprobación de la póliza, caso en el cual se devolverá el apartado menos $1,000 por concepto de investigación."],
     ["5. Cancelación imputable al propietario.", "Si la operación no se concreta por causas imputables al propietario, el monto entregado será reembolsado en su totalidad."],
     ["6. Aceptación de condiciones.", "El cliente manifiesta haber sido informado de las condiciones del proceso de arrendamiento y acepta expresamente los términos del presente recibo."],
