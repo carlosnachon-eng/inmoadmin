@@ -22,7 +22,7 @@ const SECCIONES = [
   { id: 'compra', label: '🏠 Proceso de Compra', color: '#C8102E' },
   { id: 'renta', label: '🔑 Proceso de Renta', color: '#1a1a2e' },
   { id: 'requisitos', label: '📋 Requisitos Comprador', color: '#0369a1' },
-  { id: 'poliza', label: '🛡️ Póliza Jurídica', color: '#065f46' },
+  { id: 'poliza', label: 'Póliza Jurídica', color: '#065f46' },
   { id: 'cuenta', label: '🏦 Datos Bancarios', color: '#92400e' },
   { id: 'checklist', label: '✅ Checklist Operativo', color: '#7c3aed' },
 ]
@@ -74,7 +74,7 @@ const CONTENIDO = {
         numero: '02',
         titulo: 'Formas de pago del apartado',
         contenido: 'Efectivo directamente en oficinas, o transferencia bancaria a:',
-        destacado: 'Banbajío · CLABE: 030650900021403290\nGrupo Inmobiliario Nachón Torres S.A. de C.V.',
+        destacado: 'Banbajío · CLABE: 030650900021403290 · Grupo Inmobiliario Nachón Torres',
         tipo: 'banco',
       },
       {
@@ -102,7 +102,7 @@ const CONTENIDO = {
         numero: '06',
         titulo: 'Devolución del apartado',
         contenido: 'El apartado NO es reembolsable si el comprador cancela. Solo se devuelve si la venta no puede concretarse por causas ajenas al comprador (incumplimiento del vendedor, problema legal del inmueble).',
-        destacado: '⚠️ No reembolsable por decisión del comprador',
+        destacado: '⚠ No reembolsable por decisión del comprador',
         tipo: 'alerta',
       },
       {
@@ -123,7 +123,7 @@ const CONTENIDO = {
         numero: '09',
         titulo: 'Lo que debes decirle al comprador antes del apartado',
         contenido: 'Emporio actúa como intermediario. El apartado no es promesa de compraventa. El inventario no se congela sin avance real. Si no firma en 7 días, pierde el apartado.',
-        destacado: '⚠️ Informar siempre antes de cobrar',
+        destacado: '⚠ Informar siempre antes de cobrar',
         tipo: 'alerta',
       },
     ],
@@ -298,7 +298,7 @@ const CONTENIDO = {
         numero: null,
         titulo: '¿Quién la paga?',
         contenido: 'Generalmente el inquilino. Se cobra antes de la firma del contrato. Sin póliza no se firma.',
-        destacado: '⚠️ Sin póliza no hay contrato',
+        destacado: '⚠ Sin póliza no hay contrato',
         tipo: 'alerta',
       },
     ],
@@ -341,7 +341,7 @@ const CONTENIDO = {
       },
       {
         numero: null,
-        titulo: '⚠️ Importante',
+        titulo: '⚠ Importante',
         contenido: 'Nunca proporciones otra cuenta bancaria al cliente. Si hay dudas sobre un pago, dirige al cliente a Administración.',
         destacado: null,
         tipo: 'alerta',
@@ -543,7 +543,7 @@ export default function Guias() {
                 <h1 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#4a4a4a' }}>Guías y Consultas</h1>
               </div>
             </div>
-            <a href="/kpis" style={{ fontSize: 12, color: '#9ca3af', textDecoration: 'none' }}>KPIs</a>
+            <a href="/kpis" style={{ fontSize: 12, color: '#9ca3af', textDecoration: 'none' }}>← KPIs</a>
           </div>
         </div>
 
@@ -580,7 +580,7 @@ export default function Guias() {
                         <p style={{ fontSize: 12, color: '#9ca3af', margin: 0, lineHeight: 1.5 }}>{doc.descripcion}</p>
                       </div>
                       <div style={{ background: doc.color, color: '#fff', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                        Descargar PDF
+                        ↓ PDF
                       </div>
                     </div>
                   </a>
