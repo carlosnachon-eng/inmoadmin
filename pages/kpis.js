@@ -114,11 +114,13 @@ export default function KPIs() {
 
   const statsAsesor = (n) => {
     const registros = kpis.filter(k => k.asesor === n)
+    const diasCapturados = registros.length
     const cierresAsesor = cierres.filter(c => (c.vendedor || '').toLowerCase() === (VENDEDOR_MAP[n] || n.toLowerCase()))
     const citas_efectivas = registros.reduce((a, k) => a + (k.citas_efectivas || 0), 0)
     const ingresos = cierresAsesor.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0)
     return {
       citas_efectivas,
+      diasCapturados,
       operaciones: cierresAsesor.length,
       ingresos,
       cumpleIngresos: ingresos >= META_INGRESOS,
