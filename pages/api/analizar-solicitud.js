@@ -14,6 +14,8 @@ export default async function handler(req, res) {
     nombre_completo,
     razon_social,
     file_ingresos,
+    file_ingresos_2,
+    file_ingresos_3,
     doc_comprobante_ingresos_b64,
     doc_comprobante_ingresos_b64_2,
     doc_comprobante_ingresos_b64_3,
@@ -39,7 +41,8 @@ export default async function handler(req, res) {
 
   // ── Analizar documentos con Claude (hasta 3 archivos) ──
   const docsB64 = [doc_comprobante_ingresos_b64, doc_comprobante_ingresos_b64_2, doc_comprobante_ingresos_b64_3].filter(Boolean);
-  const tieneArchivo = file_ingresos || docsB64.length > 0;
+  const urlsIngresos = [file_ingresos, file_ingresos_2, file_ingresos_3].filter(Boolean);
+  const tieneArchivo = urlsIngresos.length > 0 || docsB64.length > 0;
 
   if (tieneArchivo) {
     try {
@@ -55,18 +58,11 @@ export default async function handler(req, res) {
 
       let contentBlocks = [];
 
-      if (docsB64.length > 0) {
-        for (const b64str of docsB64) {
-          const parsed = parseB64(b64str);
-          if (!parsed) continue;
-          contentBlocks.push({
-            type: parsed.mediaType === 'application/pdf' ? 'document' : 'image',
-            source: { type: 'base64', media_type: parsed.mediaType, data: parsed.base64 },
-          });
-        }
-      } else {
-        const fileRes = await fetch(file_ingresos);
-        if (!fileRes.ok) throw new Error('No se pudo descargar el archivo');
+      // Procesar URLs (nuevo flujo — hasta 3 archivos desde Storage)
+      const urlsToProcess = urlsIngresos.length > 0 ? urlsIngresos : [];
+      for (const url of urlsToProcess) {
+        const fileRes = await fetch(url);
+        if (!fileRes.ok) continue;
         const contentType = fileRes.headers.get('content-type') || 'image/jpeg';
         const buffer = await fileRes.arrayBuffer();
         const base64 = Buffer.from(buffer).toString('base64');
@@ -76,6 +72,18 @@ export default async function handler(req, res) {
           type: mediaType === 'application/pdf' ? 'document' : 'image',
           source: { type: 'base64', media_type: mediaType, data: base64 },
         });
+      }
+
+      // Procesar base64 (flujo legacy)
+      if (contentBlocks.length === 0 && docsB64.length > 0) {
+        for (const b64str of docsB64) {
+          const parsed = parseB64(b64str);
+          if (!parsed) continue;
+          contentBlocks.push({
+            type: parsed.mediaType === 'application/pdf' ? 'document' : 'image',
+            source: { type: 'base64', media_type: parsed.mediaType, data: parsed.base64 },
+          });
+        }
       }
 
       // Llamar a Claude API con todos los documentos
