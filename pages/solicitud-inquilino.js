@@ -325,6 +325,9 @@ export default function SolicitudInquilino() {
             pre_viabilidad_detalle: resultado.mensaje,
             pre_viabilidad_detalle_interno: resultado.mensajeInterno,
             ingreso_detectado_ia: resultado.detalles?.ingresoDetectado,
+            curp_validada: resultado.validacionCurp?.valido,
+            curp_nombre_renapo: resultado.validacionCurp?.nombre_en_renapo,
+            curp_status: resultado.validacionCurp?.curp_status,
           }).eq('id', data.id);
         }
       } catch (e) {

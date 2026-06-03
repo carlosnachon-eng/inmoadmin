@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   // Leer datos de Supabase — archivos ya guardados ahí
   const { data: sol, error: solError } = await supabase
     .from('solicitudes_inquilino')
-    .select('nombre_completo, razon_social, tipo_ingresos, ingresos_mensuales, ingresos_empresa, monto_renta_solicitada, doc_comprobante_ingresos_b64, doc_ingresos_b64_2, doc_ingresos_b64_3')
+    .select('nombre_completo, razon_social, tipo_ingresos, ingresos_mensuales, ingresos_empresa, monto_renta_solicitada, doc_comprobante_ingresos_b64, doc_ingresos_b64_2, doc_ingresos_b64_3, curp')
     .eq('id', solicitud_id)
     .single();
 
@@ -37,6 +37,22 @@ export default async function handler(req, res) {
   const file_ingresos_3 = null;
 
   const nombre = sol.nombre_completo || sol.razon_social || 'Solicitante';
+
+  // ── Validación CURP con Didit (corre en paralelo con el análisis de documentos) ──
+  let validacionCurp = null;
+  if (sol.curp) {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.emporioinmobiliario.com.mx';
+      const curpRes = await fetch(`${baseUrl}/api/validar-curp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ curp: sol.curp, nombre_completo: nombre }),
+      });
+      if (curpRes.ok) validacionCurp = await curpRes.json();
+    } catch (e) {
+      console.error('Error validando CURP:', e.message);
+    }
+  }
   const renta = parseFloat(monto_renta) || 0;
 
   // Determinar multiplicador según tipo de ingresos
@@ -214,6 +230,24 @@ No incluyas texto fuera del JSON.`;
     }
   }
 
+  // ── Agregar alertas de CURP al análisis ──
+  if (validacionCurp) {
+    if (!analisisIA) analisisIA = { alertas: [] };
+    if (!analisisIA.alertas) analisisIA.alertas = [];
+    if (validacionCurp.alertas?.length > 0) {
+      analisisIA.alertas = [...analisisIA.alertas, ...validacionCurp.alertas];
+    }
+    if (validacionCurp.resultado === 'no_match') {
+      analisisIA.actividad_licita = false;
+    }
+    if (validacionCurp.resultado === 'curp_baja') {
+      analisisIA.actividad_licita = false;
+    }
+    analisisIA.curp_validada = validacionCurp.valido;
+    analisisIA.nombre_en_renapo = validacionCurp.nombre_en_renapo;
+    analisisIA.curp_status = validacionCurp.curp_status;
+  }
+
   // ── Determinar pre-viabilidad ──
   // Usar ingreso detectado por IA si está disponible, si no usar el declarado
   const ingresoEvaluar = ingresoDetectado || ingresoDeclado;
@@ -274,8 +308,9 @@ No incluyas texto fuera del JSON.`;
     resultado,
     icono,
     color,
-    mensaje,           // Mensaje amable para el inquilino
-    mensajeInterno,    // Detalle técnico solo para la abogada
+    mensaje,
+    mensajeInterno,
+    validacionCurp,    // Resultado de validación CURP en RENAPO
     detalles: {
       nombre,
       renta,

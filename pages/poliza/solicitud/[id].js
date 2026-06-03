@@ -426,6 +426,15 @@ export default function FichaSolicitud() {
                       <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#374151' }}>${Number(sol.ingreso_detectado_ia).toLocaleString('es-MX')}/mes</p>
                     </div>
                   )}
+                  {sol.curp_validada !== null && sol.curp_validada !== undefined && (
+                    <div style={{ background: '#fff', borderRadius: 8, padding: '10px 14px' }}>
+                      <p style={{ margin: '0 0 2px', fontSize: 10, color: '#9ca3af', textTransform: 'uppercase' }}>CURP (RENAPO)</p>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: sol.curp_validada ? '#065f46' : '#991b1b' }}>
+                        {sol.curp_validada ? '✅ Válida' : '❌ No válida'}{sol.curp_status ? ` — ${sol.curp_status}` : ''}
+                      </p>
+                      {sol.curp_nombre_renapo && <p style={{ margin: '2px 0 0', fontSize: 11, color: '#6b7280' }}>RENAPO: {sol.curp_nombre_renapo}</p>}
+                    </div>
+                  )}
                 </div>
                 {sol.pre_viabilidad_detalle_interno && (
                   <div style={{ background: '#fff', borderRadius: 8, padding: '12px 14px' }}>
