@@ -40,6 +40,48 @@ export default function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNue
         </div>
         <InfoRow label="Inmueble de interés" value={sol.inmueble_interes} />
         <button onClick={() => window.open(`/poliza/solicitud/${sol.id}`, '_blank')} style={{ ...st.btn, width: '100%', background: C.blueBg, color: C.blueText, border: '1px solid #93c5fd', marginBottom: 16, marginTop: 8 }}>🔍 Ver ficha completa del solicitante →</button>
+
+        {/* Pre-viabilidad IA */}
+        {sol.pre_viabilidad && (
+          <div style={{
+            background: sol.pre_viabilidad === 'viable' ? C.greenBg : sol.pre_viabilidad === 'no_viable' ? C.redBg : '#fffbeb',
+            border: `1px solid ${sol.pre_viabilidad === 'viable' ? '#6ee7b7' : sol.pre_viabilidad === 'no_viable' ? '#fca5a5' : '#fcd34d'}`,
+            borderRadius: 10, padding: '12px 16px', marginBottom: 12
+          }}>
+            <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 800, color: sol.pre_viabilidad === 'viable' ? C.greenText : sol.pre_viabilidad === 'no_viable' ? C.redText : '#92400e' }}>
+              {sol.pre_viabilidad === 'viable' ? '✅' : sol.pre_viabilidad === 'no_viable' ? '❌' : '⚠️'} Pre-viabilidad IA: {sol.pre_viabilidad.toUpperCase()}
+            </p>
+            {sol.pre_viabilidad_detalle && <p style={{ margin: '0 0 4px', fontSize: 12, color: C.text }}>{sol.pre_viabilidad_detalle}</p>}
+            {sol.ingreso_detectado_ia && <p style={{ margin: 0, fontSize: 11, color: C.muted }}>Ingreso detectado: ${Number(sol.ingreso_detectado_ia).toLocaleString('es-MX')}/mes</p>}
+          </div>
+        )}
+
+        {/* Documentos de ingresos */}
+        {(sol.doc_ingresos_url_1 || sol.doc_ingresos_url_2 || sol.doc_ingresos_url_3 || sol.doc_comprobante_ingresos_b64) && (
+          <div style={{ marginBottom: 12 }}>
+            <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 700, color: C.muted, textTransform: 'uppercase' }}>📄 Comprobantes de ingresos</p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {[sol.doc_ingresos_url_1, sol.doc_ingresos_url_2, sol.doc_ingresos_url_3].filter(Boolean).map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noreferrer"
+                  style={{ background: C.blueBg, color: C.blueText, border: '1px solid #93c5fd', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
+                  📎 Mes {i + 1}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Identificación */}
+        {(sol.doc_identificacion_url || sol.doc_identificacion_b64) && (
+          <div style={{ marginBottom: 12 }}>
+            <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 700, color: C.muted, textTransform: 'uppercase' }}>🪪 Identificación oficial</p>
+            {sol.doc_identificacion_url
+              ? <a href={sol.doc_identificacion_url} target="_blank" rel="noreferrer" style={{ background: C.blueBg, color: C.blueText, border: '1px solid #93c5fd', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>📎 Ver identificación</a>
+              : <span style={{ fontSize: 12, color: C.muted }}>Guardada en sistema</span>
+            }
+          </div>
+        )}
+
         <div style={{ ...st.divider, margin: '16px 0' }} />
         <div style={st.grid2}>
           <div>
