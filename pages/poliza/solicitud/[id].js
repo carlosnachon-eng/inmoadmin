@@ -349,6 +349,33 @@ export default function FichaSolicitud() {
               )}
             </Seccion>
 
+            {/* Análisis IA */}
+            {sol.pre_viabilidad && (
+              <div style={{ marginBottom: 32, background: sol.pre_viabilidad === 'viable' ? '#f0fdf4' : '#fffbeb', border: `1px solid ${sol.pre_viabilidad === 'viable' ? '#6ee7b7' : '#fcd34d'}`, borderRadius: 12, padding: 20 }}>
+                <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 800, color: '#374151', textTransform: 'uppercase', letterSpacing: 1 }}>🤖 Análisis de pre-viabilidad (IA)</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
+                  <div style={{ background: '#fff', borderRadius: 8, padding: '10px 14px' }}>
+                    <p style={{ margin: '0 0 2px', fontSize: 10, color: '#9ca3af', textTransform: 'uppercase' }}>Resultado</p>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: sol.pre_viabilidad === 'viable' ? '#065f46' : sol.pre_viabilidad === 'no_viable' ? '#991b1b' : '#92400e' }}>
+                      {sol.pre_viabilidad === 'viable' ? '✅ Viable' : sol.pre_viabilidad === 'no_viable' ? '❌ No viable' : '⚠️ Revisar'}
+                    </p>
+                  </div>
+                  {sol.ingreso_detectado_ia && (
+                    <div style={{ background: '#fff', borderRadius: 8, padding: '10px 14px' }}>
+                      <p style={{ margin: '0 0 2px', fontSize: 10, color: '#9ca3af', textTransform: 'uppercase' }}>Ingreso detectado</p>
+                      <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#374151' }}>${Number(sol.ingreso_detectado_ia).toLocaleString('es-MX')}/mes</p>
+                    </div>
+                  )}
+                </div>
+                {sol.pre_viabilidad_detalle_interno && (
+                  <div style={{ background: '#fff', borderRadius: 8, padding: '12px 14px' }}>
+                    <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Notas internas</p>
+                    <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>{sol.pre_viabilidad_detalle_interno}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* 8. Documentos */}
             <Seccion numero="8" titulo="Documentos del análisis">
               <Grid cols={1}>
