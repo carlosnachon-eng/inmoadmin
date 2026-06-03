@@ -267,10 +267,20 @@ No incluyas texto fuera del JSON.`;
     icono = '⏳';
     mensaje = 'Los documentos requieren revisión manual por nuestro equipo jurídico. Te contactaremos en breve.';
   } else if (!ingresoEvaluar || ingresoEvaluar === 0) {
-    resultado = 'pendiente';
-    color = '#92400e';
-    icono = '⏳';
-    mensaje = 'No se pudo determinar el ingreso automáticamente. Nuestro equipo lo revisará manualmente.';
+    // Sin ingreso detectable — pero si hay alertas de la IA, mostrarlas
+    if (alertas.length > 0 || !actividadLicita || !nombreCoincide) {
+      resultado = 'revisar';
+      color = '#92400e';
+      icono = '⚠️';
+      mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico revisará tus documentos y te contactará en breve.';
+      mensajeInterno = `No se pudo calcular el ingreso, pero se detectaron observaciones: ${alertas.join('. ')}`;
+    } else {
+      resultado = 'pendiente';
+      color = '#92400e';
+      icono = '⏳';
+      mensaje = 'No se pudo determinar el ingreso automáticamente. Nuestro equipo lo revisará manualmente.';
+      mensajeInterno = analisisIA ? `Análisis IA corrió pero no detectó ingreso verificable. Tipo doc: ${analisisIA.tipo_documento || '—'}` : null;
+    }
   } else if (!nombreCoincide) {
     resultado = 'revisar';
     color = '#92400e';
