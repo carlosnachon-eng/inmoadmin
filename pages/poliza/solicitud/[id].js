@@ -355,15 +355,15 @@ export default function FichaSolicitud() {
 
                 {/* Identificación oficial */}
                 <div style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 24 }}>{sol.doc_identificacion_b64 || sol.doc_identificacion ? '✅' : '❌'}</span>
+                  <span style={{ fontSize: 24 }}>{sol.doc_identificacion_url || sol.doc_identificacion_b64 || sol.doc_identificacion ? '✅' : '❌'}</span>
                   <div style={{ flex: 1 }}>
                     <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>Identificación oficial</p>
-                    <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{sol.doc_identificacion_b64 || sol.doc_identificacion ? 'Documento adjunto por el solicitante' : 'No adjuntado'}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{sol.doc_identificacion_url || sol.doc_identificacion_b64 || sol.doc_identificacion ? 'Documento adjunto por el solicitante' : 'No adjuntado'}</p>
                   </div>
-                  {(sol.doc_identificacion_b64 || sol.doc_identificacion) && (
+                  {(sol.doc_identificacion_url || sol.doc_identificacion_b64 || sol.doc_identificacion) && (
                     <button
                       onClick={() => {
-                        const src = sol.doc_identificacion_b64 || sol.doc_identificacion
+                        const src = sol.doc_identificacion_url || sol.doc_identificacion_b64 || sol.doc_identificacion
                         if (src.startsWith('data:')) {
                           const a = document.createElement('a'); a.href = src; a.download = 'identificacion'; a.click()
                         } else {
@@ -377,29 +377,34 @@ export default function FichaSolicitud() {
                   )}
                 </div>
 
-                {/* Comprobante de ingresos */}
-                <div style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 24 }}>{sol.doc_comprobante_ingresos_b64 || sol.doc_comprobante_ingresos ? '✅' : '❌'}</span>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>Comprobante de ingresos</p>
-                    <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{sol.doc_comprobante_ingresos_b64 || sol.doc_comprobante_ingresos ? 'Documento adjunto por el solicitante' : 'No adjuntado'}</p>
+                {/* Comprobantes de ingresos — hasta 3 archivos */}
+                {[
+                  { url: sol.doc_ingresos_url_1 || sol.doc_comprobante_ingresos_b64 || sol.doc_comprobante_ingresos, label: 'Comprobante de ingresos — Mes 1' },
+                  { url: sol.doc_ingresos_url_2, label: 'Comprobante de ingresos — Mes 2' },
+                  { url: sol.doc_ingresos_url_3, label: 'Comprobante de ingresos — Mes 3' },
+                ].map((doc, i) => (
+                  <div key={i} style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 24 }}>{doc.url ? '✅' : '❌'}</span>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>{doc.label}</p>
+                      <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{doc.url ? 'Documento adjunto' : 'No adjuntado'}</p>
+                    </div>
+                    {doc.url && (
+                      <button
+                        onClick={() => {
+                          if (doc.url.startsWith('data:')) {
+                            const a = document.createElement('a'); a.href = doc.url; a.download = `comprobante_${i+1}`; a.click()
+                          } else {
+                            window.open(doc.url, '_blank')
+                          }
+                        }}
+                        style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
+                      >
+                        Ver
+                      </button>
+                    )}
                   </div>
-                  {(sol.doc_comprobante_ingresos_b64 || sol.doc_comprobante_ingresos) && (
-                    <button
-                      onClick={() => {
-                        const src = sol.doc_comprobante_ingresos_b64 || sol.doc_comprobante_ingresos
-                        if (src.startsWith('data:')) {
-                          const a = document.createElement('a'); a.href = src; a.download = 'comprobante_ingresos'; a.click()
-                        } else {
-                          handleVerDoc(src)
-                        }
-                      }}
-                      style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
-                    >
-                      Ver
-                    </button>
-                  )}
-                </div>
+                ))}
 
                 {/* Reporte Buró México — subido por la abogada */}
                 <div style={{ background: docBuro ? '#f0fdf4' : '#fffbeb', border: `1px solid ${docBuro ? '#6ee7b7' : '#fde68a'}`, borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
