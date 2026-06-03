@@ -574,7 +574,14 @@ export default function SolicitudInquilino() {
                       <Input type="number" placeholder="30000" value={form.ingresos_mensuales} onChange={e => set("ingresos_mensuales", e.target.value)} error={errors.ingresos_mensuales} />
                     </Field>
                   </Grid>
-                  <FileUpload label="Documentos que comprueben el origen lícito de tus ingresos" hint="Estados de cuenta 3 meses, recibos de nómina, CFDI, etc." required value={files.ingresos} onChange={e => handleFile("ingresos", e)} error={errors.ingresos} />
+                  <FileUpload
+                    label="Comprobantes de ingresos de los últimos 3 meses (en un solo PDF)"
+                    hint={`Únelos en un solo archivo PDF según tu tipo de ingreso:\n• Nómina quincenal: 6 recibos (3 meses)\n• Nómina mensual: 3 recibos\n• Estado de cuenta: 3 estados de cuenta\n• Declaración fiscal: 1 documento anual o semestral`}
+                    required
+                    value={files.ingresos}
+                    onChange={e => handleFile("ingresos", e)}
+                    error={errors.ingresos}
+                  />
                 </>
               ) : (
                 <>
@@ -596,7 +603,14 @@ export default function SolicitudInquilino() {
                   <Field label="Ingresos mensuales de la empresa" required error={errors.ingresos_empresa}>
                     <Input type="number" placeholder="100000" value={form.ingresos_empresa} onChange={e => set("ingresos_empresa", e.target.value)} error={errors.ingresos_empresa} />
                   </Field>
-                  <FileUpload label="Documentos que comprueben el origen lícito de los recursos" hint="Estados de cuenta, estados financieros, CFDI, contratos" required value={files.empresa} onChange={e => handleFile("empresa", e)} error={errors.empresa} />
+                  <FileUpload
+                    label="Comprobantes de ingresos de los últimos 3 meses (en un solo PDF)"
+                    hint="Estados de cuenta, estados financieros, declaraciones fiscales o CFDI. Incluye 3 meses consecutivos en un solo archivo."
+                    required
+                    value={files.empresa}
+                    onChange={e => handleFile("empresa", e)}
+                    error={errors.empresa}
+                  />
                 </>
               )}
             </div>

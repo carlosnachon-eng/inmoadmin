@@ -84,15 +84,17 @@ export default async function handler(req, res) {
               },
               {
                 type: 'text',
-                text: `Analiza este documento de ingresos y responde SOLO en formato JSON con estos campos:
+                text: `Analiza este documento de comprobante de ingresos (puede contener múltiples meses) y responde SOLO en formato JSON:
 {
-  "tipo_documento": "nomina|estado_cuenta|declaracion_fiscal|otro",
-  "ingreso_mensual": número (ingreso mensual neto en pesos mexicanos, si es estado de cuenta calcula el promedio de depósitos de los últimos 3 meses, si es declaración fiscal divide el ingreso anual entre 12),
-  "periodo": "descripción breve del periodo que cubre",
+  "tipo_documento": "nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|otro",
+  "ingreso_mensual": número (ingreso mensual NETO promedio en pesos mexicanos. Reglas: nómina quincenal=suma las 2 quincenas de cada mes y promedia los meses; nómina mensual=promedia los meses; estado de cuenta=promedia los depósitos de ingresos de los 3 meses ignorando transferencias entre cuentas propias; declaración fiscal=divide ingreso total entre los meses que cubre),
+  "meses_analizados": número (cuántos meses cubre el documento),
+  "periodo": "descripción del periodo, ej: enero-marzo 2026",
   "empleador_o_actividad": "nombre del empleador o actividad económica",
   "confianza": "alta|media|baja"
 }
-Si no puedes determinar el ingreso con certeza, pon null en ingreso_mensual.
+Si el documento tiene menos de 3 meses de historial, igual calcula con lo disponible pero baja la confianza a "baja".
+Si no puedes determinar el ingreso, pon null en ingreso_mensual.
 No incluyas texto fuera del JSON.`,
               },
             ],
