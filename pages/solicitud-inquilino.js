@@ -77,6 +77,7 @@ export default function SolicitudInquilino() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitId, setSubmitId] = useState(null);
+  const [analisis, setAnalisis] = useState(null);
   const [error, setError] = useState("");
   const [errors, setErrors] = useState({});
   const [aceptaPrivacidad, setAceptaPrivacidad] = useState(false);
@@ -298,6 +299,36 @@ export default function SolicitudInquilino() {
       }).eq("id", data.id);
 
       setSubmitId(data.id);
+
+      // ── Análisis de pre-viabilidad con IA ──
+      try {
+        const analisisRes = await fetch('/api/analizar-solicitud', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tipo_ingresos: form.tipo_ingresos,
+            ingresos_mensuales: form.ingresos_mensuales,
+            ingresos_empresa: form.ingresos_empresa,
+            monto_renta: form.monto_renta,
+            nombre_completo: form.nombre_completo,
+            razon_social: form.razon_social,
+            doc_comprobante_ingresos_b64: b64Ingresos || b64Empresa,
+          }),
+        });
+        if (analisisRes.ok) {
+          const resultado = await analisisRes.json();
+          setAnalisis(resultado);
+          // Guardar resultado en Supabase
+          await supabase.from('solicitudes_inquilino').update({
+            pre_viabilidad: resultado.resultado,
+            pre_viabilidad_detalle: resultado.mensaje,
+            ingreso_detectado_ia: resultado.detalles?.ingresoDetectado,
+          }).eq('id', data.id);
+        }
+      } catch (e) {
+        console.error('Error análisis IA:', e.message);
+      }
+
       setSubmitted(true);
 
     } catch (e) {
@@ -315,7 +346,27 @@ export default function SolicitudInquilino() {
         <div style={{ fontSize: 64, marginBottom: 20 }}>✅</div>
         <h2 style={{ margin: "0 0 12px", fontSize: 24, fontWeight: 800, color: "#4a4a4a" }}>¡Solicitud enviada!</h2>
         <p style={{ margin: "0 0 8px", fontSize: 15, color: colors.muted }}>Hemos recibido tu solicitud de arrendamiento correctamente.</p>
-        <p style={{ margin: "0 0 32px", fontSize: 14, color: colors.muted }}>Nuestro equipo jurídico la revisará y se pondrá en contacto contigo en breve.</p>
+        <p style={{ margin: "0 0 24px", fontSize: 14, color: colors.muted }}>Nuestro equipo jurídico la revisará y se pondrá en contacto contigo en breve.</p>
+
+        {/* Resultado pre-viabilidad */}
+        {analisis && (
+          <div style={{
+            background: analisis.resultado === 'viable' ? '#f0fdf4' : analisis.resultado === 'no_viable' ? '#fee2e2' : '#fffbeb',
+            border: `1.5px solid ${analisis.resultado === 'viable' ? '#6ee7b7' : analisis.resultado === 'no_viable' ? '#fca5a5' : '#fcd34d'}`,
+            borderRadius: 14, padding: "20px 24px", marginBottom: 20, textAlign: "left"
+          }}>
+            <p style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: analisis.color }}>
+              {analisis.icono} Resultado preliminar
+            </p>
+            <p style={{ margin: 0, fontSize: 13, color: "#374151", lineHeight: 1.5 }}>{analisis.mensaje}</p>
+            {analisis.resultado === 'no_viable' && (
+              <p style={{ margin: "8px 0 0", fontSize: 12, color: "#6b7280" }}>
+                Puedes contactarnos para explorar otras opciones.
+              </p>
+            )}
+          </div>
+        )}
+
         <div style={{ background: colors.successBg, borderRadius: 12, padding: "16px 20px", marginBottom: 16 }}>
           <p style={{ margin: 0, fontSize: 13, color: colors.success, fontWeight: 600 }}>📋 Tus datos han sido registrados en nuestro sistema</p>
         </div>

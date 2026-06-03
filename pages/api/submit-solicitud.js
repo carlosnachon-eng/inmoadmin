@@ -116,6 +116,20 @@ export default async function handler(req, res) {
       resource: { values: [row] },
     });
 
+    // ── Análisis de pre-viabilidad con IA ──
+    let analisis = null;
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.emporioinmobiliario.com.mx';
+      const analisisRes = await fetch(`${baseUrl}/api/analizar-solicitud`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(d),
+      });
+      if (analisisRes.ok) analisis = await analisisRes.json();
+    } catch (e) {
+      console.error('Error análisis IA:', e.message);
+    }
+
     // Email a jurídico
     const linksHtml = [
       linkIdentidadFisica ? `<tr><td style="padding:8px;color:#6b7280;font-size:12px;">ID Persona física</td><td style="padding:8px;"><a href="${linkIdentidadFisica}">Ver archivo</a></td></tr>` : "",
@@ -153,7 +167,13 @@ export default async function handler(req, res) {
               <p style="font-weight:700;color:#1a1a2e;margin:0 0 8px;">📎 Documentos adjuntos:</p>
               <table style="width:100%;border-collapse:collapse;">${linksHtml}</table>
               ` : ""}
-              <div style="margin-top:20px;padding:16px;background:#f0fdf4;border-radius:10px;text-align:center;">
+              ${analisis ? `
+              <div style="margin-top:20px;padding:16px;background:${analisis.resultado === 'viable' ? '#f0fdf4' : analisis.resultado === 'no_viable' ? '#fee2e2' : '#fffbeb'};border-radius:10px;">
+                <p style="margin:0 0 6px;font-size:13px;font-weight:800;color:${analisis.color};">${analisis.icono} Pre-viabilidad: ${analisis.resultado === 'viable' ? 'VIABLE' : analisis.resultado === 'no_viable' ? 'NO VIABLE' : analisis.resultado === 'revisar' ? 'REVISAR' : 'PENDIENTE'}</p>
+                <p style="margin:0 0 4px;font-size:12px;color:#374151;">${analisis.mensaje}</p>
+                ${analisis.detalles?.ingresoDetectado ? `<p style="margin:4px 0 0;font-size:11px;color:#6b7280;">Ingreso detectado por IA: $${Number(analisis.detalles.ingresoDetectado).toLocaleString('es-MX')} · Tipo: ${analisis.detalles.tipoDocumento || '—'}</p>` : ''}
+              </div>` : ''}
+              <div style="margin-top:12px;padding:16px;background:#f0fdf4;border-radius:10px;text-align:center;">
                 <p style="margin:0;font-size:13px;color:#065f46;font-weight:600;">✅ Datos completos en el Google Sheet de jurídico</p>
               </div>
             </div>
