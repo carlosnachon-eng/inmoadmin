@@ -10,17 +10,20 @@ export default async function handler(req, res) {
   const last_name = partes.slice(1).join(' ') || '';
 
   try {
-    const formData = new FormData();
-    formData.append('issuing_state', 'MEX');
-    formData.append('services', 'mex_curp');
-    formData.append('personal_number', curp.toUpperCase());
-    if (first_name) formData.append('first_name', first_name);
-    if (last_name) formData.append('last_name', last_name);
+    const params = new URLSearchParams();
+    params.append('issuing_state', 'MEX');
+    params.append('services', 'mex_curp');
+    params.append('personal_number', curp.toUpperCase());
+    if (first_name) params.append('first_name', first_name);
+    if (last_name) params.append('last_name', last_name);
 
     const response = await fetch('https://verification.didit.me/v3/database-validation/', {
       method: 'POST',
-      headers: { 'x-api-key': process.env.DIDIT_API_KEY },
-      body: formData,
+      headers: {
+        'x-api-key': process.env.DIDIT_API_KEY,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
     });
 
     const data = await response.json();
