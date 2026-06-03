@@ -336,6 +336,7 @@ export default function SolicitudInquilino() {
           await supabase.from('solicitudes_inquilino').update({
             pre_viabilidad: resultado.resultado,
             pre_viabilidad_detalle: resultado.mensaje,
+            pre_viabilidad_detalle_interno: resultado.mensajeInterno,
             ingreso_detectado_ia: resultado.detalles?.ingresoDetectado,
           }).eq('id', data.id);
         }

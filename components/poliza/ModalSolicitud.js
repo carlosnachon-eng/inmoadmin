@@ -51,8 +51,8 @@ export default function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNue
             <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 800, color: sol.pre_viabilidad === 'viable' ? C.greenText : sol.pre_viabilidad === 'no_viable' ? C.redText : '#92400e' }}>
               {sol.pre_viabilidad === 'viable' ? '✅' : sol.pre_viabilidad === 'no_viable' ? '❌' : '⚠️'} Pre-viabilidad IA: {sol.pre_viabilidad.toUpperCase()}
             </p>
-            {sol.pre_viabilidad_detalle && <p style={{ margin: '0 0 4px', fontSize: 12, color: C.text }}>{sol.pre_viabilidad_detalle}</p>}
-            {sol.ingreso_detectado_ia && <p style={{ margin: 0, fontSize: 11, color: C.muted }}>Ingreso detectado: ${Number(sol.ingreso_detectado_ia).toLocaleString('es-MX')}/mes</p>}
+            {sol.pre_viabilidad_detalle_interno && <p style={{ margin: '0 0 4px', fontSize: 12, color: C.text }}>{sol.pre_viabilidad_detalle_interno}</p>}
+            {sol.ingreso_detectado_ia && <p style={{ margin: 0, fontSize: 11, color: C.muted }}>Ingreso detectado por IA: ${Number(sol.ingreso_detectado_ia).toLocaleString('es-MX')}/mes</p>}
           </div>
         )}
 

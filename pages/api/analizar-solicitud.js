@@ -161,7 +161,7 @@ No incluyas texto fuera del JSON.`;
   const alertas = analisisIA?.alertas || [];
   const efectivoPct = analisisIA?.ingresos_efectivo_pct || 0;
 
-  let resultado, color, icono, mensaje;
+  let resultado, color, icono, mensaje, mensajeInterno = null;
 
   if (analisisIA?.revision_manual) {
     resultado = 'pendiente';
@@ -174,39 +174,45 @@ No incluyas texto fuera del JSON.`;
     icono = '⏳';
     mensaje = 'No se pudo determinar el ingreso automáticamente. Nuestro equipo lo revisará manualmente.';
   } else if (!nombreCoincide) {
-    resultado = 'no_viable';
-    color = '#991b1b';
-    icono = '❌';
-    mensaje = `El nombre en los documentos no coincide con el solicitante (${analisisIA?.nombre_en_documentos || 'nombre no identificado'}). Los documentos deben ser del propio solicitante.`;
+    resultado = 'revisar';
+    color = '#92400e';
+    icono = '⚠️';
+    mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico revisará tus documentos y te contactará en breve.';
+    mensajeInterno = `Alerta: El nombre en documentos (${analisisIA?.nombre_en_documentos || '—'}) no coincide con el solicitante.`;
   } else if (!actividadLicita) {
-    resultado = 'no_viable';
-    color = '#991b1b';
-    icono = '❌';
-    mensaje = `No se puede verificar el origen lícito de los ingresos. ${alertas.join('. ')}.`;
+    resultado = 'revisar';
+    color = '#92400e';
+    icono = '⚠️';
+    mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico revisará tus documentos y te contactará en breve.';
+    mensajeInterno = `Alerta: ${alertas.join('. ')}.`;
   } else if (ingresoEvaluar >= ingresoRequerido) {
     resultado = alertas.length > 0 ? 'revisar' : 'viable';
     color = alertas.length > 0 ? '#92400e' : '#065f46';
     icono = alertas.length > 0 ? '⚠️' : '✅';
     mensaje = alertas.length > 0
-      ? `Tus ingresos califican en monto (${razonIngreso}x), pero hay puntos a revisar: ${alertas.join('. ')}.`
-      : `Tus ingresos califican para esta renta. Relación ingreso/renta: ${razonIngreso}x (mínimo requerido: ${multiplicador}x).`;
+      ? 'Tus documentos han sido recibidos. Nuestro equipo los revisará y te contactará en breve.'
+      : `¡Buenas noticias! Tus ingresos califican preliminarmente para esta renta. Nuestro equipo confirmará los detalles contigo.`;
+    mensajeInterno = alertas.length > 0 ? `Ingresos suficientes pero con alertas: ${alertas.join('. ')}` : null;
   } else if (ingresoEvaluar >= ingresoRequerido * 0.85) {
     resultado = 'revisar';
     color = '#92400e';
     icono = '⚠️';
-    mensaje = `Tus ingresos están cerca del mínimo requerido. Relación: ${razonIngreso}x (mínimo: ${multiplicador}x). Tu expediente será revisado manualmente.`;
+    mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico la revisará y te contactará en breve.';
+    mensajeInterno = `Ingresos cerca del límite: relación ${razonIngreso}x (mínimo ${multiplicador}x).`;
   } else {
-    resultado = 'no_viable';
-    color = '#991b1b';
-    icono = '❌';
-    mensaje = `Tus ingresos no alcanzan el mínimo requerido para esta renta. Relación: ${razonIngreso}x (mínimo: ${multiplicador}x).`;
+    resultado = 'revisar';
+    color = '#92400e';
+    icono = '⚠️';
+    mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico la revisará y te contactará en breve.';
+    mensajeInterno = `Ingresos insuficientes: relación ${razonIngreso}x (mínimo ${multiplicador}x).`;
   }
 
   return res.status(200).json({
     resultado,
     icono,
     color,
-    mensaje,
+    mensaje,           // Mensaje amable para el inquilino
+    mensajeInterno,    // Detalle técnico solo para la abogada
     detalles: {
       nombre,
       renta,
