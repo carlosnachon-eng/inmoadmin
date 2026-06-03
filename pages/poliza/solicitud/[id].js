@@ -406,9 +406,9 @@ export default function FichaSolicitud() {
 
                 {/* Comprobantes de ingresos — hasta 3 archivos */}
                 {[
-                  { url: sol.doc_ingresos_url_1 || sol.doc_comprobante_ingresos_b64 || sol.doc_comprobante_ingresos, label: 'Comprobante de ingresos — Mes 1' },
-                  { url: sol.doc_ingresos_url_2, label: 'Comprobante de ingresos — Mes 2' },
-                  { url: sol.doc_ingresos_url_3, label: 'Comprobante de ingresos — Mes 3' },
+                  { url: sol.doc_comprobante_ingresos_b64 || sol.doc_ingresos_url_1 || sol.doc_comprobante_ingresos, label: 'Comprobante de ingresos — Mes 1' },
+                  { url: sol.doc_ingresos_b64_2 || sol.doc_ingresos_url_2, label: 'Comprobante de ingresos — Mes 2' },
+                  { url: sol.doc_ingresos_b64_3 || sol.doc_ingresos_url_3, label: 'Comprobante de ingresos — Mes 3' },
                 ].map((doc, i) => (
                   <div key={i} style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                     <span style={{ fontSize: 24 }}>{doc.url ? '✅' : '❌'}</span>

@@ -17,8 +17,8 @@ export default async function handler(req, res) {
     file_ingresos_2,
     file_ingresos_3,
     doc_comprobante_ingresos_b64,
-    doc_comprobante_ingresos_b64_2,
-    doc_comprobante_ingresos_b64_3,
+    doc_comprobante_ingresos_b64_2: doc_comprobante_ingresos_b64_2_param,
+    doc_comprobante_ingresos_b64_3: doc_comprobante_ingresos_b64_3_param,
   } = req.body;
 
   const nombre = nombre_completo || razon_social || 'Solicitante';
@@ -40,8 +40,9 @@ export default async function handler(req, res) {
   let errorIA = null;
 
   // ── Analizar documentos con Claude — uno por uno para evitar límite de páginas ──
+  const docsB64 = [doc_comprobante_ingresos_b64, doc_comprobante_ingresos_b64_2_param, doc_comprobante_ingresos_b64_3_param].filter(Boolean);
   const urlsIngresos = [file_ingresos, file_ingresos_2, file_ingresos_3].filter(Boolean);
-  const tieneArchivo = urlsIngresos.length > 0;
+  const tieneArchivo = docsB64.length > 0 || urlsIngresos.length > 0;
 
   const promptAnalisis = (esIdentificacion = false) => `Eres un analista de crédito inmobiliario en México. El solicitante se llama: "${nombre}".
 
@@ -67,14 +68,23 @@ REGLAS CRÍTICAS:
 5. Si no puedes leer el monto → null.
 No incluyas texto fuera del JSON.`;
 
-  const analizarDocumento = async (url) => {
-    const fileRes = await fetch(url);
-    if (!fileRes.ok) return null;
-    const contentType = fileRes.headers.get('content-type') || 'image/jpeg';
-    const buffer = await fileRes.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString('base64');
-    const mediaType = contentType.includes('pdf') ? 'application/pdf' :
-                      contentType.includes('png') ? 'image/png' : 'image/jpeg';
+  const analizarDocumento = async (input) => {
+    let base64, mediaType;
+    if (input.startsWith('data:')) {
+      // Es base64
+      const match = input.match(/^data:([^;]+);base64,(.+)$/);
+      if (!match) return null;
+      mediaType = match[1].includes('pdf') ? 'application/pdf' : match[1].includes('png') ? 'image/png' : 'image/jpeg';
+      base64 = match[2];
+    } else {
+      // Es URL
+      const fileRes = await fetch(input);
+      if (!fileRes.ok) return null;
+      const contentType = fileRes.headers.get('content-type') || 'image/jpeg';
+      const buffer = await fileRes.arrayBuffer();
+      base64 = Buffer.from(buffer).toString('base64');
+      mediaType = contentType.includes('pdf') ? 'application/pdf' : contentType.includes('png') ? 'image/png' : 'image/jpeg';
+    }
 
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -106,8 +116,10 @@ No incluyas texto fuera del JSON.`;
 
   if (tieneArchivo) {
     try {
+      // Usar b64 si están disponibles, si no usar URLs
+      const inputs = docsB64.length > 0 ? docsB64 : urlsIngresos;
       // Analizar cada documento por separado
-      const resultados = await Promise.all(urlsIngresos.map(url => analizarDocumento(url).catch(() => null)));
+      const resultados = await Promise.all(inputs.map(input => analizarDocumento(input).catch(() => null)));
       const validos = resultados.filter(Boolean);
 
       if (validos.length > 0) {

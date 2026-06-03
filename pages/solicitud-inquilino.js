@@ -285,29 +285,19 @@ export default function SolicitudInquilino() {
 
       if (insertError) throw insertError;
 
-      // ── Subir archivos a Supabase Storage ──
-      const uploadFile = async (file, prefix) => {
-        if (!file) return null;
-        const ext = file.name.split('.').pop();
-        const path = `solicitudes/${data.id}/${prefix}_${Date.now()}.${ext}`;
-        const { error } = await supabase.storage.from('receipts').upload(path, file, { upsert: true });
-        if (error) return null;
-        const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path);
-        return publicUrl;
-      };
-
-      const [urlIdent, urlIngresos1, urlIngresos2, urlIngresos3] = await Promise.all([
-        uploadFile(files.identidad_fisica || files.identidad_moral, 'ident'),
-        uploadFile(files.ingresos || files.empresa, 'ingresos_1'),
-        uploadFile(files.ingresos_extra[0] || null, 'ingresos_2'),
-        uploadFile(files.ingresos_extra[1] || null, 'ingresos_3'),
+      // ── Convertir archivos a base64 ──
+      const [b64Ident, b64Ingresos1, b64Ingresos2, b64Ingresos3] = await Promise.all([
+        fileToBase64(files.identidad_fisica || files.identidad_moral || null),
+        fileToBase64(files.ingresos || files.empresa || null),
+        fileToBase64(files.ingresos_extra[0] || null),
+        fileToBase64(files.ingresos_extra[1] || null),
       ]);
 
       await supabase.from("solicitudes_inquilino").update({
-        doc_identificacion_url: urlIdent,
-        doc_ingresos_url_1: urlIngresos1,
-        doc_ingresos_url_2: urlIngresos2,
-        doc_ingresos_url_3: urlIngresos3,
+        doc_identificacion_b64: b64Ident,
+        doc_comprobante_ingresos_b64: b64Ingresos1,
+        doc_ingresos_b64_2: b64Ingresos2,
+        doc_ingresos_b64_3: b64Ingresos3,
       }).eq("id", data.id);
 
       setSubmitId(data.id);
@@ -324,9 +314,9 @@ export default function SolicitudInquilino() {
             monto_renta: form.monto_renta,
             nombre_completo: form.nombre_completo,
             razon_social: form.razon_social,
-            file_ingresos: urlIngresos1,
-            file_ingresos_2: urlIngresos2,
-            file_ingresos_3: urlIngresos3,
+            doc_comprobante_ingresos_b64: b64Ingresos1,
+            doc_comprobante_ingresos_b64_2: b64Ingresos2,
+            doc_comprobante_ingresos_b64_3: b64Ingresos3,
           }),
         });
         if (analisisRes.ok) {
