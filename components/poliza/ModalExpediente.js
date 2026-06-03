@@ -86,7 +86,7 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
         fecha_termino: fechaTermino,
         duracion_contrato_meses: meses,
         fecha_vigencia: fechaVigencia,
-        status_expediente: merged.status_expediente || 'pendiente_firma',
+        status_expediente: merged.status_expediente || 'borrador',
         anticipo_poliza: num(merged.anticipo_poliza),
         anticipo_pagado: merged.anticipo_pagado || false,
         saldo_pagado: merged.saldo_pagado || false,
@@ -123,7 +123,7 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <select value={form.status} onChange={e => set('status', e.target.value)} style={{ ...st.input, width: 'auto', fontSize: 12 }}>
-              {['borrador', 'completo', 'firmado', 'activo', 'vencido', 'cancelado'].map(s => <option key={s} value={s}>{s}</option>)}
+              {[['borrador','Borrador'], ['activo','Activo'], ['vencido','Vencido'], ['cancelado','Cancelado']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
             </select>
             <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
           </div>
@@ -242,9 +242,10 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
         <div style={st.grid3}>
           <div style={{ marginBottom: 14 }}>
             <label style={st.label}>Status del expediente</label>
-            <select value={form.status_expediente || 'pendiente_firma'} onChange={e => set('status_expediente', e.target.value)} style={st.input}>
-              <option value="pendiente_firma">Pendiente de firma</option>
-              <option value="firmado">Firmado</option>
+            <select value={form.status_expediente || 'borrador'} onChange={e => set('status_expediente', e.target.value)} style={st.input}>
+              <option value="borrador">Borrador</option>
+              <option value="activo">Activo</option>
+              <option value="vencido">Vencido</option>
               <option value="cancelado">Cancelado</option>
             </select>
           </div>

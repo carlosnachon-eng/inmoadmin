@@ -53,7 +53,7 @@ export default function ModalRenovacion({ expediente: e, onClose, onSaved }) {
         fecha_termino: fechaVigencia,
         duracion_contrato_meses: duracion,
         status: 'activo',
-        status_expediente: 'pendiente_firma',
+        status_expediente: 'borrador',
         anticipo_pagado: false,
         saldo_pagado: false,
         recordatorio_30_enviado: false,
