@@ -162,11 +162,9 @@ export default function SolicitudInquilino() {
     const e = {};
     if (!isMoral) {
       if (!form.empresa_labora?.trim()) e.empresa_labora = "Este campo es requerido";
-      if (!form.ingresos_mensuales?.trim()) e.ingresos_mensuales = "Este campo es requerido";
       if (!files.ingresos) e.ingresos = "Debes subir tus comprobantes de ingresos";
     } else {
       if (!form.origen_recursos?.trim()) e.origen_recursos = "Este campo es requerido";
-      if (!form.ingresos_empresa?.trim()) e.ingresos_empresa = "Este campo es requerido";
       if (!files.empresa) e.empresa = "Debes subir los documentos financieros";
     }
     setErrors(e);
@@ -586,8 +584,8 @@ export default function SolicitudInquilino() {
                         <option>Empleo formal</option><option>Negocio propio</option><option>Honorarios / Freelance</option><option>Rentas</option><option>Otro</option>
                       </Sel>
                     </Field>
-                    <Field label="Ingresos mensuales aproximados" required error={errors.ingresos_mensuales}>
-                      <Input type="number" placeholder="30000" value={form.ingresos_mensuales} onChange={e => set("ingresos_mensuales", e.target.value)} error={errors.ingresos_mensuales} />
+                    <Field label="Ingresos mensuales aproximados (opcional)" hint="Solo referencia — la verificación se basa en tus documentos">
+                      <Input type="number" placeholder="30000" value={form.ingresos_mensuales} onChange={e => set("ingresos_mensuales", e.target.value)} />
                     </Field>
                   </Grid>
                   <div style={{ marginBottom: 20 }}>
@@ -644,8 +642,8 @@ export default function SolicitudInquilino() {
                   <Field label="Origen de los recursos con los que se pagará la renta" required error={errors.origen_recursos}>
                     <Textarea value={form.origen_recursos} onChange={e => set("origen_recursos", e.target.value)} error={errors.origen_recursos} />
                   </Field>
-                  <Field label="Ingresos mensuales de la empresa" required error={errors.ingresos_empresa}>
-                    <Input type="number" placeholder="100000" value={form.ingresos_empresa} onChange={e => set("ingresos_empresa", e.target.value)} error={errors.ingresos_empresa} />
+                  <Field label="Ingresos mensuales de la empresa (opcional)" hint="Solo referencia — la verificación se basa en tus documentos">
+                    <Input type="number" placeholder="100000" value={form.ingresos_empresa} onChange={e => set("ingresos_empresa", e.target.value)} />
                   </Field>
                   <FileUpload
                     label="Comprobantes de ingresos de los últimos 3 meses (en un solo PDF)"

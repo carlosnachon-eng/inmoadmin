@@ -31,8 +31,8 @@ export default async function handler(req, res) {
   const multiplicador = esNegocioPropio ? 3 : 2.5;
   const ingresoRequerido = renta * multiplicador;
 
-  // Ingreso declarado por el solicitante
-  const ingresoDeclado = parseFloat(ingresos_mensuales || ingresos_empresa || 0);
+  // Ingreso declarado — solo se usa si la IA no puede leer los documentos
+  const ingresoDeclado = 0; // Ignoramos el declarado, siempre usamos el detectado por IA
 
   let analisisIA = null;
   let ingresoDetectado = null;
