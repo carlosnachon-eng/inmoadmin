@@ -38,21 +38,6 @@ export default async function handler(req, res) {
 
   const nombre = sol.nombre_completo || sol.razon_social || 'Solicitante';
 
-  // ── Validación CURP con Didit (corre en paralelo con el análisis de documentos) ──
-  let validacionCurp = null;
-  if (sol.curp) {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.emporioinmobiliario.com.mx';
-      const curpRes = await fetch(`${baseUrl}/api/validar-curp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ curp: sol.curp, nombre_completo: nombre }),
-      });
-      if (curpRes.ok) validacionCurp = await curpRes.json();
-    } catch (e) {
-      console.error('Error validando CURP:', e.message);
-    }
-  }
   const renta = parseFloat(monto_renta) || 0;
 
   // Determinar multiplicador según tipo de ingresos
@@ -227,6 +212,22 @@ No incluyas texto fuera del JSON.`;
           revision_manual: true,
         };
       }
+    }
+  }
+
+  // ── Validación CURP con Didit (en paralelo al análisis de documentos) ──
+  let validacionCurp = null;
+  if (sol.curp) {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.emporioinmobiliario.com.mx';
+      const curpRes = await fetch(`${baseUrl}/api/validar-curp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ curp: sol.curp, nombre_completo: nombre }),
+      });
+      if (curpRes.ok) validacionCurp = await curpRes.json();
+    } catch (e) {
+      console.error('Error validando CURP:', e.message);
     }
   }
 
