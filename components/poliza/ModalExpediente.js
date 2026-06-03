@@ -241,15 +241,6 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
         <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 12px' }}>Status y cobros</p>
         <div style={st.grid3}>
           <div style={{ marginBottom: 14 }}>
-            <label style={st.label}>Status del expediente</label>
-            <select value={form.status_expediente || 'borrador'} onChange={e => set('status_expediente', e.target.value)} style={st.input}>
-              <option value="borrador">Borrador</option>
-              <option value="activo">Activo</option>
-              <option value="vencido">Vencido</option>
-              <option value="cancelado">Cancelado</option>
-            </select>
-          </div>
-          <div style={{ marginBottom: 14 }}>
             <label style={st.label}>Anticipo póliza $</label>
             <input type="number" value={form.anticipo_poliza || ''} onChange={e => set('anticipo_poliza', e.target.value)} style={st.input} />
           </div>
