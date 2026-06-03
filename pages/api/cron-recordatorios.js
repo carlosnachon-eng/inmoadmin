@@ -171,10 +171,91 @@ export default async function handler(req, res) {
     console.error("Error enviando resumen al equipo", e.message);
   }
 
+  // ── PASO 4: Recordatorios automáticos de renovación de póliza ──
+  const en60dias = new Date(hoy); en60dias.setDate(en60dias.getDate() + 60);
+  const en30dias = new Date(hoy); en30dias.setDate(en30dias.getDate() + 30);
+
+  const { data: expedientes } = await supabase
+    .from('poliza_expedientes')
+    .select('id, nombre_arrendatario, nombre_arrendador, correo_arrendatario, correo_arrendador, direccion_inmueble, fecha_vigencia, renta_mensual, recordatorio_60_enviado, recordatorio_30_enviado')
+    .eq('status', 'activo')
+    .not('fecha_vigencia', 'is', null)
+    .lte('fecha_vigencia', fmtFecha(en60dias));
+
+  let recordatoriosPoliza = 0;
+
+  if (expedientes && expedientes.length > 0) {
+    for (const exp of expedientes) {
+      const vigencia = new Date(exp.fecha_vigencia + 'T12:00:00');
+      const diasRestantes = Math.ceil((vigencia - hoy) / (1000 * 60 * 60 * 24));
+
+      const es60 = diasRestantes <= 60 && diasRestantes > 30 && !exp.recordatorio_60_enviado;
+      const es30 = diasRestantes <= 30 && diasRestantes >= 0 && !exp.recordatorio_30_enviado;
+
+      if (!es60 && !es30) continue;
+
+      const urgencia = diasRestantes <= 30
+        ? `⚠️ Su póliza vence en ${diasRestantes} días.`
+        : `Su póliza jurídica vence en ${diasRestantes} días.`;
+
+      const htmlPoliza = `
+        <div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px;">
+          <div style="background:#1a1a2e;padding:20px;border-radius:12px 12px 0 0;text-align:center;">
+            <h1 style="color:#c8a96e;margin:0;font-size:20px;">🏢 Emporio Inmobiliario</h1>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:0 0 12px 12px;padding:28px;">
+            <p style="color:${diasRestantes <= 30 ? '#dc2626' : '#92400e'};font-weight:700;font-size:16px;margin:0 0 16px;">${urgencia}</p>
+            <p style="color:#374151;margin:0 0 20px;">Le informamos que la póliza jurídica del siguiente inmueble está próxima a vencer:</p>
+            <div style="background:#f9fafb;border-radius:10px;padding:20px;margin:0 0 20px;">
+              <p style="margin:0 0 8px;color:#374151;"><strong>Inmueble:</strong> ${exp.direccion_inmueble}</p>
+              <p style="margin:0 0 8px;color:#374151;"><strong>Arrendatario:</strong> ${exp.nombre_arrendatario}</p>
+              <p style="margin:0 0 8px;color:#374151;"><strong>Arrendador:</strong> ${exp.nombre_arrendador}</p>
+              <p style="margin:0 0 8px;color:#374151;"><strong>Renta mensual:</strong> ${fmt(exp.renta_mensual)}</p>
+              <p style="margin:0;color:${diasRestantes <= 30 ? '#dc2626' : '#374151'};font-weight:700;"><strong>Vence:</strong> ${exp.fecha_vigencia} (${diasRestantes} días)</p>
+            </div>
+            <p style="color:#6b7280;font-size:13px;text-align:center;">Para renovar su póliza, comuníquese con nosotros a la brevedad.</p>
+          </div>
+        </div>`;
+
+      const destinatarios = [
+        exp.correo_arrendatario,
+        exp.correo_arrendador,
+        'administracion@emporioinmobiliario.com.mx',
+      ].filter(Boolean);
+
+      try {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: 'InmoAdmin <cobros@emporioinmobiliario.com.mx>',
+            to: destinatarios,
+            subject: `${diasRestantes <= 30 ? '⚠️' : '📋'} Póliza jurídica por vencer — ${exp.direccion_inmueble}`,
+            html: htmlPoliza,
+          }),
+        });
+
+        await supabase.from('poliza_expedientes').update({
+          fecha_ultimo_recordatorio: new Date().toISOString(),
+          ...(es60 && { recordatorio_60_enviado: true }),
+          ...(es30 && { recordatorio_30_enviado: true }),
+        }).eq('id', exp.id);
+
+        recordatoriosPoliza++;
+      } catch (e) {
+        console.error('Error enviando recordatorio póliza', exp.id, e.message);
+      }
+    }
+  }
+
   return res.status(200).json({
     fecha: fmtFecha(hoy),
     marcadosAtrasados,
     recordatoriosEnviados: enviados,
+    recordatoriosPoliza,
     resumen,
   });
 }
