@@ -104,21 +104,28 @@ export default async function handler(req, res) {
               ...contentBlocks,
               {
                 type: 'text',
-                text: `Eres un analista de crédito inmobiliario en México. Analiza este comprobante de ingresos y responde SOLO en formato JSON:
+                text: `Eres un analista de crédito inmobiliario en México. El solicitante se llama: "${nombre}".
+
+Analiza los documentos adjuntos (pueden ser hasta 3 archivos: identificación y/o comprobantes de ingresos) y responde SOLO en formato JSON:
 {
+  "nombre_en_documentos": "nombre completo tal como aparece en los documentos de ingresos",
+  "nombre_coincide": true|false (true si el nombre del solicitante "${nombre}" coincide razonablemente con el nombre en los documentos de ingresos — acepta variaciones menores de mayúsculas o acentos, false si son personas claramente diferentes),
   "tipo_documento": "nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|otro",
-  "ingreso_mensual": número (ingreso mensual NETO promedio en pesos mexicanos. Reglas: nómina quincenal=suma las 2 quincenas de cada mes y promedia; nómina mensual=promedia los meses; estado de cuenta=promedia SOLO los depósitos de origen lícito y verificable de los 3 meses; declaración fiscal=divide ingreso total entre meses que cubre),
+  "ingreso_mensual": número (ingreso mensual NETO promedio en pesos mexicanos. Reglas: nómina quincenal=suma las 2 quincenas de cada mes y promedia; nómina mensual=promedia los meses; estado de cuenta=promedia SOLO los depósitos de origen lícito y verificable de los 3 meses, NO cuentes retiros ni transferencias salientes; declaración fiscal=divide ingreso total entre meses que cubre),
   "meses_analizados": número,
   "periodo": "ej: enero-marzo 2026",
   "empleador_o_actividad": "nombre del empleador o actividad económica",
-  "origen_ingresos": "descripcion breve del origen, ej: nómina empresa X, honorarios, ventas, etc.",
-  "alertas": ["lista de alertas si las hay, por ejemplo: 'Ingresos principalmente en efectivo', 'Depósitos sin concepto identificable', 'Ingresos irregulares o inconsistentes', 'Origen de recursos no verificable'"],
-  "ingresos_efectivo_pct": número entre 0 y 100 (porcentaje estimado de depósitos en efectivo vs transferencias/nómina),
-  "actividad_licita": true|false (true si los ingresos claramente provienen de actividad laboral o comercial formal, false si son principalmente efectivo sin concepto o depósitos no identificados),
+  "origen_ingresos": "descripción breve del origen, ej: nómina empresa X, honorarios, ventas, etc.",
+  "alertas": ["lista de alertas, por ejemplo: 'Nombre en documentos no coincide con solicitante', 'Ingresos principalmente en efectivo', 'Depósitos sin concepto identificable', 'Ingresos irregulares o inconsistentes', 'Origen de recursos no verificable'"],
+  "ingresos_efectivo_pct": número entre 0 y 100,
+  "actividad_licita": true|false (true si los ingresos provienen de actividad laboral o comercial formal verificable, false si son principalmente efectivo sin concepto o el nombre no coincide),
   "confianza": "alta|media|baja"
 }
-IMPORTANTE: Para inmobiliaria, los ingresos en efectivo sin concepto claro NO son aceptables. Si detectas que más del 30% de los ingresos son depósitos en efectivo sin concepto identificable, marca actividad_licita como false y agrégalo a alertas.
-Si no puedes determinar el ingreso, pon null en ingreso_mensual.
+REGLAS CRÍTICAS:
+1. Si el nombre en los documentos NO coincide con "${nombre}", marca nombre_coincide=false, actividad_licita=false y agrega alerta "Nombre en documentos no coincide con el solicitante".
+2. Si más del 30% de los depósitos son en efectivo sin concepto, marca actividad_licita=false.
+3. NUNCA uses el ingreso declarado por el solicitante — extráelo SOLO de los documentos.
+4. Si no puedes leer el monto, pon null en ingreso_mensual.
 No incluyas texto fuera del JSON.`,
               },
             ],
@@ -153,7 +160,8 @@ No incluyas texto fuera del JSON.`,
   const ingresoEvaluar = ingresoDetectado || ingresoDeclado;
   const razonIngreso = ingresoEvaluar > 0 ? (ingresoEvaluar / renta).toFixed(2) : null;
 
-  const actividadLicita = analisisIA?.actividad_licita !== false; // default true si no hay IA
+  const actividadLicita = analisisIA?.actividad_licita !== false;
+  const nombreCoincide = analisisIA?.nombre_coincide !== false; // default true si no hay IA
   const alertas = analisisIA?.alertas || [];
   const efectivoPct = analisisIA?.ingresos_efectivo_pct || 0;
 
@@ -164,6 +172,11 @@ No incluyas texto fuera del JSON.`,
     color = '#92400e';
     icono = '⏳';
     mensaje = 'No se pudo determinar el ingreso automáticamente. Nuestro equipo lo revisará manualmente.';
+  } else if (!nombreCoincide) {
+    resultado = 'no_viable';
+    color = '#991b1b';
+    icono = '❌';
+    mensaje = `El nombre en los documentos no coincide con el solicitante (${analisisIA?.nombre_en_documentos || 'nombre no identificado'}). Los documentos deben ser del propio solicitante.`;
   } else if (!actividadLicita) {
     resultado = 'no_viable';
     color = '#991b1b';
