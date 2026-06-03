@@ -304,20 +304,11 @@ export default function SolicitudInquilino() {
 
       // ── Análisis de pre-viabilidad con IA ──
       try {
+        // Solo pasamos el ID — el endpoint lee los archivos directo de Supabase
         const analisisRes = await fetch('/api/analizar-solicitud', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tipo_ingresos: form.tipo_ingresos,
-            ingresos_mensuales: form.ingresos_mensuales,
-            ingresos_empresa: form.ingresos_empresa,
-            monto_renta: form.monto_renta,
-            nombre_completo: form.nombre_completo,
-            razon_social: form.razon_social,
-            doc_comprobante_ingresos_b64: b64Ingresos1,
-            doc_comprobante_ingresos_b64_2: b64Ingresos2,
-            doc_comprobante_ingresos_b64_3: b64Ingresos3,
-          }),
+          body: JSON.stringify({ solicitud_id: data.id }),
         });
         if (analisisRes.ok) {
           const resultado = await analisisRes.json();

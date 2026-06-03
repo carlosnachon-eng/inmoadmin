@@ -1,27 +1,42 @@
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 export const config = {
-  api: { bodyParser: { sizeLimit: '10mb' } },
+  api: { bodyParser: { sizeLimit: '1mb' } },
   maxDuration: 60,
 };
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const {
-    tipo_ingresos,
-    ingresos_mensuales,
-    ingresos_empresa,
-    monto_renta,
-    nombre_completo,
-    razon_social,
-    file_ingresos,
-    file_ingresos_2,
-    file_ingresos_3,
-    doc_comprobante_ingresos_b64,
-    doc_comprobante_ingresos_b64_2: doc_comprobante_ingresos_b64_2_param,
-    doc_comprobante_ingresos_b64_3: doc_comprobante_ingresos_b64_3_param,
-  } = req.body;
+  const { solicitud_id } = req.body;
+  if (!solicitud_id) return res.status(400).json({ error: 'solicitud_id requerido' });
 
-  const nombre = nombre_completo || razon_social || 'Solicitante';
+  // Leer datos de Supabase — archivos ya guardados ahí
+  const { data: sol, error: solError } = await supabase
+    .from('solicitudes_inquilino')
+    .select('nombre_completo, razon_social, tipo_ingresos, ingresos_mensuales, ingresos_empresa, monto_renta_solicitada, doc_comprobante_ingresos_b64, doc_ingresos_b64_2, doc_ingresos_b64_3')
+    .eq('id', solicitud_id)
+    .single();
+
+  if (solError || !sol) return res.status(404).json({ error: 'Solicitud no encontrada' });
+
+  const tipo_ingresos = sol.tipo_ingresos;
+  const ingresos_mensuales = sol.ingresos_mensuales;
+  const ingresos_empresa = sol.ingresos_empresa;
+  const monto_renta = sol.monto_renta_solicitada;
+  const doc_comprobante_ingresos_b64 = sol.doc_comprobante_ingresos_b64;
+  const doc_comprobante_ingresos_b64_2_param = sol.doc_ingresos_b64_2;
+  const doc_comprobante_ingresos_b64_3_param = sol.doc_ingresos_b64_3;
+  const file_ingresos = null;
+  const file_ingresos_2 = null;
+  const file_ingresos_3 = null;
+
+  const nombre = sol.nombre_completo || sol.razon_social || 'Solicitante';
   const renta = parseFloat(monto_renta) || 0;
 
   // Determinar multiplicador según tipo de ingresos
