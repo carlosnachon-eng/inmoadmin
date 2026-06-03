@@ -42,6 +42,7 @@ export default function KPIsDashboard() {
   const [loading, setLoading] = useState(true)
   const [kpis, setKpis] = useState([])
   const [cierres, setCierres] = useState([])
+  const [cierresMesAnterior, setCierresMesAnterior] = useState([])
   const [vista, setVista] = useState('ranking')
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1)
   const [animado, setAnimado] = useState(false)
@@ -70,12 +71,18 @@ export default function KPIsDashboard() {
     const mes = mesSeleccionado
     const inicio = `${anio}-${String(mes).padStart(2, '0')}-01`
     const fin = new Date(anio, mes, 0).toISOString().split('T')[0]
-    const [{ data: kpisData }, { data: cierresData }] = await Promise.all([
+    const mesAnterior = mes === 1 ? 12 : mes - 1
+    const anioAnterior = mes === 1 ? anio - 1 : anio
+    const inicioAnt = `${anioAnterior}-${String(mesAnterior).padStart(2, '0')}-01`
+    const finAnt = new Date(anioAnterior, mesAnterior, 0).toISOString().split('T')[0]
+    const [{ data: kpisData }, { data: cierresData }, { data: cierresAntData }] = await Promise.all([
       supabase.from('kpis_diarios').select('*').gte('fecha', inicio).lte('fecha', fin).order('fecha', { ascending: false }),
       supabase.from('cierres').select('*').gte('fecha_cierre', inicio).lte('fecha_cierre', fin),
+      supabase.from('cierres').select('*').gte('fecha_cierre', inicioAnt).lte('fecha_cierre', finAnt),
     ])
     setKpis(kpisData || [])
     setCierres(cierresData || [])
+    setCierresMesAnterior(cierresAntData || [])
     setAnimado(false)
     setTimeout(() => setAnimado(true), 100)
   }
@@ -111,6 +118,12 @@ export default function KPIsDashboard() {
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' })
   const kpisHoy = kpis.filter(k => k.fecha === hoy)
   const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+  const tendenciaAsesor = (nombre) => {
+    const vendedorKey = VENDEDOR_MAP[nombre] || nombre.toLowerCase()
+    const cierresAnt = cierresMesAnterior.filter(c => (c.vendedor || '').toLowerCase() === vendedorKey)
+    return cierresAnt.length
+  }
 
   const rankingData = ASESORES
     .map(nombre => ({ nombre, ...statsAsesor(nombre) }))
@@ -281,6 +294,14 @@ export default function KPIsDashboard() {
                   const bonoMonto = bonoIndex >= 0 ? BONOS[bonoIndex] : null
                   return (
                     <div key={a.nombre} className={animado ? 'card' : ''} style={{ opacity: animado ? 1 : 0 }}>
+                      {(() => {
+                        const ant = tendenciaAsesor(a.nombre)
+                        const delta = a.operaciones - ant
+                        const tendColor = delta > 0 ? '#065f46' : delta < 0 ? '#991b1b' : '#9ca3af'
+                        const tendBg   = delta > 0 ? '#f0fdf4' : delta < 0 ? '#fee2e2' : '#f3f4f6'
+                        const tendIcon = delta > 0 ? '↑' : delta < 0 ? '↓' : '→'
+                        const tendLabel = delta === 0 ? 'igual' : `${delta > 0 ? '+' : ''}${delta} vs mes ant.`
+                        return (
                       <div style={{ background: esPrimero ? '#fff0f3' : '#fff', border: `1px solid ${esPrimero ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 12, padding: '16px 20px', display: 'grid', gridTemplateColumns: '48px 1fr auto', gap: 16, alignItems: 'start', position: 'relative', overflow: 'hidden' }}>
                         {esPrimero && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#b91c3c' }} />}
                         <div style={{ textAlign: 'center', paddingTop: 4 }}>
@@ -288,7 +309,12 @@ export default function KPIsDashboard() {
                           <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>#{i + 1}</div>
                         </div>
                         <div>
-                          <div style={{ fontSize: 18, fontWeight: 800, color: esPrimero ? '#b91c3c' : '#4a4a4a', marginBottom: 8 }}>{a.nombre}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: esPrimero ? '#b91c3c' : '#4a4a4a' }}>{a.nombre}</div>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: tendColor, background: tendBg, padding: '2px 8px', borderRadius: 99 }}>
+                              {tendIcon} {tendLabel}
+                            </span>
+                          </div>
                           {/* Barra ingresos */}
                           <div style={{ marginBottom: 6 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
@@ -326,6 +352,8 @@ export default function KPIsDashboard() {
                           <div style={{ fontSize: 10, color: '#9ca3af' }}>CIERRES</div>
                         </div>
                       </div>
+                        )
+                      })()}
                     </div>
                   )
                 })}
