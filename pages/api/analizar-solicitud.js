@@ -59,28 +59,34 @@ export default async function handler(req, res) {
   const urlsIngresos = [file_ingresos, file_ingresos_2, file_ingresos_3].filter(Boolean);
   const tieneArchivo = docsB64.length > 0 || urlsIngresos.length > 0;
 
-  const promptAnalisis = (esIdentificacion = false) => `Eres un analista de crédito inmobiliario en México. El solicitante se llama: "${nombre}".
+  const promptAnalisis = () => `Eres un analista de crédito inmobiliario en México. El solicitante se llama: "${nombre}".
+Fecha actual: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}.
 
 Analiza este documento y responde SOLO en formato JSON:
 {
   "nombre_en_documentos": "nombre completo tal como aparece en el documento",
-  "nombre_coincide": true|false (true si "${nombre}" coincide razonablemente con el nombre en el documento),
-  "tipo_documento": "nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|otro",
-  "ingreso_mensual": número (ingreso mensual NETO en pesos mexicanos. Para estado de cuenta: suma SOLO depósitos de origen identificable, NO retiros ni transferencias salientes. Para nómina: monto neto del período. Para declaración: ingreso total dividido entre meses),
-  "periodo": "ej: enero 2026",
-  "empleador_o_actividad": "nombre del empleador o actividad",
-  "origen_ingresos": "descripción del origen",
-  "ingresos_efectivo_pct": número 0-100,
+  "nombre_coincide": true|false (compara "${nombre}" con el nombre en el documento — acepta variaciones de acentos/mayúsculas),
+  "tipo_documento": "ine|nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|constancia_fiscal|carta_laboral|otro",
+  "ingreso_mensual": número o null (SOLO para comprobantes de ingresos. REGLAS ESTRICTAS: 1) Suma ÚNICAMENTE depósitos/abonos entrantes de origen laboral o comercial identificable. 2) EXCLUYE: saldo, retiros, cargos, transferencias salientes, préstamos entre empresas relacionadas. 3) Nómina: usa el monto neto. 4) Declaración fiscal: ingreso total ÷ meses. 5) Para INE o carta laboral: null),
+  "periodo": "ej: marzo 2026 o enero-marzo 2026",
+  "empleador_o_actividad": "nombre del empleador o giro comercial",
+  "origen_ingresos": "descripción clara del origen: nómina, honorarios, ventas, etc.",
+  "tiene_elementos_autenticidad": true|false (¿el documento tiene QR, código de barras, cadena digital, folio de verificación o sello oficial del banco/SAT/emisor?),
+  "elementos_autenticidad_detalle": "descripción de los elementos encontrados o ausentes",
+  "ingresos_efectivo_pct": número 0-100 (% de depósitos en efectivo sin concepto claro),
   "actividad_licita": true|false,
-  "alertas": [],
+  "alertas": ["lista de alertas específicas"],
   "confianza": "alta|media|baja"
 }
+
 REGLAS CRÍTICAS:
-1. Si el nombre no coincide con "${nombre}" → nombre_coincide=false, actividad_licita=false, agrega alerta.
-2. Si >30% efectivo sin concepto → actividad_licita=false, agrega alerta.
-3. VIGENCIA: El documento debe ser de los últimos 4 meses (fecha actual: ${new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}). Si el documento tiene más de 4 meses de antigüedad → agrega alerta "Documento vencido — debe ser de los últimos 3 meses", marca confianza=baja y actividad_licita=false.
-4. NO uses ingresos declarados, solo lo que ves en el documento.
-5. Si no puedes leer el monto → null.
+1. NOMBRE: Si no coincide con "${nombre}" → nombre_coincide=false, alerta "Nombre en documento no coincide con el solicitante: aparece como [nombre encontrado]".
+2. EFECTIVO: Si >30% depósitos en efectivo sin concepto → actividad_licita=false, alerta específica.
+3. VIGENCIA: Si el documento tiene más de 4 meses de antigüedad → alerta "Documento vencido", confianza=baja, actividad_licita=false.
+4. AUTENTICIDAD: Si no tiene QR, cadena digital ni folio verificable → alerta "Documento sin elementos de autenticidad verificables (sin QR ni cadena digital)".
+5. PRÉSTAMOS INTERNOS: Si los depósitos principales vienen etiquetados como 'préstamo' de empresa relacionada → no los cuentes como ingreso, agrega alerta.
+6. SOLO INGRESOS: Nunca uses el saldo promedio ni los egresos para evaluar. Solo importan los depósitos entrantes de fuente laboral/comercial.
+7. NO uses datos declarados por el solicitante, solo lo que ves.
 No incluyas texto fuera del JSON.`;
 
   const analizarDocumento = async (input) => {
@@ -138,13 +144,41 @@ No incluyas texto fuera del JSON.`;
       const validos = resultados.filter(Boolean);
 
       if (validos.length > 0) {
-        // Promediar ingresos de los documentos válidos
-        const ingresos = validos.map(r => r.ingreso_mensual).filter(v => v && v > 0);
+        // Separar INE de comprobantes de ingresos
+        const docINE = validos.find(r => r.tipo_documento === 'ine');
+        const docsIngresos = validos.filter(r => r.tipo_documento !== 'ine');
+
+        // Promediar ingresos solo de comprobantes (no INE)
+        const ingresos = docsIngresos.map(r => r.ingreso_mensual).filter(v => v && v > 0);
         const promedioIngreso = ingresos.length > 0 ? ingresos.reduce((a, b) => a + b, 0) / ingresos.length : null;
 
-        // Consolidar alertas y verificaciones
-        const todasAlertas = [...new Set(validos.flatMap(r => r.alertas || []))];
-        const nombresNoCoinciden = validos.some(r => r.nombre_coincide === false);
+        // Verificar que el nombre de la INE coincida con los estados de cuenta
+        let alertaCruceNombre = null;
+        if (docINE && docsIngresos.length > 0) {
+          const nombreINE = docINE.nombre_en_documentos;
+          const nombreEstados = docsIngresos[0].nombre_en_documentos;
+          if (nombreINE && nombreEstados) {
+            const normalizar = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+            const palabrasINE = normalizar(nombreINE).split(' ').filter(p => p.length > 2);
+            const coincideAlMenos2 = palabrasINE.filter(p => normalizar(nombreEstados).includes(p)).length >= 2;
+            if (!coincideAlMenos2) {
+              alertaCruceNombre = `Nombre en INE (${nombreINE}) no coincide con nombre en estados de cuenta (${nombreEstados})`;
+            }
+          }
+        }
+
+        // Verificar autenticidad — alertar si algún documento no tiene elementos
+        const sinAutenticidad = validos.filter(r => r.tiene_elementos_autenticidad === false);
+        const alertasAutenticidad = sinAutenticidad.map(r => r.elementos_autenticidad_detalle || 'Documento sin elementos de autenticidad verificables');
+
+        // Consolidar todas las alertas
+        const todasAlertas = [
+          ...new Set(validos.flatMap(r => r.alertas || [])),
+          ...alertasAutenticidad,
+          ...(alertaCruceNombre ? [alertaCruceNombre] : []),
+        ].filter(Boolean);
+
+        const nombresNoCoinciden = validos.some(r => r.nombre_coincide === false) || !!alertaCruceNombre;
         const actividadNoLicita = validos.some(r => r.actividad_licita === false);
 
         analisisIA = {
@@ -153,13 +187,15 @@ No incluyas texto fuera del JSON.`;
           nombre_coincide: !nombresNoCoinciden,
           actividad_licita: !actividadNoLicita,
           alertas: todasAlertas,
-          meses_analizados: validos.length,
+          meses_analizados: docsIngresos.length,
           documentos_analizados: validos.length,
           ingresos_por_mes: ingresos,
+          tiene_ine: !!docINE,
+          nombre_en_ine: docINE?.nombre_en_documentos,
         };
 
         ingresoDetectado = promedioIngreso;
-        tipoDocumento = validos[0].tipo_documento;
+        tipoDocumento = docsIngresos[0]?.tipo_documento || validos[0].tipo_documento;
       }
     } catch (e) {
       errorIA = e.message;

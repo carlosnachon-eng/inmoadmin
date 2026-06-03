@@ -86,8 +86,10 @@ export default function SolicitudInquilino() {
     identidad_fisica: null,
     identidad_moral: null,
     ingresos: null,
-    ingresos_extra: [], // archivos adicionales de ingresos
+    ingresos_extra: [],
     empresa: null,
+    carta_laboral: null,
+    constancia_fiscal: null,
   });
 
   const [form, setForm] = useState({
@@ -286,11 +288,13 @@ export default function SolicitudInquilino() {
       if (insertError) throw insertError;
 
       // ── Convertir archivos a base64 ──
-      const [b64Ident, b64Ingresos1, b64Ingresos2, b64Ingresos3] = await Promise.all([
+      const [b64Ident, b64Ingresos1, b64Ingresos2, b64Ingresos3, b64CartaLaboral, b64ConstanciaFiscal] = await Promise.all([
         fileToBase64(files.identidad_fisica || files.identidad_moral || null),
         fileToBase64(files.ingresos || files.empresa || null),
         fileToBase64(files.ingresos_extra[0] || null),
         fileToBase64(files.ingresos_extra[1] || null),
+        fileToBase64(files.carta_laboral || null),
+        fileToBase64(files.constancia_fiscal || null),
       ]);
 
       await supabase.from("solicitudes_inquilino").update({
@@ -298,6 +302,8 @@ export default function SolicitudInquilino() {
         doc_comprobante_ingresos_b64: b64Ingresos1,
         doc_ingresos_b64_2: b64Ingresos2,
         doc_ingresos_b64_3: b64Ingresos3,
+        doc_carta_laboral_b64: b64CartaLaboral,
+        doc_constancia_fiscal_b64: b64ConstanciaFiscal,
       }).eq("id", data.id);
 
       setSubmitId(data.id);
@@ -606,6 +612,11 @@ export default function SolicitudInquilino() {
                     ))}
                     {errors.ingresos && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#E07070", fontWeight: 600 }}>{errors.ingresos}</p>}
                   </div>
+                  <div style={{ marginTop: 8, padding: '12px 16px', background: '#f0f9ff', borderRadius: 10, border: '1px solid #bae6fd' }}>
+                    <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#0369a1' }}>📎 Documentos adicionales (opcionales)</p>
+                    <FileUpload label="Carta laboral (opcional)" hint="Solo si eres empleado formal" value={files.carta_laboral} onChange={e => handleFile('carta_laboral', e)} />
+                    <FileUpload label="Constancia de situación fiscal (opcional)" hint="CSF del SAT" value={files.constancia_fiscal} onChange={e => handleFile('constancia_fiscal', e)} />
+                  </div>
                 </>
               ) : (
                 <>
@@ -635,6 +646,10 @@ export default function SolicitudInquilino() {
                     onChange={e => handleFile("empresa", e)}
                     error={errors.empresa}
                   />
+                  <div style={{ marginTop: 8, padding: '12px 16px', background: '#f0f9ff', borderRadius: 10, border: '1px solid #bae6fd' }}>
+                    <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#0369a1' }}>📎 Documentos adicionales (opcionales)</p>
+                    <FileUpload label="Constancia de situación fiscal (opcional)" hint="CSF del SAT" value={files.constancia_fiscal} onChange={e => handleFile('constancia_fiscal', e)} />
+                  </div>
                 </>
               )}
             </div>

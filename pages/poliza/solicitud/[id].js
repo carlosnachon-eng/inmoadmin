@@ -71,9 +71,14 @@ export default function FichaSolicitud() {
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [docBuro, setDocBuro] = useState(null)        // path en Storage
+  const [docBuro, setDocBuro] = useState(null)
   const [subiendoBuro, setSubiendoBuro] = useState(false)
   const [buroOk, setBuroOk] = useState(false)
+  const [solicitandoDocs, setSolicitandoDocs] = useState(false)
+  const [docsOk, setDocsOk] = useState(false)
+  const [modalSolicitar, setModalSolicitar] = useState(false)
+  const [docsSolicitados, setDocsSolicitados] = useState([])
+  const [notasSolicitud, setNotasSolicitud] = useState('')
 
   useEffect(() => {
     if (!id) return
@@ -113,6 +118,26 @@ export default function FichaSolicitud() {
       setTimeout(() => setBuroOk(false), 3000)
     }
     setSubiendoBuro(false)
+  }
+
+  const handleSolicitarDocs = async () => {
+    if (!docsSolicitados.length) return
+    setSolicitandoDocs(true)
+    await fetch('/api/solicitar-documentos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        solicitud_id: id,
+        correo: sol.correo,
+        nombre: sol.nombre_completo || sol.razon_social,
+        documentos_solicitados: docsSolicitados,
+        notas: notasSolicitud,
+      }),
+    })
+    setSolicitandoDocs(false)
+    setModalSolicitar(false)
+    setDocsOk(true)
+    setTimeout(() => setDocsOk(false), 4000)
   }
 
   const handleVerDoc = async (path) => {
@@ -172,7 +197,42 @@ export default function FichaSolicitud() {
           >
             📋 Generar dictamen
           </button>
+          <button onClick={() => setModalSolicitar(true)}
+            style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 8, padding: '8px 16px', color: '#1e40af', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>
+            📧 Solicitar documentos
+          </button>
+          {docsOk && <span style={{ fontSize: 12, color: '#065f46', fontWeight: 700 }}>✅ Correo enviado</span>}
         </div>
+
+        {/* Modal solicitar documentos */}
+        {modalSolicitar && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+            <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+              <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 800, color: '#374151' }}>📧 Solicitar documentos adicionales</h3>
+              <p style={{ margin: '0 0 14px', fontSize: 13, color: '#6b7280' }}>Se enviará un correo a <strong>{sol?.correo}</strong> con un link para subir los documentos.</p>
+              <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 700, color: '#374151' }}>¿Qué documentos necesitas?</p>
+              {['Carta laboral', 'Constancia de situación fiscal', 'Estados de cuenta adicionales', 'Identificación oficial', 'Comprobante de domicilio'].map(doc => (
+                <label key={doc} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer', fontSize: 13, color: '#374151' }}>
+                  <input type="checkbox" checked={docsSolicitados.includes(doc)} onChange={e => setDocsSolicitados(prev => e.target.checked ? [...prev, doc] : prev.filter(d => d !== doc))} />
+                  {doc}
+                </label>
+              ))}
+              <div style={{ marginTop: 12 }}>
+                <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 700, color: '#374151' }}>Notas adicionales (opcional)</p>
+                <textarea value={notasSolicitud} onChange={e => setNotasSolicitud(e.target.value)} rows={3}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
+                  placeholder="Instrucciones específicas para el solicitante..." />
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+                <button onClick={() => setModalSolicitar(false)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '9px 18px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Cancelar</button>
+                <button onClick={handleSolicitarDocs} disabled={solicitandoDocs || !docsSolicitados.length}
+                  style={{ background: '#1e40af', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', cursor: 'pointer', fontWeight: 700, fontSize: 13, opacity: solicitandoDocs || !docsSolicitados.length ? 0.6 : 1 }}>
+                  {solicitandoDocs ? 'Enviando...' : '📧 Enviar correo'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div style={{ maxWidth: 960, margin: '0 auto', padding: '28px 20px' }}>
 
@@ -430,6 +490,26 @@ export default function FichaSolicitud() {
                         Ver
                       </button>
                     )}
+                  </div>
+                ))}
+
+                {/* Documentos opcionales */}
+                {[
+                  { url: sol.doc_carta_laboral_b64, label: 'Carta laboral' },
+                  { url: sol.doc_constancia_fiscal_b64, label: 'Constancia de situación fiscal' },
+                  { url: sol.doc_extra_1_b64, label: 'Documento adicional 1' },
+                  { url: sol.doc_extra_2_b64, label: 'Documento adicional 2' },
+                ].filter(d => d.url).map((doc, i) => (
+                  <div key={i} style={{ background: '#f0fdf4', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 24 }}>✅</span>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>{doc.label}</p>
+                      <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>Documento adjunto</p>
+                    </div>
+                    <button onClick={() => { const a = document.createElement('a'); a.href = doc.url; a.download = doc.label; a.click() }}
+                      style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>
+                      Ver
+                    </button>
                   </div>
                 ))}
 
