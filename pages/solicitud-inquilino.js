@@ -149,6 +149,8 @@ export default function SolicitudInquilino() {
       if (!form.telefono?.trim()) e.telefono = "Este campo es requerido";
       if (!form.email?.trim()) e.email = "Este campo es requerido";
       if (!form.domicilio_actual?.trim()) e.domicilio_actual = "Este campo es requerido";
+      if (!form.curp?.trim()) e.curp = "La CURP es requerida para verificar tu identidad";
+      else if (form.curp.trim().length !== 18) e.curp = "La CURP debe tener exactamente 18 caracteres";
       if (!files.identidad_fisica) e.identidad_fisica = "Debes subir tu identificación oficial";
     } else {
       if (!form.razon_social?.trim()) e.razon_social = "Este campo es requerido";
@@ -447,8 +449,8 @@ export default function SolicitudInquilino() {
                     <Field label="Correo electrónico" required error={errors.email}>
                       <Input type="email" value={form.email} onChange={e => set("email", e.target.value)} error={errors.email} />
                     </Field>
-                    <Field label="CURP">
-                      <Input value={form.curp} onChange={e => set("curp", e.target.value)} />
+                    <Field label="CURP" required error={errors.curp} hint="18 caracteres — se verificará contra RENAPO">
+                      <Input value={form.curp} onChange={e => set("curp", e.target.value.toUpperCase())} error={errors.curp} maxLength={18} placeholder="XXXX000000XXXXXX00" />
                     </Field>
                   </Grid>
                   <Grid>
