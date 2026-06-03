@@ -94,7 +94,7 @@ export default function PolizaPanel() {
     activas:    expedientes.filter(e => e.status === 'activo').length,
     vencidas:   expedientes.filter(e => e.status === 'vencido').length,
     porVencer:  expedientes.filter(e => {
-      if (e.status !== 'activo' || !e.fecha_vigencia) return false
+      if (!e.fecha_vigencia) return false
       const dias = Math.ceil((new Date(e.fecha_vigencia + 'T12:00:00') - hoy) / (1000 * 60 * 60 * 24))
       return dias <= 60 && dias >= 0
     }).length,
