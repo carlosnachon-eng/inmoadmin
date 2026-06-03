@@ -9,6 +9,9 @@ export default function TabExpedientes({ expedientes, propietarios, solicitudes,
   const proximasRenovaciones = expedientes
     .filter(e => {
       if (!e.fecha_vigencia) return false
+      // Excluir si ya tiene una renovación activa
+      const tieneRenovacion = expedientes.some(r => r.expediente_anterior_id === e.id && r.status === 'activo')
+      if (tieneRenovacion) return false
       const vigencia = new Date(e.fecha_vigencia + 'T12:00:00')
       const diasRestantes = Math.ceil((vigencia - hoy) / (1000 * 60 * 60 * 24))
       return diasRestantes <= 60 && diasRestantes >= -30
