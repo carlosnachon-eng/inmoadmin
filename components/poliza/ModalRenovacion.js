@@ -23,6 +23,18 @@ export default function ModalRenovacion({ expediente: e, onClose, onSaved }) {
     setSaving(true)
     setMsg('')
     try {
+      // Verificar si ya existe una renovación activa para este arrendatario
+      const { data: existing } = await supabase
+        .from('poliza_expedientes')
+        .select('id')
+        .eq('nombre_arrendatario', e.nombre_arrendatario)
+        .eq('status', 'activo')
+        .neq('id', e.id)
+      if (existing && existing.length > 0) {
+        setMsg('Ya existe un expediente activo para este arrendatario. No se puede renovar dos veces.')
+        setSaving(false)
+        return
+      }
       const pagares = calcularPagares(fechaInicio)
       const dep = nuevaRenta
       const mora = parseFloat((nuevaRenta * 0.01).toFixed(2))
