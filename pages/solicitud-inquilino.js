@@ -86,6 +86,7 @@ export default function SolicitudInquilino() {
     identidad_fisica: null,
     identidad_moral: null,
     ingresos: null,
+    ingresos_extra: [], // archivos adicionales de ingresos
     empresa: null,
   });
 
@@ -286,11 +287,13 @@ export default function SolicitudInquilino() {
 
       if (insertError) throw insertError;
 
-      const [b64IdentFisica, b64IdentMoral, b64Ingresos, b64Empresa] = await Promise.all([
+      const [b64IdentFisica, b64IdentMoral, b64Ingresos, b64Empresa, b64Ingresos2, b64Ingresos3] = await Promise.all([
         fileToBase64(files.identidad_fisica),
         fileToBase64(files.identidad_moral),
         fileToBase64(files.ingresos),
         fileToBase64(files.empresa),
+        fileToBase64(files.ingresos_extra[0] || null),
+        fileToBase64(files.ingresos_extra[1] || null),
       ]);
 
       await supabase.from("solicitudes_inquilino").update({
@@ -313,6 +316,8 @@ export default function SolicitudInquilino() {
             nombre_completo: form.nombre_completo,
             razon_social: form.razon_social,
             doc_comprobante_ingresos_b64: b64Ingresos || b64Empresa,
+            doc_comprobante_ingresos_b64_2: b64Ingresos2,
+            doc_comprobante_ingresos_b64_3: b64Ingresos3,
           }),
         });
         if (analisisRes.ok) {
@@ -574,14 +579,42 @@ export default function SolicitudInquilino() {
                       <Input type="number" placeholder="30000" value={form.ingresos_mensuales} onChange={e => set("ingresos_mensuales", e.target.value)} error={errors.ingresos_mensuales} />
                     </Field>
                   </Grid>
-                  <FileUpload
-                    label="Comprobantes de ingresos de los últimos 3 meses (en un solo PDF)"
-                    hint={`Únelos en un solo archivo PDF según tu tipo de ingreso:\n• Nómina quincenal: 6 recibos (3 meses)\n• Nómina mensual: 3 recibos\n• Estado de cuenta: 3 estados de cuenta\n• Declaración fiscal: 1 documento anual o semestral`}
-                    required
-                    value={files.ingresos}
-                    onChange={e => handleFile("ingresos", e)}
-                    error={errors.ingresos}
-                  />
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: colors.text, marginBottom: 4 }}>
+                      Comprobantes de ingresos de los últimos 3 meses <span style={{ color: colors.red }}>*</span>
+                    </label>
+                    <p style={{ margin: "0 0 6px", fontSize: 11, color: colors.muted }}>
+                      Sube hasta 3 archivos (uno por mes). Formatos: PDF, JPG, PNG.<br/>
+                      • Nómina quincenal: 2 recibos por mes (6 en total)<br/>
+                      • Nómina mensual: 1 recibo por mes (3 en total)<br/>
+                      • Estado de cuenta: 1 por mes (3 en total)<br/>
+                      • Declaración fiscal: 1 documento
+                    </p>
+                    {[0, 1, 2].map(idx => (
+                      <div key={idx} style={{ marginBottom: 8 }}>
+                        <div style={{ border: `2px dashed ${idx === 0 && errors.ingresos ? '#E07070' : (idx === 0 ? files.ingresos : files.ingresos_extra[idx-1]) ? colors.gold : colors.border}`, borderRadius: 10, padding: "12px 16px", background: (idx === 0 ? files.ingresos : files.ingresos_extra[idx-1]) ? "#fffbeb" : "#fafafa", cursor: "pointer" }}>
+                          <input type="file" accept=".pdf,.jpg,.jpeg,.png" id={`ingresos_${idx}`} style={{ display: "none" }}
+                            onChange={e => {
+                              const file = e.target.files[0];
+                              if (!file) return;
+                              if (idx === 0) { setFiles(f => ({ ...f, ingresos: file })); setErrors(p => ({ ...p, ingresos: undefined })); }
+                              else { setFiles(f => { const extra = [...f.ingresos_extra]; extra[idx-1] = file; return { ...f, ingresos_extra: extra }; }); }
+                            }}
+                          />
+                          <label htmlFor={`ingresos_${idx}`} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ fontSize: 18 }}>{(idx === 0 ? files.ingresos : files.ingresos_extra[idx-1]) ? '✅' : '📎'}</span>
+                            <div>
+                              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: (idx === 0 ? files.ingresos : files.ingresos_extra[idx-1]) ? colors.success : colors.muted }}>
+                                {(idx === 0 ? files.ingresos : files.ingresos_extra[idx-1])?.name || `Mes ${idx + 1} ${idx === 0 ? '(requerido)' : '(opcional)'}`}
+                              </p>
+                              {!(idx === 0 ? files.ingresos : files.ingresos_extra[idx-1]) && <p style={{ margin: 0, fontSize: 11, color: colors.muted }}>Clic para subir</p>}
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                    {errors.ingresos && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#E07070", fontWeight: 600 }}>{errors.ingresos}</p>}
+                  </div>
                 </>
               ) : (
                 <>

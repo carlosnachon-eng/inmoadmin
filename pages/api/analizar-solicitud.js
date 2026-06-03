@@ -14,7 +14,9 @@ export default async function handler(req, res) {
     nombre_completo,
     razon_social,
     file_ingresos,
-    doc_comprobante_ingresos_b64, // base64 desde solicitud-inquilino
+    doc_comprobante_ingresos_b64,
+    doc_comprobante_ingresos_b64_2,
+    doc_comprobante_ingresos_b64_3,
   } = req.body;
 
   const nombre = nombre_completo || razon_social || 'Solicitante';
@@ -35,35 +37,48 @@ export default async function handler(req, res) {
   let tipoDocumento = null;
   let errorIA = null;
 
-  // ── Analizar documento con Claude si hay archivo ──
-  const tieneArchivo = file_ingresos || doc_comprobante_ingresos_b64;
+  // ── Analizar documentos con Claude (hasta 3 archivos) ──
+  const docsB64 = [doc_comprobante_ingresos_b64, doc_comprobante_ingresos_b64_2, doc_comprobante_ingresos_b64_3].filter(Boolean);
+  const tieneArchivo = file_ingresos || docsB64.length > 0;
+
   if (tieneArchivo) {
     try {
-      let base64, mediaType;
-
-      if (doc_comprobante_ingresos_b64) {
-        // Formato: "data:application/pdf;base64,XXXXX"
-        const match = doc_comprobante_ingresos_b64.match(/^data:([^;]+);base64,(.+)$/);
-        if (!match) throw new Error('Formato base64 inválido');
-        mediaType = match[1];
-        base64 = match[2];
+      const parseB64 = (b64str) => {
+        const match = b64str.match(/^data:([^;]+);base64,(.+)$/);
+        if (!match) return null;
+        let mediaType = match[1];
         if (mediaType.includes('pdf')) mediaType = 'application/pdf';
         else if (mediaType.includes('png')) mediaType = 'image/png';
-        else if (mediaType.includes('jpg') || mediaType.includes('jpeg')) mediaType = 'image/jpeg';
+        else mediaType = 'image/jpeg';
+        return { base64: match[2], mediaType };
+      };
+
+      let contentBlocks = [];
+
+      if (docsB64.length > 0) {
+        for (const b64str of docsB64) {
+          const parsed = parseB64(b64str);
+          if (!parsed) continue;
+          contentBlocks.push({
+            type: parsed.mediaType === 'application/pdf' ? 'document' : 'image',
+            source: { type: 'base64', media_type: parsed.mediaType, data: parsed.base64 },
+          });
+        }
       } else {
-        // Descargar desde URL
         const fileRes = await fetch(file_ingresos);
         if (!fileRes.ok) throw new Error('No se pudo descargar el archivo');
         const contentType = fileRes.headers.get('content-type') || 'image/jpeg';
         const buffer = await fileRes.arrayBuffer();
-        base64 = Buffer.from(buffer).toString('base64');
-        mediaType = contentType.includes('pdf') ? 'application/pdf' :
-                    contentType.includes('png') ? 'image/png' : 'image/jpeg';
+        const base64 = Buffer.from(buffer).toString('base64');
+        const mediaType = contentType.includes('pdf') ? 'application/pdf' :
+                          contentType.includes('png') ? 'image/png' : 'image/jpeg';
+        contentBlocks.push({
+          type: mediaType === 'application/pdf' ? 'document' : 'image',
+          source: { type: 'base64', media_type: mediaType, data: base64 },
+        });
       }
 
-      const isPDF = mediaType === 'application/pdf';
-
-      // Llamar a Claude API
+      // Llamar a Claude API con todos los documentos
       const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -74,26 +89,27 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 500,
+          max_tokens: 600,
           messages: [{
             role: 'user',
             content: [
-              {
-                type: isPDF ? 'document' : 'image',
-                source: { type: 'base64', media_type: mediaType, data: base64 },
-              },
+              ...contentBlocks,
               {
                 type: 'text',
-                text: `Analiza este documento de comprobante de ingresos (puede contener múltiples meses) y responde SOLO en formato JSON:
+                text: `Eres un analista de crédito inmobiliario en México. Analiza este comprobante de ingresos y responde SOLO en formato JSON:
 {
   "tipo_documento": "nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|otro",
-  "ingreso_mensual": número (ingreso mensual NETO promedio en pesos mexicanos. Reglas: nómina quincenal=suma las 2 quincenas de cada mes y promedia los meses; nómina mensual=promedia los meses; estado de cuenta=promedia los depósitos de ingresos de los 3 meses ignorando transferencias entre cuentas propias; declaración fiscal=divide ingreso total entre los meses que cubre),
-  "meses_analizados": número (cuántos meses cubre el documento),
-  "periodo": "descripción del periodo, ej: enero-marzo 2026",
+  "ingreso_mensual": número (ingreso mensual NETO promedio en pesos mexicanos. Reglas: nómina quincenal=suma las 2 quincenas de cada mes y promedia; nómina mensual=promedia los meses; estado de cuenta=promedia SOLO los depósitos de origen lícito y verificable de los 3 meses; declaración fiscal=divide ingreso total entre meses que cubre),
+  "meses_analizados": número,
+  "periodo": "ej: enero-marzo 2026",
   "empleador_o_actividad": "nombre del empleador o actividad económica",
+  "origen_ingresos": "descripcion breve del origen, ej: nómina empresa X, honorarios, ventas, etc.",
+  "alertas": ["lista de alertas si las hay, por ejemplo: 'Ingresos principalmente en efectivo', 'Depósitos sin concepto identificable', 'Ingresos irregulares o inconsistentes', 'Origen de recursos no verificable'"],
+  "ingresos_efectivo_pct": número entre 0 y 100 (porcentaje estimado de depósitos en efectivo vs transferencias/nómina),
+  "actividad_licita": true|false (true si los ingresos claramente provienen de actividad laboral o comercial formal, false si son principalmente efectivo sin concepto o depósitos no identificados),
   "confianza": "alta|media|baja"
 }
-Si el documento tiene menos de 3 meses de historial, igual calcula con lo disponible pero baja la confianza a "baja".
+IMPORTANTE: Para inmobiliaria, los ingresos en efectivo sin concepto claro NO son aceptables. Si detectas que más del 30% de los ingresos son depósitos en efectivo sin concepto identificable, marca actividad_licita como false y agrégalo a alertas.
 Si no puedes determinar el ingreso, pon null en ingreso_mensual.
 No incluyas texto fuera del JSON.`,
               },
@@ -129,18 +145,29 @@ No incluyas texto fuera del JSON.`,
   const ingresoEvaluar = ingresoDetectado || ingresoDeclado;
   const razonIngreso = ingresoEvaluar > 0 ? (ingresoEvaluar / renta).toFixed(2) : null;
 
+  const actividadLicita = analisisIA?.actividad_licita !== false; // default true si no hay IA
+  const alertas = analisisIA?.alertas || [];
+  const efectivoPct = analisisIA?.ingresos_efectivo_pct || 0;
+
   let resultado, color, icono, mensaje;
 
   if (!ingresoEvaluar || ingresoEvaluar === 0) {
     resultado = 'pendiente';
     color = '#92400e';
     icono = '⏳';
-    mensaje = 'No se pudo determinar el ingreso automáticamente. Tu abogada revisará el documento manualmente.';
+    mensaje = 'No se pudo determinar el ingreso automáticamente. Nuestro equipo lo revisará manualmente.';
+  } else if (!actividadLicita) {
+    resultado = 'no_viable';
+    color = '#991b1b';
+    icono = '❌';
+    mensaje = `No se puede verificar el origen lícito de los ingresos. ${alertas.join('. ')}.`;
   } else if (ingresoEvaluar >= ingresoRequerido) {
-    resultado = 'viable';
-    color = '#065f46';
-    icono = '✅';
-    mensaje = `Tus ingresos califican para esta renta. Relación ingreso/renta: ${razonIngreso}x (mínimo requerido: ${multiplicador}x).`;
+    resultado = alertas.length > 0 ? 'revisar' : 'viable';
+    color = alertas.length > 0 ? '#92400e' : '#065f46';
+    icono = alertas.length > 0 ? '⚠️' : '✅';
+    mensaje = alertas.length > 0
+      ? `Tus ingresos califican en monto (${razonIngreso}x), pero hay puntos a revisar: ${alertas.join('. ')}.`
+      : `Tus ingresos califican para esta renta. Relación ingreso/renta: ${razonIngreso}x (mínimo requerido: ${multiplicador}x).`;
   } else if (ingresoEvaluar >= ingresoRequerido * 0.85) {
     resultado = 'revisar';
     color = '#92400e';
