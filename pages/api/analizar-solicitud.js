@@ -59,7 +59,12 @@ Analiza este documento y responde SOLO en formato JSON:
   "alertas": [],
   "confianza": "alta|media|baja"
 }
-REGLAS: Si el nombre no coincide con "${nombre}" → nombre_coincide=false, actividad_licita=false. Si >30% efectivo sin concepto → actividad_licita=false. NO uses ingresos declarados, solo lo que ves. Si no puedes leer el monto → null.
+REGLAS CRÍTICAS:
+1. Si el nombre no coincide con "${nombre}" → nombre_coincide=false, actividad_licita=false, agrega alerta.
+2. Si >30% efectivo sin concepto → actividad_licita=false, agrega alerta.
+3. VIGENCIA: El documento debe ser de los últimos 4 meses (fecha actual: ${new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}). Si el documento tiene más de 4 meses de antigüedad → agrega alerta "Documento vencido — debe ser de los últimos 3 meses", marca confianza=baja y actividad_licita=false.
+4. NO uses ingresos declarados, solo lo que ves en el documento.
+5. Si no puedes leer el monto → null.
 No incluyas texto fuera del JSON.`;
 
   const analizarDocumento = async (url) => {
