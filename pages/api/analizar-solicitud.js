@@ -39,119 +39,110 @@ export default async function handler(req, res) {
   let tipoDocumento = null;
   let errorIA = null;
 
-  // ── Analizar documentos con Claude (hasta 3 archivos) ──
-  const docsB64 = [doc_comprobante_ingresos_b64, doc_comprobante_ingresos_b64_2, doc_comprobante_ingresos_b64_3].filter(Boolean);
+  // ── Analizar documentos con Claude — uno por uno para evitar límite de páginas ──
   const urlsIngresos = [file_ingresos, file_ingresos_2, file_ingresos_3].filter(Boolean);
-  const tieneArchivo = urlsIngresos.length > 0 || docsB64.length > 0;
+  const tieneArchivo = urlsIngresos.length > 0;
+
+  const promptAnalisis = (esIdentificacion = false) => `Eres un analista de crédito inmobiliario en México. El solicitante se llama: "${nombre}".
+
+Analiza este documento y responde SOLO en formato JSON:
+{
+  "nombre_en_documentos": "nombre completo tal como aparece en el documento",
+  "nombre_coincide": true|false (true si "${nombre}" coincide razonablemente con el nombre en el documento),
+  "tipo_documento": "nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|otro",
+  "ingreso_mensual": número (ingreso mensual NETO en pesos mexicanos. Para estado de cuenta: suma SOLO depósitos de origen identificable, NO retiros ni transferencias salientes. Para nómina: monto neto del período. Para declaración: ingreso total dividido entre meses),
+  "periodo": "ej: enero 2026",
+  "empleador_o_actividad": "nombre del empleador o actividad",
+  "origen_ingresos": "descripción del origen",
+  "ingresos_efectivo_pct": número 0-100,
+  "actividad_licita": true|false,
+  "alertas": [],
+  "confianza": "alta|media|baja"
+}
+REGLAS: Si el nombre no coincide con "${nombre}" → nombre_coincide=false, actividad_licita=false. Si >30% efectivo sin concepto → actividad_licita=false. NO uses ingresos declarados, solo lo que ves. Si no puedes leer el monto → null.
+No incluyas texto fuera del JSON.`;
+
+  const analizarDocumento = async (url) => {
+    const fileRes = await fetch(url);
+    if (!fileRes.ok) return null;
+    const contentType = fileRes.headers.get('content-type') || 'image/jpeg';
+    const buffer = await fileRes.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+    const mediaType = contentType.includes('pdf') ? 'application/pdf' :
+                      contentType.includes('png') ? 'image/png' : 'image/jpeg';
+
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 500,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            { type: 'text', text: promptAnalisis() },
+          ],
+        }],
+      }),
+    });
+
+    if (!claudeRes.ok) throw new Error('Error Claude API: ' + await claudeRes.text());
+    const data = await claudeRes.json();
+    const texto = data.content?.[0]?.text || '';
+    const jsonMatch = texto.match(/\{[\s\S]*\}/);
+    return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+  };
 
   if (tieneArchivo) {
     try {
-      const parseB64 = (b64str) => {
-        const match = b64str.match(/^data:([^;]+);base64,(.+)$/);
-        if (!match) return null;
-        let mediaType = match[1];
-        if (mediaType.includes('pdf')) mediaType = 'application/pdf';
-        else if (mediaType.includes('png')) mediaType = 'image/png';
-        else mediaType = 'image/jpeg';
-        return { base64: match[2], mediaType };
-      };
+      // Analizar cada documento por separado
+      const resultados = await Promise.all(urlsIngresos.map(url => analizarDocumento(url).catch(() => null)));
+      const validos = resultados.filter(Boolean);
 
-      let contentBlocks = [];
+      if (validos.length > 0) {
+        // Promediar ingresos de los documentos válidos
+        const ingresos = validos.map(r => r.ingreso_mensual).filter(v => v && v > 0);
+        const promedioIngreso = ingresos.length > 0 ? ingresos.reduce((a, b) => a + b, 0) / ingresos.length : null;
 
-      // Procesar URLs (nuevo flujo — hasta 3 archivos desde Storage)
-      const urlsToProcess = urlsIngresos.length > 0 ? urlsIngresos : [];
-      for (const url of urlsToProcess) {
-        const fileRes = await fetch(url);
-        if (!fileRes.ok) continue;
-        const contentType = fileRes.headers.get('content-type') || 'image/jpeg';
-        const buffer = await fileRes.arrayBuffer();
-        const base64 = Buffer.from(buffer).toString('base64');
-        const mediaType = contentType.includes('pdf') ? 'application/pdf' :
-                          contentType.includes('png') ? 'image/png' : 'image/jpeg';
-        contentBlocks.push({
-          type: mediaType === 'application/pdf' ? 'document' : 'image',
-          source: { type: 'base64', media_type: mediaType, data: base64 },
-        });
-      }
+        // Consolidar alertas y verificaciones
+        const todasAlertas = [...new Set(validos.flatMap(r => r.alertas || []))];
+        const nombresNoCoinciden = validos.some(r => r.nombre_coincide === false);
+        const actividadNoLicita = validos.some(r => r.actividad_licita === false);
 
-      // Procesar base64 (flujo legacy)
-      if (contentBlocks.length === 0 && docsB64.length > 0) {
-        for (const b64str of docsB64) {
-          const parsed = parseB64(b64str);
-          if (!parsed) continue;
-          contentBlocks.push({
-            type: parsed.mediaType === 'application/pdf' ? 'document' : 'image',
-            source: { type: 'base64', media_type: parsed.mediaType, data: parsed.base64 },
-          });
-        }
-      }
+        analisisIA = {
+          ...validos[0],
+          ingreso_mensual: promedioIngreso,
+          nombre_coincide: !nombresNoCoinciden,
+          actividad_licita: !actividadNoLicita,
+          alertas: todasAlertas,
+          meses_analizados: validos.length,
+          documentos_analizados: validos.length,
+          ingresos_por_mes: ingresos,
+        };
 
-      // Llamar a Claude API con todos los documentos
-      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-beta': 'pdfs-2024-09-25',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 600,
-          messages: [{
-            role: 'user',
-            content: [
-              ...contentBlocks,
-              {
-                type: 'text',
-                text: `Eres un analista de crédito inmobiliario en México. El solicitante se llama: "${nombre}".
-
-Analiza los documentos adjuntos (pueden ser hasta 3 archivos: identificación y/o comprobantes de ingresos) y responde SOLO en formato JSON:
-{
-  "nombre_en_documentos": "nombre completo tal como aparece en los documentos de ingresos",
-  "nombre_coincide": true|false (true si el nombre del solicitante "${nombre}" coincide razonablemente con el nombre en los documentos de ingresos — acepta variaciones menores de mayúsculas o acentos, false si son personas claramente diferentes),
-  "tipo_documento": "nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|otro",
-  "ingreso_mensual": número (ingreso mensual NETO promedio en pesos mexicanos. Reglas: nómina quincenal=suma las 2 quincenas de cada mes y promedia; nómina mensual=promedia los meses; estado de cuenta=promedia SOLO los depósitos de origen lícito y verificable de los 3 meses, NO cuentes retiros ni transferencias salientes; declaración fiscal=divide ingreso total entre meses que cubre),
-  "meses_analizados": número,
-  "periodo": "ej: enero-marzo 2026",
-  "empleador_o_actividad": "nombre del empleador o actividad económica",
-  "origen_ingresos": "descripción breve del origen, ej: nómina empresa X, honorarios, ventas, etc.",
-  "alertas": ["lista de alertas, por ejemplo: 'Nombre en documentos no coincide con solicitante', 'Ingresos principalmente en efectivo', 'Depósitos sin concepto identificable', 'Ingresos irregulares o inconsistentes', 'Origen de recursos no verificable'"],
-  "ingresos_efectivo_pct": número entre 0 y 100,
-  "actividad_licita": true|false (true si los ingresos provienen de actividad laboral o comercial formal verificable, false si son principalmente efectivo sin concepto o el nombre no coincide),
-  "confianza": "alta|media|baja"
-}
-REGLAS CRÍTICAS:
-1. Si el nombre en los documentos NO coincide con "${nombre}", marca nombre_coincide=false, actividad_licita=false y agrega alerta "Nombre en documentos no coincide con el solicitante".
-2. Si más del 30% de los depósitos son en efectivo sin concepto, marca actividad_licita=false.
-3. NUNCA uses el ingreso declarado por el solicitante — extráelo SOLO de los documentos.
-4. Si no puedes leer el monto, pon null en ingreso_mensual.
-No incluyas texto fuera del JSON.`,
-              },
-            ],
-          }],
-        }),
-      });
-
-      if (!claudeRes.ok) {
-        const err = await claudeRes.text();
-        throw new Error('Error Claude API: ' + err);
-      }
-
-      const claudeData = await claudeRes.json();
-      const texto = claudeData.content?.[0]?.text || '';
-
-      // Parsear JSON de la respuesta
-      const jsonMatch = texto.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        ingresoDetectado = parsed.ingreso_mensual;
-        tipoDocumento = parsed.tipo_documento;
-        analisisIA = parsed;
+        ingresoDetectado = promedioIngreso;
+        tipoDocumento = validos[0].tipo_documento;
       }
     } catch (e) {
       errorIA = e.message;
       console.error('Error análisis IA:', e.message);
+      // Si el error es por límite de páginas, marcar para revisión manual
+      if (e.message.includes('100 PDF pages') || e.message.includes('too large') || e.message.includes('page')) {
+        analisisIA = {
+          nombre_coincide: null,
+          actividad_licita: null,
+          ingreso_mensual: null,
+          alertas: ['Documentos demasiado extensos para análisis automático — revisión manual requerida'],
+          confianza: 'baja',
+          revision_manual: true,
+        };
+      }
     }
   }
 
@@ -167,7 +158,12 @@ No incluyas texto fuera del JSON.`,
 
   let resultado, color, icono, mensaje;
 
-  if (!ingresoEvaluar || ingresoEvaluar === 0) {
+  if (analisisIA?.revision_manual) {
+    resultado = 'pendiente';
+    color = '#92400e';
+    icono = '⏳';
+    mensaje = 'Los documentos requieren revisión manual por nuestro equipo jurídico. Te contactaremos en breve.';
+  } else if (!ingresoEvaluar || ingresoEvaluar === 0) {
     resultado = 'pendiente';
     color = '#92400e';
     icono = '⏳';
