@@ -89,6 +89,18 @@ export default function PolizaPanel() {
   const propietariosFiltrados = propietarios.filter(p => !p.tipo_operacion || p.tipo_operacion === 'renta')
   const vendedoresFiltrados = propietarios.filter(p => p.tipo_operacion === 'venta')
 
+  const hoy = new Date()
+  const stats = {
+    activas:    expedientes.filter(e => e.status === 'activo').length,
+    vencidas:   expedientes.filter(e => e.status === 'vencido').length,
+    porVencer:  expedientes.filter(e => {
+      if (e.status !== 'activo' || !e.fecha_vigencia) return false
+      const dias = Math.ceil((new Date(e.fecha_vigencia + 'T12:00:00') - hoy) / (1000 * 60 * 60 * 24))
+      return dias <= 60 && dias >= 0
+    }).length,
+    sinDictamen: solicitudes.filter(s => s.status === 'pendiente').length,
+  }
+
   const tabs = [
     { id: 'expedientes', label: `Expedientes (${expedientes.length})` },
     { id: 'propietarios', label: `Propietarios (${propietariosFiltrados.length})` },
@@ -128,6 +140,25 @@ export default function PolizaPanel() {
           </button>
         </div>
       </header>
+
+      {/* ── DASHBOARD DE RESUMEN ── */}
+      {!loading && (
+        <div style={{ background: '#b91c3c', padding: '12px 24px' }}>
+          <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {[
+              { label: 'Pólizas activas',       value: stats.activas,     bg: 'rgba(255,255,255,0.15)', color: '#fff' },
+              { label: 'Por vencer (60 días)',   value: stats.porVencer,   bg: stats.porVencer > 0 ? '#fef3c7' : 'rgba(255,255,255,0.15)', color: stats.porVencer > 0 ? '#92400e' : '#fff' },
+              { label: 'Vencidas',               value: stats.vencidas,    bg: stats.vencidas > 0 ? '#fee2e2' : 'rgba(255,255,255,0.15)', color: stats.vencidas > 0 ? '#991b1b' : '#fff' },
+              { label: 'Solicitudes pendientes', value: stats.sinDictamen, bg: stats.sinDictamen > 0 ? '#fef3c7' : 'rgba(255,255,255,0.15)', color: stats.sinDictamen > 0 ? '#92400e' : '#fff' },
+            ].map((s, i) => (
+              <div key={i} style={{ background: s.bg, borderRadius: 10, padding: '10px 20px', textAlign: 'center', minWidth: 140 }}>
+                <div style={{ fontSize: 9, color: s.color === '#fff' ? 'rgba(255,255,255,0.7)' : '#6b7280', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 }}>{s.label}</div>
+                <div style={{ fontSize: 24, fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <main style={st.main}>
         {loading ? (
