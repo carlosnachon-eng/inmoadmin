@@ -324,9 +324,8 @@ export default function NuevoRecibo() {
         }),
       });
 
-      // Trigger módulo de firmas (solo compraventa)
-      if (tipo === "compraventa") {
-        fetch("/api/recibos/trigger-firmas", {
+      // Trigger módulo de firmas (compraventa y arrendamiento)
+      fetch("/api/recibos/trigger-firmas", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -342,7 +341,6 @@ export default function NuevoRecibo() {
             creado_por_nombre: profile?.email,
           }),
         }).catch(e => console.error("Trigger firmas:", e));
-      }
 
       // Descargar PDF
       doc.save(`${folio}.pdf`);
@@ -539,3 +537,4 @@ export default function NuevoRecibo() {
     </div>
   );
 }
+
