@@ -68,26 +68,28 @@ Analiza este documento y responde SOLO en formato JSON:
   "nombre_en_documentos": "nombre completo tal como aparece en el documento",
   "nombre_coincide": true|false (compara "${nombre}" con el nombre en el documento — acepta variaciones de acentos/mayúsculas),
   "tipo_documento": "ine|nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|constancia_fiscal|carta_laboral|otro",
-  "ingreso_mensual": número o null (SOLO para comprobantes de ingresos. REGLAS ESTRICTAS: 1) Suma ÚNICAMENTE depósitos/abonos entrantes de origen laboral o comercial identificable. 2) EXCLUYE: saldo, retiros, cargos, transferencias salientes, préstamos entre empresas relacionadas. 3) Nómina: usa el monto neto. 4) Declaración fiscal: ingreso total ÷ meses. 5) Para INE o carta laboral: null),
+  "ingreso_mensual_total": número o null (suma TODOS los abonos/depósitos del mes, sin importar el concepto. Para nómina: monto neto. Para declaración fiscal: ingreso total ÷ meses. Para INE/carta laboral: null),
+  "ingreso_mensual_verificable": número o null (solo los depósitos con concepto claro y origen laboral/comercial identificable — excluye efectivo sin concepto y préstamos internos),
   "periodo": "ej: marzo 2026 o enero-marzo 2026",
   "empleador_o_actividad": "nombre del empleador o giro comercial",
-  "origen_ingresos": "descripción clara del origen: nómina, honorarios, ventas, etc.",
-  "tiene_elementos_autenticidad": true|false (¿el documento tiene QR, código de barras, cadena digital, folio de verificación o sello oficial del banco/SAT/emisor?),
+  "origen_ingresos": "descripción detallada de los depósitos: de dónde vienen, qué conceptos tienen",
+  "tiene_elementos_autenticidad": true|false (¿tiene QR, cadena digital, folio o sello oficial?),
   "elementos_autenticidad_detalle": "descripción de los elementos encontrados o ausentes",
-  "ingresos_efectivo_pct": número 0-100 (% de depósitos en efectivo sin concepto claro),
-  "actividad_licita": true|false,
-  "alertas": ["lista de alertas específicas"],
+  "ingresos_efectivo_pct": número 0-100 (% de depósitos en efectivo sin concepto),
+  "prestamos_internos_pct": número 0-100 (% de depósitos etiquetados como préstamos de empresa relacionada),
+  "actividad_licita": true|false (false solo si >50% son efectivo sin concepto O el nombre no coincide),
+  "alertas": ["observaciones importantes para el analista — sé específico y describe montos y conceptos encontrados"],
+  "resumen_analista": "párrafo breve con todo lo relevante que el analista debe saber sobre estos documentos",
   "confianza": "alta|media|baja"
 }
 
-REGLAS CRÍTICAS:
-1. NOMBRE: Si no coincide con "${nombre}" → nombre_coincide=false, alerta "Nombre en documento no coincide con el solicitante: aparece como [nombre encontrado]".
-2. EFECTIVO: Si >30% depósitos en efectivo sin concepto → actividad_licita=false, alerta específica.
-3. VIGENCIA: Si el documento tiene más de 4 meses de antigüedad → alerta "Documento vencido", confianza=baja, actividad_licita=false.
-4. AUTENTICIDAD: Si no tiene QR, cadena digital ni folio verificable → alerta "Documento sin elementos de autenticidad verificables (sin QR ni cadena digital)".
-5. PRÉSTAMOS INTERNOS: Si los depósitos principales vienen etiquetados como 'préstamo' de empresa relacionada → no los cuentes como ingreso, agrega alerta.
-6. SOLO INGRESOS: Nunca uses el saldo promedio ni los egresos para evaluar. Solo importan los depósitos entrantes de fuente laboral/comercial.
-7. NO uses datos declarados por el solicitante, solo lo que ves.
+REGLAS:
+1. SIEMPRE calcula ingreso_mensual_total aunque los depósitos sean de origen cuestionable — el analista necesita saber el monto total.
+2. NOMBRE: Si no coincide → nombre_coincide=false, agrega alerta específica.
+3. VIGENCIA: Si tiene más de 4 meses de antigüedad → alerta "Documento vencido".
+4. AUTENTICIDAD: Si no tiene QR ni cadena digital → alerta específica.
+5. ALERTAS: Sé descriptivo — menciona montos, conceptos, patrones encontrados. El analista no verá el documento.
+6. NO uses el saldo promedio para calcular ingreso.
 No incluyas texto fuera del JSON.`;
 
   const analizarDocumento = async (input) => {
@@ -149,9 +151,12 @@ No incluyas texto fuera del JSON.`;
         const docINE = validos.find(r => r.tipo_documento === 'ine');
         const docsIngresos = validos.filter(r => r.tipo_documento !== 'ine');
 
-        // Promediar ingresos solo de comprobantes (no INE)
-        const ingresos = docsIngresos.map(r => r.ingreso_mensual).filter(v => v && v > 0);
-        const promedioIngreso = ingresos.length > 0 ? ingresos.reduce((a, b) => a + b, 0) / ingresos.length : null;
+        // Promediar ingresos — usar verificable para pre-viabilidad, total para info
+        const ingresosVerificables = docsIngresos.map(r => r.ingreso_mensual_verificable || r.ingreso_mensual).filter(v => v && v > 0);
+        const ingresosTotales = docsIngresos.map(r => r.ingreso_mensual_total || r.ingreso_mensual).filter(v => v && v > 0);
+        const promedioIngreso = ingresosVerificables.length > 0 ? ingresosVerificables.reduce((a, b) => a + b, 0) / ingresosVerificables.length : null;
+        const promedioTotal = ingresosTotales.length > 0 ? ingresosTotales.reduce((a, b) => a + b, 0) / ingresosTotales.length : null;
+        const ingresos = ingresosVerificables;
 
         // Verificar que el nombre de la INE coincida con los estados de cuenta
         let alertaCruceNombre = null;
@@ -182,9 +187,12 @@ No incluyas texto fuera del JSON.`;
         const nombresNoCoinciden = validos.some(r => r.nombre_coincide === false) || !!alertaCruceNombre;
         const actividadNoLicita = validos.some(r => r.actividad_licita === false);
 
+        const resumenAnalista = docsIngresos.map(r => r.resumen_analista).filter(Boolean).join(' | ');
+
         analisisIA = {
           ...validos[0],
           ingreso_mensual: promedioIngreso,
+          ingreso_mensual_total: promedioTotal,
           nombre_coincide: !nombresNoCoinciden,
           actividad_licita: !actividadNoLicita,
           alertas: todasAlertas,
@@ -193,6 +201,7 @@ No incluyas texto fuera del JSON.`;
           ingresos_por_mes: ingresos,
           tiene_ine: !!docINE,
           nombre_en_ine: docINE?.nombre_en_documentos,
+          resumen_analista: resumenAnalista,
         };
 
         ingresoDetectado = promedioIngreso;
@@ -279,7 +288,9 @@ No incluyas texto fuera del JSON.`;
       color = '#92400e';
       icono = '⏳';
       mensaje = 'No se pudo determinar el ingreso automáticamente. Nuestro equipo lo revisará manualmente.';
-      mensajeInterno = analisisIA ? `Análisis IA corrió pero no detectó ingreso verificable. Tipo doc: ${analisisIA.tipo_documento || '—'}` : null;
+      mensajeInterno = analisisIA
+        ? `Ingreso total detectado: $${analisisIA.ingreso_mensual_total ? Number(analisisIA.ingreso_mensual_total).toLocaleString('es-MX') : '—'}/mes. Ingreso verificable: $${analisisIA.ingreso_mensual ? Number(analisisIA.ingreso_mensual).toLocaleString('es-MX') : '—'}/mes. ${analisisIA.resumen_analista || ''}`
+        : null;
     }
   } else if (!nombreCoincide) {
     resultado = 'revisar';
