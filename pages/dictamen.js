@@ -685,6 +685,44 @@ export default function Dictamen() {
             <Campo label="Telefono del inquilino"><input value={form.telefono_inquilino} onChange={e => set("telefono_inquilino", e.target.value)} placeholder="222 123 4567" style={inp} /></Campo>
             <Campo label="Correo electronico"><input value={form.correo_inquilino} onChange={e => set("correo_inquilino", e.target.value)} placeholder="inquilino@correo.com" style={inp} /></Campo>
           </div>
+          {/* Subida de documentos si no vienen de la solicitud */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 4 }}>
+            <Campo label={form.doc_identificacion_b64 ? "✓ Identificación subida por el cliente" : "Subir identificación oficial (si no la subió el cliente)"}>
+              {!form.doc_identificacion_b64 ? (
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={async e => {
+                    const file = e.target.files[0]; if (!file) return;
+                    const ext = file.name.split(".").pop();
+                    const path = `identificaciones/${solicitudId || "sin-id"}-${Date.now()}.${ext}`;
+                    const { error } = await supabase.storage.from("poliza-docs").upload(path, file, { upsert: true });
+                    if (!error) { set("doc_identificacion_b64", path); alert("✅ Identificación subida"); }
+                    else alert("Error: " + error.message);
+                  }}
+                  style={{ ...inp, padding: "8px 12px", cursor: "pointer" }}
+                />
+              ) : (
+                <p style={{ margin: 0, fontSize: 12, color: "#065f46", fontWeight: 600, padding: "10px 0" }}>✓ Documento disponible</p>
+              )}
+            </Campo>
+            <Campo label={form.doc_comprobante_ingresos_b64 ? "✓ Comprobante subido por el cliente" : "Subir comprobante de ingresos (si no lo subió el cliente)"}>
+              {!form.doc_comprobante_ingresos_b64 ? (
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={async e => {
+                    const file = e.target.files[0]; if (!file) return;
+                    const ext = file.name.split(".").pop();
+                    const path = `comprobantes/${solicitudId || "sin-id"}-${Date.now()}.${ext}`;
+                    const { error } = await supabase.storage.from("poliza-docs").upload(path, file, { upsert: true });
+                    if (!error) { set("doc_comprobante_ingresos_b64", path); alert("✅ Comprobante subido"); }
+                    else alert("Error: " + error.message);
+                  }}
+                  style={{ ...inp, padding: "8px 12px", cursor: "pointer" }}
+                />
+              ) : (
+                <p style={{ margin: 0, fontSize: 12, color: "#065f46", fontWeight: 600, padding: "10px 0" }}>✓ Documento disponible</p>
+              )}
+            </Campo>
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
             <Campo label="Domicilio anterior"><input value={form.domicilio_anterior} onChange={e => set("domicilio_anterior", e.target.value)} placeholder="Calle, numero, colonia, ciudad" style={inp} /></Campo>
             <Campo label="Tiempo vivido ahi"><input value={form.tiempo_domicilio_anterior} onChange={e => set("tiempo_domicilio_anterior", e.target.value)} placeholder="Ej. 2 anos" style={inp} /></Campo>
@@ -787,30 +825,6 @@ export default function Dictamen() {
               <textarea value={form.observaciones_legales} onChange={e => set("observaciones_legales", e.target.value)} placeholder="Describe los antecedentes..." style={txta} />
             </Campo>
           )}
-
-          <Campo label="Subir reporte Buro Mexico (PDF o imagen)">
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png"
-              onChange={async e => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const ext = file.name.split(".").pop();
-                const path = `buro/${solicitudId || "sin-id"}-${Date.now()}.${ext}`;
-                const { error } = await supabase.storage.from("poliza-docs").upload(path, file, { upsert: true });
-                if (!error) {
-                  set("doc_buro_mexico", path);
-                  alert("✅ Documento de Buró subido correctamente");
-                } else {
-                  alert("Error al subir: " + error.message);
-                }
-              }}
-              style={{ ...inp, padding: "8px 12px", cursor: "pointer" }}
-            />
-            {form.doc_buro_mexico && (
-              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#065f46", fontWeight: 600 }}>
-                ✓ Documento subido: {form.doc_buro_mexico.split("/").pop()}
-              </p>
-            )}
-          </Campo>
 
           <SecTitle>VI. Conclusion y Observaciones</SecTitle>
           <Campo label="Conclusion y recomendacion">
