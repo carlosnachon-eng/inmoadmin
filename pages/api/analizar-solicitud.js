@@ -258,7 +258,6 @@ No incluyas texto fuera del JSON.`,
     pre_viabilidad_detalle: mensaje,
     pre_viabilidad_detalle_interno: mensajeInterno,
     ingreso_detectado_ia: ingresoDetectado,
-    ingreso_total_ia: analisisIA?.ingreso_mensual_total || null,
     curp_validada: validacionCurp?.valido ?? null,
     curp_nombre_renapo: validacionCurp?.nombre_en_renapo || null,
   }).eq('id', solicitud_id);
