@@ -38,7 +38,7 @@ export default async function handler(req, res) {
   );
   const multiplicador = esNegocioPropio ? 3 : 2.5;
   const ingresoRequerido = renta * multiplicador;
-  const ingresoDeclado = 0;
+  const ingresoDeclado = parseFloat(sol.ingresos_mensuales || sol.ingresos_empresa || 0);
 
   let analisisIA = null;
   let ingresoDetectado = null;
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
   const docsB64 = [doc_comprobante_ingresos_b64, doc_comprobante_ingresos_b64_2_param, doc_comprobante_ingresos_b64_3_param].filter(Boolean);
   const tieneArchivo = docsB64.length > 0;
 
-  // Truncar PDFs grandes a ~800KB de base64
+  // Truncar PDFs a ~800KB para no exceder límite de Claude
   const MAX_B64 = 800 * 1024;
   const truncarB64 = (input) => {
     const match = input.match(/^data:([^;]+);base64,(.+)$/s);
@@ -59,82 +59,60 @@ export default async function handler(req, res) {
     return `data:${match[1]};base64,${truncado}`;
   };
 
-  const promptAnalisisDoc = () => {
-    const contextoNegocio = esNegocioPropio
-      ? `CONTEXTO IMPORTANTE: El solicitante declaró tipo de ingresos "${tipo_ingresos}". Es dueño o socio de su propio negocio.
-- Los depósitos etiquetados como "Prestamo", "Prest" o similares provenientes de su propia empresa SON ingresos legítimos (retiros del dueño).
-- Inclúyelos en ingreso_mensual_total e ingreso_mensual_verificable si el nombre de la empresa es consistente.
-- NO penalices este patrón — es la operación normal de un empresario que se paga desde su propia empresa.
-- Solo marca actividad_licita=false si hay efectivo sin concepto >50% o el nombre no coincide.`
-      : `CONTEXTO: El solicitante es empleado. Los préstamos de empresas relacionadas NO cuentan como ingreso verificable.`;
-
-    return `Eres un analista de crédito inmobiliario en México. El solicitante se llama: "${nombre}".
-Fecha actual: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}.
-
-${contextoNegocio}
-
-Analiza este documento y responde SOLO en formato JSON:
-{
-  "nombre_en_documentos": "nombre completo tal como aparece en el documento",
-  "nombre_coincide": true|false (compara "${nombre}" con el nombre en el documento — acepta variaciones de acentos/mayúsculas),
-  "tipo_documento": "ine|nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|constancia_fiscal|carta_laboral|otro",
-  "ingreso_mensual_total": número o null (suma TODOS los abonos del periodo. Para estado de cuenta: usa el campo ABONOS del resumen de saldos),
-  "ingreso_mensual_verificable": número o null (para empresario/negocio propio: igual que ingreso_mensual_total. Para empleado: solo origen laboral claro),
-  "periodo": "ej: marzo 2026",
-  "empleador_o_actividad": "nombre del empleador o empresa propia",
-  "origen_ingresos": "descripción detallada de los depósitos",
-  "tiene_elementos_autenticidad": true|false,
-  "elementos_autenticidad_detalle": "descripción",
-  "ingresos_efectivo_pct": número 0-100,
-  "prestamos_internos_pct": número 0-100 (para empresario con empresa propia: 0),
-  "actividad_licita": true|false,
-  "alertas": ["observaciones con montos y conceptos"],
-  "resumen_analista": "párrafo breve",
-  "confianza": "alta|media|baja"
-}
-
-REGLAS:
-1. SIEMPRE calcula ingreso_mensual_total — para estado de cuenta usa el campo ABONOS del resumen.
-2. NOMBRE: Si no coincide → nombre_coincide=false.
-3. VIGENCIA: Si tiene más de 4 meses → alerta "Documento vencido".
-4. NO uses el saldo promedio para calcular ingreso.
-5. No incluyas texto fuera del JSON.`;
-  };
-
   const analizarDocumento = async (input) => {
     const match = input.match(/^data:([^;]+);base64,(.+)$/s);
     if (!match) return null;
 
-    const mediaType = match[1].includes('pdf') ? 'application/pdf' : match[1].includes('png') ? 'image/png' : 'image/jpeg';
+    let mediaType = match[1];
+    if (mediaType.includes('pdf')) mediaType = 'application/pdf';
+    else if (mediaType.includes('png')) mediaType = 'image/png';
+    else mediaType = 'image/jpeg';
 
-    // Truncar PDFs grandes antes de mandar a Claude
-    const inputFinal = (mediaType === 'application/pdf') ? truncarB64(input) : input;
+    const inputFinal = mediaType === 'application/pdf' ? truncarB64(input) : input;
     const matchFinal = inputFinal.match(/^data:([^;]+);base64,(.+)$/s);
     if (!matchFinal) return null;
 
-    const headers = {
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    };
-    if (mediaType === 'application/pdf') {
-      headers['anthropic-beta'] = 'pdfs-2024-09-25';
-    }
+    const contextoNegocio = esNegocioPropio
+      ? `El solicitante es dueño de negocio. Los depósitos de su propia empresa cuentan como ingreso legítimo.`
+      : `El solicitante es empleado.`;
 
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers,
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25',
+        'content-type': 'application/json',
+      },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 800,
         messages: [{
           role: 'user',
           content: [
             {
               type: mediaType === 'application/pdf' ? 'document' : 'image',
-              source: { type: 'base64', media_type: mediaType, data: matchFinal[2] }
+              source: { type: 'base64', media_type: mediaType, data: matchFinal[2] },
             },
-            { type: 'text', text: promptAnalisisDoc() },
+            {
+              type: 'text',
+              text: `Analiza este documento de ingresos. ${contextoNegocio}
+El solicitante se llama: "${nombre}".
+
+Responde SOLO en formato JSON:
+{
+  "tipo_documento": "nomina|estado_cuenta|declaracion_fiscal|ine|otro",
+  "nombre_en_documentos": "nombre tal como aparece",
+  "nombre_coincide": true|false,
+  "ingreso_mensual": número o null (ingreso mensual neto. Para estado de cuenta: suma total de ABONOS del periodo. Para nómina: monto neto. Para declaración fiscal: total anual ÷ 12. Para INE: null),
+  "periodo": "ej: marzo 2026",
+  "empleador_o_actividad": "nombre del empleador o empresa",
+  "tiene_elementos_autenticidad": true|false,
+  "alertas": [],
+  "confianza": "alta|media|baja"
+}
+No incluyas texto fuera del JSON.`,
+            },
           ],
         }],
       }),
@@ -150,7 +128,7 @@ REGLAS:
   if (tieneArchivo) {
     try {
       const resultados = await Promise.all(docsB64.map(input => analizarDocumento(input).catch(e => {
-        console.error('Error analizando doc:', e.message);
+        console.error('Error doc:', e.message);
         return null;
       })));
       const validos = resultados.filter(Boolean);
@@ -159,10 +137,8 @@ REGLAS:
         const docINE = validos.find(r => r.tipo_documento === 'ine');
         const docsIngresos = validos.filter(r => r.tipo_documento !== 'ine');
 
-        const ingresosVerificables = docsIngresos.map(r => r.ingreso_mensual_verificable || r.ingreso_mensual).filter(v => v && v > 0);
-        const ingresosTotales = docsIngresos.map(r => r.ingreso_mensual_total || r.ingreso_mensual).filter(v => v && v > 0);
-        const promedioIngreso = ingresosVerificables.length > 0 ? ingresosVerificables.reduce((a, b) => a + b, 0) / ingresosVerificables.length : null;
-        const promedioTotal = ingresosTotales.length > 0 ? ingresosTotales.reduce((a, b) => a + b, 0) / ingresosTotales.length : null;
+        const ingresos = docsIngresos.map(r => r.ingreso_mensual).filter(v => v && v > 0);
+        const promedioIngreso = ingresos.length > 0 ? ingresos.reduce((a, b) => a + b, 0) / ingresos.length : null;
 
         let alertaCruceNombre = null;
         if (docINE && docsIngresos.length > 0) {
@@ -178,32 +154,25 @@ REGLAS:
           }
         }
 
-        const sinAutenticidad = validos.filter(r => r.tiene_elementos_autenticidad === false);
-        const alertasAutenticidad = sinAutenticidad.map(r => r.elementos_autenticidad_detalle || 'Documento sin elementos de autenticidad verificables');
-
         const todasAlertas = [
           ...new Set(validos.flatMap(r => r.alertas || [])),
-          ...alertasAutenticidad,
           ...(alertaCruceNombre ? [alertaCruceNombre] : []),
         ].filter(Boolean);
 
         const nombresNoCoinciden = validos.some(r => r.nombre_coincide === false) || !!alertaCruceNombre;
         const actividadNoLicita = validos.some(r => r.actividad_licita === false);
-        const resumenAnalista = docsIngresos.map(r => r.resumen_analista).filter(Boolean).join(' | ');
 
         analisisIA = {
           ...validos[0],
           ingreso_mensual: promedioIngreso,
-          ingreso_mensual_total: promedioTotal,
           nombre_coincide: !nombresNoCoinciden,
           actividad_licita: !actividadNoLicita,
           alertas: todasAlertas,
           meses_analizados: docsIngresos.length,
           documentos_analizados: validos.length,
-          ingresos_por_mes: ingresosVerificables,
+          ingresos_por_mes: ingresos,
           tiene_ine: !!docINE,
           nombre_en_ine: docINE?.nombre_en_documentos,
-          resumen_analista: resumenAnalista,
         };
 
         ingresoDetectado = promedioIngreso;
@@ -212,16 +181,6 @@ REGLAS:
     } catch (e) {
       errorIA = e.message;
       console.error('Error análisis IA:', e.message);
-      if (e.message.includes('100 PDF pages') || e.message.includes('too large') || e.message.includes('page')) {
-        analisisIA = {
-          nombre_coincide: null,
-          actividad_licita: null,
-          ingreso_mensual: null,
-          alertas: ['Documentos demasiado extensos para análisis automático — revisión manual requerida'],
-          confianza: 'baja',
-          revision_manual: true,
-        };
-      }
     }
   }
 
@@ -261,21 +220,12 @@ REGLAS:
 
   let resultado, color, icono, mensaje, mensajeInterno = null;
 
-  if (analisisIA?.revision_manual) {
+  if (!ingresoEvaluar || ingresoEvaluar === 0) {
     resultado = 'pendiente'; color = '#92400e'; icono = '⏳';
-    mensaje = 'Los documentos requieren revisión manual por nuestro equipo jurídico. Te contactaremos en breve.';
-  } else if (!ingresoEvaluar || ingresoEvaluar === 0) {
-    if (alertas.length > 0 || !actividadLicita || !nombreCoincide) {
-      resultado = 'revisar'; color = '#92400e'; icono = '⚠️';
-      mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico revisará tus documentos y te contactará en breve.';
-      mensajeInterno = `No se pudo calcular el ingreso, pero se detectaron observaciones: ${alertas.join('. ')}`;
-    } else {
-      resultado = 'pendiente'; color = '#92400e'; icono = '⏳';
-      mensaje = 'No se pudo determinar el ingreso automáticamente. Nuestro equipo lo revisará manualmente.';
-      mensajeInterno = analisisIA
-        ? `Ingreso total detectado: $${analisisIA.ingreso_mensual_total ? Number(analisisIA.ingreso_mensual_total).toLocaleString('es-MX') : '—'}/mes. Ingreso verificable: $${analisisIA.ingreso_mensual ? Number(analisisIA.ingreso_mensual).toLocaleString('es-MX') : '—'}/mes. ${analisisIA.resumen_analista || ''}`
-        : null;
-    }
+    mensaje = 'No se pudo determinar el ingreso automáticamente. Nuestro equipo lo revisará manualmente.';
+    mensajeInterno = analisisIA
+      ? `Ingreso detectado: $${analisisIA.ingreso_mensual ? Number(analisisIA.ingreso_mensual).toLocaleString('es-MX') : '—'}/mes. ${analisisIA.alertas?.join('. ') || ''}`
+      : null;
   } else if (!nombreCoincide) {
     resultado = 'revisar'; color = '#92400e'; icono = '⚠️';
     mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico revisará tus documentos y te contactará en breve.';
@@ -290,7 +240,7 @@ REGLAS:
     icono = alertas.length > 0 ? '⚠️' : '✅';
     mensaje = alertas.length > 0
       ? 'Tus documentos han sido recibidos. Nuestro equipo los revisará y te contactará en breve.'
-      : '¡Buenas noticias! Tus ingresos califican preliminarmente para esta renta. Nuestro equipo confirmará los detalles contigo.';
+      : '¡Buenas noticias! Tus ingresos califican preliminarmente para esta renta.';
     mensajeInterno = alertas.length > 0 ? `Ingresos suficientes pero con alertas: ${alertas.join('. ')}` : null;
   } else if (ingresoEvaluar >= ingresoRequerido * 0.85) {
     resultado = 'revisar'; color = '#92400e'; icono = '⚠️';
