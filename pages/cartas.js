@@ -82,7 +82,7 @@ export default function CartasOferta() {
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: 48, color: "#9ca3af" }}>No hay cartas registradas.</div>
         ) : (
-          {isMobile ? (
+          <>{isMobile ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {filtered.map(c => {
                 const est = ESTATUS[c.estatus] || ESTATUS.oferta;
@@ -149,7 +149,7 @@ export default function CartasOferta() {
               </tbody>
             </table>
           </div>
-          )}
+          )}</>
         )}
       </div>
     </div>
