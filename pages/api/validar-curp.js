@@ -37,8 +37,10 @@ export default async function handler(req, res) {
       });
     }
 
-    const validacion = data.validations?.[0];
-    const match = data.match_type; // full_match, partial_match, no_match
+    // La respuesta viene dentro de data.database_validation
+    const dbVal = data.database_validation || data;
+    const validacion = dbVal.validations?.[0];
+    const match = dbVal.match_type;
     const sourceData = validacion?.source_data || {};
 
     // Interpretar resultado
