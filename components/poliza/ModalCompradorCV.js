@@ -39,9 +39,8 @@ export default function ModalCompradorCV({ comprador: comp, onClose, onSaved }) 
 
   const c = detalle || comp
 
-  const tieneDocs =
-    c.doc_identificacion_b64 || c.doc_identificacion ||
-    c.doc_comprobante_ingresos_b64 || c.doc_comprobante_ingresos
+  const docIdent = c.doc_identificacion_b64 || c.doc_identificacion
+  const tieneDocs = !!docIdent
 
   return (
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -67,20 +66,11 @@ export default function ModalCompradorCV({ comprador: comp, onClose, onSaved }) 
           <p style={{ fontSize: 12, color: C.muted }}>Cargando documentos...</p>
         ) : tieneDocs ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {(c.doc_identificacion_b64 || c.doc_identificacion) && (
-              <DocChip
-                label="Identificación"
-                data={c.doc_identificacion_b64?.startsWith('data:') ? c.doc_identificacion_b64 : null}
-                path={!c.doc_identificacion_b64?.startsWith('data:') ? (c.doc_identificacion_b64 || c.doc_identificacion) : null}
-              />
-            )}
-            {(c.doc_comprobante_ingresos_b64 || c.doc_comprobante_ingresos) && (
-              <DocChip
-                label="Comprobante de ingresos"
-                data={c.doc_comprobante_ingresos_b64?.startsWith('data:') ? c.doc_comprobante_ingresos_b64 : null}
-                path={!c.doc_comprobante_ingresos_b64?.startsWith('data:') ? (c.doc_comprobante_ingresos_b64 || c.doc_comprobante_ingresos) : null}
-              />
-            )}
+            <DocChip
+              label="Identificación"
+              data={docIdent?.startsWith('data:') ? docIdent : null}
+              path={!docIdent?.startsWith('data:') ? docIdent : null}
+            />
           </div>
         ) : (
           <p style={{ fontSize: 12, color: C.faint }}>Sin documentos adjuntos</p>
