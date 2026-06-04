@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import pdfParse from 'pdf-parse';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -9,20 +8,6 @@ const supabase = createClient(
 export const config = {
   api: { bodyParser: { sizeLimit: '10mb' } },
   maxDuration: 60,
-};
-
-// Extraer texto de PDF base64
-const extraerTextoPDF = async (b64) => {
-  try {
-    const match = b64.match(/^data:([^;]+);base64,(.+)$/);
-    if (!match) return null;
-    const buffer = Buffer.from(match[2], 'base64');
-    const data = await pdfParse(buffer);
-    return data.text || null;
-  } catch (e) {
-    console.error('Error extrayendo texto PDF:', e.message);
-    return null;
-  }
 };
 
 export default async function handler(req, res) {
@@ -63,10 +48,18 @@ export default async function handler(req, res) {
   const docsB64 = [doc_comprobante_ingresos_b64, doc_comprobante_ingresos_b64_2_param, doc_comprobante_ingresos_b64_3_param].filter(Boolean);
   const tieneArchivo = docsB64.length > 0;
 
-  // Límite: si base64 pesa más de 500KB, usar extracción de texto
-  const LIMITE_B64 = 500 * 1024;
+  // Truncar PDFs grandes a ~800KB de base64
+  const MAX_B64 = 800 * 1024;
+  const truncarB64 = (input) => {
+    const match = input.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!match) return input;
+    const b64 = match[2];
+    if (b64.length <= MAX_B64) return input;
+    const truncado = b64.substring(0, MAX_B64 - (MAX_B64 % 4));
+    return `data:${match[1]};base64,${truncado}`;
+  };
 
-  const promptAnalisisTexto = (texto) => {
+  const promptAnalisisDoc = () => {
     const contextoNegocio = esNegocioPropio
       ? `CONTEXTO IMPORTANTE: El solicitante declaró tipo de ingresos "${tipo_ingresos}". Es dueño o socio de su propio negocio.
 - Los depósitos etiquetados como "Prestamo", "Prest" o similares provenientes de su propia empresa SON ingresos legítimos (retiros del dueño).
@@ -80,131 +73,68 @@ Fecha actual: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 
 
 ${contextoNegocio}
 
-Analiza el siguiente texto extraído de un estado de cuenta bancario y responde SOLO en formato JSON:
-{
-  "nombre_en_documentos": "nombre completo tal como aparece en el documento",
-  "nombre_coincide": true|false,
-  "tipo_documento": "estado_cuenta",
-  "ingreso_mensual_total": número o null (suma TODOS los abonos/depósitos del mes),
-  "ingreso_mensual_verificable": número o null (para empresario: igual que total. Para empleado: solo origen laboral claro),
-  "periodo": "ej: marzo 2026",
-  "empleador_o_actividad": "nombre del empleador o empresa propia",
-  "origen_ingresos": "descripción detallada de los depósitos",
-  "tiene_elementos_autenticidad": true,
-  "elementos_autenticidad_detalle": "Estado de cuenta bancario oficial con CFDI y cadena digital SAT",
-  "ingresos_efectivo_pct": número 0-100,
-  "prestamos_internos_pct": número 0-100 (para empresario con empresa propia: 0),
-  "actividad_licita": true|false,
-  "alertas": ["observaciones importantes con montos y conceptos"],
-  "resumen_analista": "párrafo breve con lo relevante para el analista",
-  "confianza": "alta|media|baja"
-}
-
-REGLAS:
-1. SIEMPRE calcula ingreso_mensual_total sumando todos los ABONOS del periodo.
-2. Para calcular ingreso: usa la columna ABONOS del detalle de movimientos, NO el saldo promedio.
-3. NOMBRE: Si no coincide → nombre_coincide=false.
-4. VIGENCIA: Si tiene más de 4 meses → alerta "Documento vencido".
-5. No incluyas texto fuera del JSON.
-
-TEXTO DEL ESTADO DE CUENTA:
-${texto.substring(0, 15000)}`;
-  };
-
-  const promptAnalisisDoc = (mediaType) => {
-    const contextoNegocio = esNegocioPropio
-      ? `CONTEXTO IMPORTANTE: El solicitante declaró tipo de ingresos "${tipo_ingresos}". Es dueño o socio de su propio negocio.
-- Los depósitos etiquetados como "Prestamo", "Prest" o similares provenientes de su propia empresa SON ingresos legítimos.
-- Inclúyelos en ingreso_mensual_total e ingreso_mensual_verificable.
-- NO penalices este patrón.`
-      : `CONTEXTO: El solicitante es empleado. Los préstamos internos NO cuentan como ingreso verificable.`;
-
-    return `Eres un analista de crédito inmobiliario en México. El solicitante se llama: "${nombre}".
-Fecha actual: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}.
-
-${contextoNegocio}
-
 Analiza este documento y responde SOLO en formato JSON:
 {
   "nombre_en_documentos": "nombre completo tal como aparece en el documento",
-  "nombre_coincide": true|false,
+  "nombre_coincide": true|false (compara "${nombre}" con el nombre en el documento — acepta variaciones de acentos/mayúsculas),
   "tipo_documento": "ine|nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|constancia_fiscal|carta_laboral|otro",
-  "ingreso_mensual_total": número o null,
-  "ingreso_mensual_verificable": número o null,
+  "ingreso_mensual_total": número o null (suma TODOS los abonos del periodo. Para estado de cuenta: usa el campo ABONOS del resumen de saldos),
+  "ingreso_mensual_verificable": número o null (para empresario/negocio propio: igual que ingreso_mensual_total. Para empleado: solo origen laboral claro),
   "periodo": "ej: marzo 2026",
   "empleador_o_actividad": "nombre del empleador o empresa propia",
-  "origen_ingresos": "descripción detallada",
+  "origen_ingresos": "descripción detallada de los depósitos",
   "tiene_elementos_autenticidad": true|false,
   "elementos_autenticidad_detalle": "descripción",
   "ingresos_efectivo_pct": número 0-100,
-  "prestamos_internos_pct": número 0-100,
+  "prestamos_internos_pct": número 0-100 (para empresario con empresa propia: 0),
   "actividad_licita": true|false,
-  "alertas": ["observaciones"],
+  "alertas": ["observaciones con montos y conceptos"],
   "resumen_analista": "párrafo breve",
   "confianza": "alta|media|baja"
 }
 
 REGLAS:
-1. SIEMPRE calcula ingreso_mensual_total.
+1. SIEMPRE calcula ingreso_mensual_total — para estado de cuenta usa el campo ABONOS del resumen.
 2. NOMBRE: Si no coincide → nombre_coincide=false.
 3. VIGENCIA: Si tiene más de 4 meses → alerta "Documento vencido".
-4. No incluyas texto fuera del JSON.`;
+4. NO uses el saldo promedio para calcular ingreso.
+5. No incluyas texto fuera del JSON.`;
   };
 
   const analizarDocumento = async (input) => {
-    const match = input.match(/^data:([^;]+);base64,(.+)$/);
+    const match = input.match(/^data:([^;]+);base64,(.+)$/s);
     if (!match) return null;
 
     const mediaType = match[1].includes('pdf') ? 'application/pdf' : match[1].includes('png') ? 'image/png' : 'image/jpeg';
-    const b64Size = match[2].length;
 
-    // Si es PDF grande, extraer texto y mandar como texto plano
-    if (mediaType === 'application/pdf' && b64Size > LIMITE_B64) {
-      console.log(`PDF grande (${Math.round(b64Size/1024)}KB), extrayendo texto...`);
-      const texto = await extraerTextoPDF(input);
-      if (!texto) return null;
+    // Truncar PDFs grandes antes de mandar a Claude
+    const inputFinal = (mediaType === 'application/pdf') ? truncarB64(input) : input;
+    const matchFinal = inputFinal.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!matchFinal) return null;
 
-      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1024,
-          messages: [{
-            role: 'user',
-            content: [{ type: 'text', text: promptAnalisisTexto(texto) }],
-          }],
-        }),
-      });
-
-      if (!claudeRes.ok) throw new Error('Error Claude API: ' + await claudeRes.text());
-      const data = await claudeRes.json();
-      const texto_resp = data.content?.[0]?.text || '';
-      const jsonMatch = texto_resp.match(/\{[\s\S]*\}/);
-      return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    const headers = {
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    };
+    if (mediaType === 'application/pdf') {
+      headers['anthropic-beta'] = 'pdfs-2024-09-25';
     }
 
-    // PDF pequeño o imagen: mandar como documento/imagen normal
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'pdfs-2024-09-25',
-        'content-type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1024,
         messages: [{
           role: 'user',
           content: [
-            { type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType, data: match[2] } },
-            { type: 'text', text: promptAnalisisDoc(mediaType) },
+            {
+              type: mediaType === 'application/pdf' ? 'document' : 'image',
+              source: { type: 'base64', media_type: mediaType, data: matchFinal[2] }
+            },
+            { type: 'text', text: promptAnalisisDoc() },
           ],
         }],
       }),
@@ -212,14 +142,17 @@ REGLAS:
 
     if (!claudeRes.ok) throw new Error('Error Claude API: ' + await claudeRes.text());
     const data = await claudeRes.json();
-    const texto_resp = data.content?.[0]?.text || '';
-    const jsonMatch = texto_resp.match(/\{[\s\S]*\}/);
+    const texto = data.content?.[0]?.text || '';
+    const jsonMatch = texto.match(/\{[\s\S]*\}/);
     return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
   };
 
   if (tieneArchivo) {
     try {
-      const resultados = await Promise.all(docsB64.map(input => analizarDocumento(input).catch(() => null)));
+      const resultados = await Promise.all(docsB64.map(input => analizarDocumento(input).catch(e => {
+        console.error('Error analizando doc:', e.message);
+        return null;
+      })));
       const validos = resultados.filter(Boolean);
 
       if (validos.length > 0) {
