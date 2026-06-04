@@ -22,6 +22,13 @@ export default function CartasOferta() {
   const [toast, setToast] = useState(null);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000); };
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -75,6 +82,39 @@ export default function CartasOferta() {
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: 48, color: "#9ca3af" }}>No hay cartas registradas.</div>
         ) : (
+          {isMobile ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {filtered.map(c => {
+                const est = ESTATUS[c.estatus] || ESTATUS.oferta;
+                return (
+                  <div key={c.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <span style={{ fontFamily: "monospace", fontWeight: 700, color: brand.red, fontSize: 14 }}>{c.folio}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: est.color, background: est.bg, padding: "3px 8px", borderRadius: 99 }}>{est.label}</span>
+                    </div>
+                    <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{c.cliente_nombre}</p>
+                    <p style={{ margin: "0 0 2px", fontSize: 12, color: "#6b7280" }}>{c.inmueble}</p>
+                    {c.propietarios && <p style={{ margin: "0 0 6px", fontSize: 12, color: "#6b7280" }}>Propietarios: {c.propietarios}</p>}
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 10 }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Oferta</p>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{fmt(c.precio_oferta)}</p>
+                      </div>
+                      {c.precio_contraoferta && (
+                        <div>
+                          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Contraoferta</p>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: brand.red }}>{fmt(c.precio_contraoferta)}</p>
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => router.push(`/cartas/${c.id}`)} style={{ width: "100%", background: brand.redLight, color: brand.red, border: "none", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                      Ver / Generar PDFs →
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
           <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
               <thead>
@@ -109,6 +149,7 @@ export default function CartasOferta() {
               </tbody>
             </table>
           </div>
+          )}
         )}
       </div>
     </div>
