@@ -40,6 +40,13 @@ export default function Recibos() {
   const [saving, setSaving] = useState(false);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -182,6 +189,41 @@ export default function Recibos() {
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: 48, color: "#9ca3af" }}>No se encontraron recibos.</div>
         ) : (
+          {isMobile ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {filtered.map(r => {
+                const est = ESTATUS_STYLE[r.estatus] || ESTATUS_STYLE.activo;
+                return (
+                  <div key={r.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <span style={{ fontFamily: "monospace", fontWeight: 700, color: brand.red, fontSize: 14 }}>{r.folio}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: est.color, background: est.bg, padding: "3px 8px", borderRadius: 99 }}>{est.label}</span>
+                    </div>
+                    <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{r.cliente_nombre}</p>
+                    <p style={{ margin: "0 0 6px", fontSize: 12, color: "#6b7280" }}>{r.inmueble}</p>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: r.tipo === "compraventa" ? "#b91c3c" : "#1e40af", background: r.tipo === "compraventa" ? "#fce8ed" : "#dbeafe", padding: "2px 8px", borderRadius: 99 }}>
+                          {r.tipo === "compraventa" ? "Venta" : "Renta"}
+                        </span>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{fmt(r.monto)}</span>
+                      </div>
+                      <span style={{ fontSize: 12, color: "#6b7280" }}>Recibió: {r.recibido_por || "—"}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {r.pdf_url && (
+                        <a href={r.pdf_url} target="_blank" rel="noreferrer" style={{ background: "#fce8ed", color: brand.red, fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 8, textDecoration: "none" }}>📄 Ver PDF</a>
+                      )}
+                      {r.estatus === "activo" && (<>
+                        <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>
+                        <button onClick={() => cambiarEstatus(r, "cancelado")} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✕ Cancelar</button>
+                      </>)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
           <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
               <thead>
@@ -229,6 +271,7 @@ export default function Recibos() {
               </tbody>
             </table>
           </div>
+          )}
         )}
       </div>
 
