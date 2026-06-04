@@ -252,6 +252,17 @@ No incluyas texto fuera del JSON.`,
     mensajeInterno = `Ingresos insuficientes: relación ${razonIngreso}x (mínimo ${multiplicador}x).`;
   }
 
+  // ── Guardar resultados en Supabase ──
+  await supabase.from('solicitudes_inquilino').update({
+    pre_viabilidad: resultado,
+    pre_viabilidad_detalle: mensaje,
+    pre_viabilidad_detalle_interno: mensajeInterno,
+    ingreso_detectado_ia: ingresoDetectado,
+    ingreso_total_ia: analisisIA?.ingreso_mensual_total || null,
+    curp_validada: validacionCurp?.valido ?? null,
+    curp_nombre_renapo: validacionCurp?.nombre_en_renapo || null,
+  }).eq('id', solicitud_id);
+
   return res.status(200).json({
     resultado, icono, color, mensaje, mensajeInterno, validacionCurp,
     detalles: { nombre, renta, multiplicador, ingresoRequerido, ingresoDeclado, ingresoDetectado, ingresoEvaluar, razonIngreso, tipoDocumento, analisisIA, errorIA },
