@@ -73,9 +73,8 @@ export default async function handler(req, res) {
     if (!matchFinal) return null;
 
     const contextoNegocio = esNegocioPropio
-      ? `El solicitante es dueño de negocio. Los depósitos de su propia empresa cuentan como ingreso legítimo.`
-      : `El solicitante es empleado.`;
-
+  ? `El solicitante es dueño de negocio (${tipo_ingresos}). Los depósitos de su propia empresa cuentan como ingreso legítimo. NO alertes sobre: saldo promedio bajo, transferencias frecuentes entre cuentas propias, retiros de efectivo operativos, ni depósitos etiquetados como préstamos de su misma empresa. Solo alerta si: el nombre no coincide, hay depósitos de origen completamente desconocido, o hay señales claras de fraude.`
+  : `El solicitante es empleado. Los préstamos de empresas relacionadas NO cuentan como ingreso verificable.`;
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
