@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import pdfParse from 'pdf-parse';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -6,8 +7,22 @@ const supabase = createClient(
 );
 
 export const config = {
-  api: { bodyParser: { sizeLimit: '1mb' } },
+  api: { bodyParser: { sizeLimit: '10mb' } },
   maxDuration: 60,
+};
+
+// Extraer texto de PDF base64
+const extraerTextoPDF = async (b64) => {
+  try {
+    const match = b64.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return null;
+    const buffer = Buffer.from(match[2], 'base64');
+    const data = await pdfParse(buffer);
+    return data.text || null;
+  } catch (e) {
+    console.error('Error extrayendo texto PDF:', e.message);
+    return null;
+  }
 };
 
 export default async function handler(req, res) {
@@ -16,7 +31,6 @@ export default async function handler(req, res) {
   const { solicitud_id } = req.body;
   if (!solicitud_id) return res.status(400).json({ error: 'solicitud_id requerido' });
 
-  // Leer datos de Supabase — archivos ya guardados ahí
   const { data: sol, error: solError } = await supabase
     .from('solicitudes_inquilino')
     .select('nombre_completo, razon_social, tipo_ingresos, ingresos_mensuales, ingresos_empresa, monto_renta_solicitada, doc_comprobante_ingresos_b64, doc_ingresos_b64_2, doc_ingresos_b64_3, curp')
@@ -26,27 +40,19 @@ export default async function handler(req, res) {
   if (solError || !sol) return res.status(404).json({ error: 'Solicitud no encontrada' });
 
   const tipo_ingresos = sol.tipo_ingresos;
-  const ingresos_mensuales = sol.ingresos_mensuales;
-  const ingresos_empresa = sol.ingresos_empresa;
   const monto_renta = sol.monto_renta_solicitada;
   const doc_comprobante_ingresos_b64 = sol.doc_comprobante_ingresos_b64;
   const doc_comprobante_ingresos_b64_2_param = sol.doc_ingresos_b64_2;
   const doc_comprobante_ingresos_b64_3_param = sol.doc_ingresos_b64_3;
-  const file_ingresos = null;
-  const file_ingresos_2 = null;
-  const file_ingresos_3 = null;
 
   const nombre = sol.nombre_completo || sol.razon_social || 'Solicitante';
-
   const renta = parseFloat(monto_renta) || 0;
 
-  // Determinar si es negocio propio / persona moral
   const esNegocioPropio = ['Negocio propio', 'Actividad empresarial', 'Persona moral'].some(t =>
     (tipo_ingresos || '').includes(t)
   );
   const multiplicador = esNegocioPropio ? 3 : 2.5;
   const ingresoRequerido = renta * multiplicador;
-
   const ingresoDeclado = 0;
 
   let analisisIA = null;
@@ -54,20 +60,64 @@ export default async function handler(req, res) {
   let tipoDocumento = null;
   let errorIA = null;
 
-  // ── Analizar documentos con Claude ──
   const docsB64 = [doc_comprobante_ingresos_b64, doc_comprobante_ingresos_b64_2_param, doc_comprobante_ingresos_b64_3_param].filter(Boolean);
-  const urlsIngresos = [file_ingresos, file_ingresos_2, file_ingresos_3].filter(Boolean);
-  const tieneArchivo = docsB64.length > 0 || urlsIngresos.length > 0;
+  const tieneArchivo = docsB64.length > 0;
 
-  const promptAnalisis = () => {
-    const esNegocio = esNegocioPropio;
-    const contextoNegocio = esNegocio
-      ? `CONTEXTO IMPORTANTE: El solicitante declaró tipo de ingresos "${tipo_ingresos}". Es dueño o socio de su propio negocio. En este caso:
-- Los depósitos etiquetados como "Prestamo", "Prest" o similares provenientes de su propia empresa SON ingresos legítimos del negocio (retiros del dueño).
-- Inclúyelos en ingreso_mensual_total e ingreso_mensual_verificable si el nombre de la empresa es consistente a lo largo del estado de cuenta.
-- Solo marca prestamos_internos_pct alto si hay depósitos de empresas NO relacionadas al solicitante.
-- NO penalices este patrón como sospechoso — es la operación normal de un empresario que se paga desde su propia empresa.`
-      : `CONTEXTO: El solicitante es empleado o trabajador independiente. Los préstamos internos de empresas relacionadas NO cuentan como ingreso verificable.`;
+  // Límite: si base64 pesa más de 500KB, usar extracción de texto
+  const LIMITE_B64 = 500 * 1024;
+
+  const promptAnalisisTexto = (texto) => {
+    const contextoNegocio = esNegocioPropio
+      ? `CONTEXTO IMPORTANTE: El solicitante declaró tipo de ingresos "${tipo_ingresos}". Es dueño o socio de su propio negocio.
+- Los depósitos etiquetados como "Prestamo", "Prest" o similares provenientes de su propia empresa SON ingresos legítimos (retiros del dueño).
+- Inclúyelos en ingreso_mensual_total e ingreso_mensual_verificable si el nombre de la empresa es consistente.
+- NO penalices este patrón — es la operación normal de un empresario que se paga desde su propia empresa.
+- Solo marca actividad_licita=false si hay efectivo sin concepto >50% o el nombre no coincide.`
+      : `CONTEXTO: El solicitante es empleado. Los préstamos de empresas relacionadas NO cuentan como ingreso verificable.`;
+
+    return `Eres un analista de crédito inmobiliario en México. El solicitante se llama: "${nombre}".
+Fecha actual: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}.
+
+${contextoNegocio}
+
+Analiza el siguiente texto extraído de un estado de cuenta bancario y responde SOLO en formato JSON:
+{
+  "nombre_en_documentos": "nombre completo tal como aparece en el documento",
+  "nombre_coincide": true|false,
+  "tipo_documento": "estado_cuenta",
+  "ingreso_mensual_total": número o null (suma TODOS los abonos/depósitos del mes),
+  "ingreso_mensual_verificable": número o null (para empresario: igual que total. Para empleado: solo origen laboral claro),
+  "periodo": "ej: marzo 2026",
+  "empleador_o_actividad": "nombre del empleador o empresa propia",
+  "origen_ingresos": "descripción detallada de los depósitos",
+  "tiene_elementos_autenticidad": true,
+  "elementos_autenticidad_detalle": "Estado de cuenta bancario oficial con CFDI y cadena digital SAT",
+  "ingresos_efectivo_pct": número 0-100,
+  "prestamos_internos_pct": número 0-100 (para empresario con empresa propia: 0),
+  "actividad_licita": true|false,
+  "alertas": ["observaciones importantes con montos y conceptos"],
+  "resumen_analista": "párrafo breve con lo relevante para el analista",
+  "confianza": "alta|media|baja"
+}
+
+REGLAS:
+1. SIEMPRE calcula ingreso_mensual_total sumando todos los ABONOS del periodo.
+2. Para calcular ingreso: usa la columna ABONOS del detalle de movimientos, NO el saldo promedio.
+3. NOMBRE: Si no coincide → nombre_coincide=false.
+4. VIGENCIA: Si tiene más de 4 meses → alerta "Documento vencido".
+5. No incluyas texto fuera del JSON.
+
+TEXTO DEL ESTADO DE CUENTA:
+${texto.substring(0, 15000)}`;
+  };
+
+  const promptAnalisisDoc = (mediaType) => {
+    const contextoNegocio = esNegocioPropio
+      ? `CONTEXTO IMPORTANTE: El solicitante declaró tipo de ingresos "${tipo_ingresos}". Es dueño o socio de su propio negocio.
+- Los depósitos etiquetados como "Prestamo", "Prest" o similares provenientes de su propia empresa SON ingresos legítimos.
+- Inclúyelos en ingreso_mensual_total e ingreso_mensual_verificable.
+- NO penalices este patrón.`
+      : `CONTEXTO: El solicitante es empleado. Los préstamos internos NO cuentan como ingreso verificable.`;
 
     return `Eres un analista de crédito inmobiliario en México. El solicitante se llama: "${nombre}".
 Fecha actual: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}.
@@ -77,49 +127,68 @@ ${contextoNegocio}
 Analiza este documento y responde SOLO en formato JSON:
 {
   "nombre_en_documentos": "nombre completo tal como aparece en el documento",
-  "nombre_coincide": true|false (compara "${nombre}" con el nombre en el documento — acepta variaciones de acentos/mayúsculas),
+  "nombre_coincide": true|false,
   "tipo_documento": "ine|nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|constancia_fiscal|carta_laboral|otro",
-  "ingreso_mensual_total": número o null (suma TODOS los abonos/depósitos del mes. Para estado de cuenta de empresario: suma todos los depósitos incluyendo los de su empresa. Para nómina: monto neto. Para declaración fiscal: ingreso total ÷ meses. Para INE/carta laboral: null),
-  "ingreso_mensual_verificable": número o null (para empleado: solo depósitos con origen laboral claro, excluye préstamos internos. Para empresario/negocio propio: igual que ingreso_mensual_total, ya que los retiros de su empresa son su ingreso),
-  "periodo": "ej: marzo 2026 o enero-marzo 2026",
+  "ingreso_mensual_total": número o null,
+  "ingreso_mensual_verificable": número o null,
+  "periodo": "ej: marzo 2026",
   "empleador_o_actividad": "nombre del empleador o empresa propia",
-  "origen_ingresos": "descripción detallada de los depósitos: de dónde vienen, qué conceptos tienen",
-  "tiene_elementos_autenticidad": true|false (¿tiene QR, cadena digital, folio o sello oficial?),
-  "elementos_autenticidad_detalle": "descripción de los elementos encontrados o ausentes",
-  "ingresos_efectivo_pct": número 0-100 (% de depósitos en efectivo sin concepto),
-  "prestamos_internos_pct": número 0-100 (para empresario: 0 si los préstamos son de su propia empresa. Para empleado: % de depósitos de empresa relacionada),
-  "actividad_licita": true|false (false solo si >50% son efectivo sin concepto de origen desconocido O el nombre no coincide),
-  "alertas": ["observaciones importantes — sé específico con montos y conceptos. Para empresarios, NO alertes sobre préstamos de su propia empresa"],
-  "resumen_analista": "párrafo breve con todo lo relevante para el analista",
+  "origen_ingresos": "descripción detallada",
+  "tiene_elementos_autenticidad": true|false,
+  "elementos_autenticidad_detalle": "descripción",
+  "ingresos_efectivo_pct": número 0-100,
+  "prestamos_internos_pct": número 0-100,
+  "actividad_licita": true|false,
+  "alertas": ["observaciones"],
+  "resumen_analista": "párrafo breve",
   "confianza": "alta|media|baja"
 }
 
 REGLAS:
-1. SIEMPRE calcula ingreso_mensual_total — el analista necesita saber el monto total.
-2. NOMBRE: Si no coincide → nombre_coincide=false, agrega alerta específica.
-3. VIGENCIA: Si tiene más de 4 meses de antigüedad → alerta "Documento vencido".
-4. AUTENTICIDAD: Si no tiene QR ni cadena digital → alerta específica.
-5. ALERTAS: Sé descriptivo con montos y conceptos encontrados.
-6. NO uses el saldo promedio para calcular ingreso.
-No incluyas texto fuera del JSON.`;
+1. SIEMPRE calcula ingreso_mensual_total.
+2. NOMBRE: Si no coincide → nombre_coincide=false.
+3. VIGENCIA: Si tiene más de 4 meses → alerta "Documento vencido".
+4. No incluyas texto fuera del JSON.`;
   };
 
   const analizarDocumento = async (input) => {
-    let base64, mediaType;
-    if (input.startsWith('data:')) {
-      const match = input.match(/^data:([^;]+);base64,(.+)$/);
-      if (!match) return null;
-      mediaType = match[1].includes('pdf') ? 'application/pdf' : match[1].includes('png') ? 'image/png' : 'image/jpeg';
-      base64 = match[2];
-    } else {
-      const fileRes = await fetch(input);
-      if (!fileRes.ok) return null;
-      const contentType = fileRes.headers.get('content-type') || 'image/jpeg';
-      const buffer = await fileRes.arrayBuffer();
-      base64 = Buffer.from(buffer).toString('base64');
-      mediaType = contentType.includes('pdf') ? 'application/pdf' : contentType.includes('png') ? 'image/png' : 'image/jpeg';
+    const match = input.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return null;
+
+    const mediaType = match[1].includes('pdf') ? 'application/pdf' : match[1].includes('png') ? 'image/png' : 'image/jpeg';
+    const b64Size = match[2].length;
+
+    // Si es PDF grande, extraer texto y mandar como texto plano
+    if (mediaType === 'application/pdf' && b64Size > LIMITE_B64) {
+      console.log(`PDF grande (${Math.round(b64Size/1024)}KB), extrayendo texto...`);
+      const texto = await extraerTextoPDF(input);
+      if (!texto) return null;
+
+      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1024,
+          messages: [{
+            role: 'user',
+            content: [{ type: 'text', text: promptAnalisisTexto(texto) }],
+          }],
+        }),
+      });
+
+      if (!claudeRes.ok) throw new Error('Error Claude API: ' + await claudeRes.text());
+      const data = await claudeRes.json();
+      const texto_resp = data.content?.[0]?.text || '';
+      const jsonMatch = texto_resp.match(/\{[\s\S]*\}/);
+      return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
     }
 
+    // PDF pequeño o imagen: mandar como documento/imagen normal
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -134,8 +203,8 @@ No incluyas texto fuera del JSON.`;
         messages: [{
           role: 'user',
           content: [
-            { type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-            { type: 'text', text: promptAnalisis() },
+            { type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType, data: match[2] } },
+            { type: 'text', text: promptAnalisisDoc(mediaType) },
           ],
         }],
       }),
@@ -143,15 +212,14 @@ No incluyas texto fuera del JSON.`;
 
     if (!claudeRes.ok) throw new Error('Error Claude API: ' + await claudeRes.text());
     const data = await claudeRes.json();
-    const texto = data.content?.[0]?.text || '';
-    const jsonMatch = texto.match(/\{[\s\S]*\}/);
+    const texto_resp = data.content?.[0]?.text || '';
+    const jsonMatch = texto_resp.match(/\{[\s\S]*\}/);
     return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
   };
 
   if (tieneArchivo) {
     try {
-      const inputs = docsB64.length > 0 ? docsB64 : urlsIngresos;
-      const resultados = await Promise.all(inputs.map(input => analizarDocumento(input).catch(() => null)));
+      const resultados = await Promise.all(docsB64.map(input => analizarDocumento(input).catch(() => null)));
       const validos = resultados.filter(Boolean);
 
       if (validos.length > 0) {
@@ -162,7 +230,6 @@ No incluyas texto fuera del JSON.`;
         const ingresosTotales = docsIngresos.map(r => r.ingreso_mensual_total || r.ingreso_mensual).filter(v => v && v > 0);
         const promedioIngreso = ingresosVerificables.length > 0 ? ingresosVerificables.reduce((a, b) => a + b, 0) / ingresosVerificables.length : null;
         const promedioTotal = ingresosTotales.length > 0 ? ingresosTotales.reduce((a, b) => a + b, 0) / ingresosTotales.length : null;
-        const ingresos = ingresosVerificables;
 
         let alertaCruceNombre = null;
         if (docINE && docsIngresos.length > 0) {
@@ -200,7 +267,7 @@ No incluyas texto fuera del JSON.`;
           alertas: todasAlertas,
           meses_analizados: docsIngresos.length,
           documentos_analizados: validos.length,
-          ingresos_por_mes: ingresos,
+          ingresos_por_mes: ingresosVerificables,
           tiene_ine: !!docINE,
           nombre_en_ine: docINE?.nombre_en_documentos,
           resumen_analista: resumenAnalista,
@@ -225,7 +292,7 @@ No incluyas texto fuera del JSON.`;
     }
   }
 
-  // ── Validación CURP con Didit ──
+  // ── Validación CURP ──
   let validacionCurp = null;
   if (sol.curp) {
     try {
@@ -241,13 +308,10 @@ No incluyas texto fuera del JSON.`;
     }
   }
 
-  // ── Agregar alertas de CURP al análisis ──
   if (validacionCurp) {
     if (!analisisIA) analisisIA = { alertas: [] };
     if (!analisisIA.alertas) analisisIA.alertas = [];
-    if (validacionCurp.alertas?.length > 0) {
-      analisisIA.alertas = [...analisisIA.alertas, ...validacionCurp.alertas];
-    }
+    if (validacionCurp.alertas?.length > 0) analisisIA.alertas = [...analisisIA.alertas, ...validacionCurp.alertas];
     if (validacionCurp.resultado === 'no_match') analisisIA.actividad_licita = false;
     if (validacionCurp.resultado === 'curp_baja') analisisIA.actividad_licita = false;
     analisisIA.curp_validada = validacionCurp.valido;
@@ -255,10 +319,9 @@ No incluyas texto fuera del JSON.`;
     analisisIA.curp_status = validacionCurp.curp_status;
   }
 
-  // ── Determinar pre-viabilidad ──
+  // ── Pre-viabilidad ──
   const ingresoEvaluar = ingresoDetectado || ingresoDeclado;
   const razonIngreso = ingresoEvaluar > 0 ? (ingresoEvaluar / renta).toFixed(2) : null;
-
   const actividadLicita = analisisIA?.actividad_licita !== false;
   const nombreCoincide = analisisIA?.nombre_coincide !== false;
   const alertas = analisisIA?.alertas || [];
@@ -266,36 +329,26 @@ No incluyas texto fuera del JSON.`;
   let resultado, color, icono, mensaje, mensajeInterno = null;
 
   if (analisisIA?.revision_manual) {
-    resultado = 'pendiente';
-    color = '#92400e';
-    icono = '⏳';
+    resultado = 'pendiente'; color = '#92400e'; icono = '⏳';
     mensaje = 'Los documentos requieren revisión manual por nuestro equipo jurídico. Te contactaremos en breve.';
   } else if (!ingresoEvaluar || ingresoEvaluar === 0) {
     if (alertas.length > 0 || !actividadLicita || !nombreCoincide) {
-      resultado = 'revisar';
-      color = '#92400e';
-      icono = '⚠️';
+      resultado = 'revisar'; color = '#92400e'; icono = '⚠️';
       mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico revisará tus documentos y te contactará en breve.';
       mensajeInterno = `No se pudo calcular el ingreso, pero se detectaron observaciones: ${alertas.join('. ')}`;
     } else {
-      resultado = 'pendiente';
-      color = '#92400e';
-      icono = '⏳';
+      resultado = 'pendiente'; color = '#92400e'; icono = '⏳';
       mensaje = 'No se pudo determinar el ingreso automáticamente. Nuestro equipo lo revisará manualmente.';
       mensajeInterno = analisisIA
         ? `Ingreso total detectado: $${analisisIA.ingreso_mensual_total ? Number(analisisIA.ingreso_mensual_total).toLocaleString('es-MX') : '—'}/mes. Ingreso verificable: $${analisisIA.ingreso_mensual ? Number(analisisIA.ingreso_mensual).toLocaleString('es-MX') : '—'}/mes. ${analisisIA.resumen_analista || ''}`
         : null;
     }
   } else if (!nombreCoincide) {
-    resultado = 'revisar';
-    color = '#92400e';
-    icono = '⚠️';
+    resultado = 'revisar'; color = '#92400e'; icono = '⚠️';
     mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico revisará tus documentos y te contactará en breve.';
     mensajeInterno = `Alerta: El nombre en documentos (${analisisIA?.nombre_en_documentos || '—'}) no coincide con el solicitante.`;
   } else if (!actividadLicita) {
-    resultado = 'revisar';
-    color = '#92400e';
-    icono = '⚠️';
+    resultado = 'revisar'; color = '#92400e'; icono = '⚠️';
     mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico revisará tus documentos y te contactará en breve.';
     mensajeInterno = `Alerta: ${alertas.join('. ')}.`;
   } else if (ingresoEvaluar >= ingresoRequerido) {
@@ -304,41 +357,20 @@ No incluyas texto fuera del JSON.`;
     icono = alertas.length > 0 ? '⚠️' : '✅';
     mensaje = alertas.length > 0
       ? 'Tus documentos han sido recibidos. Nuestro equipo los revisará y te contactará en breve.'
-      : `¡Buenas noticias! Tus ingresos califican preliminarmente para esta renta. Nuestro equipo confirmará los detalles contigo.`;
+      : '¡Buenas noticias! Tus ingresos califican preliminarmente para esta renta. Nuestro equipo confirmará los detalles contigo.';
     mensajeInterno = alertas.length > 0 ? `Ingresos suficientes pero con alertas: ${alertas.join('. ')}` : null;
   } else if (ingresoEvaluar >= ingresoRequerido * 0.85) {
-    resultado = 'revisar';
-    color = '#92400e';
-    icono = '⚠️';
+    resultado = 'revisar'; color = '#92400e'; icono = '⚠️';
     mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico la revisará y te contactará en breve.';
     mensajeInterno = `Ingresos cerca del límite: relación ${razonIngreso}x (mínimo ${multiplicador}x).`;
   } else {
-    resultado = 'revisar';
-    color = '#92400e';
-    icono = '⚠️';
+    resultado = 'revisar'; color = '#92400e'; icono = '⚠️';
     mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico la revisará y te contactará en breve.';
     mensajeInterno = `Ingresos insuficientes: relación ${razonIngreso}x (mínimo ${multiplicador}x).`;
   }
 
   return res.status(200).json({
-    resultado,
-    icono,
-    color,
-    mensaje,
-    mensajeInterno,
-    validacionCurp,
-    detalles: {
-      nombre,
-      renta,
-      multiplicador,
-      ingresoRequerido,
-      ingresoDeclado,
-      ingresoDetectado,
-      ingresoEvaluar,
-      razonIngreso,
-      tipoDocumento,
-      analisisIA,
-      errorIA,
-    },
+    resultado, icono, color, mensaje, mensajeInterno, validacionCurp,
+    detalles: { nombre, renta, multiplicador, ingresoRequerido, ingresoDeclado, ingresoDetectado, ingresoEvaluar, razonIngreso, tipoDocumento, analisisIA, errorIA },
   });
 }
