@@ -189,7 +189,7 @@ export default function Recibos() {
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: 48, color: "#9ca3af" }}>No se encontraron recibos.</div>
         ) : (
-          {isMobile ? (
+          <>{isMobile ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {filtered.map(r => {
                 const est = ESTATUS_STYLE[r.estatus] || ESTATUS_STYLE.activo;
@@ -271,7 +271,7 @@ export default function Recibos() {
               </tbody>
             </table>
           </div>
-          )}
+          )}</>
         )}
       </div>
 
