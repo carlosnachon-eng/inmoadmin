@@ -788,6 +788,30 @@ export default function Dictamen() {
             </Campo>
           )}
 
+          <Campo label="Subir reporte Buro Mexico (PDF o imagen)">
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png"
+              onChange={async e => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const ext = file.name.split(".").pop();
+                const path = `buro/${solicitudId || "sin-id"}-${Date.now()}.${ext}`;
+                const { error } = await supabase.storage.from("poliza-docs").upload(path, file, { upsert: true });
+                if (!error) {
+                  set("doc_buro_mexico", path);
+                  alert("✅ Documento de Buró subido correctamente");
+                } else {
+                  alert("Error al subir: " + error.message);
+                }
+              }}
+              style={{ ...inp, padding: "8px 12px", cursor: "pointer" }}
+            />
+            {form.doc_buro_mexico && (
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#065f46", fontWeight: 600 }}>
+                ✓ Documento subido: {form.doc_buro_mexico.split("/").pop()}
+              </p>
+            )}
+          </Campo>
+
           <SecTitle>VI. Conclusion y Observaciones</SecTitle>
           <Campo label="Conclusion y recomendacion">
             <textarea value={form.conclusion} onChange={e => set("conclusion", e.target.value)} style={{ ...txta, minHeight: 90 }} />
