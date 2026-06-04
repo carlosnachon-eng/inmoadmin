@@ -102,10 +102,10 @@ export default function ModalPropietario({ propietario: p, onClose, onSaved, onN
           <p style={{ fontSize: 12, color: C.muted }}>Cargando documentos...</p>
         ) : tieneDocs ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {prop.doc_identificacion_b64 && <DocChip label="Identificación" data={prop.doc_identificacion_b64} />}
-            {prop.doc_comprobante_domicilio_b64 && <DocChip label="Comprobante domicilio" data={prop.doc_comprobante_domicilio_b64} />}
-            {prop.doc_predial_b64 && <DocChip label="Predial" data={prop.doc_predial_b64} />}
-            {prop.doc_escritura_b64 && <DocChip label="Escritura" data={prop.doc_escritura_b64} />}
+            {prop.doc_identificacion_b64 && <DocChip label="Identificación" data={prop.doc_identificacion_b64?.startsWith('data:') ? prop.doc_identificacion_b64 : null} path={!prop.doc_identificacion_b64?.startsWith('data:') ? prop.doc_identificacion_b64 : null} />}
+            {prop.doc_comprobante_domicilio_b64 && <DocChip label="Comprobante domicilio" data={prop.doc_comprobante_domicilio_b64?.startsWith('data:') ? prop.doc_comprobante_domicilio_b64 : null} path={!prop.doc_comprobante_domicilio_b64?.startsWith('data:') ? prop.doc_comprobante_domicilio_b64 : null} />}
+            {prop.doc_predial_b64 && <DocChip label="Predial" data={prop.doc_predial_b64?.startsWith('data:') ? prop.doc_predial_b64 : null} path={!prop.doc_predial_b64?.startsWith('data:') ? prop.doc_predial_b64 : null} />}
+            {prop.doc_escritura_b64 && <DocChip label="Escritura" data={prop.doc_escritura_b64?.startsWith('data:') ? prop.doc_escritura_b64 : null} path={!prop.doc_escritura_b64?.startsWith('data:') ? prop.doc_escritura_b64 : null} />}
           </div>
         ) : (
           <p style={{ fontSize: 12, color: C.faint }}>Sin documentos adjuntos</p>
