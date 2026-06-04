@@ -214,6 +214,9 @@ export default function Recibos() {
                       {r.pdf_url && (
                         <a href={r.pdf_url} target="_blank" rel="noreferrer" style={{ background: "#fce8ed", color: brand.red, fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 8, textDecoration: "none" }}>📄 Ver PDF</a>
                       )}
+                      {r.comprobante_url && (
+                        <a href={r.comprobante_url} target="_blank" rel="noreferrer" style={{ background: "#dbeafe", color: "#1e40af", fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 8, textDecoration: "none" }}>🧾 Comprobante</a>
+                      )}
                       {r.estatus === "activo" && (<>
                         <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>
                         <button onClick={() => cambiarEstatus(r, "cancelado")} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✕ Cancelar</button>
@@ -228,7 +231,7 @@ export default function Recibos() {
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["Folio", "Tipo", "Cliente", "Inmueble", "Monto", "Recibió", "Estatus", "PDF", "Acciones"].map(h => (
+                  {["Folio", "Tipo", "Cliente", "Inmueble", "Monto", "Recibió", "Estatus", "PDF", "Comprobante", "Acciones"].map(h => (
                     <th key={h} style={{ padding: "11px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                   ))}
                 </tr>
@@ -255,6 +258,12 @@ export default function Recibos() {
                         {r.pdf_url
                           ? <a href={r.pdf_url} target="_blank" rel="noreferrer" style={{ color: brand.red, fontSize: 12, fontWeight: 600, textDecoration: "none" }}>Ver PDF</a>
                           : <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>
+                        }
+                      </td>
+                      <td style={{ padding: "11px 14px" }}>
+                        {r.comprobante_url
+                          ? <a href={r.comprobante_url} target="_blank" rel="noreferrer" style={{ color: "#1e40af", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>🧾 Ver</a>
+                          : <span style={{ color: "#d1d5db", fontSize: 12 }}>{r.efectivo ? "Efectivo" : "—"}</span>
                         }
                       </td>
                       <td style={{ padding: "11px 14px" }}>
