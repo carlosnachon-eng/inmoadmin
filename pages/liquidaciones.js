@@ -315,6 +315,23 @@ export default function Liquidaciones() {
       return;
     }
 
+    // Insertar automáticamente en owner_payments para actualizar el pendiente
+    const statusLiquidacion = formPago.concepto === "total" ? "pagado" : "pagado_parcial";
+    await supabase.from("owner_payments").insert([{
+      owner_name: propietarioPago.name,
+      owner_email: propietarioPago.email,
+      period_description: formPago.periodo,
+      total_rent: 0,       // no recalculamos aquí, es solo el pago
+      total_commission: 0,
+      total_liquid: parseFloat(formPago.monto),
+      amount_paid: parseFloat(formPago.monto),
+      payment_method: formPago.forma_pago,
+      payment_date: formPago.fecha,
+      status: statusLiquidacion,
+      notes: `${formPago.concepto === "adelanto" ? "Adelanto" : formPago.concepto === "parcial" ? "Pago parcial" : "Liquidación total"}${formPago.property_name ? ` — ${formPago.property_name}` : ""} · Recibo: ${recibo.id.slice(0,8).toUpperCase()}`,
+      rent_receiver: "inmobiliaria",
+    }]);
+
     // Generar PDF del recibo automáticamente
     await generarPDFRecibo({
       ...formPago,
