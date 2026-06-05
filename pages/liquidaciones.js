@@ -374,15 +374,23 @@ export default function Liquidaciones() {
     setSavingPago(true);
 
     let firma_url = null;
+    let firmaBase64 = null; // ← guardamos el base64 ANTES de limpiar el canvas
     let comprobante_url = null;
 
-    // Subir firma si es efectivo
+    // Capturar firma del canvas en memoria PRIMERO (antes de subir o limpiar)
     if (formPago.forma_pago === "efectivo" && canvasRef.current) {
+      try {
+        firmaBase64 = canvasRef.current.toDataURL("image/png");
+      } catch (e) { console.warn("Error leyendo canvas:", e); }
+    }
+
+    // Subir firma si es efectivo
+    if (formPago.forma_pago === "efectivo" && firmaBase64) {
       try {
         const canvas = canvasRef.current;
         const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
         const fileName = `firmas/${propietarioPago.email.replace("@","_")}_${Date.now()}.png`;
-        const { data: upData, error: upErr } = await supabase.storage
+        const { error: upErr } = await supabase.storage
           .from("documentos")
           .upload(fileName, blob, { contentType: "image/png", upsert: true });
         if (!upErr) {
@@ -450,6 +458,7 @@ export default function Liquidaciones() {
       ...formPago,
       owner_name: propietarioPago.name,
       owner_email: propietarioPago.email,
+      firmaBase64,      // ← base64 directo del canvas, siempre disponible
       firma_url,
       comprobante_url,
       folio: recibo.id.slice(0, 8).toUpperCase(),
@@ -543,9 +552,21 @@ export default function Liquidaciones() {
       doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(26,26,46);
       doc.text("FIRMA DE RECIBIDO — PROPIETARIO", 10, y);
       y += 4;
-      if (datos.firma_url) {
+      // Prioridad: base64 del canvas (disponible al momento de firmar)
+      // Fallback: fetch desde URL de Storage (para regenerar desde historial)
+      const firmaData = datos.firmaBase64 || null;
+      if (firmaData) {
         try {
-          // Cargar imagen de firma
+          doc.addImage(firmaData, "PNG", 8, y, 80, 25);
+          doc.setDrawColor(200,200,200); doc.setLineWidth(0.3);
+          doc.rect(8, y, 80, 25, "S");
+        } catch(e) {
+          doc.setDrawColor(200,200,200); doc.rect(8, y, 80, 25, "S");
+          doc.setTextColor(180,180,180); doc.setFontSize(8);
+          doc.text("(firma no disponible)", 12, y + 13);
+        }
+      } else if (datos.firma_url) {
+        try {
           const res = await fetch(datos.firma_url);
           const blob = await res.blob();
           const firmaB64 = await new Promise(resolve => {
