@@ -6,10 +6,11 @@ import { PageHeader, brand } from "../components/Layout";
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
 const ESTATUS_STYLE = {
-  activo:     { bg: "#d1fae5", color: "#065f46", label: "Activo" },
-  vencido:    { bg: "#fef3c7", color: "#92400e", label: "Vencido" },
-  cancelado:  { bg: "#fee2e2", color: "#991b1b", label: "Cancelado" },
-  concretado: { bg: "#dbeafe", color: "#1e40af", label: "Concretado" },
+  activo:              { bg: "#d1fae5", color: "#065f46", label: "Activo" },
+  solicitud_recibida:  { bg: "#dbeafe", color: "#1e40af", label: "Solicitud recibida" },
+  vencido:             { bg: "#fef3c7", color: "#92400e", label: "Vencido" },
+  cancelado:           { bg: "#fee2e2", color: "#991b1b", label: "Cancelado" },
+  concretado:          { bg: "#dbeafe", color: "#1e40af", label: "Concretado" },
 };
 
 const Modal = ({ title, onClose, children }) => (
@@ -37,6 +38,8 @@ export default function Recibos() {
   const [filtroEstatus, setFiltroEstatus] = useState("activo");
   const [modalCancelar, setModalCancelar] = useState(null);
   const [motivoCancelacion, setMotivoCancelacion] = useState("");
+  const [modalSolicitud, setModalSolicitud] = useState(null);
+  const [fechaLimiraFirma, setFechaLimiteFirma] = useState("");
   const [saving, setSaving] = useState(false);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
@@ -76,6 +79,9 @@ export default function Recibos() {
 
   useEffect(() => { if (session) loadRecibos(); }, [session]);
 
+  // Carlos es el único que puede reactivar vencidos
+  const esCarlos = profile?.role === "admin" || profile?.email === "carlos.nachon@emporioinmobiliario.mx";
+
   const filtered = recibos.filter(r => {
     const matchSearch = !search ||
       r.folio?.toLowerCase().includes(search.toLowerCase()) ||
@@ -86,6 +92,7 @@ export default function Recibos() {
     return matchSearch && matchTipo && matchEstatus;
   });
 
+  // ── Cancelar ──────────────────────────────────────────────
   const cambiarEstatus = async (recibo, nuevoEstatus) => {
     if (nuevoEstatus === "cancelado") {
       setModalCancelar(recibo);
@@ -95,7 +102,6 @@ export default function Recibos() {
     const { error } = await supabase.from("recibos_apartado").update({ estatus: nuevoEstatus }).eq("id", recibo.id);
     setSaving(false);
     if (error) { showToast("Error al actualizar", false); return; }
-    // Log
     await supabase.from("recibos_log").insert({ recibo_id: recibo.id, accion: nuevoEstatus, usuario_id: session.user.id });
     showToast("Estatus actualizado");
     loadRecibos();
@@ -112,7 +118,6 @@ export default function Recibos() {
     }).eq("id", modalCancelar.id);
     if (!error) {
       await supabase.from("recibos_log").insert({ recibo_id: modalCancelar.id, accion: "cancelado", usuario_id: session.user.id });
-      // Notificación a Carlos vía API
       await fetch("/api/notificar-cancelacion-recibo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,6 +136,54 @@ export default function Recibos() {
     setMotivoCancelacion("");
     if (error) { showToast("Error al cancelar", false); return; }
     showToast("Recibo cancelado");
+    loadRecibos();
+  };
+
+  // ── Solicitud recibida ────────────────────────────────────
+  const confirmarSolicitudRecibida = async () => {
+    if (!fechaLimiraFirma) { showToast("Selecciona la fecha límite de firma", false); return; }
+    setSaving(true);
+    const { error } = await supabase.from("recibos_apartado").update({
+      estatus: "solicitud_recibida",
+      fecha_limite_firma: fechaLimiraFirma,
+      solicitud_recibida_en: new Date().toISOString(),
+      solicitud_recibida_por: profile?.email || session.user.email,
+    }).eq("id", modalSolicitud.id);
+    if (!error) {
+      await supabase.from("recibos_log").insert({
+        recibo_id: modalSolicitud.id,
+        accion: "solicitud_recibida",
+        usuario_id: session.user.id,
+        notas: `Fecha límite de firma: ${fechaLimiraFirma}`,
+      });
+    }
+    setSaving(false);
+    setModalSolicitud(null);
+    setFechaLimiteFirma("");
+    if (error) { showToast("Error al actualizar", false); return; }
+    showToast("Solicitud marcada como recibida");
+    loadRecibos();
+  };
+
+  // ── Reactivar (solo Carlos, solo vencidos) ────────────────
+  const handleReactivar = async (recibo) => {
+    setSaving(true);
+    const { error } = await supabase.from("recibos_apartado").update({
+      estatus: "activo",
+      reactivado_en: new Date().toISOString(),
+      reactivado_por: profile?.email || session.user.email,
+    }).eq("id", recibo.id);
+    if (!error) {
+      await supabase.from("recibos_log").insert({
+        recibo_id: recibo.id,
+        accion: "reactivado",
+        usuario_id: session.user.id,
+        notas: "Reactivación manual por excepción",
+      });
+    }
+    setSaving(false);
+    if (error) { showToast("Error al reactivar", false); return; }
+    showToast("Recibo reactivado");
     loadRecibos();
   };
 
@@ -176,6 +229,7 @@ export default function Recibos() {
           <select value={filtroEstatus} onChange={e => setFiltroEstatus(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
             <option value="">Todos los estatus</option>
             <option value="activo">Activo</option>
+            <option value="solicitud_recibida">Solicitud recibida</option>
             <option value="vencido">Vencido</option>
             <option value="cancelado">Cancelado</option>
             <option value="concretado">Concretado</option>
@@ -197,7 +251,12 @@ export default function Recibos() {
                   <div key={r.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <span style={{ fontFamily: "monospace", fontWeight: 700, color: brand.red, fontSize: 14 }}>{r.folio}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: est.color, background: est.bg, padding: "3px 8px", borderRadius: 99 }}>{est.label}</span>
+                      <div style={{ textAlign: "right" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: est.color, background: est.bg, padding: "3px 8px", borderRadius: 99 }}>{est.label}</span>
+                        {r.estatus === "solicitud_recibida" && r.fecha_limite_firma && (
+                          <div style={{ fontSize: 10, color: "#1e40af", marginTop: 2 }}>📅 Firma: {r.fecha_limite_firma}</div>
+                        )}
+                      </div>
                     </div>
                     <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{r.cliente_nombre}</p>
                     <p style={{ margin: "0 0 6px", fontSize: 12, color: "#6b7280" }}>{r.inmueble}</p>
@@ -217,10 +276,17 @@ export default function Recibos() {
                       {r.comprobante_url && (
                         <a href={r.comprobante_url} target="_blank" rel="noreferrer" style={{ background: "#dbeafe", color: "#1e40af", fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 8, textDecoration: "none" }}>🧾 Comprobante</a>
                       )}
+                      {/* Botones de acción según estatus */}
                       {r.estatus === "activo" && (<>
+                        {r.tipo === "arrendamiento" && (
+                          <button onClick={() => { setModalSolicitud(r); setFechaLimiteFirma(""); }} style={{ background: "#dbeafe", color: "#1e40af", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Solicitud recibida</button>
+                        )}
                         <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>
                         <button onClick={() => cambiarEstatus(r, "cancelado")} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✕ Cancelar</button>
                       </>)}
+                      {r.estatus === "vencido" && esCarlos && (
+                        <button onClick={() => handleReactivar(r)} disabled={saving} style={{ background: "#fef3c7", color: "#92400e", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↺ Reactivar</button>
+                      )}
                     </div>
                   </div>
                 );
@@ -253,6 +319,9 @@ export default function Recibos() {
                       <td style={{ padding: "11px 14px", fontSize: 12, color: "#6b7280" }}>{r.recibido_por || "—"}</td>
                       <td style={{ padding: "11px 14px" }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: est.color, background: est.bg, padding: "3px 8px", borderRadius: 99 }}>{est.label}</span>
+                        {r.estatus === "solicitud_recibida" && r.fecha_limite_firma && (
+                          <div style={{ fontSize: 10, color: "#1e40af", marginTop: 3 }}>📅 Firma: {r.fecha_limite_firma}</div>
+                        )}
                       </td>
                       <td style={{ padding: "11px 14px" }}>
                         {r.pdf_url
@@ -267,12 +336,20 @@ export default function Recibos() {
                         }
                       </td>
                       <td style={{ padding: "11px 14px" }}>
-                        {r.estatus === "activo" && (
-                          <div style={{ display: "flex", gap: 6 }}>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {/* Activo → botones de acción */}
+                          {r.estatus === "activo" && (<>
+                            {r.tipo === "arrendamiento" && (
+                              <button onClick={() => { setModalSolicitud(r); setFechaLimiteFirma(""); }} style={{ background: "#dbeafe", color: "#1e40af", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>✓ Solicitud recibida</button>
+                            )}
                             <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>
                             <button onClick={() => cambiarEstatus(r, "cancelado")} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✕ Cancelar</button>
-                          </div>
-                        )}
+                          </>)}
+                          {/* Vencido → Reactivar (solo Carlos) */}
+                          {r.estatus === "vencido" && esCarlos && (
+                            <button onClick={() => handleReactivar(r)} disabled={saving} style={{ background: "#fef3c7", color: "#92400e", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer" }}>↺ Reactivar</button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -305,6 +382,35 @@ export default function Recibos() {
             <button onClick={() => { setModalCancelar(null); setMotivoCancelacion(""); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "10px 20px", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>Cancelar</button>
             <button onClick={confirmarCancelacion} disabled={saving || !motivoCancelacion.trim()} style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontSize: 14, opacity: saving ? 0.6 : 1 }}>
               {saving ? "Guardando…" : "Confirmar cancelación"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal solicitud recibida */}
+      {modalSolicitud && (
+        <Modal title={`✓ Solicitud recibida — ${modalSolicitud.folio}`} onClose={() => { setModalSolicitud(null); setFechaLimiteFirma(""); }}>
+          <p style={{ fontSize: 14, color: "#6b7280", marginTop: 0 }}>
+            Cliente: <strong>{modalSolicitud.cliente_nombre}</strong><br />
+            Inmueble: <strong>{modalSolicitud.inmueble}</strong>
+          </p>
+          <p style={{ fontSize: 13, color: "#374151", background: "#eff6ff", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
+            Al confirmar, este recibo pasará a estatus <strong>Solicitud recibida</strong>. El cron no lo vencerá hasta que llegue la fecha límite de firma que definas abajo.
+          </p>
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Fecha límite de firma (Plazo 2) *</label>
+            <input
+              type="date"
+              value={fechaLimiraFirma}
+              onChange={e => setFechaLimiteFirma(e.target.value)}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }}
+            />
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0 0" }}>Si el contrato no se firma en esta fecha, el cron lo marcará como vencido automáticamente.</p>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button onClick={() => { setModalSolicitud(null); setFechaLimiteFirma(""); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "10px 20px", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>Cancelar</button>
+            <button onClick={confirmarSolicitudRecibida} disabled={saving || !fechaLimiraFirma} style={{ background: "#1e40af", color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, cursor: (saving || !fechaLimiraFirma) ? "not-allowed" : "pointer", fontSize: 14, opacity: (saving || !fechaLimiraFirma) ? 0.6 : 1 }}>
+              {saving ? "Guardando…" : "Confirmar solicitud recibida"}
             </button>
           </div>
         </Modal>
