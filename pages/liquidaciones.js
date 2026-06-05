@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
@@ -23,9 +23,9 @@ const StatusBadge = ({ status }) => {
   return <span style={{ background: s.bg, color: s.color, padding: "2px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{s.label}</span>;
 };
 
-const Modal = ({ title, onClose, children }) => (
+const Modal = ({ title, onClose, children, wide }) => (
   <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
-    <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 520, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+    <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: wide ? 620 : 520, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#1a1a2e" }}>{title}</h2>
         <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 16 }}>✕</button>
@@ -63,6 +63,48 @@ const Btn = ({ children, onClick, color = "#1a1a2e", disabled, small }) => (
   </button>
 );
 
+// ── Canvas de firma ──────────────────────────────────────────────────────────
+const FirmaCanvas = ({ canvasRef, onFirma }) => {
+  const drawing = useRef(false);
+  const getPos = (e, canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  };
+  const start = (e) => {
+    e.preventDefault();
+    drawing.current = true;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const { x, y } = getPos(e, canvas);
+    ctx.beginPath(); ctx.moveTo(x, y);
+  };
+  const draw = (e) => {
+    e.preventDefault();
+    if (!drawing.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#1a1a2e";
+    const { x, y } = getPos(e, canvas);
+    ctx.lineTo(x, y); ctx.stroke();
+    onFirma(true);
+  };
+  const stop = (e) => { e.preventDefault(); drawing.current = false; };
+
+  return (
+    <div>
+      <canvas
+        ref={canvasRef}
+        width={460} height={140}
+        onMouseDown={start} onMouseMove={draw} onMouseUp={stop} onMouseLeave={stop}
+        onTouchStart={start} onTouchMove={draw} onTouchEnd={stop}
+        style={{ border: "2px dashed #d1d5db", borderRadius: 8, width: "100%", height: 140, cursor: "crosshair", touchAction: "none", background: "#fafafa" }}
+      />
+      <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Firme arriba con el dedo o el mouse</p>
+    </div>
+  );
+};
+
 export default function Liquidaciones() {
   const router = useRouter();
   const [session, setSession] = useState(null);
@@ -81,6 +123,23 @@ export default function Liquidaciones() {
   const [filterPropietario, setFilterPropietario] = useState("");
   const mesAnterior = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
   const [mesCorte, setMesCorte] = useState(mesAnterior);
+
+  // ── Estados para modal de pago ────────────────────────────────────────────
+  const [showModalPago, setShowModalPago] = useState(false);
+  const [propietarioPago, setPropietarioPago] = useState(null); // { name, email }
+  const [savingPago, setSavingPago] = useState(false);
+  const [firmaTrazada, setFirmaTrazada] = useState(false);
+  const [archivoComprobante, setArchivoComprobante] = useState(null);
+  const canvasRef = useRef(null);
+  const emptyFormPago = {
+    concepto: "adelanto",
+    property_name: "",
+    monto: "",
+    forma_pago: "transferencia",
+    periodo: "",
+    fecha: new Date().toISOString().split("T")[0],
+  };
+  const [formPago, setFormPago] = useState(emptyFormPago);
 
   const today = new Date().toISOString().split("T")[0];
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
@@ -134,6 +193,274 @@ export default function Liquidaciones() {
 
   useEffect(() => { if (session) loadData(); }, [session]);
 
+  // ── Calcular pendiente del mes para prellenar el monto de pago ─────────────
+  const calcPendienteMes = (ownerEmail) => {
+    const [anio, mes] = mesCorte.split("-").map(Number);
+    const fechaCorte = new Date(anio, mes - 1, 1);
+    const propsProp = properties.filter(p => p.owner_email === ownerEmail);
+    const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
+    const contractIds = contratosProp.map(c => c.id);
+    const pagosMes = payments.filter(p => {
+      if (p.status !== "pagado" || !p.due_date) return false;
+      if (!contractIds.includes(p.contract_id)) return false;
+      const d = new Date(p.due_date + "T12:00:00");
+      return d.getMonth() === (mes - 1) && d.getFullYear() === anio;
+    });
+    const totalRenta = pagosMes.reduce((a, p) => a + (p.amount || 0), 0);
+    const contratosPagados = contratosProp.filter(c => pagosMes.some(p => p.contract_id === c.id));
+    const totalCom = contratosPagados.reduce((a, c) => a + calcComision(c), 0);
+    const liqDelMes = ownerPayments.filter(l => {
+      const desc = (l.period_description || "").toLowerCase();
+      const mesMes = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
+      return l.owner_email === ownerEmail && desc.includes(mesMes) && desc.includes(String(anio));
+    });
+    const totalAdelanto = liqDelMes.reduce((a, l) => a + (l.amount_paid || 0), 0);
+    return Math.max(0, totalRenta - totalCom - totalAdelanto);
+  };
+
+  // ── Abrir modal de pago ───────────────────────────────────────────────────
+  const openModalPago = (owner) => {
+    const pendiente = calcPendienteMes(owner.email);
+    const [anio, mes] = mesCorte.split("-").map(Number);
+    const fechaCorte = new Date(anio, mes - 1, 1);
+    const periodoLabel = fechaCorte.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+    setPropietarioPago(owner);
+    setFormPago({
+      ...emptyFormPago,
+      monto: pendiente > 0 ? pendiente.toString() : "",
+      periodo: periodoLabel,
+      fecha: today,
+    });
+    setFirmaTrazada(false);
+    setArchivoComprobante(null);
+    setShowModalPago(true);
+  };
+
+  // ── Limpiar canvas de firma ───────────────────────────────────────────────
+  const limpiarFirma = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    setFirmaTrazada(false);
+  };
+
+  // ── Guardar pago + generar PDF de recibo ──────────────────────────────────
+  const guardarPago = async () => {
+    if (!formPago.monto || parseFloat(formPago.monto) <= 0) {
+      showToast("Ingresa un monto válido", false); return;
+    }
+    if (formPago.forma_pago === "efectivo" && !firmaTrazada) {
+      showToast("El propietario debe firmar de recibido", false); return;
+    }
+    if (formPago.forma_pago === "transferencia" && !archivoComprobante) {
+      showToast("Sube el comprobante de transferencia", false); return;
+    }
+
+    setSavingPago(true);
+
+    let firma_url = null;
+    let comprobante_url = null;
+
+    // Subir firma si es efectivo
+    if (formPago.forma_pago === "efectivo" && canvasRef.current) {
+      try {
+        const canvas = canvasRef.current;
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+        const fileName = `firmas/${propietarioPago.email.replace("@","_")}_${Date.now()}.png`;
+        const { data: upData, error: upErr } = await supabase.storage
+          .from("documentos")
+          .upload(fileName, blob, { contentType: "image/png", upsert: true });
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from("documentos").getPublicUrl(fileName);
+          firma_url = urlData?.publicUrl || null;
+        }
+      } catch (e) { console.warn("Error subiendo firma:", e); }
+    }
+
+    // Subir comprobante si es transferencia
+    if (formPago.forma_pago === "transferencia" && archivoComprobante) {
+      try {
+        const ext = archivoComprobante.name.split(".").pop();
+        const fileName = `comprobantes-propietarios/${propietarioPago.email.replace("@","_")}_${Date.now()}.${ext}`;
+        const { data: upData, error: upErr } = await supabase.storage
+          .from("documentos")
+          .upload(fileName, archivoComprobante, { upsert: true });
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from("documentos").getPublicUrl(fileName);
+          comprobante_url = urlData?.publicUrl || null;
+        }
+      } catch (e) { console.warn("Error subiendo comprobante:", e); }
+    }
+
+    // Insertar en owner_payment_receipts
+    const { data: recibo, error } = await supabase.from("owner_payment_receipts").insert([{
+      owner_name: propietarioPago.name,
+      owner_email: propietarioPago.email,
+      property_name: formPago.property_name || null,
+      concepto: formPago.concepto,
+      monto: parseFloat(formPago.monto),
+      forma_pago: formPago.forma_pago,
+      comprobante_url,
+      firma_url,
+      periodo: formPago.periodo,
+      fecha: formPago.fecha,
+      created_by: profile?.email || session.user.email,
+    }]).select().single();
+
+    if (error) {
+      setSavingPago(false);
+      showToast("Error al registrar: " + error.message, false);
+      return;
+    }
+
+    // Generar PDF del recibo automáticamente
+    await generarPDFRecibo({
+      ...formPago,
+      owner_name: propietarioPago.name,
+      owner_email: propietarioPago.email,
+      firma_url,
+      comprobante_url,
+      folio: recibo.id.slice(0, 8).toUpperCase(),
+    });
+
+    setSavingPago(false);
+    setShowModalPago(false);
+    setFormPago(emptyFormPago);
+    setFirmaTrazada(false);
+    setArchivoComprobante(null);
+    showToast("Pago registrado y recibo generado");
+    loadData();
+  };
+
+  // ── Generar PDF de recibo de entrega ──────────────────────────────────────
+  const generarPDFRecibo = async (datos) => {
+    const { default: jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ format: "a5" }); // A5 — más compacto para un recibo
+    const hoy = new Date(datos.fecha).toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
+    const concepto = { adelanto: "Adelanto de renta", parcial: "Pago parcial de liquidación", total: "Liquidación total" }[datos.concepto] || datos.concepto;
+
+    // Logo
+    let logoDataUrl = null;
+    try {
+      const res = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
+      const blob = await res.blob();
+      logoDataUrl = await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) { /* sin logo */ }
+
+    // ── Header ──
+    doc.setFillColor(185, 28, 60); doc.rect(0, 0, 6, 210, "F");
+    doc.setFillColor(26, 26, 46); doc.rect(6, 0, 142, 30, "F");
+    if (logoDataUrl) {
+      doc.addImage(logoDataUrl, "PNG", 10, 5, 24, 10);
+    } else {
+      doc.setTextColor(255,255,255); doc.setFontSize(11); doc.setFont("helvetica","bold");
+      doc.text("EMPORIO INMOBILIARIO", 12, 14);
+    }
+    doc.setTextColor(255,255,255); doc.setFontSize(14); doc.setFont("helvetica","bold");
+    doc.text("RECIBO DE ENTREGA", 108, 13, { align: "right" });
+    doc.setFontSize(8); doc.setFont("helvetica","normal");
+    doc.text(`Folio: ${datos.folio}`, 108, 20, { align: "right" });
+    doc.text(`Fecha: ${hoy}`, 108, 25, { align: "right" });
+
+    // ── Cuerpo ──
+    let y = 38;
+    doc.setTextColor(26,26,46); doc.setFontSize(9); doc.setFont("helvetica","normal");
+
+    // Sección propietario
+    doc.setFillColor(248,248,248); doc.rect(8, y, 132, 24, "F");
+    doc.setDrawColor(220,220,220); doc.setLineWidth(0.3); doc.rect(8, y, 132, 24, "S");
+    doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(122,122,122);
+    doc.text("PROPIETARIO", 12, y + 6);
+    doc.setTextColor(26,26,46); doc.setFontSize(11); doc.setFont("helvetica","bold");
+    doc.text(datos.owner_name, 12, y + 14);
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(122,122,122);
+    doc.text(datos.owner_email, 12, y + 20);
+    y += 30;
+
+    // Detalle del pago
+    const rows = [
+      ["Concepto", concepto],
+      ["Periodo", datos.periodo || "—"],
+      ["Propiedad", datos.property_name || "Todas las propiedades"],
+      ["Forma de pago", datos.forma_pago === "efectivo" ? "Efectivo" : "Transferencia bancaria"],
+    ];
+    rows.forEach(([lbl, val]) => {
+      doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(122,122,122);
+      doc.text(lbl, 10, y);
+      doc.setFont("helvetica","bold"); doc.setTextColor(26,26,46);
+      doc.text(val, 80, y);
+      y += 8;
+    });
+
+    // Monto destacado
+    y += 4;
+    doc.setFillColor(6, 95, 70); doc.rect(8, y, 132, 16, "F");
+    doc.setTextColor(255,255,255); doc.setFont("helvetica","normal"); doc.setFontSize(9);
+    doc.text("MONTO ENTREGADO", 12, y + 7);
+    doc.setFont("helvetica","bold"); doc.setFontSize(14);
+    doc.text(fmt(parseFloat(datos.monto)), 136, y + 10, { align: "right" });
+    y += 24;
+
+    // Firma del propietario si es efectivo
+    if (datos.forma_pago === "efectivo") {
+      y += 4;
+      doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(26,26,46);
+      doc.text("FIRMA DE RECIBIDO — PROPIETARIO", 10, y);
+      y += 4;
+      if (datos.firma_url) {
+        try {
+          // Cargar imagen de firma
+          const res = await fetch(datos.firma_url);
+          const blob = await res.blob();
+          const firmaB64 = await new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          doc.addImage(firmaB64, "PNG", 8, y, 80, 25);
+          doc.setDrawColor(200,200,200); doc.setLineWidth(0.3);
+          doc.rect(8, y, 80, 25, "S");
+        } catch(e) {
+          doc.setDrawColor(200,200,200); doc.rect(8, y, 80, 25, "S");
+          doc.setTextColor(180,180,180); doc.setFontSize(8);
+          doc.text("(firma no disponible)", 12, y + 13);
+        }
+      } else {
+        doc.setDrawColor(200,200,200); doc.rect(8, y, 80, 25, "S");
+      }
+      doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(122,122,122);
+      doc.text(datos.owner_name, 10, y + 31);
+      y += 36;
+    }
+
+    // Nota de comprobante si es transferencia
+    if (datos.forma_pago === "transferencia" && datos.comprobante_url) {
+      y += 4;
+      doc.setFillColor(235,245,255); doc.rect(8, y, 132, 10, "F");
+      doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(30,64,175);
+      doc.text("✓ Comprobante de transferencia adjunto en el sistema", 12, y + 6);
+      y += 14;
+    }
+
+    // Footer
+    doc.setDrawColor(220,220,220); doc.setLineWidth(0.3); doc.line(8, 192, 140, 192);
+    doc.setFillColor(185,28,60); doc.rect(0, 192, 6, 18, "F");
+    doc.setTextColor(122,122,122); doc.setFontSize(7); doc.setFont("helvetica","normal");
+    doc.text("Emporio Inmobiliario — Puebla, México", 10, 198);
+    doc.text("222 257 3237  ·  ventas@emporioinmobiliario.mx", 10, 203);
+    doc.setTextColor(185,28,60); doc.setFont("helvetica","bold");
+    doc.text("app.emporioinmobiliario.com.mx", 10, 208);
+
+    doc.save(`Recibo_Pago_${datos.owner_name.replace(/\s+/g,"_")}_${datos.fecha}.pdf`);
+  };
+
+  // ── openLiquidar — sin cambios ────────────────────────────────────────────
   const openLiquidar = (ownerName, ownerEmail) => {
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
     const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
@@ -154,6 +481,7 @@ export default function Liquidaciones() {
     setShowModal(true);
   };
 
+  // ── save — sin cambios ────────────────────────────────────────────────────
   const save = async () => {
     setSaving(true);
     const data = {
@@ -183,6 +511,7 @@ export default function Liquidaciones() {
     loadData();
   };
 
+  // ── eliminar — sin cambios ────────────────────────────────────────────────
   const eliminar = async (id, nombre) => {
     if (!isAdmin) { showToast("Solo el admin puede eliminar", false); return; }
     if (!confirm(`¿Eliminar liquidación de ${nombre}?`)) return;
@@ -190,17 +519,16 @@ export default function Liquidaciones() {
     showToast("Eliminado"); loadData();
   };
 
+  // ── descargarPDF — sin cambios ────────────────────────────────────────────
   const descargarPDF = async (ownerName, ownerEmail, mesCorteParam) => {
     const { default: jsPDF } = await import("jspdf");
     const { default: autoTable } = await import("jspdf-autotable");
     const doc = new jsPDF();
     const [anioCorte, mesNumCorte] = (mesCorteParam || mesCorte).split("-").map(Number);
     const fechaCorte = new Date(anioCorte, mesNumCorte - 1, 1);
-    const ultimoDiaCorte = new Date(anioCorte, mesNumCorte, 0);
     const hoy = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
     const mes = fechaCorte.toLocaleDateString("es-MX", { year: "numeric", month: "long" });
 
-    // Datos
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
     const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
     const liqProp = ownerPayments.filter(l => l.owner_email === ownerEmail);
@@ -217,7 +545,6 @@ export default function Liquidaciones() {
       const d = new Date(e.date + "T12:00:00");
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
-    // Solo pagos efectivamente recibidos en el mes del corte
     const contractIds = contratosProp.map(c => c.id);
     const { data: pagosMesCalc } = await supabase.from("payments").select("*").in("contract_id", contractIds.length > 0 ? contractIds : ["none"]);
     const pagosPagadosMes = (pagosMesCalc || []).filter(p => {
@@ -227,7 +554,6 @@ export default function Liquidaciones() {
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
     const totalRentaProp = pagosPagadosMes.reduce((a, p) => a + (p.amount || 0), 0);
-    // Comisión basada en contratos que sí pagaron
     const contratosPagados = contratosProp.filter(c => pagosPagadosMes.some(p => p.contract_id === c.id));
     const totalComProp   = contratosPagados.reduce((a, c) => a + calcComision(c), 0);
     const costoMantProp  = ticketsProp.filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
@@ -242,7 +568,6 @@ export default function Liquidaciones() {
     const totalAdelanto = liqDelMes.reduce((a, l) => a + (l.amount_paid || 0), 0);
     const totalPendiente = totalLiqProp - totalAdelanto;
 
-    // ── Cargar logo desde el navegador ──
     let logoDataUrl = null;
     try {
       const res = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
@@ -254,15 +579,9 @@ export default function Liquidaciones() {
       });
     } catch (e) { console.warn("Logo no disponible:", e); }
 
-    // ── HEADER ──────────────────────────────────────────────────────────────
-    // Fondo blanco limpio con acento lateral rojo
     doc.setFillColor(255, 255, 255); doc.rect(0, 0, 210, 44, "F");
-    // Barra lateral izquierda roja
     doc.setFillColor(185, 28, 60); doc.rect(0, 0, 6, 44, "F");
-    // Línea inferior roja delgada
     doc.setFillColor(185, 28, 60); doc.rect(0, 41, 210, 3, "F");
-
-    // Logo o texto
     if (logoDataUrl) {
       doc.addImage(logoDataUrl, "PNG", 14, 5, 34, 15);
     } else {
@@ -271,27 +590,22 @@ export default function Liquidaciones() {
       doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(122, 122, 122);
       doc.text("INMOBILIARIO", 14, 22);
     }
-
-    // Tipo de documento — derecha
     doc.setTextColor(185, 28, 60); doc.setFontSize(13); doc.setFont("helvetica", "bold");
     doc.text("REPORTE DE PROPIETARIO", 195, 12, { align: "right" });
     doc.setTextColor(122, 122, 122); doc.setFontSize(8); doc.setFont("helvetica", "normal");
     doc.text(`Generado: ${hoy}`, 195, 19, { align: "right" });
     doc.text("app.emporioinmobiliario.com.mx", 195, 25, { align: "right" });
 
-    // ── DATOS PROPIETARIO ────────────────────────────────────────────────────
     doc.setFillColor(248, 248, 248); doc.rect(0, 44, 210, 20, "F");
     doc.setTextColor(74, 74, 74); doc.setFontSize(14); doc.setFont("helvetica", "bold");
     doc.text(ownerName, 14, 55);
     doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(122, 122, 122);
     doc.text(`Periodo: ${mes}  ·  ${propsProp.length} propiedad${propsProp.length !== 1 ? "es" : ""}  ·  ${contratosProp.length} contrato${contratosProp.length !== 1 ? "s" : ""} activo${contratosProp.length !== 1 ? "s" : ""}`, 14, 61);
 
-    // ── RESUMEN FINANCIERO ───────────────────────────────────────────────────
     let y = 84;
     const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 ? 1 : 0);
     const boxH = 28 + extraLines * 7;
 
-    // Fondo del resumen
     doc.setFillColor(185, 28, 60); doc.rect(14, y, 182, 7, "F");
     doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont("helvetica", "bold");
     doc.text("RESUMEN FINANCIERO", 18, y + 5);
@@ -325,7 +639,6 @@ export default function Liquidaciones() {
       doc.text(`-${fmt(gastosOpProp)}`, 105, lineY);
       lineY += 7;
     }
-
     if (totalAdelanto > 0) {
       doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
       doc.text("Adelanto pagado:", 18, lineY);
@@ -334,7 +647,6 @@ export default function Liquidaciones() {
       lineY += 7;
     }
 
-    // Líquido destacado
     const labelLiq = totalAdelanto > 0 ? "Pendiente por pagar:" : "Líquido a recibir:";
     const montoLiq = totalAdelanto > 0 ? totalPendiente : totalLiqProp;
     doc.setFillColor(6, 95, 70); doc.rect(105, lineY - 5, 91, 10, "F");
@@ -344,7 +656,6 @@ export default function Liquidaciones() {
 
     y += boxH + 14;
 
-    // ── ESTILOS DE TABLAS ────────────────────────────────────────────────────
     const headStyle = { fillColor: [74, 74, 74], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 };
     const altRow = { fillColor: [250, 250, 250] };
     const tableMargin = { left: 14, right: 14 };
@@ -356,7 +667,6 @@ export default function Liquidaciones() {
       return yPos + 10;
     };
 
-    // ── PROPIEDADES ──────────────────────────────────────────────────────────
     y = sectionTitle("Propiedades", y);
     autoTable(doc, {
       startY: y,
@@ -371,12 +681,10 @@ export default function Liquidaciones() {
     y = doc.lastAutoTable.finalY + 12;
     if (y > 230) { doc.addPage(); y = 15; }
 
-    // ── PAGOS DEL MES ────────────────────────────────────────────────────────
     y = sectionTitle("Pagos del Mes", y);
     const contractIdsMes = contratosProp.map(c => c.id);
     const { data: pagosFrescos } = await supabase.from("payments").select("*").in("contract_id", contractIdsMes.length > 0 ? contractIdsMes : ["none"]);
-    const pagosProp = (pagosFrescos || []);
-    const pagosMesPDF = pagosProp.filter(p => {
+    const pagosMesPDF = (pagosFrescos || []).filter(p => {
       if (!p.due_date) return false;
       const d = new Date(p.due_date + "T12:00:00");
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
@@ -401,7 +709,6 @@ export default function Liquidaciones() {
     y = doc.lastAutoTable.finalY + 12;
     if (y > 230) { doc.addPage(); y = 15; }
 
-    // ── LIQUIDACIONES ────────────────────────────────────────────────────────
     y = sectionTitle("Historial de Liquidaciones", y);
     autoTable(doc, {
       startY: y,
@@ -416,7 +723,6 @@ export default function Liquidaciones() {
     y = doc.lastAutoTable.finalY + 12;
     if (y > 230) { doc.addPage(); y = 15; }
 
-    // ── MANTENIMIENTO ────────────────────────────────────────────────────────
     y = sectionTitle("Mantenimiento", y);
     autoTable(doc, {
       startY: y,
@@ -431,7 +737,6 @@ export default function Liquidaciones() {
       styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: tableMargin,
     });
 
-    // ── GASTOS OPERATIVOS ────────────────────────────────────────────────────
     if (gastosProp.length > 0) {
       y = doc.lastAutoTable.finalY + 12;
       if (y > 230) { doc.addPage(); y = 15; }
@@ -444,16 +749,12 @@ export default function Liquidaciones() {
       });
     }
 
-    // ── FOOTER EN TODAS LAS PÁGINAS ──────────────────────────────────────────
     const totalPaginas = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPaginas; i++) {
       doc.setPage(i);
-      // Línea separadora
       doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3);
       doc.line(14, 284, 196, 284);
-      // Barra lateral roja
       doc.setFillColor(185, 28, 60); doc.rect(0, 284, 6, 13, "F");
-      // Texto footer
       doc.setTextColor(122, 122, 122); doc.setFontSize(7); doc.setFont("helvetica", "normal");
       doc.text("Emporio Inmobiliario — Puebla, México", 14, 290);
       doc.text("222 257 3237  ·  ventas@emporioinmobiliario.mx", 14, 294);
@@ -469,13 +770,8 @@ export default function Liquidaciones() {
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
   );
+  if (!session) { if (typeof window !== "undefined") window.location.href = "/"; return null; }
 
-  if (!session) {
-    if (typeof window !== "undefined") window.location.href = "/";
-    return null;
-  }
-
-  // ── PROPIETARIOS ÚNICOS ──
   const propietariosUnicos = [...new Map(
     properties.filter(p => p.owner_email).map(p => [
       p.owner_email,
@@ -499,14 +795,12 @@ export default function Liquidaciones() {
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
 
-        {/* NOTA */}
         <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 12, padding: "10px 16px", marginBottom: 20 }}>
           <p style={{ margin: 0, fontSize: 12, color: "#92400e", fontWeight: 600 }}>
             Si la renta va directo al propietario: registra como referencia pero NO afecta la caja de Emporio. La comisión se registra en Comisiones cuando la recibes.
           </p>
         </div>
 
-        {/* PROPIETARIOS ACTIVOS */}
         {loading ? (
           <div style={{ textAlign: "center", padding: 48 }}><p style={{ color: "#6b7280" }}>Cargando...</p></div>
         ) : (
@@ -528,6 +822,7 @@ export default function Liquidaciones() {
                     const liquidoProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0) - calcComision(c), 0);
                     const pagosDelPropietario = payments.filter(p => propsProp.some(pr => pr.name === p.property_name) && p.status === "pagado");
                     const totalPagado = pagosDelPropietario.reduce((a, p) => a + (p.amount || 0), 0);
+                    const pendienteMes = calcPendienteMes(owner.email);
                     return (
                       <div key={i} style={{ background: "#fff", borderRadius: 14, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
@@ -535,9 +830,10 @@ export default function Liquidaciones() {
                             <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{owner.name}</p>
                             <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>{propsProp.length} propiedad{propsProp.length !== 1 ? "es" : ""}</p>
                           </div>
-                          <div style={{ display: "flex", gap: 6 }}>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                             <Btn small color="#065f46" onClick={() => openLiquidar(owner.name, owner.email)}>Liquidar</Btn>
                             <Btn small color="#1e40af" onClick={() => descargarPDF(owner.name, owner.email, mesCorte)}>PDF</Btn>
+                            <Btn small color="#b45309" onClick={() => openModalPago(owner)}>💳 Pago</Btn>
                           </div>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -546,8 +842,8 @@ export default function Liquidaciones() {
                             <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#065f46" }}>{fmt(liquidoProp)}</p>
                           </div>
                           <div style={{ background: "#f9fafb", borderRadius: 8, padding: "8px 12px" }}>
-                            <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Total pagado</p>
-                            <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1e40af" }}>{fmt(totalPagado)}</p>
+                            <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Pendiente mes</p>
+                            <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: pendienteMes > 0 ? "#b45309" : "#065f46" }}>{fmt(pendienteMes)}</p>
                           </div>
                         </div>
                       </div>
@@ -557,7 +853,6 @@ export default function Liquidaciones() {
               </div>
             )}
 
-            {/* HISTORIAL */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Historial</h2>
               <select value={filterPropietario} onChange={e => setFilterPropietario(e.target.value)} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
@@ -604,7 +899,7 @@ export default function Liquidaciones() {
         )}
       </div>
 
-      {/* MODAL */}
+      {/* ── Modal liquidación — sin cambios ── */}
       {showModal && (
         <Modal title="Registrar Liquidación" onClose={() => { setShowModal(false); setForm(emptyForm); }}>
           <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 12px", marginBottom: 16 }}>
@@ -658,6 +953,131 @@ export default function Liquidaciones() {
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
             <button onClick={() => { setShowModal(false); setForm(emptyForm); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
             <Btn onClick={save} disabled={saving || !form.owner_name || !form.amount_paid}>{saving ? "Guardando..." : "Registrar liquidación"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Modal de pago a propietario ── */}
+      {showModalPago && propietarioPago && (
+        <Modal title={`💳 Registrar pago — ${propietarioPago.name}`} onClose={() => { setShowModalPago(false); setFormPago(emptyFormPago); setFirmaTrazada(false); setArchivoComprobante(null); }} wide>
+          {/* Info propietario */}
+          <div style={{ background: "#f9fafb", borderRadius: 8, padding: "10px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{propietarioPago.name}</p>
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{propietarioPago.email}</p>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Pendiente del mes</p>
+              <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#b45309" }}>{fmt(calcPendienteMes(propietarioPago.email))}</p>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Concepto">
+              <Sel value={formPago.concepto} onChange={e => setFormPago({ ...formPago, concepto: e.target.value })}>
+                <option value="adelanto">Adelanto</option>
+                <option value="parcial">Pago parcial</option>
+                <option value="total">Liquidación total</option>
+              </Sel>
+            </Field>
+            <Field label="Monto a entregar">
+              <Input type="number" value={formPago.monto} onChange={e => setFormPago({ ...formPago, monto: e.target.value })} placeholder="0" />
+            </Field>
+          </div>
+
+          <Field label="Propiedad que aplica (opcional — dejar vacío si es pago general)">
+            <Sel value={formPago.property_name} onChange={e => setFormPago({ ...formPago, property_name: e.target.value })}>
+              <option value="">— Todas las propiedades —</option>
+              {properties.filter(p => p.owner_email === propietarioPago.email).map(p => (
+                <option key={p.id} value={p.name}>{p.name}</option>
+              ))}
+            </Sel>
+          </Field>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Periodo">
+              <Input value={formPago.periodo} onChange={e => setFormPago({ ...formPago, periodo: e.target.value })} placeholder="Ej: mayo de 2026" />
+            </Field>
+            <Field label="Fecha de entrega">
+              <Input type="date" value={formPago.fecha} onChange={e => setFormPago({ ...formPago, fecha: e.target.value })} />
+            </Field>
+          </div>
+
+          {/* Forma de pago */}
+          <Field label="Forma de pago">
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setFormPago({ ...formPago, forma_pago: "efectivo" })} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, border: `2px solid ${formPago.forma_pago === "efectivo" ? "#b45309" : "#e5e7eb"}`, background: formPago.forma_pago === "efectivo" ? "#fffbeb" : "#fff", color: formPago.forma_pago === "efectivo" ? "#b45309" : "#6b7280", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                💵 Efectivo
+              </button>
+              <button onClick={() => setFormPago({ ...formPago, forma_pago: "transferencia" })} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, border: `2px solid ${formPago.forma_pago === "transferencia" ? "#1e40af" : "#e5e7eb"}`, background: formPago.forma_pago === "transferencia" ? "#eff6ff" : "#fff", color: formPago.forma_pago === "transferencia" ? "#1e40af" : "#6b7280", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                🏦 Transferencia
+              </button>
+            </div>
+          </Field>
+
+          {/* Firma si es efectivo */}
+          {formPago.forma_pago === "efectivo" && (
+            <Field label="Firma de recibido — propietario">
+              <FirmaCanvas canvasRef={canvasRef} onFirma={setFirmaTrazada} />
+              {firmaTrazada && (
+                <button onClick={limpiarFirma} style={{ marginTop: 6, background: "none", border: "none", color: "#dc2626", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+                  ✕ Borrar firma
+                </button>
+              )}
+              {!firmaTrazada && (
+                <p style={{ margin: "6px 0 0", fontSize: 12, color: "#dc2626", fontWeight: 600 }}>⚠ Se requiere firma para continuar</p>
+              )}
+            </Field>
+          )}
+
+          {/* Comprobante si es transferencia */}
+          {formPago.forma_pago === "transferencia" && (
+            <Field label="Comprobante de transferencia">
+              <div style={{ border: "2px dashed #d1d5db", borderRadius: 8, padding: "16px", textAlign: "center", background: "#fafafa" }}>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={e => setArchivoComprobante(e.target.files[0] || null)}
+                  style={{ display: "none" }}
+                  id="comprobante-input"
+                />
+                <label htmlFor="comprobante-input" style={{ cursor: "pointer" }}>
+                  {archivoComprobante ? (
+                    <div>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#065f46" }}>✓ {archivoComprobante.name}</p>
+                      <p style={{ margin: "4px 0 0", fontSize: 11, color: "#6b7280" }}>Clic para cambiar</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p style={{ margin: 0, fontSize: 24 }}>📎</p>
+                      <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>Toca para subir el comprobante</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>JPG, PNG o PDF</p>
+                    </div>
+                  )}
+                </label>
+              </div>
+              {!archivoComprobante && (
+                <p style={{ margin: "6px 0 0", fontSize: 12, color: "#dc2626", fontWeight: 600 }}>⚠ Se requiere comprobante para continuar</p>
+              )}
+            </Field>
+          )}
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+            <button onClick={() => { setShowModalPago(false); setFormPago(emptyFormPago); setFirmaTrazada(false); setArchivoComprobante(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>
+              Cancelar
+            </button>
+            <Btn
+              onClick={guardarPago}
+              disabled={
+                savingPago ||
+                !formPago.monto ||
+                (formPago.forma_pago === "efectivo" && !firmaTrazada) ||
+                (formPago.forma_pago === "transferencia" && !archivoComprobante)
+              }
+              color="#b45309"
+            >
+              {savingPago ? "Guardando…" : "Registrar pago y generar recibo"}
+            </Btn>
           </div>
         </Modal>
       )}
