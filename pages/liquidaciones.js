@@ -13,6 +13,27 @@ const calcComision = (c) => {
   return c.commission_value;
 };
 
+// Safari/iOS no soporta blob URLs para descarga — abre el PDF como data URI en nueva pestaña
+const savePDF = (doc, filename) => {
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+    || /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (isSafari) {
+    const uri = doc.output("datauristring");
+    const win = window.open();
+    if (win) {
+      win.document.write(`<iframe src="${uri}" style="width:100%;height:100%;border:none;" title="${filename}"></iframe>`);
+    } else {
+      // Si el popup fue bloqueado, forzar descarga vía link
+      const link = document.createElement("a");
+      link.href = uri;
+      link.download = filename;
+      link.click();
+    }
+  } else {
+    doc.save(filename);
+  }
+};
+
 const StatusBadge = ({ status }) => {
   const map = {
     pagado:        { bg: "#d1fae5", color: "#065f46", label: "Pagado" },
@@ -232,7 +253,7 @@ export default function Liquidaciones() {
       doc.text("Emporio Inmobiliario — Puebla, México", 10, 198);
       doc.text("222 257 3237  ·  ventas@emporioinmobiliario.mx", 10, 203);
       doc.setTextColor(185,28,60); doc.setFont("helvetica","bold"); doc.text("app.emporioinmobiliario.com.mx", 10, 208);
-      doc.save(`Recibo_${recibo.concepto}_${recibo.fecha}_${folio}.pdf`);
+      savePDF(doc, `Recibo_${recibo.concepto}_${recibo.fecha}_${folio}.pdf`);
     } catch(e) { showToast("Error al generar recibo", false); }
     setDescargandoRecibo(null);
   };
@@ -608,7 +629,7 @@ export default function Liquidaciones() {
     doc.setTextColor(185,28,60); doc.setFont("helvetica","bold");
     doc.text("app.emporioinmobiliario.com.mx", 10, 208);
 
-    doc.save(`Recibo_Pago_${datos.owner_name.replace(/\s+/g,"_")}_${datos.fecha}.pdf`);
+    savePDF(doc, `Recibo_Pago_${datos.owner_name.replace(/\s+/g,"_")}_${datos.fecha}.pdf`);
   };
 
   // ── openLiquidar — sin cambios ────────────────────────────────────────────
@@ -913,7 +934,7 @@ export default function Liquidaciones() {
       doc.text(`${i} / ${totalPaginas}`, 196, 292, { align: "right" });
     }
 
-    doc.save(`Liquidacion_${ownerName.replace(/\s+/g, "_")}_${today}.pdf`);
+    savePDF(doc, `Liquidacion_${ownerName.replace(/\s+/g, "_")}_${today}.pdf`);
   };
 
   if (authLoading) return (
