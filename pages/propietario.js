@@ -86,6 +86,25 @@ const calcComision = (contrato) => {
   return contrato.commission_value;
 };
 
+const savePDF = (doc, filename) => {
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+    || /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (isSafari) {
+    const uri = doc.output("datauristring");
+    const win = window.open();
+    if (win) {
+      win.document.write(`<iframe src="${uri}" style="width:100%;height:100%;border:none;" title="${filename}"></iframe>`);
+    } else {
+      const link = document.createElement("a");
+      link.href = uri;
+      link.download = filename;
+      link.click();
+    }
+  } else {
+    doc.save(filename);
+  }
+};
+
 const generarPDF = async (ownerName, properties, contracts, payments, liquidaciones, tickets, propertyExpenses) => {
   const { default: jsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
@@ -134,7 +153,7 @@ const generarPDF = async (ownerName, properties, contracts, payments, liquidacio
     doc.text("Emporio Inmobiliario — app.emporioinmobiliario.com.mx", 20, 293);
     doc.setTextColor(255, 200, 200); doc.text(`Página ${i} de ${totalPaginas}`, 175, 293);
   }
-  doc.save(`Reporte_${ownerName.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`);
+  savePDF(doc, `Reporte_${ownerName.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`);
 };
 
 // ── Regenerar PDF de recibo de entrega ────────────────────────────────────
@@ -234,7 +253,7 @@ const verReciboEntrega = async (recibo) => {
   doc.setTextColor(185,28,60); doc.setFont("helvetica","bold");
   doc.text("app.emporioinmobiliario.com.mx", 10, 208);
 
-  doc.save(`Recibo_${recibo.concepto}_${recibo.fecha}_${folio}.pdf`);
+  savePDF(doc, `Recibo_${recibo.concepto}_${recibo.fecha}_${folio}.pdf`);
 };
 
 export default function PropietarioPortal() {
