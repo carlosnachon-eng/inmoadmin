@@ -121,7 +121,7 @@ export default function CondominoPortal() {
       { data: gastosData },
       { data: ticketsData },
     ] = await Promise.all([
-      supabase.from("cuotas_condominio").select("*").eq("unidad_id", u.id).order("periodo", { ascending: false }),
+      supabase.from("cuotas_condominio").select("id, periodo, monto, status, fecha_vencimiento, fecha_pago, comprobante_url, recibo_url, unidad_id").eq("unidad_id", u.id).order("periodo", { ascending: false }),
       supabase.from("gastos_condominio").select("*").eq("condominio_id", u.condominio_id).order("fecha", { ascending: false }).limit(20),
       supabase.from("maintenance_tickets").select("*").eq("condominio_id", u.condominio_id).order("created_at", { ascending: false }),
     ]);
@@ -175,6 +175,7 @@ export default function CondominoPortal() {
   const TABS = [
     { id: "inicio",   label: "📊 Mi unidad" },
     { id: "cuotas",   label: "💰 Mis cuotas" },
+    { id: "recibos",  label: "🧾 Mis recibos" },
     { id: "gastos",   label: "📤 Gastos comunes" },
     { id: "tickets",  label: "🔧 Mantenimiento" },
   ];
@@ -328,6 +329,33 @@ export default function CondominoPortal() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* TAB: MIS RECIBOS */}
+        {tab === "recibos" && (
+          <div>
+            <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Mis recibos de pago</h3>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: "#9ca3af" }}>Recibos oficiales generados por Emporio Inmobiliario al confirmar tu pago</p>
+            {cuotas.filter(q => q.recibo_url).length === 0 ? (
+              <div style={{ background: "#fff", borderRadius: 12, padding: 48, textAlign: "center" }}>
+                <p style={{ fontSize: 32, margin: "0 0 8px" }}>🧾</p>
+                <p style={{ color: "#9ca3af" }}>Sin recibos generados aún</p>
+                <p style={{ color: "#9ca3af", fontSize: 12 }}>Los recibos aparecen aquí cuando Emporio confirma tu pago</p>
+              </div>
+            ) : (
+              cuotas.filter(q => q.recibo_url).sort((a, b) => b.periodo.localeCompare(a.periodo)).map(q => (
+                <div key={q.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", marginBottom: 10, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{periodoLabel(q.periodo)}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>Pagado el {q.fecha_pago || "—"} · {fmt(q.monto)}</p>
+                  </div>
+                  <a href={q.recibo_url} target="_blank" rel="noreferrer" style={{ background: "#b91c3c", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+                    📄 Descargar recibo
+                  </a>
+                </div>
+              ))
+            )}
           </div>
         )}
 
