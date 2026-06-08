@@ -164,8 +164,8 @@ export default function CondominioDetalle() {
   const pendientePeriodo = cuotasPeriodo.filter(q => q.status !== "pagado").reduce((a, q) => a + (q.monto || 0), 0);
   const totalGastos = gastos.reduce((a, g) => a + (g.monto || 0), 0);
   const totalCobradoHistorico = cuotas.filter(q => q.status === "pagado").reduce((a, q) => a + (q.monto || 0), 0);
-  const honorariosAcumulados = cond ? (cuotas.map(q => q.periodo).filter((v, i, a) => a.indexOf(v) === i).length * cond.honorarios_emporio) : 0;
-  const fondoDisponible = totalCobradoHistorico - honorariosAcumulados - totalGastos;
+  const honorariosAcumulados = gastos.filter(g => g.concepto?.toUpperCase().includes("ADMINISTRACION EMPORIO")).reduce((a, g) => a + (g.monto || 0), 0);
+  const fondoDisponible = totalCobradoHistorico - totalGastos;
 
   // ── Guardar unidad ────────────────────────────────────────────────────────
   const guardarUnidad = async () => {
