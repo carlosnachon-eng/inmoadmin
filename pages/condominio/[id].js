@@ -196,6 +196,8 @@ export default function CondominioDetalle() {
     loadData();
   };
 
+  const [fechaPagoCuota, setFechaPagoCuota] = useState(new Date().toISOString().split("T")[0]);
+
   // ── Registrar pago de cuota ───────────────────────────────────────────────
   const registrarPagoCuota = async () => {
     if (!modalCuota) return;
@@ -212,13 +214,14 @@ export default function CondominioDetalle() {
     }
     await supabase.from("cuotas_condominio").update({
       status: "pagado",
-      fecha_pago: new Date().toISOString().split("T")[0],
+      fecha_pago: fechaPagoCuota,
       comprobante_url,
       pagado_por: modalCuota.unidades_condominio?.propietario_nombre || "—",
     }).eq("id", modalCuota.id);
     setSaving(false);
     setModalCuota(null);
     setArchivoComprobante(null);
+    setFechaPagoCuota(new Date().toISOString().split("T")[0]);
     showToast("Pago registrado");
     loadData();
   };
@@ -945,12 +948,15 @@ export default function CondominioDetalle() {
 
       {/* ── Modal registrar pago de cuota ── */}
       {modalCuota && (
-        <Modal title={`Registrar pago — Unidad ${modalCuota.unidades_condominio?.numero || ""}`} onClose={() => { setModalCuota(null); setArchivoComprobante(null); }}>
+        <Modal title={`Registrar pago — Unidad ${modalCuota.unidades_condominio?.numero || ""}`} onClose={() => { setModalCuota(null); setArchivoComprobante(null); setFechaPagoCuota(new Date().toISOString().split("T")[0]); }}>
           <p style={{ fontSize: 14, color: "#6b7280", marginTop: 0 }}>
             Propietario: <strong>{modalCuota.unidades_condominio?.propietario_nombre || "—"}</strong><br />
             Periodo: <strong>{periodoLabel(modalCuota.periodo)}</strong><br />
             Monto: <strong>{fmt(modalCuota.monto)}</strong>
           </p>
+          <Field label="Fecha de pago">
+            <Input type="date" value={fechaPagoCuota} onChange={e => setFechaPagoCuota(e.target.value)} />
+          </Field>
           <Field label="Comprobante de pago (opcional)">
             <div style={{ border: "2px dashed #d1d5db", borderRadius: 8, padding: 16, textAlign: "center", background: "#fafafa" }}>
               <input type="file" accept="image/*,application/pdf" id="comp-cuota" style={{ display: "none" }} onChange={e => setArchivoComprobante(e.target.files[0] || null)} />
@@ -963,7 +969,7 @@ export default function CondominioDetalle() {
             </div>
           </Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
-            <button onClick={() => { setModalCuota(null); setArchivoComprobante(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <button onClick={() => { setModalCuota(null); setArchivoComprobante(null); setFechaPagoCuota(new Date().toISOString().split("T")[0]); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
             <Btn onClick={registrarPagoCuota} disabled={saving} color="#065f46">{saving ? "Guardando…" : "✓ Confirmar pago"}</Btn>
           </div>
         </Modal>
