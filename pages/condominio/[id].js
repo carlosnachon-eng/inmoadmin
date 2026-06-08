@@ -222,82 +222,149 @@ export default function CondominioDetalle() {
       pagado_por: modalCuota.unidades_condominio?.propietario_nombre || "—",
     }).eq("id", modalCuota.id);
 
-    // Generar PDF y enviar email
+    // Generar PDF con diseño igual al recibo de apartado
     try {
       const { default: jsPDF } = await import("jspdf");
-      const doc = new jsPDF({ format: "a5", orientation: "portrait" });
-      const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
+      const doc = new jsPDF({ unit: "pt", format: "a5", orientation: "portrait" });
+      const W = 419, H = 595, M = 32;
+      const RED = [185, 28, 60], DARK = [26, 26, 46], GRAY = [120, 120, 120];
+      const LGRAY = [247, 247, 247], LINE = [220, 220, 220];
+      const fmtMXN = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 2 }).format(n || 0);
       const periodoLbl = (p) => { if (!p) return "—"; const [y, m] = p.split("-"); return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" }); };
 
-      // Header
-      doc.setFillColor(26, 26, 46); doc.rect(0, 0, 148, 28, "F");
-      doc.setFillColor(185, 28, 60); doc.rect(0, 28, 148, 3, "F");
+      // TOP BAR
+      doc.setFillColor(...RED); doc.rect(0, 0, W, 5, "F");
 
-      // Logo
+      // LOGO
       try {
         const logoRes = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
         const logoBlob = await logoRes.blob();
         const logoB64 = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.readAsDataURL(logoBlob); });
-        doc.addImage(logoB64, "PNG", 8, 4, 28, 12);
+        doc.addImage(logoB64, "PNG", M, 8, 70, Math.round(70 * (959 / 1801)));
       } catch (e) { /* sin logo */ }
 
-      doc.setTextColor(255, 255, 255); doc.setFontSize(13); doc.setFont("helvetica", "bold");
-      doc.text("RECIBO DE CUOTA", 140, 12, { align: "right" });
-      doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(200, 200, 200);
-      doc.text(`Folio: ${folio}`, 140, 19, { align: "right" });
-      doc.text(`Fecha: ${fechaPagoCuota}`, 140, 24, { align: "right" });
+      // TÍTULO
+      doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...DARK);
+      doc.text("RECIBO DE CUOTA", M + 78, 18);
+      doc.setTextColor(...RED); doc.setFontSize(8);
+      doc.text("MANTENIMIENTO DE CONDOMINIO", M + 78, 28);
 
-      // Datos del condómino
-      let y = 38;
-      doc.setTextColor(26, 26, 46); doc.setFontSize(11); doc.setFont("helvetica", "bold");
-      doc.text(modalCuota.unidades_condominio?.propietario_nombre || "—", 8, y);
-      y += 7;
-      doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(100, 100, 100);
-      doc.text(`${cond?.nombre || "Condominio"} · Depto ${modalCuota.unidades_condominio?.numero || "—"}`, 8, y);
-      if (cond?.direccion) { y += 5; doc.text(cond.direccion, 8, y); }
+      // FECHA/FOLIO top right
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
+      doc.text("Fecha:", W - M - 100, 16);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK);
+      doc.text(fechaPagoCuota, W - M - 72, 16);
+      doc.setFont("helvetica", "normal"); doc.setTextColor(...GRAY);
+      doc.text("Folio:", W - M - 100, 26);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(...RED);
+      doc.text(folio, W - M - 72, 26);
 
-      // Cuerpo del recibo
-      y += 12;
-      doc.setFillColor(248, 248, 248); doc.rect(6, y, 136, 38, "F");
-      doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3); doc.rect(6, y, 136, 38, "S");
+      // LÍNEA ROJA
+      const divY = 42;
+      doc.setDrawColor(...RED); doc.setLineWidth(1.5); doc.line(M, divY, W - M, divY);
 
-      const rows = [
-        ["Concepto:", "Cuota de mantenimiento"],
+      // BARRA FECHA/FOLIO
+      let y = divY + 6;
+      doc.setFillColor(...LGRAY); doc.rect(M, y, W - 2 * M, 18, "F");
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
+      doc.text("Fecha:", M + 6, y + 12); doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK); doc.text(fechaPagoCuota, M + 26, y + 12);
+      doc.setFont("helvetica", "normal"); doc.setTextColor(...GRAY); doc.text("Lugar:", M + 110, y + 12);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK); doc.text("Puebla, Pue.", M + 132, y + 12);
+      doc.setFont("helvetica", "normal"); doc.setTextColor(...GRAY); doc.text("Folio:", W - M - 60, y + 12);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(...RED); doc.text(folio, W - M - 38, y + 12);
+      y += 26;
+
+      // BLOQUE RECEPTOR
+      doc.setFillColor(...RED); doc.rect(M, y, 3, 52, "F");
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
+      doc.text("Condómino:", M + 8, y + 10);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...DARK);
+      doc.text(modalCuota.unidades_condominio?.propietario_nombre || "—", M + 52, y + 10);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
+      doc.text("Condominio:", M + 8, y + 22);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
+      doc.text(cond?.nombre || "—", M + 52, y + 22);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
+      doc.text("Unidad:", M + 8, y + 34);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
+      doc.text(`Depto ${modalCuota.unidades_condominio?.numero || "—"}`, M + 52, y + 34);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
+      doc.text("Periodo:", M + 8, y + 46);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...RED);
+      doc.text(periodoLbl(modalCuota.periodo), M + 52, y + 46);
+      y += 62;
+
+      // SEPARADOR
+      doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 10;
+
+      // MONTO DESTACADO
+      doc.setFillColor(...RED); doc.rect(M, y, W - 2 * M, 20, "F");
+      doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+      doc.text("MONTO PAGADO:", M + 8, y + 13);
+      doc.setFontSize(12);
+      doc.text(fmtMXN(modalCuota.monto), W - M - 8, y + 13, { align: "right" });
+      y += 30;
+
+      // DETALLES
+      doc.setDrawColor(...LINE); doc.setLineWidth(0.3);
+      const detalles = [
+        ["Concepto:", "Cuota de mantenimiento mensual"],
         ["Periodo:", periodoLbl(modalCuota.periodo)],
-        ["Monto:", fmt(modalCuota.monto)],
         ["Fecha de pago:", fechaPagoCuota],
-        ["Método:", comprobante_url ? "Transferencia/depósito" : "Efectivo"],
+        ["Método de pago:", comprobante_url ? "Transferencia / Depósito bancario" : "Efectivo"],
+        ["Recibió:", "Emporio Inmobiliario"],
       ];
-      rows.forEach((row, i) => {
-        const yy = y + 8 + i * 7;
-        doc.setFont("helvetica", "bold"); doc.setTextColor(100, 100, 100); doc.setFontSize(8);
-        doc.text(row[0], 12, yy);
-        doc.setFont("helvetica", "normal"); doc.setTextColor(26, 26, 46);
-        doc.text(row[1], 55, yy);
+      detalles.forEach(([label, value], i) => {
+        const yy = y + i * 14;
+        if (i % 2 === 0) { doc.setFillColor(250, 250, 250); doc.rect(M, yy - 3, W - 2 * M, 14, "F"); }
+        doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+        doc.text(label, M + 6, yy + 8);
+        doc.setFont("helvetica", "normal"); doc.setTextColor(...DARK);
+        doc.text(value, M + 80, yy + 8);
       });
+      y += detalles.length * 14 + 16;
 
-      // Monto destacado
-      y += 46;
-      doc.setFillColor(185, 28, 60); doc.rect(6, y, 136, 14, "F");
-      doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-      doc.text("TOTAL PAGADO:", 12, y + 9);
-      doc.setFontSize(13);
-      doc.text(fmt(modalCuota.monto), 140, y + 9, { align: "right" });
+      // SEPARADOR FIRMAS
+      doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 10;
 
-      // Firma Carlos
-      y += 22;
+      // FIRMAS
+      const sigW = 130;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(...RED);
+      doc.text("Por Emporio Inmobiliario", M, y);
+
+      // Firma de Carlos
       try {
         const { FIRMA_CARLOS_B64 } = await import("../../lib/firmaCarlos");
-        doc.addImage(FIRMA_CARLOS_B64, "PNG", 8, y, 40, 16);
+        doc.addImage(FIRMA_CARLOS_B64, "PNG", M, y + 2, 65, 36);
       } catch (e) { /* sin firma */ }
-      doc.setDrawColor(100, 100, 100); doc.setLineWidth(0.3); doc.line(8, y + 18, 88, y + 18);
-      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(100, 100, 100);
-      doc.text("Carlos Nachon — Emporio Inmobiliario", 8, y + 23);
 
-      // Footer
-      doc.setFillColor(185, 28, 60); doc.rect(0, 198, 148, 2, "F");
-      doc.setTextColor(150, 150, 150); doc.setFontSize(6); doc.setFont("helvetica", "normal");
-      doc.text("Emporio Inmobiliario · Puebla, México · 222 257 3237 · app.emporioinmobiliario.com.mx", 74, 204, { align: "center" });
+      doc.setDrawColor(204, 204, 204); doc.setLineWidth(0.8);
+      doc.line(M, y + 40, M + sigW, y + 40);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(...DARK);
+      doc.text("Carlos Nachón — Emporio Inmobiliario", M, y + 48);
+
+      doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(...DARK);
+      doc.text("Firma y nombre del condómino", W / 2 + 10, y);
+      doc.setDrawColor(204, 204, 204);
+      doc.line(W / 2 + 10, y + 28, W / 2 + 10 + sigW, y + 28);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(...DARK);
+      doc.text(modalCuota.unidades_condominio?.propietario_nombre || "—", W / 2 + 10, y + 36);
+
+      // QR
+      try {
+        const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent("https://www.emporioinmobiliario.com.mx/verificar/" + folio)}&size=60&margin=1`;
+        const qrRes = await fetch(qrUrl);
+        const qrBlob = await qrRes.blob();
+        const qrB64 = await new Promise(r => { const fr = new FileReader(); fr.onloadend = () => r(fr.result); fr.readAsDataURL(qrBlob); });
+        doc.addImage(qrB64, "PNG", W - M - 44, H - 56, 44, 44);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(5.5); doc.setTextColor(...GRAY);
+        doc.text("Verificar", W - M - 22, H - 8, { align: "center" });
+      } catch (e) { /* sin QR */ }
+
+      // BOTTOM BAR
+      doc.setFillColor(...RED); doc.rect(0, H - 5, W, 5, "F");
+      doc.setFont("helvetica", "normal"); doc.setFontSize(6); doc.setTextColor(...GRAY);
+      doc.text("Emporio Inmobiliario  —  Puebla, México  —  222 257 3237  |  emporioinmobiliario.com.mx", W / 2, H - 9, { align: "center" });
 
       // Enviar por email si hay email registrado
       const emailDestino = modalCuota.unidades_condominio?.propietario_email || modalCuota.unidades_condominio?.residente_email;
@@ -312,7 +379,7 @@ export default function CondominioDetalle() {
             numeroDepto: modalCuota.unidades_condominio?.numero || "—",
             condominio: cond?.nombre || "Condominio",
             periodo: periodoLbl(modalCuota.periodo),
-            monto: fmt(modalCuota.monto),
+            monto: fmtMXN(modalCuota.monto),
             fechaPago: fechaPagoCuota,
             folio,
             pdfBase64,
@@ -323,7 +390,7 @@ export default function CondominioDetalle() {
         showToast("Pago registrado — sin email para enviar recibo");
       }
 
-      // Guardar PDF localmente también (Safari-safe)
+      // Descargar PDF (Safari-safe)
       const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || /iPad|iPhone|iPod/.test(navigator.userAgent);
       if (isSafari) {
         const uri = doc.output("datauristring");
