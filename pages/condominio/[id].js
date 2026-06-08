@@ -525,7 +525,65 @@ export default function CondominioDetalle() {
               ))}
             </div>
 
+            {/* ── Sección morosos — todos los meses atrasados ── */}
+            {(() => {
+              const todasAtrasadas = cuotas.filter(q => q.status === "atrasado");
+              if (todasAtrasadas.length === 0) return null;
+
+              // Agrupar por unidad
+              const porUnidad = {};
+              todasAtrasadas.forEach(q => {
+                const uid = q.unidad_id;
+                if (!porUnidad[uid]) porUnidad[uid] = { unidad: q.unidades_condominio, cuotas: [] };
+                porUnidad[uid].cuotas.push(q);
+              });
+
+              const totalAdeudo = todasAtrasadas.reduce((a, q) => a + (q.monto || 0), 0);
+
+              return (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                    <div style={{ width: 4, height: 20, background: "#b91c3c", borderRadius: 2 }} />
+                    <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#b91c3c" }}>
+                      ⚠️ Adeudos históricos — {todasAtrasadas.length} mes{todasAtrasadas.length !== 1 ? "es" : ""} sin pagar · {fmt(totalAdeudo)} total
+                    </h3>
+                  </div>
+                  {Object.values(porUnidad).map(({ unidad, cuotas: cs }) => {
+                    const totalUnidad = cs.reduce((a, q) => a + (q.monto || 0), 0);
+                    return (
+                      <div key={unidad?.numero} style={{ background: "#fff", borderRadius: 12, overflow: "hidden", marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #fca5a5" }}>
+                        {/* Header unidad */}
+                        <div style={{ background: "#fff5f5", padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div>
+                            <span style={{ fontWeight: 800, fontSize: 14, color: "#b91c3c" }}>Depto {unidad?.numero}</span>
+                            <span style={{ fontSize: 13, color: "#6b7280", marginLeft: 10 }}>{unidad?.propietario_nombre}</span>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{cs.length} mes{cs.length !== 1 ? "es" : ""} atrasado{cs.length !== 1 ? "s" : ""}</p>
+                            <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#b91c3c" }}>{fmt(totalUnidad)}</p>
+                          </div>
+                        </div>
+                        {/* Lista de meses atrasados */}
+                        <div style={{ padding: "8px 16px" }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, paddingBottom: 8 }}>
+                            {cs.sort((a, b) => a.periodo.localeCompare(b.periodo)).map(q => (
+                              <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 8, padding: "4px 10px" }}>
+                                <span style={{ fontSize: 12, color: "#b91c3c", fontWeight: 600 }}>{periodoLabel(q.periodo)}</span>
+                                <span style={{ fontSize: 12, color: "#6b7280" }}>{fmt(q.monto)}</span>
+                                <button onClick={() => { setModalCuota(q); setArchivoComprobante(null); }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontSize: 10, fontWeight: 700 }}>✓</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
             {/* Tabla de cuotas del periodo */}
+            <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>Cuotas de {periodoLabel(periodoVer)}</h3>
             {cuotasPeriodo.length === 0 ? (
               <div style={{ background: "#fff", borderRadius: 12, padding: 32, textAlign: "center" }}>
                 <p style={{ color: "#9ca3af" }}>No hay cuotas generadas para {periodoLabel(periodoVer)}</p>
