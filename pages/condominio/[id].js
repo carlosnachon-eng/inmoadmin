@@ -366,6 +366,20 @@ export default function CondominioDetalle() {
       doc.setFont("helvetica", "normal"); doc.setFontSize(6); doc.setTextColor(...GRAY);
       doc.text("Emporio Inmobiliario  —  Puebla, México  —  222 257 3237  |  emporioinmobiliario.com.mx", W / 2, H - 9, { align: "center" });
 
+      // Subir PDF al Storage
+      let recibo_url = null;
+      try {
+        const pdfBlob = doc.output("blob");
+        const fileName = `${folio}.pdf`;
+        const { error: upErr } = await supabase.storage.from("recibos-condominio").upload(fileName, pdfBlob, { contentType: "application/pdf", upsert: true });
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from("recibos-condominio").getPublicUrl(fileName);
+          recibo_url = urlData?.publicUrl || null;
+          // Guardar URL en la cuota
+          await supabase.from("cuotas_condominio").update({ recibo_url }).eq("id", modalCuota.id);
+        }
+      } catch (e) { console.error("Error subiendo PDF:", e); }
+
       // Enviar por email si hay email registrado
       const emailDestino = modalCuota.unidades_condominio?.propietario_email || modalCuota.unidades_condominio?.residente_email;
       if (emailDestino) {
