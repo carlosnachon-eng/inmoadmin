@@ -143,7 +143,7 @@ export default function CondominioDetalle() {
     ] = await Promise.all([
       supabase.from("condominios").select("*").eq("id", id).single(),
       supabase.from("unidades_condominio").select("*").eq("condominio_id", id).eq("activo", true).order("numero"),
-      supabase.from("cuotas_condominio").select("*, unidades_condominio(numero, propietario_nombre, propietario_email)").eq("condominio_id", id).order("periodo", { ascending: false }),
+      supabase.from("cuotas_condominio").select("*, unidades_condominio(numero, propietario_nombre, propietario_email, propietario_telefono)").eq("condominio_id", id).order("periodo", { ascending: false }),
       supabase.from("gastos_condominio").select("*").eq("condominio_id", id).order("fecha", { ascending: false }),
       supabase.from("maintenance_tickets").select("*").eq("condominio_id", id).order("created_at", { ascending: false }),
     ]);
@@ -773,11 +773,11 @@ export default function CondominioDetalle() {
               return (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 20 }}>
                   {[
-                    { label: "Ingresos",     value: fmt(ingPeriodo),   color: "#4ade80" },
-                    { label: "Gastos",       value: fmt(gastPeriodo),  color: "#f87171" },
-                    { label: "Mantenimiento",value: fmt(costoMant),    color: "#fb923c" },
-                    { label: "Balance",      value: fmt(ingPeriodo - gastPeriodo - costoMant), color: (ingPeriodo - gastPeriodo - costoMant) >= 0 ? "#4ade80" : "#f87171" },
-                  ].map((s, i) => (
+                    { label: "Ingresos del mes",  value: fmt(ingPeriodo),   color: "#4ade80", show: true },
+                    { label: "Gastos del mes",    value: fmt(gastPeriodo),  color: "#f87171", show: true },
+                    { label: "Mantenimiento",     value: fmt(costoMant),    color: "#fb923c", show: costoMant > 0 },
+                    { label: "Balance del mes",   value: fmt(ingPeriodo - gastPeriodo - costoMant), color: (ingPeriodo - gastPeriodo - costoMant) >= 0 ? "#4ade80" : "#f87171", show: true },
+                  ].filter(s => s.show).map((s, i) => (
                     <div key={i} style={{ background: "rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 14px" }}>
                       <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>{s.label}</p>
                       <p style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</p>
