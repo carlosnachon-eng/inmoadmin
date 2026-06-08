@@ -286,7 +286,7 @@ export default function CondominioDetalle() {
       // Firma Carlos
       y += 22;
       try {
-        const { FIRMA_CARLOS_B64 } = await import("../lib/firmaCarlos");
+        const { FIRMA_CARLOS_B64 } = await import("../../lib/firmaCarlos");
         doc.addImage(FIRMA_CARLOS_B64, "PNG", 8, y, 40, 16);
       } catch (e) { /* sin firma */ }
       doc.setDrawColor(100, 100, 100); doc.setLineWidth(0.3); doc.line(8, y + 18, 88, y + 18);
