@@ -111,6 +111,7 @@ export default function CondominioDetalle() {
   const [modalTicket, setModalTicket] = useState(false);
   const [modalCuota, setModalCuota] = useState(null); // cuota seleccionada
   const [archivoComprobante, setArchivoComprobante] = useState(null);
+  const [fechaPagoCuota, setFechaPagoCuota] = useState(new Date().toISOString().split("T")[0]);
 
   const emptyUnidad = { numero: "", piso: "", propietario_nombre: "", propietario_email: "", propietario_telefono: "", residente_nombre: "", residente_email: "", residente_telefono: "", residente_es_propietario: true, notas: "" };
   const [formUnidad, setFormUnidad] = useState(emptyUnidad);
