@@ -115,8 +115,8 @@ export default function Comisiones() {
       periodo,
       monto: calcComision(c),
       tipo: c.rent_receiver === "inmobiliaria" ? "automatica" : "manual",
-      status: c.rent_receiver === "inmobiliaria" ? "cobrada" : "pendiente",
-      fecha_cobro: c.rent_receiver === "inmobiliaria" ? today : null,
+      status: "pendiente", // siempre pendiente al generar — se cobra al liquidar o manualmente
+      fecha_cobro: null,
       notas: c.rent_receiver === "inmobiliaria"
         ? "Se retiene automáticamente al liquidar al propietario"
         : "Pendiente de cobro al propietario",
