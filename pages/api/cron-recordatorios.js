@@ -9,6 +9,12 @@ const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
 }).format(n || 0);
 
+const periodoLabel = (p) => {
+  if (!p) return "—";
+  const [y, m] = p.split("-");
+  return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+};
+
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: "No autorizado" });
@@ -129,7 +135,73 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── PASO 3: Contar totales REALES del día (no solo los nuevos) ──
+  // ── PASO 3: Marcar cuotas de condominio como atrasadas ──
+  const { data: cuotasVencidas } = await supabase
+    .from("cuotas_condominio")
+    .select("id, unidad_id, periodo, monto, fecha_vencimiento, unidades_condominio(propietario_nombre, propietario_email, numero, condominios(nombre))")
+    .eq("status", "pendiente")
+    .lte("fecha_vencimiento", fecha5);
+
+  let cuotasMarcadas = 0;
+  if (cuotasVencidas && cuotasVencidas.length > 0) {
+    const ids = cuotasVencidas.map(q => q.id);
+    await supabase.from("cuotas_condominio").update({ status: "atrasado" }).in("id", ids);
+    cuotasMarcadas = ids.length;
+  }
+
+  // Enviar recordatorios a condóminos morosos
+  const { data: cuotasAtrasadas } = await supabase
+    .from("cuotas_condominio")
+    .select("*, unidades_condominio(propietario_nombre, propietario_email, residente_email, numero, condominios(nombre))")
+    .eq("status", "atrasado")
+    .not("unidades_condominio.propietario_email", "is", null);
+
+  let enviadosCondominio = 0;
+  if (cuotasAtrasadas && cuotasAtrasadas.length > 0) {
+    for (const q of cuotasAtrasadas) {
+      const u = q.unidades_condominio;
+      if (!u?.propietario_email) continue;
+      const emailDestino = u.residente_email || u.propietario_email;
+      const v = new Date((q.fecha_vencimiento || hoy) + "T12:00:00");
+      const dias = Math.floor((hoy - v) / (1000 * 60 * 60 * 24));
+      const htmlCuota = `
+        <div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px;">
+          <div style="background:#1a1a2e;padding:20px;border-radius:12px 12px 0 0;text-align:center;">
+            <h1 style="color:#c8a96e;margin:0;font-size:20px;">🏢 Emporio Inmobiliario</h1>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:0 0 12px 12px;padding:28px;">
+            <p style="color:#dc2626;font-weight:700;font-size:16px;margin:0 0 16px;">🔴 Cuota de condominio atrasada ${dias} día${dias !== 1 ? "s" : ""}</p>
+            <p style="color:#374151;margin:0 0 20px;">Hola <strong>${u.propietario_nombre}</strong>, tu cuota de condominio está pendiente:</p>
+            <div style="background:#f9fafb;border-radius:10px;padding:20px;margin:0 0 20px;">
+              <p style="margin:0 0 8px;color:#374151;"><strong>Condominio:</strong> ${u.condominios?.nombre || "—"}</p>
+              <p style="margin:0 0 8px;color:#374151;"><strong>Unidad:</strong> ${u.numero}</p>
+              <p style="margin:0 0 8px;color:#374151;"><strong>Periodo:</strong> ${periodoLabel(q.periodo)}</p>
+              <p style="margin:0;color:#374151;"><strong>Monto:</strong> ${fmt(q.monto)}</p>
+            </div>
+            <div style="text-align:center;">
+              <a href="https://app.emporioinmobiliario.com.mx/condomino" style="background:#c8a96e;color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
+                Subir comprobante →
+              </a>
+            </div>
+          </div>
+        </div>`;
+      try {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: "InmoAdmin <cobros@emporioinmobiliario.com.mx>",
+            to: [emailDestino],
+            subject: `🔴 Cuota de condominio atrasada ${dias} días — Unidad ${u.numero}`,
+            html: htmlCuota,
+          }),
+        });
+        enviadosCondominio++;
+      } catch (e) { console.error("Error enviando a condómino", emailDestino, e.message); }
+    }
+  }
+
+  // ── PASO 4: Contar totales REALES del día (no solo los nuevos) ──
   const { data: todosAtrasados } = await supabase
     .from("payments")
     .select("id, tenant_name, property_name, due_date, amount")
@@ -199,6 +271,11 @@ export default async function handler(req, res) {
         ${marcadosAtrasados > 0 ? `
         <div style="background:#fff5f5;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;margin-bottom:16px;">
           <p style="margin:0;font-size:13px;color:#dc2626;font-weight:700;">⚠️ ${marcadosAtrasados} pago${marcadosAtrasados !== 1 ? "s" : ""} nuevo${marcadosAtrasados !== 1 ? "s" : ""} marcado${marcadosAtrasados !== 1 ? "s" : ""} como atrasado hoy</p>
+        </div>` : ""}
+
+        ${cuotasMarcadas > 0 ? `
+        <div style="background:#fff5f5;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;margin-bottom:16px;">
+          <p style="margin:0;font-size:13px;color:#dc2626;font-weight:700;">🏢 ${cuotasMarcadas} cuota${cuotasMarcadas !== 1 ? "s" : ""} de condominio marcada${cuotasMarcadas !== 1 ? "s" : ""} como atrasada hoy · ${enviadosCondominio} recordatorio${enviadosCondominio !== 1 ? "s" : ""} enviado${enviadosCondominio !== 1 ? "s" : ""}</p>
         </div>` : ""}
 
         ${tablaAtrasados}
@@ -311,10 +388,12 @@ export default async function handler(req, res) {
   return res.status(200).json({
     fecha: fmtFecha(hoy),
     marcadosAtrasados,
+    cuotasMarcadas,
     totalAtrasadosActual,
     totalPendientesVencidos,
     montoAtrasado,
     recordatoriosEnviados: enviados,
+    enviadosCondominio,
     recordatoriosPoliza,
     resumen,
   });
