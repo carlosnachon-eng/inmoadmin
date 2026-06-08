@@ -162,10 +162,11 @@ export default function CondominioDetalle() {
   const totalCuotasPeriodo = cuotasPeriodo.reduce((a, q) => a + (q.monto || 0), 0);
   const cobradoPeriodo = cuotasPeriodo.filter(q => q.status === "pagado").reduce((a, q) => a + (q.monto || 0), 0);
   const pendientePeriodo = cuotasPeriodo.filter(q => q.status !== "pagado").reduce((a, q) => a + (q.monto || 0), 0);
-  const totalGastos = gastos.reduce((a, g) => a + (g.monto || 0), 0);
+  const totalGastos = gastos.filter(g => !g.concepto?.toLowerCase().includes("saldo inicial")).reduce((a, g) => a + (g.monto || 0), 0);
   const totalCobradoHistorico = cuotas.filter(q => q.status === "pagado").reduce((a, q) => a + (q.monto || 0), 0);
   const honorariosAcumulados = gastos.filter(g => g.concepto?.toUpperCase().includes("ADMINISTRACION EMPORIO")).reduce((a, g) => a + (g.monto || 0), 0);
-  const fondoDisponible = totalCobradoHistorico - totalGastos;
+  const saldoInicial = Math.abs(gastos.filter(g => g.concepto?.toLowerCase().includes("saldo inicial")).reduce((a, g) => a + (g.monto || 0), 0));
+  const fondoDisponible = totalCobradoHistorico + saldoInicial - totalGastos;
 
   // ── Guardar unidad ────────────────────────────────────────────────────────
   const guardarUnidad = async () => {
@@ -577,10 +578,25 @@ export default function CondominioDetalle() {
               <button onClick={() => { setFormGasto(emptyGasto); setArchivoComprobante(null); setModalGasto(true); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>+ Registrar gasto</button>
             </div>
 
-            {/* KPIs de gastos */}
+            {/* Saldo inicial separado */}
+            {(() => {
+              const saldoInicial = gastos.find(g => g.concepto?.toLowerCase().includes("saldo inicial"));
+              if (!saldoInicial) return null;
+              return (
+                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#1e40af" }}>📌 Saldo inicial al arrancar el sistema</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>{saldoInicial.fecha} · {saldoInicial.notas}</p>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#065f46" }}>{fmt(Math.abs(saldoInicial.monto))}</p>
+                </div>
+              );
+            })()}
+
+            {/* KPIs de gastos reales (excluye saldo inicial) */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 20 }}>
               {Object.entries(CATEGORIAS).map(([key, { label, icon }]) => {
-                const total = gastos.filter(g => g.categoria === key).reduce((a, g) => a + (g.monto || 0), 0);
+                const total = gastos.filter(g => !g.concepto?.toLowerCase().includes("saldo inicial") && g.categoria === key).reduce((a, g) => a + (g.monto || 0), 0);
                 if (total === 0) return null;
                 return (
                   <div key={key} style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
@@ -591,11 +607,12 @@ export default function CondominioDetalle() {
               }).filter(Boolean)}
               <div style={{ background: "#1a1a2e", borderRadius: 12, padding: "12px 14px" }}>
                 <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.6)" }}>Total gastos</p>
-                <p style={{ margin: "4px 0 0", fontSize: 16, fontWeight: 800, color: "#fff" }}>{fmt(totalGastos)}</p>
+                <p style={{ margin: "4px 0 0", fontSize: 16, fontWeight: 800, color: "#fff" }}>{fmt(gastos.filter(g => !g.concepto?.toLowerCase().includes("saldo inicial")).reduce((a, g) => a + (g.monto || 0), 0))}</p>
               </div>
             </div>
 
-            {gastos.length === 0 ? (
+            {/* Tabla de gastos reales (excluye saldo inicial) */}
+            {gastos.filter(g => !g.concepto?.toLowerCase().includes("saldo inicial")).length === 0 ? (
               <div style={{ background: "#fff", borderRadius: 12, padding: 32, textAlign: "center" }}>
                 <p style={{ color: "#9ca3af" }}>Sin gastos registrados aún</p>
               </div>
@@ -610,7 +627,7 @@ export default function CondominioDetalle() {
                     </tr>
                   </thead>
                   <tbody>
-                    {gastos.map(g => (
+                    {gastos.filter(g => !g.concepto?.toLowerCase().includes("saldo inicial")).map(g => (
                       <tr key={g.id} style={{ borderTop: "1px solid #f3f4f6" }}>
                         <td style={{ padding: "10px 12px", fontWeight: 600, fontSize: 13 }}>{g.concepto}</td>
                         <td style={{ padding: "10px 12px", fontSize: 12, color: "#6b7280" }}>{CATEGORIAS[g.categoria]?.icon} {CATEGORIAS[g.categoria]?.label || g.categoria}</td>
