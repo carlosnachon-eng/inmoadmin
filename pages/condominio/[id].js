@@ -260,11 +260,11 @@ export default function CondominioDetalle() {
       doc.text(folio, W - M - 72, 26);
 
       // LÍNEA ROJA
-      const divY = 42;
+      const divY = 46;
       doc.setDrawColor(...RED); doc.setLineWidth(1.5); doc.line(M, divY, W - M, divY);
 
       // BARRA FECHA/FOLIO
-      let y = divY + 6;
+      let y = divY + 8;
       doc.setFillColor(...LGRAY); doc.rect(M, y, W - 2 * M, 18, "F");
       doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
       doc.text("Fecha:", M + 6, y + 12); doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK); doc.text(fechaPagoCuota, M + 26, y + 12);
