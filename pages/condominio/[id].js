@@ -554,17 +554,35 @@ export default function CondominioDetalle() {
                   </div>
                   {Object.values(porUnidad).map(({ unidad, cuotas: cs }) => {
                     const totalUnidad = cs.reduce((a, q) => a + (q.monto || 0), 0);
+                    const tel = (unidad?.propietario_telefono || "").replace(/\D/g, "");
+                    const mesesTexto = cs.sort((a, b) => a.periodo.localeCompare(b.periodo)).map(q => periodoLabel(q.periodo)).join(", ");
+                    const msgWA = encodeURIComponent(
+                      `Hola ${unidad?.propietario_nombre?.split(" ")[0] || ""}, te contactamos de Emporio Inmobiliario respecto al condominio ${cond?.nombre || ""}.\n\nTienes ${cs.length} mes${cs.length !== 1 ? "es" : ""} de cuota de mantenimiento pendiente${cs.length !== 1 ? "s" : ""} (${mesesTexto}) por un total de ${fmt(totalUnidad)}.\n\nPor favor regulariza tu situación a la brevedad. Quedamos en contacto.`
+                    );
                     return (
                       <div key={unidad?.numero} style={{ background: "#fff", borderRadius: 12, overflow: "hidden", marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #fca5a5" }}>
                         {/* Header unidad */}
-                        <div style={{ background: "#fff5f5", padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ background: "#fff5f5", padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                           <div>
                             <span style={{ fontWeight: 800, fontSize: 14, color: "#b91c3c" }}>Depto {unidad?.numero}</span>
                             <span style={{ fontSize: 13, color: "#6b7280", marginLeft: 10 }}>{unidad?.propietario_nombre}</span>
+                            {tel && <span style={{ fontSize: 12, color: "#9ca3af", marginLeft: 8 }}>📱 {unidad?.propietario_telefono}</span>}
                           </div>
-                          <div style={{ textAlign: "right" }}>
-                            <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{cs.length} mes{cs.length !== 1 ? "es" : ""} atrasado{cs.length !== 1 ? "s" : ""}</p>
-                            <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#b91c3c" }}>{fmt(totalUnidad)}</p>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <div style={{ textAlign: "right" }}>
+                              <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{cs.length} mes{cs.length !== 1 ? "es" : ""} atrasado{cs.length !== 1 ? "s" : ""}</p>
+                              <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#b91c3c" }}>{fmt(totalUnidad)}</p>
+                            </div>
+                            {tel && (
+                              <a
+                                href={`https://wa.me/52${tel}?text=${msgWA}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ background: "#25D366", color: "#fff", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
+                              >
+                                📲 WhatsApp
+                              </a>
+                            )}
                           </div>
                         </div>
                         {/* Lista de meses atrasados */}
