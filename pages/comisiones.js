@@ -245,7 +245,7 @@ export default function Comisiones() {
               </Btn>
               {generado && (
                 <span style={{ fontSize: 12, color: "#065f46", fontWeight: 600 }}>
-                  ✓ {comisionesPeriodo.length} comisiones generadas
+                  ✓ {comisionesPeriodo.filter(c => c.monto > 0).length} comisiones generadas
                 </span>
               )}
             </div>
@@ -270,17 +270,18 @@ export default function Comisiones() {
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
                   <thead>
                     <tr style={{ background: "#f9fafb" }}>
-                      {["Propiedad", "Inquilino", "Propietario", "Comisión/mes", "Tipo", "Estatus", "Fecha cobro", "Acción"].map(h => (
+                      {["Propiedad", "Inquilino", "Propietario", "Periodo", "Comisión/mes", "Tipo", "Estatus", "Fecha cobro", "Acción"].map(h => (
                         <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {comisionesPeriodo.map(com => (
+                    {comisionesPeriodo.filter(com => com.monto > 0).map(com => (
                       <tr key={com.id} style={{ borderTop: "1px solid #f3f4f6", background: com.tipo === "manual" && com.status === "pendiente" ? "#fffdf0" : "#fff" }}>
                         <td style={{ padding: "10px 12px", fontWeight: 600, fontSize: 13 }}>{com.contracts?.property_name || "—"}</td>
                         <td style={{ padding: "10px 12px", fontSize: 13, color: "#6b7280" }}>{com.contracts?.tenant_name || "—"}</td>
                         <td style={{ padding: "10px 12px", fontSize: 13, color: "#6b7280" }}>{com.contracts?.owner_name || "—"}</td>
+                        <td style={{ padding: "10px 12px", fontSize: 12, fontWeight: 600, color: "#1e40af" }}>{periodoLabel(com.periodo)}</td>
                         <td style={{ padding: "10px 12px", fontWeight: 800, color: "#7c3aed" }}>{fmt(com.monto)}</td>
                         <td style={{ padding: "10px 12px" }}>
                           <span style={{ fontSize: 11, fontWeight: 600, color: com.tipo === "automatica" ? "#1e40af" : "#92400e", background: com.tipo === "automatica" ? "#dbeafe" : "#fef3c7", padding: "2px 8px", borderRadius: 99 }}>
