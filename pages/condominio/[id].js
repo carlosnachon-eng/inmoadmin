@@ -196,9 +196,7 @@ export default function CondominioDetalle() {
     loadData();
   };
 
-  const [fechaPagoCuota, setFechaPagoCuota] = useState(new Date().toISOString().split("T")[0]);
-
-  // ── Registrar pago de cuota ───────────────────────────────────────────────
+  // ── Registrar pago de cuota + generar recibo PDF + enviar email ──────────
   const registrarPagoCuota = async () => {
     if (!modalCuota) return;
     setSaving(true);
@@ -212,17 +210,137 @@ export default function CondominioDetalle() {
         comprobante_url = urlData?.publicUrl || null;
       }
     }
+
+    // Generar folio
+    const folio = `TC-${new Date().getFullYear()}-${String(modalCuota.unidades_condominio?.numero || "").padStart(3, "0")}-${Date.now().toString().slice(-4)}`;
+
     await supabase.from("cuotas_condominio").update({
       status: "pagado",
       fecha_pago: fechaPagoCuota,
       comprobante_url,
       pagado_por: modalCuota.unidades_condominio?.propietario_nombre || "—",
     }).eq("id", modalCuota.id);
+
+    // Generar PDF y enviar email
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ format: "a5", orientation: "portrait" });
+      const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
+      const periodoLbl = (p) => { if (!p) return "—"; const [y, m] = p.split("-"); return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" }); };
+
+      // Header
+      doc.setFillColor(26, 26, 46); doc.rect(0, 0, 148, 28, "F");
+      doc.setFillColor(185, 28, 60); doc.rect(0, 28, 148, 3, "F");
+
+      // Logo
+      try {
+        const logoRes = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
+        const logoBlob = await logoRes.blob();
+        const logoB64 = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.readAsDataURL(logoBlob); });
+        doc.addImage(logoB64, "PNG", 8, 4, 28, 12);
+      } catch (e) { /* sin logo */ }
+
+      doc.setTextColor(255, 255, 255); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+      doc.text("RECIBO DE CUOTA", 140, 12, { align: "right" });
+      doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(200, 200, 200);
+      doc.text(`Folio: ${folio}`, 140, 19, { align: "right" });
+      doc.text(`Fecha: ${fechaPagoCuota}`, 140, 24, { align: "right" });
+
+      // Datos del condómino
+      let y = 38;
+      doc.setTextColor(26, 26, 46); doc.setFontSize(11); doc.setFont("helvetica", "bold");
+      doc.text(modalCuota.unidades_condominio?.propietario_nombre || "—", 8, y);
+      y += 7;
+      doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(100, 100, 100);
+      doc.text(`${cond?.nombre || "Condominio"} · Depto ${modalCuota.unidades_condominio?.numero || "—"}`, 8, y);
+      if (cond?.direccion) { y += 5; doc.text(cond.direccion, 8, y); }
+
+      // Cuerpo del recibo
+      y += 12;
+      doc.setFillColor(248, 248, 248); doc.rect(6, y, 136, 38, "F");
+      doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3); doc.rect(6, y, 136, 38, "S");
+
+      const rows = [
+        ["Concepto:", "Cuota de mantenimiento"],
+        ["Periodo:", periodoLbl(modalCuota.periodo)],
+        ["Monto:", fmt(modalCuota.monto)],
+        ["Fecha de pago:", fechaPagoCuota],
+        ["Método:", comprobante_url ? "Transferencia/depósito" : "Efectivo"],
+      ];
+      rows.forEach((row, i) => {
+        const yy = y + 8 + i * 7;
+        doc.setFont("helvetica", "bold"); doc.setTextColor(100, 100, 100); doc.setFontSize(8);
+        doc.text(row[0], 12, yy);
+        doc.setFont("helvetica", "normal"); doc.setTextColor(26, 26, 46);
+        doc.text(row[1], 55, yy);
+      });
+
+      // Monto destacado
+      y += 46;
+      doc.setFillColor(185, 28, 60); doc.rect(6, y, 136, 14, "F");
+      doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+      doc.text("TOTAL PAGADO:", 12, y + 9);
+      doc.setFontSize(13);
+      doc.text(fmt(modalCuota.monto), 140, y + 9, { align: "right" });
+
+      // Firma Carlos
+      y += 22;
+      try {
+        const { FIRMA_CARLOS_B64 } = await import("../lib/firmaCarlos");
+        doc.addImage(FIRMA_CARLOS_B64, "PNG", 8, y, 40, 16);
+      } catch (e) { /* sin firma */ }
+      doc.setDrawColor(100, 100, 100); doc.setLineWidth(0.3); doc.line(8, y + 18, 88, y + 18);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(100, 100, 100);
+      doc.text("Carlos Nachon — Emporio Inmobiliario", 8, y + 23);
+
+      // Footer
+      doc.setFillColor(185, 28, 60); doc.rect(0, 198, 148, 2, "F");
+      doc.setTextColor(150, 150, 150); doc.setFontSize(6); doc.setFont("helvetica", "normal");
+      doc.text("Emporio Inmobiliario · Puebla, México · 222 257 3237 · app.emporioinmobiliario.com.mx", 74, 204, { align: "center" });
+
+      // Enviar por email si hay email registrado
+      const emailDestino = modalCuota.unidades_condominio?.propietario_email || modalCuota.unidades_condominio?.residente_email;
+      if (emailDestino) {
+        const pdfBase64 = doc.output("datauristring").split(",")[1];
+        await fetch("/api/enviar-recibo-condominio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            emailDestino,
+            nombreCondómino: modalCuota.unidades_condominio?.propietario_nombre || "—",
+            numeroDepto: modalCuota.unidades_condominio?.numero || "—",
+            condominio: cond?.nombre || "Condominio",
+            periodo: periodoLbl(modalCuota.periodo),
+            monto: fmt(modalCuota.monto),
+            fechaPago: fechaPagoCuota,
+            folio,
+            pdfBase64,
+          }),
+        });
+        showToast("Pago registrado y recibo enviado por email ✉️");
+      } else {
+        showToast("Pago registrado — sin email para enviar recibo");
+      }
+
+      // Guardar PDF localmente también (Safari-safe)
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isSafari) {
+        const uri = doc.output("datauristring");
+        const win = window.open();
+        if (win) win.document.write(`<iframe src="${uri}" style="width:100%;height:100%;border:none;"></iframe>`);
+      } else {
+        doc.save(`Recibo_${folio}.pdf`);
+      }
+
+    } catch (e) {
+      console.error("Error generando recibo:", e);
+      showToast("Pago registrado (error al generar recibo)", false);
+    }
+
     setSaving(false);
     setModalCuota(null);
     setArchivoComprobante(null);
     setFechaPagoCuota(new Date().toISOString().split("T")[0]);
-    showToast("Pago registrado");
     loadData();
   };
 
