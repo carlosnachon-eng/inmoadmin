@@ -813,7 +813,7 @@ export default function CondominioDetalle() {
             <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>Gastos por categoría</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
               {Object.entries(CATEGORIAS).map(([key, { label, icon }]) => {
-                const total = gastos.filter(g => g.categoria === key).reduce((a, g) => a + (g.monto || 0), 0);
+                const total = gastos.filter(g => !g.concepto?.toLowerCase().includes("saldo inicial") && g.categoria === key).reduce((a, g) => a + (g.monto || 0), 0);
                 if (total === 0) return null;
                 return (
                   <div key={key} style={{ background: "#fff", borderRadius: 10, padding: "12px 14px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
