@@ -636,7 +636,24 @@ export default function CondominioDetalle() {
                         <td style={{ padding: "10px 12px" }}>
                           {q.comprobante_url
                             ? <a href={q.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e40af", fontWeight: 600 }}>Ver</a>
-                            : <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>
+                            : q.status === "pagado"
+                              ? <label style={{ cursor: "pointer" }}>
+                                  <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={async e => {
+                                    const file = e.target.files[0];
+                                    if (!file) return;
+                                    const ext = file.name.split(".").pop();
+                                    const fileName = `cuotas-condominio/${id}_${q.id}_${Date.now()}.${ext}`;
+                                    const { error: upErr } = await supabase.storage.from("documentos").upload(fileName, file, { upsert: true });
+                                    if (!upErr) {
+                                      const { data: urlData } = supabase.storage.from("documentos").getPublicUrl(fileName);
+                                      await supabase.from("cuotas_condominio").update({ comprobante_url: urlData.publicUrl }).eq("id", q.id);
+                                      showToast("Comprobante guardado");
+                                      loadData();
+                                    } else { showToast("Error al subir", false); }
+                                  }} />
+                                  <span style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, cursor: "pointer" }}>📎 Agregar</span>
+                                </label>
+                              : <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>
                           }
                         </td>
                         <td style={{ padding: "10px 12px" }}>
