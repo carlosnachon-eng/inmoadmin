@@ -675,6 +675,31 @@ export default function Liquidaciones() {
         notes: `Comisión retenida: ${fmt(parseFloat(form.total_commission) || 0)}`,
         created_by: profile?.email, created_at: new Date().toISOString()
       }]);
+
+      // Marcar comisiones automáticas del periodo como cobradas en comisiones_admin
+      const meses = { enero:"01",febrero:"02",marzo:"03",abril:"04",mayo:"05",junio:"06",julio:"07",agosto:"08",septiembre:"09",octubre:"10",noviembre:"11",diciembre:"12" };
+      const desc = (form.period_description || "").toLowerCase();
+      const anio = desc.match(/\d{4}/)?.[0];
+      const mes = Object.keys(meses).find(m => desc.includes(m));
+      const periodo = anio && mes ? `${anio}-${meses[mes]}` : null;
+
+      if (periodo) {
+        const propsProp = properties.filter(p => p.owner_email === form.owner_email);
+        const contratosProp = contracts.filter(c =>
+          propsProp.some(p => p.name === c.property_name) &&
+          c.status === "activo" &&
+          c.rent_receiver === "inmobiliaria"
+        );
+        const contractIds = contratosProp.map(c => c.id);
+        if (contractIds.length > 0) {
+          await supabase.from("comisiones_admin")
+            .update({ status: "cobrada", fecha_cobro: form.payment_date || today })
+            .in("contract_id", contractIds)
+            .eq("periodo", periodo)
+            .eq("tipo", "automatica")
+            .eq("status", "pendiente");
+        }
+      }
     }
     setSaving(false);
     showToast("Liquidación registrada");
