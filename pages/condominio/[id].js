@@ -432,6 +432,10 @@ export default function CondominioDetalle() {
             <div style={{ textAlign: "right" }}>
               {morosos > 0 && <span style={{ background: "#fee2e2", color: "#991b1b", fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 99, display: "block", marginBottom: 8 }}>⚠️ {morosos} moroso{morosos !== 1 ? "s" : ""}</span>}
               <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.1)", borderRadius: 8, padding: "6px 12px" }}>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>Periodo:</span>
+                  <input type="month" value={periodoVer} onChange={e => setPeriodoVer(e.target.value)} style={{ background: "transparent", border: "none", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", outline: "none" }} />
+                </div>
                 <button onClick={generarEstadoCuenta} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📄 PDF</button>
               </div>
             </div>
@@ -669,43 +673,49 @@ export default function CondominioDetalle() {
               </div>
             </div>
 
-            {/* Tabla de gastos reales (excluye saldo inicial) */}
-            {gastos.filter(g => !g.concepto?.toLowerCase().includes("saldo inicial")).length === 0 ? (
-              <div style={{ background: "#fff", borderRadius: 12, padding: 32, textAlign: "center" }}>
-                <p style={{ color: "#9ca3af" }}>Sin gastos registrados aún</p>
-              </div>
-            ) : (
-              <div style={{ background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: "#f9fafb" }}>
-                      {["Concepto", "Categoría", "Monto", "Fecha", "Comprobante", ""].map(h => (
-                        <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {gastos.filter(g => !g.concepto?.toLowerCase().includes("saldo inicial")).map(g => (
-                      <tr key={g.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                        <td style={{ padding: "10px 12px", fontWeight: 600, fontSize: 13 }}>{g.concepto}</td>
-                        <td style={{ padding: "10px 12px", fontSize: 12, color: "#6b7280" }}>{CATEGORIAS[g.categoria]?.icon} {CATEGORIAS[g.categoria]?.label || g.categoria}</td>
-                        <td style={{ padding: "10px 12px", fontWeight: 700, color: "#7c3aed" }}>{fmt(g.monto)}</td>
-                        <td style={{ padding: "10px 12px", fontSize: 12, color: "#6b7280" }}>{g.fecha}</td>
-                        <td style={{ padding: "10px 12px" }}>
-                          {g.comprobante_url
-                            ? <a href={g.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e40af", fontWeight: 600 }}>📄 Ver</a>
-                            : <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>
-                          }
-                        </td>
-                        <td style={{ padding: "10px 12px" }}>
-                          <button onClick={async () => { if (confirm("¿Eliminar este gasto?")) { await supabase.from("gastos_condominio").delete().eq("id", g.id); showToast("Gasto eliminado"); loadData(); } }} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✕</button>
-                        </td>
+            {/* Tabla de gastos reales (excluye saldo inicial, filtra por periodo) */}
+            {(() => {
+              const gastosFiltrados = gastos.filter(g =>
+                !g.concepto?.toLowerCase().includes("saldo inicial") &&
+                g.fecha && g.fecha.startsWith(periodoVer)
+              );
+              return gastosFiltrados.length === 0 ? (
+                <div style={{ background: "#fff", borderRadius: 12, padding: 32, textAlign: "center" }}>
+                  <p style={{ color: "#9ca3af" }}>Sin gastos en {periodoLabel(periodoVer)}</p>
+                </div>
+              ) : (
+                <div style={{ background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "#f9fafb" }}>
+                        {["Concepto", "Categoría", "Monto", "Fecha", "Comprobante", ""].map(h => (
+                          <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody>
+                      {gastosFiltrados.map(g => (
+                        <tr key={g.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                          <td style={{ padding: "10px 12px", fontWeight: 600, fontSize: 13 }}>{g.concepto}</td>
+                          <td style={{ padding: "10px 12px", fontSize: 12, color: "#6b7280" }}>{CATEGORIAS[g.categoria]?.icon} {CATEGORIAS[g.categoria]?.label || g.categoria}</td>
+                          <td style={{ padding: "10px 12px", fontWeight: 700, color: "#7c3aed" }}>{fmt(g.monto)}</td>
+                          <td style={{ padding: "10px 12px", fontSize: 12, color: "#6b7280" }}>{g.fecha}</td>
+                          <td style={{ padding: "10px 12px" }}>
+                            {g.comprobante_url
+                              ? <a href={g.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e40af", fontWeight: 600 }}>📄 Ver</a>
+                              : <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>
+                            }
+                          </td>
+                          <td style={{ padding: "10px 12px" }}>
+                            <button onClick={async () => { if (confirm("¿Eliminar este gasto?")) { await supabase.from("gastos_condominio").delete().eq("id", g.id); showToast("Gasto eliminado"); loadData(); } }} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✕</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -735,8 +745,29 @@ export default function CondominioDetalle() {
               </div>
             </div>
 
-            {/* Cobranza por periodo */}
-            <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>Cobranza por periodo</h3>
+            {/* Resumen por periodo seleccionado */}
+            <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>Detalle de {periodoLabel(periodoVer)}</h3>
+            {(() => {
+              const ingPeriodo = cuotas.filter(q => q.status === "pagado" && q.periodo === periodoVer).reduce((a, q) => a + (q.monto || 0), 0);
+              const gastPeriodo = gastos.filter(g => !g.concepto?.toLowerCase().includes("saldo inicial") && g.fecha?.startsWith(periodoVer)).reduce((a, g) => a + (g.monto || 0), 0);
+              const ticketsPeriodo = tickets.filter(t => { if (!t.created_at) return false; const d = new Date(t.created_at); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}` === periodoVer; });
+              const costoMant = ticketsPeriodo.filter(t => t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
+              return (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 20 }}>
+                  {[
+                    { label: "Ingresos",     value: fmt(ingPeriodo),   color: "#4ade80" },
+                    { label: "Gastos",       value: fmt(gastPeriodo),  color: "#f87171" },
+                    { label: "Mantenimiento",value: fmt(costoMant),    color: "#fb923c" },
+                    { label: "Balance",      value: fmt(ingPeriodo - gastPeriodo - costoMant), color: (ingPeriodo - gastPeriodo - costoMant) >= 0 ? "#4ade80" : "#f87171" },
+                  ].map((s, i) => (
+                    <div key={i} style={{ background: "rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 14px" }}>
+                      <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>{s.label}</p>
+                      <p style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             <div style={{ background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", marginBottom: 20 }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
@@ -803,36 +834,54 @@ export default function CondominioDetalle() {
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Tickets de mantenimiento</h2>
               <button onClick={() => { setFormTicket(emptyTicket); setModalTicket(true); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>+ Nuevo ticket</button>
             </div>
-            {tickets.length === 0 ? (
-              <div style={{ background: "#fff", borderRadius: 12, padding: 48, textAlign: "center" }}>
-                <p style={{ fontSize: 32, margin: "0 0 8px" }}>✅</p>
-                <p style={{ color: "#9ca3af" }}>Sin tickets de mantenimiento</p>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {tickets.map(t => (
-                  <div key={t.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", borderLeft: `4px solid ${t.status === "resuelto" ? "#065f46" : t.status === "en_proceso" ? "#1e40af" : "#b91c3c"}` }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                      <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>{t.title}</h4>
-                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        <StatusBadge status={t.status} />
-                        <select value={t.status} onChange={async e => { await supabase.from("maintenance_tickets").update({ status: e.target.value }).eq("id", t.id); loadData(); }} style={{ fontSize: 11, padding: "3px 6px", borderRadius: 6, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>
-                          <option value="abierto">Abierto</option>
-                          <option value="en_proceso">En proceso</option>
-                          <option value="resuelto">Resuelto</option>
-                        </select>
-                      </div>
+            {(() => {
+              const ticketsFiltrados = tickets.filter(t => {
+                if (!t.created_at) return false;
+                const d = new Date(t.created_at);
+                const tp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                return tp === periodoVer;
+              });
+              const hayFiltro = ticketsFiltrados.length !== tickets.length;
+              return (
+                <>
+                  {hayFiltro && tickets.length > 0 && (
+                    <p style={{ margin: "0 0 12px", fontSize: 12, color: "#9ca3af" }}>
+                      Mostrando {ticketsFiltrados.length} ticket{ticketsFiltrados.length !== 1 ? "s" : ""} de {periodoLabel(periodoVer)} · <button onClick={() => setPeriodoVer("")} style={{ background: "none", border: "none", color: "#1e40af", cursor: "pointer", fontSize: 12, padding: 0 }}>Ver todos</button>
+                    </p>
+                  )}
+                  {ticketsFiltrados.length === 0 ? (
+                    <div style={{ background: "#fff", borderRadius: 12, padding: 48, textAlign: "center" }}>
+                      <p style={{ fontSize: 32, margin: "0 0 8px" }}>✅</p>
+                      <p style={{ color: "#9ca3af" }}>Sin tickets en {periodoLabel(periodoVer)}</p>
                     </div>
-                    {t.description && <p style={{ margin: "0 0 6px", fontSize: 13, color: "#374151" }}>{t.description}</p>}
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "2px 8px", borderRadius: 6 }}>Paga: {t.payer}</span>
-                      {t.charged_amount > 0 && <span style={{ fontSize: 11, color: "#7c3aed", background: "#faf5ff", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>Costo: {fmt(t.charged_amount)}</span>}
-                      <span style={{ fontSize: 11, color: "#9ca3af" }}>{new Date(t.created_at).toLocaleDateString("es-MX")}</span>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {ticketsFiltrados.map(t => (
+                        <div key={t.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", borderLeft: `4px solid ${t.status === "resuelto" ? "#065f46" : t.status === "en_proceso" ? "#1e40af" : "#b91c3c"}` }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                            <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>{t.title}</h4>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <StatusBadge status={t.status} />
+                              <select value={t.status} onChange={async e => { await supabase.from("maintenance_tickets").update({ status: e.target.value }).eq("id", t.id); loadData(); }} style={{ fontSize: 11, padding: "3px 6px", borderRadius: 6, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>
+                                <option value="abierto">Abierto</option>
+                                <option value="en_proceso">En proceso</option>
+                                <option value="resuelto">Resuelto</option>
+                              </select>
+                            </div>
+                          </div>
+                          {t.description && <p style={{ margin: "0 0 6px", fontSize: 13, color: "#374151" }}>{t.description}</p>}
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "2px 8px", borderRadius: 6 }}>Paga: {t.payer}</span>
+                            {t.charged_amount > 0 && <span style={{ fontSize: 11, color: "#7c3aed", background: "#faf5ff", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>Costo: {fmt(t.charged_amount)}</span>}
+                            <span style={{ fontSize: 11, color: "#9ca3af" }}>{new Date(t.created_at).toLocaleDateString("es-MX")}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
       </div>
