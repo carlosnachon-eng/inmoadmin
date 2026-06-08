@@ -22,20 +22,22 @@ export default async function handler(req, res) {
   hace5.setDate(hace5.getDate() - 5);
   const fecha5 = fmtFecha(hace5);
 
-  const { data: pagosAtrasados } = await supabase
+  const { data: pagosParaAtrasado } = await supabase
     .from("payments")
     .select("id, tenant_name, property_name, due_date")
     .eq("status", "pendiente")
     .lte("due_date", fecha5);
 
   let marcadosAtrasados = 0;
-  if (pagosAtrasados && pagosAtrasados.length > 0) {
-    const ids = pagosAtrasados.map(p => p.id);
+  if (pagosParaAtrasado && pagosParaAtrasado.length > 0) {
+    const ids = pagosParaAtrasado.map(p => p.id);
     await supabase.from("payments").update({ status: "atrasado" }).in("id", ids);
     marcadosAtrasados = ids.length;
   }
 
-  // ── PASO 2: Enviar recordatorios a pagos vencidos con email ──
+  // ── PASO 2: Enviar recordatorios ──
+  // - Pendientes: solo en días 1, 5 (antes de marcar atrasado)
+  // - Atrasados: TODOS LOS DÍAS hasta que paguen
   const { data: pagos } = await supabase
     .from("payments")
     .select("*")
@@ -49,23 +51,33 @@ export default async function handler(req, res) {
     for (const pago of pagos) {
       if (!pago.due_date || !pago.tenant_email) continue;
 
-      const vencimiento = new Date(pago.due_date);
+      const vencimiento = new Date(pago.due_date + "T12:00:00");
       const diasVencido = Math.floor((hoy - vencimiento) / (1000 * 60 * 60 * 24));
 
-      if (![1, 5, 10].includes(diasVencido)) continue;
+      if (diasVencido < 1) continue; // aún no vence
+
+      // Pendientes: solo días 1 y 5
+      if (pago.status === "pendiente" && ![1, 5].includes(diasVencido)) continue;
+
+      // Atrasados: todos los días (sin filtro de días específicos)
+      // — ya caen aquí automáticamente
 
       let asunto, urgencia, color;
       if (diasVencido === 1) {
         asunto = `Recordatorio de pago — ${pago.property_name}`;
         urgencia = "Tu pago venció ayer.";
         color = "#92400e";
-      } else if (diasVencido === 5) {
-        asunto = `⚠️ Pago atrasado 5 días — ${pago.property_name}`;
-        urgencia = "Tu pago lleva 5 días de retraso.";
+      } else if (diasVencido <= 5) {
+        asunto = `⚠️ Pago atrasado ${diasVencido} días — ${pago.property_name}`;
+        urgencia = `Tu pago lleva ${diasVencido} días de retraso.`;
         color = "#dc2626";
+      } else if (diasVencido <= 10) {
+        asunto = `🚨 Pago atrasado ${diasVencido} días — ${pago.property_name}`;
+        urgencia = `Tu pago lleva ${diasVencido} días de retraso. Por favor regulariza tu situación a la brevedad.`;
+        color = "#7f1d1d";
       } else {
-        asunto = `🚨 Pago atrasado 10 días — ${pago.property_name}`;
-        urgencia = "Tu pago lleva 10 días de retraso. Por favor regulariza tu situación a la brevedad.";
+        asunto = `🔴 URGENTE: Pago atrasado ${diasVencido} días — ${pago.property_name}`;
+        urgencia = `Tu pago lleva ${diasVencido} días de retraso. Tu contrato puede estar en riesgo.`;
         color = "#7f1d1d";
       }
 
@@ -105,50 +117,96 @@ export default async function handler(req, res) {
           }),
         });
         enviados++;
-        resumen.push({ inquilino: pago.tenant_name, propiedad: pago.property_name, dias: diasVencido });
+        resumen.push({
+          inquilino: pago.tenant_name,
+          propiedad: pago.property_name,
+          dias: diasVencido,
+          status: pago.status,
+        });
       } catch (e) {
         console.error("Error enviando a", pago.tenant_email, e.message);
       }
     }
   }
 
-  // ── PASO 3: Enviar resumen al equipo ──
+  // ── PASO 3: Contar totales REALES del día (no solo los nuevos) ──
+  const { data: todosAtrasados } = await supabase
+    .from("payments")
+    .select("id, tenant_name, property_name, due_date, amount")
+    .eq("status", "atrasado");
+
+  const { data: todosPendientesVencidos } = await supabase
+    .from("payments")
+    .select("id, tenant_name, property_name, due_date, amount")
+    .eq("status", "pendiente")
+    .lte("due_date", fmtFecha(hoy));
+
+  const totalAtrasadosActual = (todosAtrasados || []).length;
+  const totalPendientesVencidos = (todosPendientesVencidos || []).length;
+  const montoAtrasado = (todosAtrasados || []).reduce((a, p) => a + (p.amount || 0), 0);
+
+  // ── PASO 4: Enviar resumen al equipo ──
+  const hayAtrasados = totalAtrasadosActual > 0 || totalPendientesVencidos > 0;
+
+  const tablaAtrasados = todosAtrasados && todosAtrasados.length > 0 ? `
+    <h3 style="margin:20px 0 8px;font-size:13px;color:#dc2626;text-transform:uppercase;">Pagos atrasados (${totalAtrasadosActual})</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="background:#fff5f5;">
+          <th style="padding:8px 10px;text-align:left;color:#6b7280;font-size:11px;">INQUILINO</th>
+          <th style="padding:8px 10px;text-align:left;color:#6b7280;font-size:11px;">PROPIEDAD</th>
+          <th style="padding:8px 10px;text-align:left;color:#6b7280;font-size:11px;">VENCIMIENTO</th>
+          <th style="padding:8px 10px;text-align:left;color:#6b7280;font-size:11px;">MONTO</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${todosAtrasados.map(p => {
+          const v = new Date(p.due_date + "T12:00:00");
+          const dias = Math.floor((hoy - v) / (1000 * 60 * 60 * 24));
+          return `<tr>
+            <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;">${p.tenant_name}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;">${p.property_name}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;color:#dc2626;font-weight:700;">${dias} día${dias !== 1 ? "s" : ""}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;font-weight:700;">${fmt(p.amount)}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>` : "";
+
   const htmlEquipo = `
-    <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px;">
+    <div style="font-family:sans-serif;max-width:620px;margin:0 auto;padding:32px;">
       <div style="background:#1a1a2e;padding:20px;border-radius:12px 12px 0 0;text-align:center;">
         <h1 style="color:#c8a96e;margin:0;font-size:20px;">📋 Reporte diario — ${fmtFecha(hoy)}</h1>
       </div>
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:0 0 12px 12px;padding:28px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
-          <div style="background:#fff5f5;border-radius:10px;padding:16px;text-align:center;">
-            <p style="margin:0 0 4px;font-size:11px;color:#6b7280;text-transform:uppercase;">Marcados atrasados hoy</p>
-            <p style="margin:0;font-size:28px;font-weight:800;color:#dc2626;">${marcadosAtrasados}</p>
+
+        <!-- KPIs principales -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:24px;">
+          <div style="background:#fff5f5;border-radius:10px;padding:14px;text-align:center;">
+            <p style="margin:0 0 4px;font-size:10px;color:#6b7280;text-transform:uppercase;">Atrasados hoy</p>
+            <p style="margin:0;font-size:26px;font-weight:800;color:#dc2626;">${totalAtrasadosActual}</p>
           </div>
-          <div style="background:#fffbeb;border-radius:10px;padding:16px;text-align:center;">
-            <p style="margin:0 0 4px;font-size:11px;color:#6b7280;text-transform:uppercase;">Recordatorios enviados</p>
-            <p style="margin:0;font-size:28px;font-weight:800;color:#92400e;">${enviados}</p>
+          <div style="background:#fffbeb;border-radius:10px;padding:14px;text-align:center;">
+            <p style="margin:0 0 4px;font-size:10px;color:#6b7280;text-transform:uppercase;">Recordatorios enviados</p>
+            <p style="margin:0;font-size:26px;font-weight:800;color:#92400e;">${enviados}</p>
+          </div>
+          <div style="background:#fff5f5;border-radius:10px;padding:14px;text-align:center;">
+            <p style="margin:0 0 4px;font-size:10px;color:#6b7280;text-transform:uppercase;">Monto en riesgo</p>
+            <p style="margin:0;font-size:18px;font-weight:800;color:#dc2626;">${fmt(montoAtrasado)}</p>
           </div>
         </div>
-        ${resumen.length > 0 ? `
-        <table style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr style="background:#f9fafb;">
-              <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;">INQUILINO</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;">PROPIEDAD</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;">DÍAS VENCIDO</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${resumen.map(r => `
-              <tr>
-                <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;">${r.inquilino}</td>
-                <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;">${r.propiedad}</td>
-                <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#dc2626;font-weight:700;">${r.dias} día${r.dias !== 1 ? "s" : ""}</td>
-              </tr>`).join("")}
-          </tbody>
-        </table>` : "<p style='color:#6b7280;text-align:center;'>No hubo recordatorios hoy ✅</p>"}
+
+        ${marcadosAtrasados > 0 ? `
+        <div style="background:#fff5f5;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;margin-bottom:16px;">
+          <p style="margin:0;font-size:13px;color:#dc2626;font-weight:700;">⚠️ ${marcadosAtrasados} pago${marcadosAtrasados !== 1 ? "s" : ""} nuevo${marcadosAtrasados !== 1 ? "s" : ""} marcado${marcadosAtrasados !== 1 ? "s" : ""} como atrasado hoy</p>
+        </div>` : ""}
+
+        ${tablaAtrasados}
+
+        ${!hayAtrasados ? "<p style='color:#065f46;text-align:center;font-weight:700;'>✅ Todo al corriente — sin pagos atrasados</p>" : ""}
+
         <p style="margin:20px 0 0;font-size:13px;color:#6b7280;text-align:center;">
-          <a href="https://app.emporioinmobiliario.com.mx" style="color:#c8a96e;">Ver panel completo →</a>
+          <a href="https://app.emporioinmobiliario.com.mx" style="color:#c8a96e;font-weight:700;">Ver panel completo →</a>
         </p>
       </div>
     </div>`;
@@ -163,7 +221,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         from: "InmoAdmin <cobros@emporioinmobiliario.com.mx>",
         to: ["carlos.nachon@emporioinmobiliario.mx", "asistente1@emporioinmobiliario.mx", "administracion@emporioinmobiliario.com.mx"],
-        subject: `📋 Reporte diario — ${marcadosAtrasados} atrasados, ${enviados} recordatorios — ${fmtFecha(hoy)}`,
+        subject: `📋 Reporte diario — ${totalAtrasadosActual} atrasados, ${enviados} recordatorios — ${fmtFecha(hoy)}`,
         html: htmlEquipo,
       }),
     });
@@ -171,22 +229,21 @@ export default async function handler(req, res) {
     console.error("Error enviando resumen al equipo", e.message);
   }
 
-  // ── PASO 4: Recordatorios automáticos de renovación de póliza ──
+  // ── PASO 5: Recordatorios automáticos de renovación de póliza (sin cambios) ──
   const en60dias = new Date(hoy); en60dias.setDate(en60dias.getDate() + 60);
-  const en30dias = new Date(hoy); en30dias.setDate(en30dias.getDate() + 30);
 
   const { data: expedientes } = await supabase
-    .from('poliza_expedientes')
-    .select('id, nombre_arrendatario, nombre_arrendador, correo_arrendatario, correo_arrendador, direccion_inmueble, fecha_vigencia, renta_mensual, recordatorio_60_enviado, recordatorio_30_enviado')
-    .eq('status', 'activo')
-    .not('fecha_vigencia', 'is', null)
-    .lte('fecha_vigencia', fmtFecha(en60dias));
+    .from("poliza_expedientes")
+    .select("id, nombre_arrendatario, nombre_arrendador, correo_arrendatario, correo_arrendador, direccion_inmueble, fecha_vigencia, renta_mensual, recordatorio_60_enviado, recordatorio_30_enviado")
+    .eq("status", "activo")
+    .not("fecha_vigencia", "is", null)
+    .lte("fecha_vigencia", fmtFecha(en60dias));
 
   let recordatoriosPoliza = 0;
 
   if (expedientes && expedientes.length > 0) {
     for (const exp of expedientes) {
-      const vigencia = new Date(exp.fecha_vigencia + 'T12:00:00');
+      const vigencia = new Date(exp.fecha_vigencia + "T12:00:00");
       const diasRestantes = Math.ceil((vigencia - hoy) / (1000 * 60 * 60 * 24));
 
       const es60 = diasRestantes <= 60 && diasRestantes > 30 && !exp.recordatorio_60_enviado;
@@ -204,14 +261,14 @@ export default async function handler(req, res) {
             <h1 style="color:#c8a96e;margin:0;font-size:20px;">🏢 Emporio Inmobiliario</h1>
           </div>
           <div style="background:#fff;border:1px solid #e5e7eb;border-radius:0 0 12px 12px;padding:28px;">
-            <p style="color:${diasRestantes <= 30 ? '#dc2626' : '#92400e'};font-weight:700;font-size:16px;margin:0 0 16px;">${urgencia}</p>
+            <p style="color:${diasRestantes <= 30 ? "#dc2626" : "#92400e"};font-weight:700;font-size:16px;margin:0 0 16px;">${urgencia}</p>
             <p style="color:#374151;margin:0 0 20px;">Le informamos que la póliza jurídica del siguiente inmueble está próxima a vencer:</p>
             <div style="background:#f9fafb;border-radius:10px;padding:20px;margin:0 0 20px;">
               <p style="margin:0 0 8px;color:#374151;"><strong>Inmueble:</strong> ${exp.direccion_inmueble}</p>
               <p style="margin:0 0 8px;color:#374151;"><strong>Arrendatario:</strong> ${exp.nombre_arrendatario}</p>
               <p style="margin:0 0 8px;color:#374151;"><strong>Arrendador:</strong> ${exp.nombre_arrendador}</p>
               <p style="margin:0 0 8px;color:#374151;"><strong>Renta mensual:</strong> ${fmt(exp.renta_mensual)}</p>
-              <p style="margin:0;color:${diasRestantes <= 30 ? '#dc2626' : '#374151'};font-weight:700;"><strong>Vence:</strong> ${exp.fecha_vigencia} (${diasRestantes} días)</p>
+              <p style="margin:0;color:${diasRestantes <= 30 ? "#dc2626" : "#374151"};font-weight:700;"><strong>Vence:</strong> ${exp.fecha_vigencia} (${diasRestantes} días)</p>
             </div>
             <p style="color:#6b7280;font-size:13px;text-align:center;">Para renovar su póliza, comuníquese con nosotros a la brevedad.</p>
           </div>
@@ -220,33 +277,33 @@ export default async function handler(req, res) {
       const destinatarios = [
         exp.correo_arrendatario,
         exp.correo_arrendador,
-        'administracion@emporioinmobiliario.com.mx',
+        "administracion@emporioinmobiliario.com.mx",
       ].filter(Boolean);
 
       try {
-        await fetch('https://api.resend.com/emails', {
-          method: 'POST',
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
           headers: {
-            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-            'Content-Type': 'application/json',
+            "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: 'InmoAdmin <cobros@emporioinmobiliario.com.mx>',
+            from: "InmoAdmin <cobros@emporioinmobiliario.com.mx>",
             to: destinatarios,
-            subject: `${diasRestantes <= 30 ? '⚠️' : '📋'} Póliza jurídica por vencer — ${exp.direccion_inmueble}`,
+            subject: `${diasRestantes <= 30 ? "⚠️" : "📋"} Póliza jurídica por vencer — ${exp.direccion_inmueble}`,
             html: htmlPoliza,
           }),
         });
 
-        await supabase.from('poliza_expedientes').update({
+        await supabase.from("poliza_expedientes").update({
           fecha_ultimo_recordatorio: new Date().toISOString(),
           ...(es60 && { recordatorio_60_enviado: true }),
           ...(es30 && { recordatorio_30_enviado: true }),
-        }).eq('id', exp.id);
+        }).eq("id", exp.id);
 
         recordatoriosPoliza++;
       } catch (e) {
-        console.error('Error enviando recordatorio póliza', exp.id, e.message);
+        console.error("Error enviando recordatorio póliza", exp.id, e.message);
       }
     }
   }
@@ -254,6 +311,9 @@ export default async function handler(req, res) {
   return res.status(200).json({
     fecha: fmtFecha(hoy),
     marcadosAtrasados,
+    totalAtrasadosActual,
+    totalPendientesVencidos,
+    montoAtrasado,
     recordatoriosEnviados: enviados,
     recordatoriosPoliza,
     resumen,
