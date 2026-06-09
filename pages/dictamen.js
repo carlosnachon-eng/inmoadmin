@@ -66,8 +66,9 @@ async function generarPDF(data, sb) {
   const multMatch = rel.match(/(\d+(?:\.\d+)?)x/);
   const mult = multMatch ? parseFloat(multMatch[1]) : 0;
   const scoreRaw = mult >= 4 ? 95 : mult >= 3 ? 80 : mult >= 2.5 ? 65 : mult >= 2 ? 60 : 35;
-  // APROBADO nunca muestra PERFIL DE RIESGO
-  const score = dict === "APROBADO" ? Math.max(scoreRaw, 70) : dict === "APROBADO CON CONDICIONES" ? Math.max(scoreRaw, 45) : scoreRaw;
+  // Si hay score manual, usarlo directamente; si no, calcular automático
+  const scoreCalc = dict === "APROBADO" ? Math.max(scoreRaw, 70) : dict === "APROBADO CON CONDICIONES" ? Math.max(scoreRaw, 45) : scoreRaw;
+  const score = data.score_manual ? parseInt(data.score_manual) : scoreCalc;
   const scoreLabel = score >= 75 ? "PERFIL SÓLIDO" : score >= 55 ? "PERFIL ACEPTABLE" : "PERFIL DE RIESGO";
   const scoreColor = score >= 75 ? "#065f46" : score >= 55 ? "#92400e" : "#991b1b";
 
@@ -276,6 +277,7 @@ async function generarPDF(data, sb) {
       ${caja([["RFC", data.rfc_solicitante || "—"], ["Estado civil", data.estado_civil || "—"], ["Cónyuge", data.conyuge || "—"]], 3)}
       ${caja([["Teléfono", data.telefono_inquilino], ["Correo electrónico", data.correo_inquilino], ["Tiempo en dom. anterior", data.tiempo_domicilio_anterior]], 3)}
       ${caja([["Domicilio anterior", data.domicilio_anterior], ["Nuevo inmueble", data.direccion_inmueble]], 2)}
+      ${data.motivo_cambio_domicilio ? cajaTexto("Motivo del cambio de domicilio", data.motivo_cambio_domicilio) : ""}
       ${caja([["Monto de renta", data.monto_renta], ["Fecha de inicio", data.fecha_inicio], ["Tipo de solicitud", data.tipo_solicitante]], 3)}
 
       ${seccion(2, "Actividad y Fuente de Ingresos")}
@@ -501,7 +503,7 @@ export default function Dictamen() {
     revision_legal: "Se realizo verificacion de identidad y consulta de antecedentes juridicos en plataforma BuroMexico. No se detectaron impedimentos legales, inconsistencias relevantes ni riesgos juridicos.",
     conclusion: "Derivado de la investigacion realizada, el perfil de los solicitantes resulta congruente con el inmueble y el monto de renta.",
     observaciones_analista: "",
-    dictamen: "APROBADO", condiciones: "",
+    dictamen: "APROBADO", condiciones: "", score_manual: "", motivo_cambio_domicilio: "",
     analista: "LIC. ZAYETZY MONTES LUNA",
     doc_buro_mexico: "",
     _solicitud_id: "",
@@ -651,6 +653,16 @@ export default function Dictamen() {
               </Campo>
             </div>
           )}
+          <div style={{ marginTop: 20, background: "#f9fafb", borderRadius: 12, padding: "16px 18px", border: "1px solid #e5e7eb" }}>
+            <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em" }}>Índice de confianza del perfil</p>
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <div style={{ flex: 1 }}>
+                <input type="range" min="0" max="100" value={form.score_manual || 70} onChange={e => set("score_manual", e.target.value)} style={{ width: "100%", accentColor: "#C8102E" }} />
+              </div>
+              <input type="number" min="0" max="100" value={form.score_manual || ""} onChange={e => set("score_manual", e.target.value)} placeholder="Auto" style={{ ...inp, width: 70, textAlign: "center" }} />
+              <span style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>% (vacío = automático)</span>
+            </div>
+          </div>
         </div>
 
         <div style={{ background: "#fff", borderRadius: 20, padding: "28px 32px", border: "1px solid #f0f0f0", boxShadow: "0 2px 16px rgba(0,0,0,0.04)" }}>
@@ -727,6 +739,9 @@ export default function Dictamen() {
             <Campo label="Domicilio anterior"><input value={form.domicilio_anterior} onChange={e => set("domicilio_anterior", e.target.value)} placeholder="Calle, numero, colonia, ciudad" style={inp} /></Campo>
             <Campo label="Tiempo vivido ahi"><input value={form.tiempo_domicilio_anterior} onChange={e => set("tiempo_domicilio_anterior", e.target.value)} placeholder="Ej. 2 anos" style={inp} /></Campo>
           </div>
+          <Campo label="Motivo del cambio de domicilio">
+            <textarea value={form.motivo_cambio_domicilio || ""} onChange={e => set("motivo_cambio_domicilio", e.target.value)} placeholder="¿Por qué cambia de domicilio? Ej. Termino contrato, cambio de trabajo, necesita más espacio..." style={txta} />
+          </Campo>
           <Campo label="Direccion del inmueble a rentar" required><input value={form.direccion_inmueble} onChange={e => set("direccion_inmueble", e.target.value)} placeholder="Direccion completa" style={inp} /></Campo>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <Campo label="Monto de renta mensual" required><input value={form.monto_renta} onChange={e => set("monto_renta", e.target.value)} placeholder="$16,000.00" style={inp} /></Campo>
