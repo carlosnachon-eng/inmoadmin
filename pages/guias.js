@@ -114,6 +114,21 @@ const CONTENIDO = {
   },
 }
 
+// ── Tabla de póliza jurídica ──────────────────────────────────────────────
+function calcularPoliza(renta) {
+  const r = parseFloat(renta) || 0
+  if (r <= 0) return null
+  if (r <= 7000) return 2800
+  if (r <= 10000) return 3200
+  if (r <= 15000) return 3800
+  if (r <= 20000) return 4500
+  if (r <= 25000) return 5200
+  if (r <= 30000) return 6100
+  if (r <= 40000) return 9500
+  if (r <= 50000) return 12500
+  return Math.round(r * 0.25)
+}
+
 // ── Generador PDF Ficha de Apartado ───────────────────────────────────────
 async function generarFichaApartado(form) {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
@@ -207,6 +222,21 @@ async function generarFichaApartado(form) {
   doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...RED)
   doc.text(fmtMXN(form.monto_apartado), M + 12, y + 36)
   y += 56
+
+  // COSTO DE PÓLIZA (solo arrendamiento)
+  if (form.tipo === 'arrendamiento' && form.renta_mensual) {
+    const costoPoliza = calcularPoliza(form.renta_mensual)
+    if (costoPoliza) {
+      const fmtPoliza = '$' + costoPoliza.toLocaleString('es-MX', { minimumFractionDigits: 2 })
+      doc.setFillColor(240, 253, 244); doc.rect(M, y, W - 2 * M, 36, 'F')
+      doc.setDrawColor(6, 95, 70); doc.setLineWidth(0.5); doc.rect(M, y, W - 2 * M, 36, 'S')
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(6, 95, 70)
+      doc.text('Costo de Póliza Jurídica (la paga el inquilino):', M + 12, y + 13)
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(6, 95, 70)
+      doc.text(fmtPoliza, M + 12, y + 28)
+      y += 48
+    }
+  }
 
   // DATOS BANCARIOS
   doc.setFillColor(...DARK); doc.rect(M, y, W - 2 * M, 52, 'F')
@@ -576,6 +606,14 @@ export default function Guias() {
                       <label style={labelSt}>Renta mensual pactada *</label>
                       <input style={inputSt} type="number" value={fichaForm.renta_mensual} onChange={e => setFicha('renta_mensual', e.target.value)} placeholder="Ej: 8000" />
                     </div>
+                    {fichaForm.renta_mensual && calcularPoliza(fichaForm.renta_mensual) && (
+                      <div style={{ background: '#f0fdf4', border: '1px solid #6ee7b7', borderRadius: 8, padding: '10px 14px', marginTop: 4 }}>
+                        <p style={{ margin: 0, fontSize: 11, color: '#065f46', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Costo de Póliza Jurídica</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 18, fontWeight: 900, color: '#065f46' }}>
+                          ${calcularPoliza(fichaForm.renta_mensual).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <label style={labelSt}>Fecha límite de firma del contrato *</label>
                       <input style={inputSt} type="date" value={fichaForm.fecha_firma} onChange={e => setFicha('fecha_firma', e.target.value)} />
