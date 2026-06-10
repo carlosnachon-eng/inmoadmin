@@ -8,11 +8,15 @@ const fmt = (n) => new Intl.NumberFormat("es-MX", {
 }).format(n || 0);
 
 const categoryLabels = {
+  // General
   renta_cobrada: "Renta cobrada", comision_cobrada: "Comisión cobrada",
   mantenimiento_cobrado: "Mantenimiento cobrado", anticipo_mantenimiento: "Anticipo mantenimiento",
   liquidacion_propietario: "Liquidación propietario", gasto_mantenimiento: "Gasto mantenimiento",
   gasto_operativo: "Gasto operativo", pago_proveedor: "Pago proveedor",
   material: "Material/Refacción", otro: "Otro",
+  // Póliza
+  investigacion: "Investigación", anticipo_poliza: "Anticipo póliza",
+  pago_poliza: "Pago póliza", saldo_poliza: "Saldo póliza",
 };
 
 const Modal = ({ title, onClose, children }) => (
@@ -67,6 +71,7 @@ export default function Caja() {
   const [saving, setSaving] = useState(false);
   const [filterType, setFilterType] = useState("");
   const [filterMonth, setFilterMonth] = useState("");
+  const [filterFuente, setFilterFuente] = useState("");
 
   const emptyCash = {
     type: "entrada", category: "renta_cobrada", description: "",
@@ -100,8 +105,36 @@ export default function Caja() {
 
   const loadData = async () => {
     setLoading(true);
-    const { data } = await supabase.from("cash_movements").select("*").order("date", { ascending: false });
-    setCashMovements(data || []);
+    const [{ data: general }, { data: poliza }] = await Promise.all([
+      supabase.from("cash_movements").select("*").order("date", { ascending: false }),
+      supabase.from("poliza_caja").select("*").order("fecha", { ascending: false }),
+    ]);
+
+    // Normalizar movimientos de póliza al mismo formato que cash_movements
+    const polizaNorm = (poliza || []).map(m => ({
+      id: `poliza_${m.id}`,
+      type: m.tipo,           // 'ingreso' → 'entrada', 'egreso' → 'salida'
+      _type_raw: m.tipo,
+      category: m.concepto,
+      description: m.descripcion,
+      amount: m.monto,
+      payment_method: m.metodo_pago,
+      date: m.fecha,
+      notes: "",
+      created_by: null,
+      _fuente: "poliza",
+    })).map(m => ({ ...m, type: m.type === "ingreso" ? "entrada" : "salida" }));
+
+    const generalNorm = (general || []).map(m => ({ ...m, _fuente: "general" }));
+
+    // Combinar y ordenar por fecha descendente
+    const todos = [...generalNorm, ...polizaNorm].sort((a, b) => {
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return new Date(b.date) - new Date(a.date);
+    });
+
+    setCashMovements(todos);
     setLoading(false);
   };
 
@@ -123,6 +156,10 @@ export default function Caja() {
 
   const eliminar = async (id, desc) => {
     if (!isAdmin) { showToast("Solo el admin puede eliminar", false); return; }
+    // Solo se pueden eliminar movimientos de cash_movements, no de poliza_caja
+    if (String(id).startsWith("poliza_")) {
+      showToast("Para eliminar movimientos de póliza usa Caja Póliza", false); return;
+    }
     if (!confirm(`¿Eliminar: ${desc}?`)) return;
     await supabase.from("cash_movements").delete().eq("id", id);
     showToast("Eliminado");
@@ -140,18 +177,25 @@ export default function Caja() {
     return null;
   }
 
-  // ── CÁLCULOS ──
-  const totalEntradas   = cashMovements.filter(m => m.type === "entrada").reduce((a, m) => a + (m.amount || 0), 0);
-  const totalSalidas    = cashMovements.filter(m => m.type === "salida").reduce((a, m) => a + (m.amount || 0), 0);
-  const saldo           = totalEntradas - totalSalidas;
-  const efectivo        = cashMovements.filter(m => m.type === "entrada" && m.payment_method === "efectivo").reduce((a, m) => a + (m.amount || 0), 0);
-  const banco           = cashMovements.filter(m => m.type === "entrada" && m.payment_method === "transferencia").reduce((a, m) => a + (m.amount || 0), 0);
+  // ── CÁLCULOS (sobre todos los movimientos) ──
+  const totalEntradas = cashMovements.filter(m => m.type === "entrada").reduce((a, m) => a + (m.amount || 0), 0);
+  const totalSalidas  = cashMovements.filter(m => m.type === "salida").reduce((a, m) => a + (m.amount || 0), 0);
+  const saldo         = totalEntradas - totalSalidas;
+  const efectivo      = cashMovements.filter(m => m.type === "entrada" && m.payment_method === "efectivo").reduce((a, m) => a + (m.amount || 0), 0);
+  const banco         = cashMovements.filter(m => m.type === "entrada" && m.payment_method === "transferencia").reduce((a, m) => a + (m.amount || 0), 0);
+
+  // Subtotales por fuente
+  const saldoGeneral = cashMovements.filter(m => m._fuente === "general" && m.type === "entrada").reduce((a, m) => a + (m.amount || 0), 0)
+    - cashMovements.filter(m => m._fuente === "general" && m.type === "salida").reduce((a, m) => a + (m.amount || 0), 0);
+  const saldoPoliza  = cashMovements.filter(m => m._fuente === "poliza" && m.type === "entrada").reduce((a, m) => a + (m.amount || 0), 0)
+    - cashMovements.filter(m => m._fuente === "poliza" && m.type === "salida").reduce((a, m) => a + (m.amount || 0), 0);
 
   const meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
   const filtrados = cashMovements.filter(m => {
     if (filterType && m.type !== filterType) return false;
     if (filterMonth && new Date(m.date).getMonth() + 1 !== parseInt(filterMonth)) return false;
+    if (filterFuente && m._fuente !== filterFuente) return false;
     return true;
   });
 
@@ -162,26 +206,27 @@ export default function Caja() {
           {toast.msg}
         </div>
       )}
-      <PageHeader title="Caja / Tesorería" icon="💵" actions={<><><Btn color="#065f46" onClick={() => { setForm({ ...emptyCash, type: "entrada" }); setShowModal(true); }}>+ Entrada</Btn><Btn color="#dc2626" onClick={() => { setForm({ ...emptyCash, type: "salida" }); setShowModal(true); }}>− Salida</Btn></></>} />
-
+      <PageHeader title="Caja Klar / Tesorería" icon="💵" actions={<><Btn color="#065f46" onClick={() => { setForm({ ...emptyCash, type: "entrada" }); setShowModal(true); }}>+ Entrada</Btn><Btn color="#dc2626" onClick={() => { setForm({ ...emptyCash, type: "salida" }); setShowModal(true); }}>− Salida</Btn></>} />
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
 
         {/* NOTA */}
         <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "10px 16px", marginBottom: 20 }}>
           <p style={{ margin: 0, fontSize: 12, color: "#1e40af", fontWeight: 600 }}>
-            Solo refleja dinero que entra y sale de Emporio. Las rentas que van directo al propietario NO aparecen aquí.
+            Cuenta Klar — Incluye rentas, mantenimiento, administración y pólizas. Las rentas que van directo al propietario NO aparecen aquí.
           </p>
         </div>
 
         {/* STATS */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 20 }}>
           {[
-            { label: "Saldo Emporio",  value: fmt(saldo),         color: saldo >= 0 ? "#065f46" : "#dc2626", bg: saldo >= 0 ? "#f0fdf4" : "#fff5f5" },
-            { label: "Total entradas", value: fmt(totalEntradas), color: "#065f46", bg: "#f0fdf4" },
-            { label: "Total salidas",  value: fmt(totalSalidas),  color: "#dc2626", bg: "#fff5f5" },
-            { label: "Efectivo",       value: fmt(efectivo),      color: "#92400e", bg: "#fffbeb" },
-            { label: "Banco",          value: fmt(banco),         color: "#1e40af", bg: "#eff6ff" },
+            { label: "Saldo Total Klar", value: fmt(saldo),         color: saldo >= 0 ? "#065f46" : "#dc2626", bg: saldo >= 0 ? "#f0fdf4" : "#fff5f5" },
+            { label: "Total entradas",   value: fmt(totalEntradas), color: "#065f46", bg: "#f0fdf4" },
+            { label: "Total salidas",    value: fmt(totalSalidas),  color: "#dc2626", bg: "#fff5f5" },
+            { label: "Efectivo",         value: fmt(efectivo),      color: "#92400e", bg: "#fffbeb" },
+            { label: "Transferencia",    value: fmt(banco),         color: "#1e40af", bg: "#eff6ff" },
+            { label: "Saldo general",    value: fmt(saldoGeneral),  color: saldoGeneral >= 0 ? "#065f46" : "#dc2626", bg: "#f9fafb" },
+            { label: "Saldo póliza",     value: fmt(saldoPoliza),   color: saldoPoliza >= 0 ? "#7c3aed" : "#dc2626", bg: "#faf5ff" },
           ].map((s, i) => (
             <div key={i} style={{ background: s.bg, borderRadius: 14, padding: "14px 16px" }}>
               <p style={{ margin: "0 0 4px", fontSize: 10, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
@@ -197,12 +242,17 @@ export default function Caja() {
             <option value="entrada">Solo entradas</option>
             <option value="salida">Solo salidas</option>
           </select>
+          <select value={filterFuente} onChange={e => setFilterFuente(e.target.value)} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+            <option value="">Todas las áreas</option>
+            <option value="general">General</option>
+            <option value="poliza">Póliza</option>
+          </select>
           <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
             <option value="">Todos los meses</option>
             {meses.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
-          {(filterType || filterMonth) && (
-            <button onClick={() => { setFilterType(""); setFilterMonth(""); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Limpiar</button>
+          {(filterType || filterMonth || filterFuente) && (
+            <button onClick={() => { setFilterType(""); setFilterMonth(""); setFilterFuente(""); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Limpiar</button>
           )}
           <span style={{ fontSize: 12, color: "#9ca3af", marginLeft: "auto" }}>{filtrados.length} movimientos</span>
         </div>
@@ -217,10 +267,10 @@ export default function Caja() {
                 <p style={{ color: "#6b7280" }}>Sin movimientos</p>
               </div>
             ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 650 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    {["Fecha", "Tipo", "Categoría", "Descripción", "Método", "Monto", "Por", ""].map(h => (
+                    {["Fecha", "Área", "Tipo", "Categoría", "Descripción", "Método", "Monto", "Por", ""].map(h => (
                       <th key={h} style={{ padding: "11px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                     ))}
                   </tr>
@@ -229,6 +279,15 @@ export default function Caja() {
                   {filtrados.map(m => (
                     <tr key={m.id} style={{ borderTop: "1px solid #f3f4f6", background: m.type === "entrada" ? "#f9fffe" : "#fffafa" }}>
                       <td style={{ padding: "11px 14px", fontSize: 13, color: "#6b7280" }}>{m.date}</td>
+                      <td style={{ padding: "11px 14px" }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
+                          background: m._fuente === "poliza" ? "#faf5ff" : "#f0f9ff",
+                          color: m._fuente === "poliza" ? "#7c3aed" : "#0369a1",
+                        }}>
+                          {m._fuente === "poliza" ? "Póliza" : "General"}
+                        </span>
+                      </td>
                       <td style={{ padding: "11px 14px" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: m.type === "entrada" ? "#065f46" : "#dc2626", background: m.type === "entrada" ? "#d1fae5" : "#fee2e2", padding: "2px 8px", borderRadius: 99 }}>
                           {m.type === "entrada" ? "Entrada" : "Salida"}
@@ -242,7 +301,9 @@ export default function Caja() {
                       </td>
                       <td style={{ padding: "11px 14px", fontSize: 11, color: "#9ca3af" }}>{m.created_by?.split("@")[0] || "sistema"}</td>
                       <td style={{ padding: "11px 14px" }}>
-                        {isAdmin && <Btn small color="#dc2626" onClick={() => eliminar(m.id, m.description)}>X</Btn>}
+                        {isAdmin && !String(m.id).startsWith("poliza_") && (
+                          <Btn small color="#dc2626" onClick={() => eliminar(m.id, m.description)}>X</Btn>
+                        )}
                       </td>
                     </tr>
                   ))}
