@@ -448,7 +448,6 @@ export default function CondominioDetalle() {
       monto: parseFloat(formGasto.monto),
       fecha: formGasto.fecha,
       comprobante_url,
-      notas: formGasto.notas || null,
     }]);
 
     // Si son honorarios de Emporio → registrar automáticamente en caja Klar
@@ -461,7 +460,6 @@ export default function CondominioDetalle() {
         payment_method: "transferencia",
         date: formGasto.fecha,
         notes: `Honorarios de administración condominio ${cond?.nombre || ""}`,
-        created_at: new Date().toISOString(),
       }]);
     }
 
