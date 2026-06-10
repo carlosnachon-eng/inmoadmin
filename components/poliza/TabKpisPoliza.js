@@ -3,14 +3,12 @@ import { C, st, fmt, fmtDate } from '../../lib/polizaUtils'
 
 const MESES_LABEL = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
-const KPICard = ({ label, value, sub, color, bg, border }) => (
-  <div style={{
-    background: bg || '#fff', border: `1px solid ${border || C.border}`,
-    borderRadius: 12, padding: '16px 20px',
-  }}>
+const KPICard = ({ label, value, sub, sub2, color, bg, border }) => (
+  <div style={{ background: bg || '#fff', border: `1px solid ${border || C.border}`, borderRadius: 12, padding: '16px 20px' }}>
     <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</p>
     <p style={{ margin: '6px 0 2px', fontSize: 24, fontWeight: 900, color: color || C.text }}>{value}</p>
     {sub && <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{sub}</p>}
+    {sub2 && <p style={{ margin: '2px 0 0', fontSize: 11, color: color || C.muted, fontWeight: 600 }}>{sub2}</p>}
   </div>
 )
 
@@ -28,69 +26,90 @@ export default function TabKpisPoliza({ expedientes, caja }) {
   const activos    = expedientes.filter(e => e.status === 'activo').length
   const archivados = expedientes.filter(e => e.status === 'archivado').length
   const vencidos   = expedientes.filter(e => e.status === 'vencido').length
-  const total      = expedientes.length
 
   // ── Tasa de renovación ─────────────────────────────────────────────────────
-  // Renovados = tienen expediente_anterior_id (son renovaciones de otro)
-  const renovados = expedientes.filter(e => e.expediente_anterior_id).length
-  // Perdidos = archivados (no quisieron renovar)
-  const perdidos  = archivados
+  const renovados  = expedientes.filter(e => e.expediente_anterior_id).length
+  const perdidos   = archivados
   const candidatos = renovados + perdidos
   const tasaRenovacion = candidatos > 0 ? Math.round((renovados / candidatos) * 100) : null
 
-  // ── Ingreso proyectado anual ───────────────────────────────────────────────
-  // Suma el valor de póliza de cada expediente activo (monto_poliza o renta_mensual * 12 como fallback)
-  const ingresoProyectado = expedientes
-    .filter(e => e.status === 'activo')
-    .reduce((a, e) => a + (e.monto_poliza || 0), 0)
-
-  // ── Renta promedio mensual ─────────────────────────────────────────────────
+  // ── Renta promedio y proyección ────────────────────────────────────────────
   const expedientesConRenta = expedientes.filter(e => e.status === 'activo' && e.renta_mensual > 0)
   const rentaPromedio = expedientesConRenta.length > 0
     ? expedientesConRenta.reduce((a, e) => a + e.renta_mensual, 0) / expedientesConRenta.length
     : 0
 
-  // Distribución de rentas por rango
+  // Ingreso proyectado = suma de renta_mensual de activos (lo que cobra Emporio mensualmente en polizas)
+  // La póliza se cobra anualmente, aquí mostramos el equivalente mensual y anual
+  const totalRentaCartera  = expedientesConRenta.reduce((a, e) => a + e.renta_mensual, 0)
+  const ingresoProyMensual = totalRentaCartera  // volumen de renta mensual que administra Emporio
+  const ingresoProyAnual   = totalRentaCartera * 12
+
+  // ── Distribución de rentas por rango ──────────────────────────────────────
   const rangos = [
-    { label: 'Menos de $8K', min: 0, max: 8000 },
-    { label: '$8K – $12K', min: 8000, max: 12000 },
-    { label: '$12K – $18K', min: 12000, max: 18000 },
-    { label: '$18K – $25K', min: 18000, max: 25000 },
-    { label: 'Más de $25K', min: 25000, max: Infinity },
+    { label: 'Menos de $8K',  min: 0,     max: 8000     },
+    { label: '$8K – $12K',    min: 8000,  max: 12000    },
+    { label: '$12K – $18K',   min: 12000, max: 18000    },
+    { label: '$18K – $25K',   min: 18000, max: 25000    },
+    { label: 'Más de $25K',   min: 25000, max: Infinity },
   ]
-  const distribucionRentas = rangos.map(r => ({
-    ...r,
-    count: expedientesConRenta.filter(e => e.renta_mensual >= r.min && e.renta_mensual < r.max).length,
-  }))
+  const distribucionRentas = rangos.map(r => {
+    const exps = expedientesConRenta.filter(e => e.renta_mensual >= r.min && e.renta_mensual < r.max)
+    return {
+      ...r,
+      count: exps.length,
+      volumenMensual: exps.reduce((a, e) => a + e.renta_mensual, 0),
+    }
+  })
   const maxCountRango = Math.max(...distribucionRentas.map(r => r.count), 1)
 
-  // ── Pólizas nuevas vs perdidas por mes (año actual) ────────────────────────
+  // ── Movimiento de cartera por mes — usa fecha_inicio ──────────────────────
   const mesesData = useMemo(() => {
     return Array.from({ length: 12 }, (_, i) => {
       const mes = i + 1
-      // Nuevas: creadas en ese mes/año (sin expediente_anterior_id = nueva, con = renovación)
+
+      // Nuevas: fecha_inicio en ese mes/año, sin renovacion anterior
       const nuevas = expedientes.filter(e => {
-        if (!e.created_at) return false
-        const d = new Date(e.created_at)
+        const fecha = e.fecha_inicio || e.created_at
+        if (!fecha) return false
+        const d = new Date(fecha + (fecha.length === 10 ? 'T12:00:00' : ''))
         return d.getFullYear() === anioActual && d.getMonth() + 1 === mes && !e.expediente_anterior_id
       }).length
+
+      // Renovaciones: fecha_inicio en ese mes/año, con expediente anterior
       const renovaciones = expedientes.filter(e => {
-        if (!e.created_at) return false
-        const d = new Date(e.created_at)
+        const fecha = e.fecha_inicio || e.created_at
+        if (!fecha) return false
+        const d = new Date(fecha + (fecha.length === 10 ? 'T12:00:00' : ''))
         return d.getFullYear() === anioActual && d.getMonth() + 1 === mes && e.expediente_anterior_id
       }).length
+
+      // Perdidas: archivadas en ese mes
       const perdidas = expedientes.filter(e => {
         if (!e.updated_at || e.status !== 'archivado') return false
         const d = new Date(e.updated_at)
         return d.getFullYear() === anioActual && d.getMonth() + 1 === mes
       }).length
-      return { mes, label: MESES_LABEL[mes], nuevas, renovaciones, perdidas, total: nuevas + renovaciones }
+
+      // Renta promedio de expedientes activos con fecha_inicio en ese mes o antes
+      const activosAlMes = expedientes.filter(e => {
+        if (e.status !== 'activo' || !e.renta_mensual) return false
+        const fecha = e.fecha_inicio || e.created_at
+        if (!fecha) return false
+        const d = new Date(fecha + (fecha.length === 10 ? 'T12:00:00' : ''))
+        return d.getFullYear() < anioActual || (d.getFullYear() === anioActual && d.getMonth() + 1 <= mes)
+      })
+      const rentaPromedioMes = activosAlMes.length > 0
+        ? activosAlMes.reduce((a, e) => a + e.renta_mensual, 0) / activosAlMes.length
+        : 0
+
+      return { mes, label: MESES_LABEL[mes], nuevas, renovaciones, perdidas, total: nuevas + renovaciones, rentaPromedioMes }
     })
   }, [expedientes, anioActual])
 
   const maxMes = Math.max(...mesesData.map(m => Math.max(m.total, m.perdidas)), 1)
 
-  // ── Ingresos caja por mes (año actual) ────────────────────────────────────
+  // ── Ingresos caja por mes ─────────────────────────────────────────────────
   const cajaPorMes = useMemo(() => {
     return Array.from({ length: 12 }, (_, i) => {
       const mes = i + 1
@@ -111,6 +130,10 @@ export default function TabKpisPoliza({ expedientes, caja }) {
     .sort((a, b) => b.renta_mensual - a.renta_mensual)
     .slice(0, 5)
 
+  // Renta promedio por mes — solo meses con datos
+  const rentaPorMes = mesesData.filter(m => m.rentaPromedioMes > 0)
+  const maxRentaMes = Math.max(...rentaPorMes.map(m => m.rentaPromedioMes), 1)
+
   return (
     <div>
       <p style={st.sectionTitle}>KPIs — Área de Pólizas</p>
@@ -118,15 +141,23 @@ export default function TabKpisPoliza({ expedientes, caja }) {
 
       {/* ── Fila 1: KPIs principales ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 20 }}>
-        <KPICard label="Pólizas activas" value={activos} color={C.greenText} bg={C.greenBg} border="#86efac" />
-        <KPICard label="Tasa de renovación" value={tasaRenovacion !== null ? `${tasaRenovacion}%` : '—'}
+        <KPICard label="Pólizas activas" value={activos} color={C.greenText} bg={C.greenBg} border="#86efac"
+          sub={`${expedientesConRenta.length} con renta registrada`} />
+        <KPICard label="Tasa de renovación"
+          value={tasaRenovacion !== null ? `${tasaRenovacion}%` : '—'}
           color={tasaRenovacion >= 70 ? C.greenText : tasaRenovacion >= 50 ? '#92400e' : C.redText}
           bg={tasaRenovacion >= 70 ? C.greenBg : tasaRenovacion >= 50 ? '#fffbeb' : '#fee2e2'}
           sub={`${renovados} renov. / ${perdidos} perd.`} />
-        <KPICard label="Renta promedio" value={fmt(rentaPromedio)} color={C.goldText} bg="#fff0f3"
-          sub={`${expedientesConRenta.length} expedientes activos`} />
-        <KPICard label="Ingreso proy. anual" value={fmt(ingresoProyectado)} color={C.blueText} bg={C.blueBg}
-          sub="Suma pólizas activas" />
+        <KPICard label="Renta promedio"
+          value={fmt(rentaPromedio)}
+          color={C.goldText} bg="#fff0f3"
+          sub="mensual por expediente"
+          sub2={`Anual: ${fmt(rentaPromedio * 12)}`} />
+        <KPICard label="Volumen cartera"
+          value={fmt(ingresoProyMensual)}
+          color={C.blueText} bg={C.blueBg}
+          sub="renta mensual total"
+          sub2={`Anual: ${fmt(ingresoProyAnual)}`} />
         <KPICard label="Archivados / Perdidos" value={archivados} color={C.muted}
           sub={`${vencidos} vencidos sin archivar`} />
       </div>
@@ -134,10 +165,10 @@ export default function TabKpisPoliza({ expedientes, caja }) {
       {/* ── Fila 2: Movimiento mensual + Caja ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
 
-        {/* Pólizas nuevas vs perdidas por mes */}
+        {/* Movimiento de cartera */}
         <div style={{ ...st.card, padding: 20 }}>
           <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: C.text }}>Movimiento de cartera {anioActual}</p>
-          <p style={{ margin: '0 0 16px', fontSize: 12, color: C.muted }}>Nuevas + renovaciones vs perdidas por mes</p>
+          <p style={{ margin: '0 0 16px', fontSize: 12, color: C.muted }}>Nuevas + renovaciones vs perdidas (por fecha de inicio)</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {mesesData.filter(m => m.total > 0 || m.perdidas > 0).map(m => (
               <div key={m.mes}>
@@ -159,7 +190,7 @@ export default function TabKpisPoliza({ expedientes, caja }) {
               </div>
             ))}
             {mesesData.filter(m => m.total > 0 || m.perdidas > 0).length === 0 && (
-              <p style={{ color: C.faint, textAlign: 'center', padding: 20, fontSize: 12 }}>Sin movimientos registrados en {anioActual}</p>
+              <p style={{ color: C.faint, textAlign: 'center', padding: 20, fontSize: 12 }}>Sin movimientos en {anioActual}</p>
             )}
           </div>
           <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
@@ -193,25 +224,61 @@ export default function TabKpisPoliza({ expedientes, caja }) {
         </div>
       </div>
 
-      {/* ── Fila 3: Distribución de rentas + Top 5 ── */}
+      {/* ── Fila 3: Renta promedio por mes ── */}
+      {rentaPorMes.length > 0 && (
+        <div style={{ ...st.card, padding: 20, marginBottom: 16 }}>
+          <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: C.text }}>Renta promedio mensual {anioActual}</p>
+          <p style={{ margin: '0 0 16px', fontSize: 12, color: C.muted }}>
+            Evolución del ticket promedio de renta — indica hacia qué segmento enfocarse comercialmente
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {rentaPorMes.map(m => (
+              <div key={m.mes} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: C.text, width: 28 }}>{m.label}</span>
+                <MiniBar value={m.rentaPromedioMes} max={maxRentaMes} color={C.goldText} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: C.goldText, width: 90, textAlign: 'right' }}>
+                  {fmt(m.rentaPromedioMes)}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: C.muted }}>Promedio actual (cartera activa)</span>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: C.goldText }}>{fmt(rentaPromedio)}</span>
+              <span style={{ fontSize: 11, color: C.muted, marginLeft: 8 }}>mensual</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.goldText, marginLeft: 16 }}>{fmt(rentaPromedio * 12)}</span>
+              <span style={{ fontSize: 11, color: C.muted, marginLeft: 4 }}>anual</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Fila 4: Distribución de rentas + Top 5 ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
-        {/* Distribución por rango de renta */}
+        {/* Distribución por rango */}
         <div style={{ ...st.card, padding: 20 }}>
           <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: C.text }}>Distribución de rentas</p>
-          <p style={{ margin: '0 0 16px', fontSize: 12, color: C.muted }}>Expedientes activos por rango de renta mensual</p>
+          <p style={{ margin: '0 0 16px', fontSize: 12, color: C.muted }}>
+            Expedientes activos por rango — el rango más grande es donde Emporio debe buscar más
+          </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {distribucionRentas.map(r => (
-              <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 11, color: C.text, width: 110, flexShrink: 0 }}>{r.label}</span>
+              <div key={r.label}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                  <span style={{ fontSize: 11, color: C.text }}>{r.label}</span>
+                  <span style={{ fontSize: 11, color: C.muted }}>
+                    {r.count} exp. · <span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(r.volumenMensual)}/mes</span>
+                  </span>
+                </div>
                 <MiniBar value={r.count} max={maxCountRango} color={C.goldText} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: C.text, width: 24, textAlign: 'right' }}>{r.count}</span>
               </div>
             ))}
           </div>
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 11, color: C.muted }}>Renta promedio</span>
-            <span style={{ fontSize: 13, fontWeight: 800, color: C.goldText }}>{fmt(rentaPromedio)}</span>
+            <span style={{ fontSize: 11, color: C.muted }}>Volumen mensual total cartera</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: C.goldText }}>{fmt(ingresoProyMensual)}</span>
           </div>
         </div>
 
@@ -230,7 +297,10 @@ export default function TabKpisPoliza({ expedientes, caja }) {
                   <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.nombre_arrendatario || '—'}</p>
                   <p style={{ margin: 0, fontSize: 10, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.direccion_inmueble || '—'}</p>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 800, color: C.goldText, flexShrink: 0 }}>{fmt(e.renta_mensual)}</span>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: C.goldText }}>{fmt(e.renta_mensual)}</p>
+                  <p style={{ margin: 0, fontSize: 10, color: C.muted }}>{fmt(e.renta_mensual * 12)}/año</p>
+                </div>
               </div>
             ))}
           </div>
