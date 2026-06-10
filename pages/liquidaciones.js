@@ -13,7 +13,6 @@ const calcComision = (c) => {
   return c.commission_value;
 };
 
-// Safari/iOS no soporta blob URLs para descarga — abre el PDF como data URI en nueva pestaña
 const savePDF = (doc, filename) => {
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
     || /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -23,7 +22,6 @@ const savePDF = (doc, filename) => {
     if (win) {
       win.document.write(`<iframe src="${uri}" style="width:100%;height:100%;border:none;" title="${filename}"></iframe>`);
     } else {
-      // Si el popup fue bloqueado, forzar descarga vía link
       const link = document.createElement("a");
       link.href = uri;
       link.download = filename;
@@ -84,7 +82,6 @@ const Btn = ({ children, onClick, color = "#1a1a2e", disabled, small }) => (
   </button>
 );
 
-// ── Canvas de firma ──────────────────────────────────────────────────────────
 const FirmaCanvas = ({ canvasRef, onFirma }) => {
   const drawing = useRef(false);
   const getPos = (e, canvas) => {
@@ -145,7 +142,6 @@ export default function Liquidaciones() {
   const mesAnterior = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
   const [mesCorte, setMesCorte] = useState(mesAnterior);
 
-  // ── Estados para expediente de propietario ───────────────────────────────
   const [expediente, setExpediente] = useState(null);
   const [expedienteData, setExpedienteData] = useState(null);
   const [expedienteLoading, setExpedienteLoading] = useState(false);
@@ -258,9 +254,8 @@ export default function Liquidaciones() {
     setDescargandoRecibo(null);
   };
 
-  // ── Estados para modal de pago ────────────────────────────────────────────
   const [showModalPago, setShowModalPago] = useState(false);
-  const [propietarioPago, setPropietarioPago] = useState(null); // { name, email }
+  const [propietarioPago, setPropietarioPago] = useState(null);
   const [savingPago, setSavingPago] = useState(false);
   const [firmaTrazada, setFirmaTrazada] = useState(false);
   const [archivoComprobante, setArchivoComprobante] = useState(null);
@@ -327,7 +322,6 @@ export default function Liquidaciones() {
 
   useEffect(() => { if (session) loadData(); }, [session]);
 
-  // ── Calcular pendiente del mes para prellenar el monto de pago ─────────────
   const calcPendienteMes = (ownerEmail) => {
     const [anio, mes] = mesCorte.split("-").map(Number);
     const fechaCorte = new Date(anio, mes - 1, 1);
@@ -352,7 +346,6 @@ export default function Liquidaciones() {
     return Math.max(0, totalRenta - totalCom - totalAdelanto);
   };
 
-  // ── Abrir modal de pago ───────────────────────────────────────────────────
   const openModalPago = (owner) => {
     const pendiente = calcPendienteMes(owner.email);
     const [anio, mes] = mesCorte.split("-").map(Number);
@@ -370,7 +363,6 @@ export default function Liquidaciones() {
     setShowModalPago(true);
   };
 
-  // ── Limpiar canvas de firma ───────────────────────────────────────────────
   const limpiarFirma = () => {
     const canvas = canvasRef.current;
     if (canvas) {
@@ -380,7 +372,6 @@ export default function Liquidaciones() {
     setFirmaTrazada(false);
   };
 
-  // ── Guardar pago + generar PDF de recibo ──────────────────────────────────
   const guardarPago = async () => {
     if (!formPago.monto || parseFloat(formPago.monto) <= 0) {
       showToast("Ingresa un monto válido", false); return;
@@ -395,17 +386,15 @@ export default function Liquidaciones() {
     setSavingPago(true);
 
     let firma_url = null;
-    let firmaBase64 = null; // ← guardamos el base64 ANTES de limpiar el canvas
+    let firmaBase64 = null;
     let comprobante_url = null;
 
-    // Capturar firma del canvas en memoria PRIMERO (antes de subir o limpiar)
     if (formPago.forma_pago === "efectivo" && canvasRef.current) {
       try {
         firmaBase64 = canvasRef.current.toDataURL("image/png");
       } catch (e) { console.warn("Error leyendo canvas:", e); }
     }
 
-    // Subir firma si es efectivo
     if (formPago.forma_pago === "efectivo" && firmaBase64) {
       try {
         const canvas = canvasRef.current;
@@ -421,7 +410,6 @@ export default function Liquidaciones() {
       } catch (e) { console.warn("Error subiendo firma:", e); }
     }
 
-    // Subir comprobante si es transferencia
     if (formPago.forma_pago === "transferencia" && archivoComprobante) {
       try {
         const ext = archivoComprobante.name.split(".").pop();
@@ -436,7 +424,6 @@ export default function Liquidaciones() {
       } catch (e) { console.warn("Error subiendo comprobante:", e); }
     }
 
-    // Insertar en owner_payment_receipts
     const { data: recibo, error } = await supabase.from("owner_payment_receipts").insert([{
       owner_name: propietarioPago.name,
       owner_email: propietarioPago.email,
@@ -457,13 +444,12 @@ export default function Liquidaciones() {
       return;
     }
 
-    // Insertar automáticamente en owner_payments para actualizar el pendiente
     const statusLiquidacion = formPago.concepto === "total" ? "pagado" : "pagado_parcial";
     await supabase.from("owner_payments").insert([{
       owner_name: propietarioPago.name,
       owner_email: propietarioPago.email,
       period_description: formPago.periodo,
-      total_rent: 0,       // no recalculamos aquí, es solo el pago
+      total_rent: 0,
       total_commission: 0,
       total_liquid: parseFloat(formPago.monto),
       amount_paid: parseFloat(formPago.monto),
@@ -474,12 +460,11 @@ export default function Liquidaciones() {
       rent_receiver: "inmobiliaria",
     }]);
 
-    // Generar PDF del recibo automáticamente
     await generarPDFRecibo({
       ...formPago,
       owner_name: propietarioPago.name,
       owner_email: propietarioPago.email,
-      firmaBase64,      // ← base64 directo del canvas, siempre disponible
+      firmaBase64,
       firma_url,
       comprobante_url,
       folio: recibo.id.slice(0, 8).toUpperCase(),
@@ -494,14 +479,12 @@ export default function Liquidaciones() {
     loadData();
   };
 
-  // ── Generar PDF de recibo de entrega ──────────────────────────────────────
   const generarPDFRecibo = async (datos) => {
     const { default: jsPDF } = await import("jspdf");
-    const doc = new jsPDF({ format: "a5" }); // A5 — más compacto para un recibo
+    const doc = new jsPDF({ format: "a5" });
     const hoy = new Date(datos.fecha).toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
     const concepto = { adelanto: "Adelanto de renta", parcial: "Pago parcial de liquidación", total: "Liquidación total" }[datos.concepto] || datos.concepto;
 
-    // Logo
     let logoDataUrl = null;
     try {
       const res = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
@@ -513,7 +496,6 @@ export default function Liquidaciones() {
       });
     } catch (e) { /* sin logo */ }
 
-    // ── Header ──
     doc.setFillColor(185, 28, 60); doc.rect(0, 0, 6, 210, "F");
     doc.setFillColor(26, 26, 46); doc.rect(6, 0, 142, 30, "F");
     if (logoDataUrl) {
@@ -528,11 +510,9 @@ export default function Liquidaciones() {
     doc.text(`Folio: ${datos.folio}`, 108, 20, { align: "right" });
     doc.text(`Fecha: ${hoy}`, 108, 25, { align: "right" });
 
-    // ── Cuerpo ──
     let y = 38;
     doc.setTextColor(26,26,46); doc.setFontSize(9); doc.setFont("helvetica","normal");
 
-    // Sección propietario
     doc.setFillColor(248,248,248); doc.rect(8, y, 132, 24, "F");
     doc.setDrawColor(220,220,220); doc.setLineWidth(0.3); doc.rect(8, y, 132, 24, "S");
     doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(122,122,122);
@@ -543,7 +523,6 @@ export default function Liquidaciones() {
     doc.text(datos.owner_email, 12, y + 20);
     y += 30;
 
-    // Detalle del pago
     const rows = [
       ["Concepto", concepto],
       ["Periodo", datos.periodo || "—"],
@@ -558,7 +537,6 @@ export default function Liquidaciones() {
       y += 8;
     });
 
-    // Monto destacado
     y += 4;
     doc.setFillColor(6, 95, 70); doc.rect(8, y, 132, 16, "F");
     doc.setTextColor(255,255,255); doc.setFont("helvetica","normal"); doc.setFontSize(9);
@@ -567,14 +545,11 @@ export default function Liquidaciones() {
     doc.text(fmt(parseFloat(datos.monto)), 136, y + 10, { align: "right" });
     y += 24;
 
-    // Firma del propietario si es efectivo
     if (datos.forma_pago === "efectivo") {
       y += 4;
       doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(26,26,46);
       doc.text("FIRMA DE RECIBIDO — PROPIETARIO", 10, y);
       y += 4;
-      // Prioridad: base64 del canvas (disponible al momento de firmar)
-      // Fallback: fetch desde URL de Storage (para regenerar desde historial)
       const firmaData = datos.firmaBase64 || null;
       if (firmaData) {
         try {
@@ -611,16 +586,14 @@ export default function Liquidaciones() {
       y += 36;
     }
 
-    // Nota de comprobante si es transferencia
     if (datos.forma_pago === "transferencia" && datos.comprobante_url) {
       y += 4;
       doc.setFillColor(235,245,255); doc.rect(8, y, 132, 10, "F");
       doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(30,64,175);
-      doc.text("✓ Comprobante de transferencia adjunto en el sistema", 12, y + 6);
+      doc.text("Comprobante de transferencia adjunto en el sistema", 12, y + 6);
       y += 14;
     }
 
-    // Footer
     doc.setDrawColor(220,220,220); doc.setLineWidth(0.3); doc.line(8, 192, 140, 192);
     doc.setFillColor(185,28,60); doc.rect(0, 192, 6, 18, "F");
     doc.setTextColor(122,122,122); doc.setFontSize(7); doc.setFont("helvetica","normal");
@@ -632,7 +605,6 @@ export default function Liquidaciones() {
     savePDF(doc, `Recibo_Pago_${datos.owner_name.replace(/\s+/g,"_")}_${datos.fecha}.pdf`);
   };
 
-  // ── openLiquidar — sin cambios ────────────────────────────────────────────
   const openLiquidar = (ownerName, ownerEmail) => {
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
     const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
@@ -653,7 +625,6 @@ export default function Liquidaciones() {
     setShowModal(true);
   };
 
-  // ── save — sin cambios ────────────────────────────────────────────────────
   const save = async () => {
     setSaving(true);
     const data = {
@@ -665,36 +636,36 @@ export default function Liquidaciones() {
     };
     const { error } = await supabase.from("owner_payments").insert([data]);
     if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
+
     if (form.rent_receiver === "inmobiliaria") {
-  const comisionRetenida = parseFloat(form.total_commission) || 0;
-  const montoLiquidado   = parseFloat(form.amount_paid) || 0;
+      const comisionRetenida = parseFloat(form.total_commission) || 0;
+      const montoLiquidado   = parseFloat(form.amount_paid) || 0;
 
-  // 1. Salida: lo que le pagamos al propietario
-  await supabase.from("cash_movements").insert([{
-    type: "salida", category: "liquidacion_propietario",
-    description: `Liquidación ${form.owner_name} - ${form.period_description}`,
-    amount: montoLiquidado,
-    payment_method: form.payment_method,
-    date: form.payment_date || today,
-    notes: `Comisión retenida: ${fmt(comisionRetenida)}`,
-    created_by: profile?.email, created_at: new Date().toISOString()
-  }]);
+      // 1. Salida: lo que le pagamos al propietario
+      await supabase.from("cash_movements").insert([{
+        type: "salida", category: "liquidacion_propietario",
+        description: `Liquidación ${form.owner_name} - ${form.period_description}`,
+        amount: montoLiquidado,
+        payment_method: form.payment_method,
+        date: form.payment_date || today,
+        notes: `Comisión retenida: ${fmt(comisionRetenida)}`,
+        created_by: profile?.email, created_at: new Date().toISOString()
+      }]);
 
-  // 2. Entrada: la comisión que se queda Emporio
-  if (comisionRetenida > 0) {
-    await supabase.from("cash_movements").insert([{
-      type: "entrada", category: "comision_cobrada",
-      description: `Comisión administración ${form.owner_name} - ${form.period_description}`,
-      amount: comisionRetenida,
-      payment_method: form.payment_method,
-      date: form.payment_date || today,
-      notes: `Retenida de liquidación. Renta total: ${fmt(parseFloat(form.total_rent) || 0)}`,
-      created_by: profile?.email, created_at: new Date().toISOString()
-    }]);
-  }
-}
+      // 2. Entrada: la comisión que se queda Emporio
+      if (comisionRetenida > 0) {
+        await supabase.from("cash_movements").insert([{
+          type: "entrada", category: "comision_cobrada",
+          description: `Comisión administración ${form.owner_name} - ${form.period_description}`,
+          amount: comisionRetenida,
+          payment_method: form.payment_method,
+          date: form.payment_date || today,
+          notes: `Retenida de liquidación. Renta total: ${fmt(parseFloat(form.total_rent) || 0)}`,
+          created_by: profile?.email, created_at: new Date().toISOString()
+        }]);
+      }
 
-      // Marcar comisiones automáticas del periodo como cobradas en comisiones_admin
+      // Marcar comisiones automáticas del periodo como cobradas
       const meses = { enero:"01",febrero:"02",marzo:"03",abril:"04",mayo:"05",junio:"06",julio:"07",agosto:"08",septiembre:"09",octubre:"10",noviembre:"11",diciembre:"12" };
       const desc = (form.period_description || "").toLowerCase();
       const anio = desc.match(/\d{4}/)?.[0];
@@ -719,6 +690,7 @@ export default function Liquidaciones() {
         }
       }
     }
+
     setSaving(false);
     showToast("Liquidación registrada");
     setShowModal(false);
@@ -726,7 +698,6 @@ export default function Liquidaciones() {
     loadData();
   };
 
-  // ── eliminar — sin cambios ────────────────────────────────────────────────
   const eliminar = async (id, nombre) => {
     if (!isAdmin) { showToast("Solo el admin puede eliminar", false); return; }
     if (!confirm(`¿Eliminar liquidación de ${nombre}?`)) return;
@@ -734,7 +705,6 @@ export default function Liquidaciones() {
     showToast("Eliminado"); loadData();
   };
 
-  // ── descargarPDF — sin cambios ────────────────────────────────────────────
   const descargarPDF = async (ownerName, ownerEmail, mesCorteParam) => {
     const { default: jsPDF } = await import("jspdf");
     const { default: autoTable } = await import("jspdf-autotable");
@@ -824,16 +794,13 @@ export default function Liquidaciones() {
     doc.setFillColor(185, 28, 60); doc.rect(14, y, 182, 7, "F");
     doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont("helvetica", "bold");
     doc.text("RESUMEN FINANCIERO", 18, y + 5);
-
     doc.setFillColor(255, 245, 247); doc.rect(14, y + 7, 182, boxH, "F");
     doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3);
     doc.rect(14, y + 7, 182, boxH, "S");
-
     doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(74, 74, 74);
     doc.text(`Renta mensual total:`, 18, y + 14);
     doc.setFont("helvetica", "bold");
     doc.text(fmt(totalRentaProp), 105, y + 14);
-
     doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
     doc.text(`Comisión administración:`, 18, y + 21);
     doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
@@ -868,13 +835,11 @@ export default function Liquidaciones() {
     doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
     doc.text(labelLiq, 108, lineY + 1);
     doc.text(fmt(montoLiq), 190, lineY + 1, { align: "right" });
-
     y += boxH + 14;
 
     const headStyle = { fillColor: [74, 74, 74], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 };
     const altRow = { fillColor: [250, 250, 250] };
     const tableMargin = { left: 14, right: 14 };
-
     const sectionTitle = (titulo, yPos) => {
       doc.setFillColor(185, 28, 60); doc.rect(14, yPos, 4, 8, "F");
       doc.setTextColor(74, 74, 74); doc.setFontSize(11); doc.setFont("helvetica", "bold");
@@ -1009,7 +974,6 @@ export default function Liquidaciones() {
       <PageHeader title="Liquidaciones" icon="🏦" actions={<Btn color={brand.red} onClick={() => { setForm(emptyForm); setShowModal(true); }}>+ Nueva</Btn>} />
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
-
         <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 12, padding: "10px 16px", marginBottom: 20 }}>
           <p style={{ margin: 0, fontSize: 12, color: "#92400e", fontWeight: 600 }}>
             Si la renta va directo al propietario: registra como referencia pero NO afecta la caja de Emporio. La comisión se registra en Comisiones cuando la recibes.
@@ -1115,7 +1079,6 @@ export default function Liquidaciones() {
         )}
       </div>
 
-      {/* ── Modal liquidación — sin cambios ── */}
       {showModal && (
         <Modal title="Registrar Liquidación" onClose={() => { setShowModal(false); setForm(emptyForm); }}>
           <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 12px", marginBottom: 16 }}>
@@ -1173,10 +1136,8 @@ export default function Liquidaciones() {
         </Modal>
       )}
 
-      {/* ── Modal de pago a propietario ── */}
       {showModalPago && propietarioPago && (
         <Modal title={`💳 Registrar pago — ${propietarioPago.name}`} onClose={() => { setShowModalPago(false); setFormPago(emptyFormPago); setFirmaTrazada(false); setArchivoComprobante(null); }} wide>
-          {/* Info propietario */}
           <div style={{ background: "#f9fafb", borderRadius: 8, padding: "10px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{propietarioPago.name}</p>
@@ -1219,7 +1180,6 @@ export default function Liquidaciones() {
             </Field>
           </div>
 
-          {/* Forma de pago */}
           <Field label="Forma de pago">
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setFormPago({ ...formPago, forma_pago: "efectivo" })} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, border: `2px solid ${formPago.forma_pago === "efectivo" ? "#b45309" : "#e5e7eb"}`, background: formPago.forma_pago === "efectivo" ? "#fffbeb" : "#fff", color: formPago.forma_pago === "efectivo" ? "#b45309" : "#6b7280", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
@@ -1231,7 +1191,6 @@ export default function Liquidaciones() {
             </div>
           </Field>
 
-          {/* Firma si es efectivo */}
           {formPago.forma_pago === "efectivo" && (
             <Field label="Firma de recibido — propietario">
               <FirmaCanvas canvasRef={canvasRef} onFirma={setFirmaTrazada} />
@@ -1246,17 +1205,10 @@ export default function Liquidaciones() {
             </Field>
           )}
 
-          {/* Comprobante si es transferencia */}
           {formPago.forma_pago === "transferencia" && (
             <Field label="Comprobante de transferencia">
               <div style={{ border: "2px dashed #d1d5db", borderRadius: 8, padding: "16px", textAlign: "center", background: "#fafafa" }}>
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={e => setArchivoComprobante(e.target.files[0] || null)}
-                  style={{ display: "none" }}
-                  id="comprobante-input"
-                />
+                <input type="file" accept="image/*,application/pdf" onChange={e => setArchivoComprobante(e.target.files[0] || null)} style={{ display: "none" }} id="comprobante-input" />
                 <label htmlFor="comprobante-input" style={{ cursor: "pointer" }}>
                   {archivoComprobante ? (
                     <div>
@@ -1282,30 +1234,17 @@ export default function Liquidaciones() {
             <button onClick={() => { setShowModalPago(false); setFormPago(emptyFormPago); setFirmaTrazada(false); setArchivoComprobante(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>
               Cancelar
             </button>
-            <Btn
-              onClick={guardarPago}
-              disabled={
-                savingPago ||
-                !formPago.monto ||
-                (formPago.forma_pago === "efectivo" && !firmaTrazada) ||
-                (formPago.forma_pago === "transferencia" && !archivoComprobante)
-              }
-              color="#b45309"
-            >
+            <Btn onClick={guardarPago} disabled={savingPago || !formPago.monto || (formPago.forma_pago === "efectivo" && !firmaTrazada) || (formPago.forma_pago === "transferencia" && !archivoComprobante)} color="#b45309">
               {savingPago ? "Guardando…" : "Registrar pago y generar recibo"}
             </Btn>
           </div>
         </Modal>
       )}
 
-      {/* ── Drawer Expediente de Propietario ── */}
       {expediente && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2000, display: "flex" }}>
-          {/* Overlay */}
           <div onClick={() => setExpediente(null)} style={{ flex: 1, background: "rgba(0,0,0,0.5)" }} />
-          {/* Panel */}
           <div style={{ width: "100%", maxWidth: 560, background: "#fff", overflowY: "auto", display: "flex", flexDirection: "column", boxShadow: "-4px 0 30px rgba(0,0,0,0.15)" }}>
-            {/* Header */}
             <div style={{ background: "#1a1a2e", padding: "20px 24px", position: "sticky", top: 0, zIndex: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
@@ -1315,14 +1254,13 @@ export default function Liquidaciones() {
                 </div>
                 <button onClick={() => setExpediente(null)} style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#fff", fontSize: 16 }}>✕</button>
               </div>
-              {/* Tabs */}
               <div style={{ display: "flex", gap: 4, marginTop: 16, overflowX: "auto" }}>
                 {[
-                  { id: "resumen",       label: "📊 Resumen" },
-                  { id: "propiedades",   label: "🏠 Propiedades" },
-                  { id: "pagos",         label: "💰 Pagos" },
+                  { id: "resumen", label: "📊 Resumen" },
+                  { id: "propiedades", label: "🏠 Propiedades" },
+                  { id: "pagos", label: "💰 Pagos" },
                   { id: "liquidaciones", label: "🏦 Liquidaciones" },
-                  { id: "comprobantes",  label: "📄 Comprobantes" },
+                  { id: "comprobantes", label: "📄 Comprobantes" },
                   { id: "mantenimiento", label: "🔧 Mantenimiento" },
                 ].map(t => (
                   <button key={t.id} onClick={() => setExpedienteTab(t.id)} style={{ padding: "6px 12px", borderRadius: "6px 6px 0 0", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", background: expedienteTab === t.id ? "#fff" : "rgba(255,255,255,0.1)", color: expedienteTab === t.id ? "#1a1a2e" : "rgba(255,255,255,0.7)" }}>
@@ -1332,7 +1270,6 @@ export default function Liquidaciones() {
               </div>
             </div>
 
-            {/* Contenido */}
             <div style={{ padding: "20px 24px", flex: 1 }}>
               {expedienteLoading ? (
                 <div style={{ textAlign: "center", padding: 48, color: "#9ca3af" }}>Cargando expediente…</div>
@@ -1346,16 +1283,15 @@ export default function Liquidaciones() {
 
                 return (
                   <>
-                    {/* RESUMEN */}
                     {expedienteTab === "resumen" && (
                       <div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
                           {[
-                            { label: "Líquido/mes",      value: fmt(liquidoMensual), color: "#065f46" },
-                            { label: "Pendiente mes",    value: fmt(pendienteMes),   color: pendienteMes > 0 ? "#b45309" : "#065f46" },
-                            { label: "Total liquidado",  value: fmt(totalLiquidado), color: "#1e40af" },
-                            { label: "Propiedades",      value: propsProp.length,    color: "#4a4a4a" },
-                            { label: "Contratos activos",value: contratosProp.length,color: "#7c3aed" },
+                            { label: "Líquido/mes", value: fmt(liquidoMensual), color: "#065f46" },
+                            { label: "Pendiente mes", value: fmt(pendienteMes), color: pendienteMes > 0 ? "#b45309" : "#065f46" },
+                            { label: "Total liquidado", value: fmt(totalLiquidado), color: "#1e40af" },
+                            { label: "Propiedades", value: propsProp.length, color: "#4a4a4a" },
+                            { label: "Contratos activos", value: contratosProp.length, color: "#7c3aed" },
                             { label: "Tickets abiertos", value: ticketsAbiertos.length, color: ticketsAbiertos.length > 0 ? "#b91c3c" : "#065f46" },
                           ].map((s, i) => (
                             <div key={i} style={{ background: "#f9fafb", borderRadius: 10, padding: "12px 14px" }}>
@@ -1364,7 +1300,6 @@ export default function Liquidaciones() {
                             </div>
                           ))}
                         </div>
-                        {/* Accesos rápidos */}
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <Btn small color="#065f46" onClick={() => { setExpediente(null); setTimeout(() => openLiquidar(expediente.name, expediente.email), 100); }}>💳 Liquidar</Btn>
                           <Btn small color="#b45309" onClick={() => { setExpediente(null); setTimeout(() => openModalPago(expediente), 100); }}>💵 Registrar pago</Btn>
@@ -1373,7 +1308,6 @@ export default function Liquidaciones() {
                       </div>
                     )}
 
-                    {/* PROPIEDADES */}
                     {expedienteTab === "propiedades" && (
                       <div>
                         {propsProp.length === 0 && <p style={{ color: "#9ca3af" }}>Sin propiedades registradas.</p>}
@@ -1392,9 +1326,9 @@ export default function Liquidaciones() {
                               </div>
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
                                 {[
-                                  { label: "Renta",      value: fmt(prop.rent_amount || c?.monthly_rent || 0), color: "#1a1a2e" },
-                                  { label: "Comisión",   value: fmt(com),                                      color: "#7c3aed" },
-                                  { label: "Líquido",    value: fmt((prop.rent_amount || c?.monthly_rent || 0) - com), color: "#065f46" },
+                                  { label: "Renta", value: fmt(prop.rent_amount || c?.monthly_rent || 0), color: "#1a1a2e" },
+                                  { label: "Comisión", value: fmt(com), color: "#7c3aed" },
+                                  { label: "Líquido", value: fmt((prop.rent_amount || c?.monthly_rent || 0) - com), color: "#065f46" },
                                 ].map((s, i) => (
                                   <div key={i} style={{ background: "#fff", borderRadius: 8, padding: "6px 10px" }}>
                                     <p style={{ margin: 0, fontSize: 10, color: "#9ca3af" }}>{s.label}</p>
@@ -1416,7 +1350,6 @@ export default function Liquidaciones() {
                       </div>
                     )}
 
-                    {/* PAGOS */}
                     {expedienteTab === "pagos" && (
                       <div>
                         <p style={{ margin: "0 0 12px", fontSize: 12, color: "#9ca3af", fontWeight: 600 }}>
@@ -1438,7 +1371,6 @@ export default function Liquidaciones() {
                       </div>
                     )}
 
-                    {/* LIQUIDACIONES */}
                     {expedienteTab === "liquidaciones" && (
                       <div>
                         {liqProp.length === 0 && <div style={{ background: "#f9fafb", borderRadius: 10, padding: 24, textAlign: "center" }}><p style={{ color: "#9ca3af", margin: 0 }}>Sin liquidaciones registradas</p></div>}
@@ -1453,9 +1385,9 @@ export default function Liquidaciones() {
                             </div>
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                               {[
-                                { label: "Renta",     value: fmt(l.total_rent),       color: "#1a1a2e" },
-                                { label: "Comisión",  value: fmt(l.total_commission), color: "#7c3aed" },
-                                { label: "Pagado",    value: fmt(l.amount_paid),      color: "#065f46" },
+                                { label: "Renta", value: fmt(l.total_rent), color: "#1a1a2e" },
+                                { label: "Comisión", value: fmt(l.total_commission), color: "#7c3aed" },
+                                { label: "Pagado", value: fmt(l.amount_paid), color: "#065f46" },
                               ].map((s, i) => (
                                 <div key={i} style={{ background: "#fff", borderRadius: 6, padding: "6px 8px" }}>
                                   <p style={{ margin: 0, fontSize: 9, color: "#9ca3af" }}>{s.label}</p>
@@ -1468,7 +1400,6 @@ export default function Liquidaciones() {
                       </div>
                     )}
 
-                    {/* COMPROBANTES */}
                     {expedienteTab === "comprobantes" && (
                       <div>
                         {recibosProp.length === 0 && (
@@ -1505,7 +1436,6 @@ export default function Liquidaciones() {
                       </div>
                     )}
 
-                    {/* MANTENIMIENTO */}
                     {expedienteTab === "mantenimiento" && (
                       <div>
                         {ticketsProp.length === 0 && (
