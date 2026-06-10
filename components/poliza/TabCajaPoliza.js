@@ -40,6 +40,11 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
   const egresos  = movimientosFiltrados.filter(m => m.tipo === 'egreso').reduce((a, m) => a + (m.monto || 0), 0)
   const saldo    = ingresos - egresos
 
+  // Totales globales (sin filtro)
+  const ingresosTotal = movimientos.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + (m.monto || 0), 0)
+  const egresosTotal  = movimientos.filter(m => m.tipo === 'egreso').reduce((a, m) => a + (m.monto || 0), 0)
+  const saldoTotal    = ingresosTotal - egresosTotal
+
   const openNew = () => {
     setEditando(null)
     setForm(emptyForm())
@@ -86,6 +91,20 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
     <div>
       <p style={st.sectionTitle}>Caja — Póliza Jurídica</p>
       <p style={st.sectionSub}>Registro de cobros y pagos del área jurídica</p>
+
+      {/* Totales globales */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Ingresos totales', value: fmt(ingresosTotal), color: C.greenText, bg: C.greenBg },
+          { label: 'Egresos totales', value: fmt(egresosTotal), color: C.redText, bg: C.redBg },
+          { label: 'Saldo total', value: fmt(saldoTotal), color: saldoTotal >= 0 ? C.greenText : C.redText, bg: saldoTotal >= 0 ? C.greenBg : C.redBg },
+        ].map((s, i) => (
+          <div key={i} style={{ background: s.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <p style={{ margin: 0, fontSize: 10, color: C.muted, textTransform: 'uppercase', fontWeight: 700 }}>{s.label}</p>
+            <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</p>
+          </div>
+        ))}
+      </div>
 
       {/* Filtros */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
