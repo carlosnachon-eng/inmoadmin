@@ -79,6 +79,11 @@ export default function FichaSolicitud() {
   const [modalSolicitar, setModalSolicitar] = useState(false)
   const [docsSolicitados, setDocsSolicitados] = useState([])
   const [notasSolicitud, setNotasSolicitud] = useState('')
+  const [reanalizing, setReanalizing] = useState(false)
+  const [reanalizadoOk, setReanalizadoOk] = useState(false)
+
+  // Upload manual de documentos por jurídico
+  const [subiendoDoc, setSubiendoDoc] = useState(null)
 
   useEffect(() => {
     if (!id) return
@@ -118,6 +123,59 @@ export default function FichaSolicitud() {
       setTimeout(() => setBuroOk(false), 3000)
     }
     setSubiendoBuro(false)
+  }
+
+  // ── Subida manual de documentos del solicitante por jurídico ──
+  const handleSubirDocManual = async (campo, file) => {
+    if (!file || !id) return
+    setSubiendoDoc(campo)
+    try {
+      const fileToBase64 = (f) => new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = reject
+        reader.readAsDataURL(f)
+      })
+      const b64 = await fileToBase64(file)
+      await supabase.from('solicitudes_inquilino').update({ [campo]: b64 }).eq('id', id)
+      // Refrescar datos
+      const { data } = await supabase.from('solicitudes_inquilino').select('*').eq('id', id).single()
+      if (data) setSol(data)
+    } catch (e) {
+      console.error('Error subiendo doc:', e)
+    }
+    setSubiendoDoc(null)
+  }
+
+  // ── Re-correr análisis de IA ──
+  const handleReanalizar = async () => {
+    setReanalizing(true)
+    try {
+      const res = await fetch('/api/analizar-solicitud', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ solicitud_id: id }),
+      })
+      if (res.ok) {
+        const resultado = await res.json()
+        await supabase.from('solicitudes_inquilino').update({
+          pre_viabilidad: resultado.resultado,
+          pre_viabilidad_detalle: resultado.mensaje,
+          pre_viabilidad_detalle_interno: resultado.mensajeInterno,
+          ingreso_detectado_ia: resultado.detalles?.ingresoDetectado,
+          ingreso_total_ia: resultado.detalles?.analisisIA?.ingreso_mensual_total,
+          curp_validada: resultado.validacionCurp?.valido,
+          curp_nombre_renapo: resultado.validacionCurp?.nombre_en_renapo,
+          curp_status: resultado.validacionCurp?.curp_status,
+        }).eq('id', id)
+        // Refrescar
+        const { data } = await supabase.from('solicitudes_inquilino').select('*').eq('id', id).single()
+        if (data) { setSol(data) }
+        setReanalizadoOk(true)
+        setTimeout(() => setReanalizadoOk(false), 4000)
+      }
+    } catch (e) { console.error(e) }
+    setReanalizing(false)
   }
 
   const handleSolicitarDocs = async () => {
@@ -162,6 +220,17 @@ export default function FichaSolicitud() {
   const nombre = sol.nombre_completo || sol.razon_social || '—'
   const sc = STATUS_CONFIG[status] || STATUS_CONFIG.pendiente
 
+  // Helper para botón de subida manual de un documento
+  const BotonSubirManual = ({ campo, label }) => (
+    <label style={{ background: '#eff6ff', border: '1px solid #93c5fd', color: '#1e40af', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 700 }}>
+      {subiendoDoc === campo ? '⏳ Subiendo...' : `📁 Subir ${label}`}
+      <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
+        onChange={e => e.target.files[0] && handleSubirDocManual(campo, e.target.files[0])}
+        disabled={subiendoDoc === campo}
+      />
+    </label>
+  )
+
   return (
     <>
       <Head>
@@ -179,13 +248,13 @@ export default function FichaSolicitud() {
       <div style={{ minHeight: '100vh', background: '#f8f8f8', fontFamily: "system-ui, sans-serif", color: '#374151' }}>
 
         {/* Header */}
-        <div className="no-print" style={{ background: '#ffffff', borderBottom: '1px solid #e5e7eb', padding: '14px 28px', display: 'flex', alignItems: 'center', gap: 16, position: 'sticky', top: 0, zIndex: 100 }}>
+        <div className="no-print" style={{ background: '#ffffff', borderBottom: '1px solid #e5e7eb', padding: '14px 28px', display: 'flex', alignItems: 'center', gap: 16, position: 'sticky', top: 0, zIndex: 100, flexWrap: 'wrap' }}>
           <button onClick={() => router.back()} style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 14px', color: '#9ca3af', fontSize: 13, cursor: 'pointer' }}>
             ← Volver
           </button>
           <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="" style={{ height: 28, objectFit: 'contain' }} />
           <div style={{ flex: 1 }}>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: C.white }}>{nombre}</p>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#374151' }}>{nombre}</p>
             <p style={{ margin: 0, fontSize: 11, color: C.muted }}>Ficha de investigación · {fmtDate(sol.created_at)}</p>
           </div>
           <button onClick={handlePrint} style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 16px', color: '#9ca3af', fontSize: 13, cursor: 'pointer' }}>
@@ -196,6 +265,10 @@ export default function FichaSolicitud() {
             style={{ background: '#fff0f3', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 16px', color: '#b91c3c', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}
           >
             📋 Generar dictamen
+          </button>
+          <button onClick={handleReanalizar} disabled={reanalizing}
+            style={{ background: reanalizing ? '#f3f4f6' : '#faf5ff', border: '1px solid #a78bfa', borderRadius: 8, padding: '8px 16px', color: reanalizing ? '#9ca3af' : '#7c3aed', fontSize: 13, cursor: reanalizing ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+            {reanalizing ? '⏳ Analizando...' : reanalizadoOk ? '✅ Reanalizadó' : '🤖 Re-analizar IA'}
           </button>
           <button onClick={() => setModalSolicitar(true)}
             style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 8, padding: '8px 16px', color: '#1e40af', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>
@@ -244,8 +317,8 @@ export default function FichaSolicitud() {
                 {Object.entries(STATUS_CONFIG).map(([key, val]) => (
                   <button key={key} onClick={() => setStatus(key)} style={{
                     padding: '7px 16px', borderRadius: 20, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                    background: status === key ? val.bg : '#1A1A1A',
-                    color: status === key ? val.color : C.faint,
+                    background: status === key ? val.bg : '#f3f4f6',
+                    color: status === key ? val.color : C.muted,
                     outline: status === key ? `2px solid ${val.color}` : 'none',
                   }}>
                     {val.label}
@@ -273,7 +346,6 @@ export default function FichaSolicitud() {
           {/* Ficha */}
           <div className="print-card" style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '32px 36px' }}>
 
-            {/* Encabezado imprimible */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
               <div>
                 <p style={{ margin: 0, fontSize: 11, color: '#b91c3c', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Emporio Inmobiliario</p>
@@ -288,7 +360,6 @@ export default function FichaSolicitud() {
               </div>
             </div>
 
-            {/* 1. Inmueble de interés */}
             <Seccion numero="1" titulo="Inmueble de interés">
               <Grid cols={2}>
                 <Campo label="Dirección del inmueble" value={sol.inmueble_interes} highlight />
@@ -296,7 +367,6 @@ export default function FichaSolicitud() {
               </Grid>
             </Seccion>
 
-            {/* 2. Datos personales */}
             <Seccion numero="2" titulo="Datos personales del solicitante">
               <Grid cols={3}>
                 <Campo label="Tipo de solicitante" value={sol.tipo_solicitante} />
@@ -315,40 +385,19 @@ export default function FichaSolicitud() {
               <div style={{ marginTop: 16 }}>
                 <Campo label="Domicilio actual" value={sol.domicilio_actual} />
               </div>
-              {sol.tipo_solicitante === 'Persona moral' && (
-                <div style={{ marginTop: 16 }}>
-                  <Grid cols={3}>
-                    <Campo label="Giro de la empresa" value={sol.giro_empresa} />
-                    <Campo label="Domicilio fiscal" value={sol.domicilio_fiscal} />
-                    <Campo label="Representante legal" value={sol.nombre_representante} />
-                  </Grid>
-                </div>
-              )}
             </Seccion>
 
-            {/* 3. Información laboral e ingresos */}
             <Seccion numero="3" titulo="Información laboral e ingresos">
               <Grid cols={3}>
                 <Campo label="Empresa donde labora" value={sol.empresa_labora || sol.razon_social} highlight />
                 <Campo label="Giro de la empresa" value={sol.giro_empresa_labora || sol.giro_comercial} />
-                <Campo label="Página web" value={sol.pagina_web_empresa || sol.pagina_web_empresa2} />
-                <Campo label="Domicilio del trabajo" value={sol.domicilio_trabajo} />
-                <Campo label="Teléfono del trabajo" value={sol.telefono_trabajo} />
-                <Campo label="Nombre del jefe inmediato" value={sol.nombre_jefe} />
-                <Campo label="Puesto del jefe" value={sol.puesto_jefe} />
-                <Campo label="Teléfono/correo del jefe" value={sol.telefono_email_jefe} />
                 <Campo label="Tipo de ingresos" value={sol.tipo_ingresos} />
-                <Campo label="Ingresos mensuales" value={fmt(sol.ingresos_mensuales || sol.ingresos_empresa)} highlight />
-                <Campo label="Comprobante presentado" value={sol.doc_comprobante_ingresos ? 'Sí (archivo adjunto)' : 'No adjuntado'} />
+                <Campo label="Ingresos mensuales (declarados)" value={fmt(sol.ingresos_mensuales || sol.ingresos_empresa)} highlight />
+                <Campo label="Domicilio del trabajo" value={sol.domicilio_trabajo} />
+                <Campo label="Nombre del jefe" value={sol.nombre_jefe} />
               </Grid>
-              {sol.origen_recursos && (
-                <div style={{ marginTop: 16 }}>
-                  <Campo label="Origen de los recursos" value={sol.origen_recursos} />
-                </div>
-              )}
             </Seccion>
 
-            {/* 4. Uso del inmueble */}
             <Seccion numero="4" titulo="Uso del inmueble y situación actual">
               <Grid cols={3}>
                 <Campo label="Uso del inmueble" value={sol.uso_inmueble} highlight />
@@ -361,7 +410,6 @@ export default function FichaSolicitud() {
               </Grid>
             </Seccion>
 
-            {/* 5. Referencias familiares */}
             <Seccion numero="5" titulo="Referencias familiares">
               {[1, 2, 3].map(n => (
                 (sol[`ref_fam${n}_nombre`] || sol[`ref_fam${n}_telefono`]) && (
@@ -377,7 +425,6 @@ export default function FichaSolicitud() {
               )}
             </Seccion>
 
-            {/* 6. Referencias personales */}
             <Seccion numero="6" titulo="Referencias personales">
               {[1, 2, 3].map(n => (
                 (sol[`ref_per${n}_nombre`] || sol[`ref_per${n}_telefono`]) && (
@@ -393,7 +440,6 @@ export default function FichaSolicitud() {
               )}
             </Seccion>
 
-            {/* 7. Ocupantes */}
             <Seccion numero="7" titulo="Ocupantes del inmueble">
               <Grid cols={3}>
                 <Campo label="Número de personas" value={sol.num_habitantes} highlight />
@@ -447,82 +493,87 @@ export default function FichaSolicitud() {
 
             {/* 8. Documentos */}
             <Seccion numero="8" titulo="Documentos del análisis">
+              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
+                <p style={{ margin: 0, fontSize: 12, color: '#1e40af', fontWeight: 600 }}>
+                  ℹ️ Jurídico puede subir documentos manualmente. Después usa el botón <strong>"Re-analizar IA"</strong> para actualizar el dictamen.
+                </p>
+              </div>
               <Grid cols={1}>
 
                 {/* Identificación oficial */}
-                <div style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 24 }}>{sol.doc_identificacion_url || sol.doc_identificacion_b64 || sol.doc_identificacion ? '✅' : '❌'}</span>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>Identificación oficial</p>
-                    <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{sol.doc_identificacion_url || sol.doc_identificacion_b64 || sol.doc_identificacion ? 'Documento adjunto por el solicitante' : 'No adjuntado'}</p>
-                  </div>
-                  {(sol.doc_identificacion_url || sol.doc_identificacion_b64 || sol.doc_identificacion) && (
-                    <button
-                      onClick={() => {
-                        const src = sol.doc_identificacion_url || sol.doc_identificacion_b64 || sol.doc_identificacion
-                        if (src.startsWith('data:')) {
-                          const a = document.createElement('a'); a.href = src; a.download = 'identificacion'; a.click()
-                        } else {
-                          handleVerDoc(src)
-                        }
-                      }}
-                      style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
-                    >
-                      Ver
-                    </button>
-                  )}
-                </div>
+                {(() => {
+                  const tiene = !!(sol.doc_identificacion_url || sol.doc_identificacion_b64 || sol.doc_identificacion)
+                  const src   = sol.doc_identificacion_url || sol.doc_identificacion_b64 || sol.doc_identificacion
+                  return (
+                    <div style={{ background: tiene ? '#f9fafb' : '#fff5f5', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, border: tiene ? 'none' : '1px dashed #fca5a5' }}>
+                      <span style={{ fontSize: 24 }}>{tiene ? '✅' : '❌'}</span>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>Identificación oficial</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{tiene ? 'Documento adjunto' : 'No adjuntado'}</p>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {tiene && (
+                          <button onClick={() => { if (src.startsWith('data:')) { const a = document.createElement('a'); a.href = src; a.download = 'identificacion'; a.click() } else { handleVerDoc(src) } }}
+                            style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>
+                            Ver
+                          </button>
+                        )}
+                        <BotonSubirManual campo="doc_identificacion_b64" label="INE/Pasaporte" />
+                      </div>
+                    </div>
+                  )
+                })()}
 
-                {/* Comprobantes de ingresos — hasta 3 archivos */}
+                {/* Comprobantes de ingresos */}
                 {[
-                  { url: sol.doc_comprobante_ingresos_b64 || sol.doc_ingresos_url_1 || sol.doc_comprobante_ingresos, label: 'Comprobante de ingresos — Mes 1' },
-                  { url: sol.doc_ingresos_b64_2 || sol.doc_ingresos_url_2, label: 'Comprobante de ingresos — Mes 2' },
-                  { url: sol.doc_ingresos_b64_3 || sol.doc_ingresos_url_3, label: 'Comprobante de ingresos — Mes 3' },
+                  { campo: 'doc_comprobante_ingresos_b64', url: sol.doc_comprobante_ingresos_b64 || sol.doc_ingresos_url_1 || sol.doc_comprobante_ingresos, label: 'Comprobante de ingresos — Mes 1' },
+                  { campo: 'doc_ingresos_b64_2', url: sol.doc_ingresos_b64_2 || sol.doc_ingresos_url_2, label: 'Comprobante de ingresos — Mes 2' },
+                  { campo: 'doc_ingresos_b64_3', url: sol.doc_ingresos_b64_3 || sol.doc_ingresos_url_3, label: 'Comprobante de ingresos — Mes 3' },
                 ].map((doc, i) => (
-                  <div key={i} style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div key={i} style={{ background: doc.url ? '#f9fafb' : '#fff5f5', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, border: doc.url ? 'none' : '1px dashed #fca5a5' }}>
                     <span style={{ fontSize: 24 }}>{doc.url ? '✅' : '❌'}</span>
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>{doc.label}</p>
                       <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{doc.url ? 'Documento adjunto' : 'No adjuntado'}</p>
                     </div>
-                    {doc.url && (
-                      <button
-                        onClick={() => {
-                          if (doc.url.startsWith('data:')) {
-                            const a = document.createElement('a'); a.href = doc.url; a.download = `comprobante_${i+1}`; a.click()
-                          } else {
-                            window.open(doc.url, '_blank')
-                          }
-                        }}
-                        style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}
-                      >
-                        Ver
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {doc.url && (
+                        <button onClick={() => { if (doc.url.startsWith('data:')) { const a = document.createElement('a'); a.href = doc.url; a.download = `comprobante_${i+1}`; a.click() } else { window.open(doc.url, '_blank') } }}
+                          style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>
+                          Ver
+                        </button>
+                      )}
+                      <BotonSubirManual campo={doc.campo} label={`Mes ${i + 1}`} />
+                    </div>
                   </div>
                 ))}
 
-                {/* Documentos opcionales */}
+                {/* Documentos opcionales ya subidos */}
                 {[
-                  { url: sol.doc_carta_laboral_b64, label: 'Carta laboral' },
-                  { url: sol.doc_constancia_fiscal_b64, label: 'Constancia de situación fiscal' },
-                  { url: sol.doc_extra_1_b64, label: 'Documento adicional 1' },
-                  { url: sol.doc_extra_2_b64, label: 'Documento adicional 2' },
-                ].filter(d => d.url).map((doc, i) => (
-                  <div key={i} style={{ background: '#f0fdf4', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: 24 }}>✅</span>
+                  { url: sol.doc_carta_laboral_b64, campo: 'doc_carta_laboral_b64', label: 'Carta laboral' },
+                  { url: sol.doc_constancia_fiscal_b64, campo: 'doc_constancia_fiscal_b64', label: 'Constancia de situación fiscal' },
+                  { url: sol.doc_extra_1_b64, campo: 'doc_extra_1_b64', label: 'Documento adicional 1' },
+                  { url: sol.doc_extra_2_b64, campo: 'doc_extra_2_b64', label: 'Documento adicional 2' },
+                ].map((doc, i) => (
+                  <div key={i} style={{ background: doc.url ? '#f0fdf4' : '#f9fafb', borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 24 }}>{doc.url ? '✅' : '➕'}</span>
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>{doc.label}</p>
-                      <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>Documento adjunto</p>
+                      <p style={{ margin: '2px 0 0', fontSize: 11, color: C.muted }}>{doc.url ? 'Documento adjunto' : 'No subido'}</p>
                     </div>
-                    <button onClick={() => { const a = document.createElement('a'); a.href = doc.url; a.download = doc.label; a.click() }}
-                      style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>
-                      Ver
-                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {doc.url && (
+                        <button onClick={() => { const a = document.createElement('a'); a.href = doc.url; a.download = doc.label; a.click() }}
+                          style={{ background: '#fff0f3', border: '1px solid #fca5a5', color: '#b91c3c', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>
+                          Ver
+                        </button>
+                      )}
+                      <BotonSubirManual campo={doc.campo} label={doc.label} />
+                    </div>
                   </div>
                 ))}
 
-                {/* Reporte Buró México — subido por la abogada */}
+                {/* Reporte Buró México */}
                 <div style={{ background: docBuro ? '#f0fdf4' : '#fffbeb', border: `1px solid ${docBuro ? '#6ee7b7' : '#fde68a'}`, borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ fontSize: 24 }}>{docBuro ? '✅' : '📋'}</span>
                   <div style={{ flex: 1 }}>
@@ -548,7 +599,6 @@ export default function FichaSolicitud() {
               </Grid>
             </Seccion>
 
-            {/* Notas jurídicas (visible en impresión) */}
             {notas && (
               <Seccion numero="9" titulo="Notas jurídicas">
                 <div style={{ background: '#f9fafb', borderRadius: 8, padding: '16px 20px' }}>
