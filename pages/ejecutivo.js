@@ -68,6 +68,7 @@ export default function Ejecutivo() {
   const [tickets, setTickets] = useState([]);
   const [condominios, setCondominios] = useState([]);
   const [comisionesAdmin, setComisionesAdmin] = useState([]);
+  const [contratosComision, setContratosComision] = useState([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -82,13 +83,14 @@ export default function Ejecutivo() {
 
   const loadData = async () => {
     setLoading(true);
-    const [c, pc, cm, t, cond, ca] = await Promise.all([
+    const [c, pc, cm, t, cond, ca, ct] = await Promise.all([
       supabase.from("cierres").select("fecha_cierre, comision, anio, mes"),
       supabase.from("poliza_caja").select("fecha, monto, tipo, concepto"),
       supabase.from("cash_movements").select("date, amount, type, category, description"),
       supabase.from("maintenance_tickets").select("status, charged_amount, provider_cost, updated_at, created_at, payer"),
       supabase.from("condominio_unidades").select("cuota_mensual, status").eq("status", "activo"),
-      supabase.from("comisiones_admin").select("periodo, monto, status").eq("status", "cobrada"),
+      supabase.from("comisiones_admin").select("periodo, monto, status, fecha_cobro").eq("status", "cobrada"),
+      supabase.from("contracts").select("commission_status, commission_type, commission_value, monthly_rent, updated_at").eq("status", "activo").eq("commission_status", "cobrada"),
     ]);
     setCierres(c.data || []);
     setPolizaCaja(pc.data || []);
@@ -96,6 +98,7 @@ export default function Ejecutivo() {
     setTickets(t.data || []);
     setCondominios(cond.data || []);
     setComisionesAdmin(ca.data || []);
+    setContratosComision(ct.data || []);
     setLoading(false);
   };
 
@@ -134,20 +137,31 @@ export default function Ejecutivo() {
       .filter(p => enMes(p.fecha, m, a) && p.tipo === "ingreso")
       .reduce((acc, p) => acc + (p.monto || 0), 0);
 
-    // Administración — combinar cash_movements (comision_cobrada) + comisiones_admin (cobradas)
-    // Usamos el mayor de los dos para evitar doble conteo
+    // Administración — tres fuentes posibles, tomamos la más completa
+    const periodoKey = `${a}-${String(m + 1).padStart(2, "0")}`;
+
+    // Fuente 1: cash_movements con category comision_cobrada
     const ingrAdminCash = cashMovements
       .filter(mv => enMes(mv.date, m, a) && mv.type === "entrada" && mv.category === "comision_cobrada")
       .reduce((acc, mv) => acc + (mv.amount || 0), 0);
 
-    // comisiones_admin usa campo periodo con formato "YYYY-MM"
-    const periodoKey = `${a}-${String(m + 1).padStart(2, "0")}`;
+    // Fuente 2: comisiones_admin cobradas ese periodo
     const ingrAdminCA = comisionesAdmin
       .filter(ca => ca.periodo === periodoKey)
       .reduce((acc, ca) => acc + (ca.monto || 0), 0);
 
-    // Si hay datos en cash_movements los usamos (más confiable), si no usamos comisiones_admin
-    const ingrAdmin = ingrAdminCash > 0 ? ingrAdminCash : ingrAdminCA;
+    // Fuente 3: contracts con commission_status = cobrada (updated ese mes)
+    const calcCom = (c) => {
+      if (!c.commission_value) return 0;
+      if (c.commission_type === "porcentaje") return (c.monthly_rent * c.commission_value) / 100;
+      return c.commission_value;
+    };
+    const ingrAdminContracts = contratosComision
+      .filter(c => enMes(c.updated_at, m, a))
+      .reduce((acc, c) => acc + calcCom(c), 0);
+
+    // Usar la fuente con mayor monto (más completa)
+    const ingrAdmin = Math.max(ingrAdminCash, ingrAdminCA, ingrAdminContracts);
 
     // Mantenimiento — utilidad de tickets cerrados ese mes (cobrado - costo)
     const ingrMtto = tickets
