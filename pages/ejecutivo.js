@@ -67,6 +67,7 @@ export default function Ejecutivo() {
   const [cashMovements, setCashMovements] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [condominios, setCondominios] = useState([]);
+  const [comisionesAdmin, setComisionesAdmin] = useState([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -81,18 +82,20 @@ export default function Ejecutivo() {
 
   const loadData = async () => {
     setLoading(true);
-    const [c, pc, cm, t, cond] = await Promise.all([
-      supabase.from("cierres").select("fecha_cierre, comision_emporio, monto_operacion, status").eq("status", "activo"),
+    const [c, pc, cm, t, cond, ca] = await Promise.all([
+      supabase.from("cierres").select("fecha_cierre, comision, status"),
       supabase.from("poliza_caja").select("fecha, monto, tipo, concepto"),
       supabase.from("cash_movements").select("date, amount, type, category, description"),
       supabase.from("maintenance_tickets").select("status, charged_amount, provider_cost, updated_at, created_at, payer"),
       supabase.from("condominio_unidades").select("cuota_mensual, status").eq("status", "activo"),
+      supabase.from("comisiones_admin").select("periodo, monto, status").eq("status", "cobrada"),
     ]);
     setCierres(c.data || []);
     setPolizaCaja(pc.data || []);
     setCashMovements(cm.data || []);
     setTickets(t.data || []);
     setCondominios(cond.data || []);
+    setComisionesAdmin(ca.data || []);
     setLoading(false);
   };
 
@@ -124,17 +127,27 @@ export default function Ejecutivo() {
     // Cierres
     const ingrCierres = cierres
       .filter(c => enMes(c.fecha_cierre, m, a))
-      .reduce((acc, c) => acc + (c.comision_emporio || 0), 0);
+      .reduce((acc, c) => acc + (c.comision || 0), 0);
 
     // Pólizas — solo ingresos (tipo ingreso)
     const ingrPolizas = polizaCaja
       .filter(p => enMes(p.fecha, m, a) && p.tipo === "ingreso")
       .reduce((acc, p) => acc + (p.monto || 0), 0);
 
-    // Administración — cash movements con category renta_cobrada o comision_cobrada
-    const ingrAdmin = cashMovements
-      .filter(mv => enMes(mv.date, m, a) && mv.type === "entrada" && ["renta_cobrada", "comision_cobrada"].includes(mv.category))
+    // Administración — combinar cash_movements (comision_cobrada) + comisiones_admin (cobradas)
+    // Usamos el mayor de los dos para evitar doble conteo
+    const ingrAdminCash = cashMovements
+      .filter(mv => enMes(mv.date, m, a) && mv.type === "entrada" && mv.category === "comision_cobrada")
       .reduce((acc, mv) => acc + (mv.amount || 0), 0);
+
+    // comisiones_admin usa campo periodo con formato "YYYY-MM"
+    const periodoKey = `${a}-${String(m + 1).padStart(2, "0")}`;
+    const ingrAdminCA = comisionesAdmin
+      .filter(ca => ca.periodo === periodoKey)
+      .reduce((acc, ca) => acc + (ca.monto || 0), 0);
+
+    // Si hay datos en cash_movements los usamos (más confiable), si no usamos comisiones_admin
+    const ingrAdmin = ingrAdminCash > 0 ? ingrAdminCash : ingrAdminCA;
 
     // Mantenimiento — utilidad de tickets cerrados ese mes (cobrado - costo)
     const ingrMtto = tickets
