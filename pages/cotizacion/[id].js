@@ -184,33 +184,40 @@ export default function CotizacionPublica() {
         {/* Descripción del trabajo */}
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, marginBottom: 16, border: "1px solid #f0f0f0" }}>
           <p style={{ margin: "0 0 4px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Trabajo a realizar</p>
-          <p style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, color: "#1a1a2e" }}>{ticket?.title || cotizacion.descripcion}</p>
-          {ticket?.description && (
-            <p style={{ margin: 0, fontSize: 14, color: "#6b7280", lineHeight: 1.5 }}>{ticket.description}</p>
-          )}
-          {ticket?.category && (
-            <span style={{ display: "inline-block", marginTop: 10, fontSize: 12, background: "#f3f4f6", color: "#374151", padding: "3px 10px", borderRadius: 99 }}>{ticket.category}</span>
-          )}
+          <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#1a1a2e", lineHeight: 1.5 }}>{cotizacion.descripcion}</p>
         </div>
 
         {/* Desglose de costos */}
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, marginBottom: 16, border: "1px solid #f0f0f0" }}>
           <p style={{ margin: "0 0 16px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Desglose</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 14, color: "#6b7280" }}>Mano de obra y materiales</span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#4a4a4a" }}>{fmt(cotizacion.costo_proveedor)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 14, color: "#6b7280" }}>Gestión y coordinación ({cotizacion.margen_pct}%)</span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#4a4a4a" }}>{fmt(cotizacion.monto_final - cotizacion.costo_proveedor)}</span>
-            </div>
-            <div style={{ height: 1, background: "#f3f4f6" }} />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 16, fontWeight: 700, color: "#1a1a2e" }}>Total</span>
-              <span style={{ fontSize: 22, fontWeight: 900, color: "#b91c3c" }}>{fmt(cotizacion.monto_final)}</span>
-            </div>
-          </div>
+          {(() => {
+            const subtotal = cotizacion.monto_final;
+            const iva = Math.round(subtotal * 0.16);
+            const total = subtotal + iva;
+            const anticipo = Math.round(total * 0.5);
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 14, color: "#6b7280" }}>Subtotal</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "#4a4a4a" }}>{fmt(subtotal)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 14, color: "#6b7280" }}>IVA (16%)</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "#4a4a4a" }}>{fmt(iva)}</span>
+                </div>
+                <div style={{ height: 1, background: "#e5e7eb" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "#1a1a2e" }}>Total</span>
+                  <span style={{ fontSize: 24, fontWeight: 900, color: "#b91c3c" }}>{fmt(total)}</span>
+                </div>
+                <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 10, padding: "12px 14px", marginTop: 4 }}>
+                  <p style={{ margin: "0 0 2px", fontSize: 12, fontWeight: 700, color: "#92400e" }}>⚡ Anticipo requerido para iniciar</p>
+                  <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#92400e" }}>{fmt(anticipo)}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#92400e" }}>50% del total — el resto al terminar el trabajo</p>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Quién paga */}
@@ -219,6 +226,32 @@ export default function CotizacionPublica() {
             💡 Este costo está a cargo de: <strong>{cotizacion.payer === "propietario" ? "el propietario" : cotizacion.payer === "inquilino" ? "el inquilino" : cotizacion.payer}</strong>
           </p>
         </div>
+
+        {/* Formas de pago */}
+        {(() => {
+          const subtotal = cotizacion.monto_final;
+          const iva = Math.round(subtotal * 0.16);
+          const total = subtotal + iva;
+          const anticipo = Math.round(total * 0.5);
+          return (
+            <div style={{ background: "#fff", borderRadius: 16, padding: 20, marginBottom: 16, border: "1px solid #f0f0f0" }}>
+              <p style={{ margin: "0 0 14px", fontSize: 13, fontWeight: 700, color: "#374151" }}>💳 Formas de pago del anticipo ({fmt(anticipo)})</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "14px 16px", border: "1px solid #86efac" }}>
+                  <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: "#065f46" }}>🏦 Transferencia bancaria</p>
+                  <p style={{ margin: "0 0 2px", fontSize: 12, color: "#374151" }}>Grupo Inmobiliario Nachón Torres SA de CV</p>
+                  <p style={{ margin: "0 0 2px", fontSize: 12, color: "#374151" }}>Banco: <strong>Klar</strong></p>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#065f46", fontFamily: "monospace", letterSpacing: 1 }}>CLABE: 6611 8002 6030 6793 33</p>
+                </div>
+                <div style={{ background: "#fffbeb", borderRadius: 10, padding: "14px 16px", border: "1px solid #fcd34d" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700, color: "#92400e" }}>💵 Efectivo</p>
+                  <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>Retiro sin tarjeta en cualquier cajero Klar, o pago directo en nuestras oficinas.</p>
+                  <p style={{ margin: "6px 0 0", fontSize: 12, color: "#92400e", fontWeight: 600 }}>📞 Coordina con nosotros: 222 257 3237</p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Acciones */}
         {!showRechazo ? (
