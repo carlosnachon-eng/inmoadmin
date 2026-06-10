@@ -29,6 +29,8 @@ const StatusBadge = ({ status }) => {
     nuevo: { bg: "#fef3c7", color: "#92400e", label: "Nuevo" },
     en_proceso: { bg: "#dbeafe", color: "#1e40af", label: "En proceso" },
     resuelto: { bg: "#d1fae5", color: "#065f46", label: "Resuelto" },
+    cotizado: { bg: "#faf5ff", color: "#7c3aed", label: "Cotizado" },
+    aprobado: { bg: "#d1fae5", color: "#065f46", label: "Aprobado" },
   };
   const s = map[status] || { bg: "#f3f4f6", color: "#374151", label: status };
   return <span style={{ background: s.bg, color: s.color, padding: "2px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{s.label}</span>;
@@ -86,6 +88,7 @@ export default function InquilinoPortal() {
   const [contract, setContract] = useState(null);
   const [payments, setPayments] = useState([]);
   const [tickets, setTickets] = useState([]);
+  const [quotes, setQuotes] = useState([]);
   const [servicios, setServicios] = useState([]);
   const [pagosServicios, setPagosServicios] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -97,10 +100,7 @@ export default function InquilinoPortal() {
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
 
-  const periodoActual = () => {
-    const hoy = new Date();
-    return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
-  };
+  const periodoActual = () => { const hoy = new Date(); return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`; };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); setAuthLoading(false); });
@@ -116,16 +116,18 @@ export default function InquilinoPortal() {
     const { data: contractData } = await supabase.from("contracts").select("*").eq("tenant_email", email).eq("status", "activo").single();
     if (contractData) {
       setContract(contractData);
-      const [{ data: paymentsData }, { data: ticketsData }, { data: servData }, { data: pagosServData }] = await Promise.all([
+      const [{ data: paymentsData }, { data: ticketsData }, { data: servData }, { data: pagosServData }, { data: quotesData }] = await Promise.all([
         supabase.from("payments").select("*").eq("contract_id", contractData.id).order("due_date", { ascending: true }),
         supabase.from("maintenance_tickets").select("*").eq("tenant_name", contractData.tenant_name).order("created_at", { ascending: false }),
         supabase.from("servicios_inmueble").select("*").eq("property_name", contractData.property_name).eq("aplica", true),
         supabase.from("pagos_servicios").select("*").eq("property_name", contractData.property_name).order("created_at", { ascending: false }),
+        supabase.from("maintenance_quotes").select("*").eq("tenant_email", email).eq("payer", "inquilino"),
       ]);
       setPayments(paymentsData || []);
       setTickets(ticketsData || []);
       setServicios((servData || []).filter(s => s.quien_paga === "inquilino"));
       setPagosServicios(pagosServData || []);
+      setQuotes(quotesData || []);
     }
     setLoading(false);
   };
@@ -169,21 +171,12 @@ export default function InquilinoPortal() {
       const { error: uploadError } = await supabase.storage.from("receipts").upload(fileName, file, { upsert: true });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(fileName);
-
-      // Verificar si ya existe un pago del periodo actual
       const periodo = periodoActual();
       const pagoExistente = pagosServicios.find(p => p.tipo === servicio.tipo && p.periodo === periodo);
       if (pagoExistente) {
         await supabase.from("pagos_servicios").update({ comprobante_url: publicUrl, status: "en_revision" }).eq("id", pagoExistente.id);
       } else {
-        await supabase.from("pagos_servicios").insert({
-          property_name: contract.property_name,
-          tipo: servicio.tipo,
-          periodo,
-          status: "en_revision",
-          comprobante_url: publicUrl,
-          subido_por: session.user.email,
-        });
+        await supabase.from("pagos_servicios").insert({ property_name: contract.property_name, tipo: servicio.tipo, periodo, status: "en_revision", comprobante_url: publicUrl, subido_por: session.user.email });
       }
       showToast("✅ Comprobante enviado, lo revisaremos pronto");
       loadTenantData();
@@ -197,21 +190,11 @@ export default function InquilinoPortal() {
   const pagosMes = payments.filter(p => { if (!p.due_date) return false; const d = new Date(p.due_date); return d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear(); });
   const pagoPendiente = pagosMes.find(p => ["pendiente", "atrasado"].includes(p.status));
   const totalPagado = payments.filter(p => p.status === "pagado").length;
-
-  // Servicios con su estado del periodo actual
-  const serviciosConEstado = servicios.map(s => {
-    const periodo = periodoActual();
-    const pago = pagosServicios.find(p => p.tipo === s.tipo && p.periodo === periodo);
-    return { ...s, pago };
-  });
+  const serviciosConEstado = servicios.map(s => { const periodo = periodoActual(); const pago = pagosServicios.find(p => p.tipo === s.tipo && p.periodo === periodo); return { ...s, pago }; });
   const serviciosPendientes = serviciosConEstado.filter(s => !s.pago || s.pago.status === "pendiente" || s.pago.status === "atrasado").length;
+  const cotizacionesPendientes = quotes.filter(q => q.status === "pendiente");
 
-  if (authLoading) return (
-    <div style={{ minHeight: "100vh", background: "#f8f8f8", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
-    </div>
-  );
-
+  if (authLoading) return <div style={{ minHeight: "100vh", background: "#f8f8f8", display: "flex", alignItems: "center", justifyContent: "center" }}><img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} /></div>;
   if (!session) return <TenantLogin onLogin={() => loadTenantData()} />;
   if (loading) return <div style={{ minHeight: "100vh", background: "#f8f8f8", display: "flex", alignItems: "center", justifyContent: "center" }}><p style={{ color: "#9ca3af" }}>Cargando tu información...</p></div>;
 
@@ -230,7 +213,7 @@ export default function InquilinoPortal() {
     { id: "inicio", label: "🏠 Inicio" },
     { id: "pagos", label: "💰 Pagos" },
     { id: "servicios", label: `🔌 Servicios${serviciosPendientes > 0 ? ` (${serviciosPendientes})` : ""}` },
-    { id: "mantenimiento", label: "🔧 Mantenimiento" },
+    { id: "mantenimiento", label: `🔧 Mantenimiento${cotizacionesPendientes.length > 0 ? ` (${cotizacionesPendientes.length})` : ""}` },
     { id: "contrato", label: "📋 Contrato" },
   ];
 
@@ -279,6 +262,12 @@ export default function InquilinoPortal() {
 
         {tab === "inicio" && (
           <div>
+            {cotizacionesPendientes.length > 0 && (
+              <div style={{ background: "#fff", borderRadius: 16, padding: 16, marginBottom: 16, border: "2px solid #7c3aed", cursor: "pointer" }} onClick={() => setTab("mantenimiento")}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>🔧 Tienes {cotizacionesPendientes.length} cotización{cotizacionesPendientes.length > 1 ? "es" : ""} de mantenimiento pendiente{cotizacionesPendientes.length > 1 ? "s" : ""} de aprobar</p>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9ca3af" }}>Toca aquí para revisar y responder →</p>
+              </div>
+            )}
             {pagoPendiente ? (
               <div style={{ background: "#fff", borderRadius: 16, padding: 24, marginBottom: 16, border: "2px solid #fcd34d" }}>
                 <p style={{ margin: "0 0 4px", fontSize: 12, color: "#92400e", fontWeight: 700, textTransform: "uppercase" }}>⚠️ Pago pendiente este mes</p>
@@ -300,14 +289,12 @@ export default function InquilinoPortal() {
                 </div>
               </div>
             )}
-
             {serviciosPendientes > 0 && (
               <div style={{ background: "#fff", borderRadius: 16, padding: 16, marginBottom: 16, border: "2px solid #fcd34d", cursor: "pointer" }} onClick={() => setTab("servicios")}>
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#92400e" }}>⚠️ Tienes {serviciosPendientes} servicio{serviciosPendientes > 1 ? "s" : ""} pendiente{serviciosPendientes > 1 ? "s" : ""} de comprobar</p>
                 <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9ca3af" }}>Toca aquí para subir tus comprobantes →</p>
               </div>
             )}
-
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
               <div style={{ background: "#fff", borderRadius: 14, padding: 18 }}>
                 <p style={{ margin: "0 0 4px", fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase" }}>Pagos realizados</p>
@@ -349,12 +336,10 @@ export default function InquilinoPortal() {
           </div>
         )}
 
-        {/* ── TAB SERVICIOS ── */}
         {tab === "servicios" && (
           <div>
             <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700, color: "#4a4a4a" }}>Mis servicios</h3>
             <p style={{ margin: "0 0 20px", fontSize: 13, color: "#9ca3af" }}>Sube tus comprobantes de pago de servicios</p>
-
             {serviciosConEstado.length === 0 ? (
               <div style={{ background: "#fff", borderRadius: 16, padding: 48, textAlign: "center", border: "1px solid #f0f0f0" }}>
                 <p style={{ fontSize: 32, margin: "0 0 8px" }}>✅</p>
@@ -371,28 +356,17 @@ export default function InquilinoPortal() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                         <div>
                           <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "#4a4a4a" }}>{config?.label || serv.tipo}</p>
-                          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>
-                            {serv.periodicidad}
-                            {serv.dia_limite_pago ? ` · Límite: día ${serv.dia_limite_pago}` : ""}
-                          </p>
+                          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>{serv.periodicidad}{serv.dia_limite_pago ? ` · Límite: día ${serv.dia_limite_pago}` : ""}</p>
                           {serv.numero_cuenta && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>No. cuenta: {serv.numero_cuenta}</p>}
                         </div>
                         <span style={{ background: sem.bg, color: sem.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{sem.label}</span>
                       </div>
-
                       {serv.pago?.comprobante_url && (
-                        <a href={serv.pago.comprobante_url} target="_blank" rel="noreferrer"
-                          style={{ fontSize: 13, color: "#065f46", textDecoration: "none", display: "inline-block", background: "#d1fae5", padding: "6px 12px", borderRadius: 8, fontWeight: 600, marginBottom: 8 }}>
-                          📄 Ver comprobante enviado
-                        </a>
+                        <a href={serv.pago.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#065f46", textDecoration: "none", display: "inline-block", background: "#d1fae5", padding: "6px 12px", borderRadius: 8, fontWeight: 600, marginBottom: 8 }}>📄 Ver comprobante enviado</a>
                       )}
-
                       {serv.pago?.status === "en_revision" && (
-                        <div style={{ background: "#dbeafe", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#1e40af", fontWeight: 600, marginBottom: 8 }}>
-                          🔍 Tu comprobante está en revisión
-                        </div>
+                        <div style={{ background: "#dbeafe", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#1e40af", fontWeight: 600, marginBottom: 8 }}>🔍 Tu comprobante está en revisión</div>
                       )}
-
                       {esPendiente && (
                         <label style={{ display: "flex", alignItems: "center", gap: 8, background: "#f9fafb", padding: "10px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#374151", border: "1px dashed #d1d5db" }}>
                           {uploadingServicio === serv.tipo ? "⏳ Subiendo..." : "📎 Subir comprobante de pago"}
@@ -409,6 +383,33 @@ export default function InquilinoPortal() {
 
         {tab === "mantenimiento" && (
           <div>
+            {/* ── Cotizaciones pendientes ── */}
+            {cotizacionesPendientes.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#7c3aed" }}>🔧 Cotizaciones pendientes de aprobación</h3>
+                {cotizacionesPendientes.map(q => (
+                  <div key={q.id} style={{ background: "#fff", borderRadius: 14, padding: "18px 20px", marginBottom: 12, border: "2px solid #a78bfa" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                      <div>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "#1a1a2e" }}>{q.descripcion}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>📍 {q.property_name}</p>
+                      </div>
+                      <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#7c3aed" }}>{fmt(q.monto_final)}</p>
+                    </div>
+                    <a
+                      href={`/cotizacion/${q.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ display: "block", width: "100%", background: "#7c3aed", color: "#fff", textAlign: "center", padding: "12px", borderRadius: 10, textDecoration: "none", fontWeight: 700, fontSize: 14, boxSizing: "border-box" }}
+                    >
+                      Ver y responder cotización →
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── Reportar problema ── */}
             <div style={{ background: "#fff", borderRadius: 16, padding: 22, marginBottom: 16, border: "1px solid #e5e7eb" }}>
               <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: "#4a4a4a" }}>Reportar un problema</h3>
               <div style={{ marginBottom: 12 }}>
@@ -438,18 +439,32 @@ export default function InquilinoPortal() {
                 {saving ? "Enviando..." : "Enviar reporte"}
               </button>
             </div>
+
             {tickets.length > 0 && (
               <div>
                 <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#4a4a4a" }}>Mis reportes</h3>
-                {tickets.map(t => (
-                  <div key={t.id} style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", marginBottom: 10, border: "1px solid #f0f0f0" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#4a4a4a" }}>{t.title}</p>
-                      <StatusBadge status={t.status} />
+                {tickets.map(t => {
+                  const cotizacion = quotes.find(q => q.ticket_id === t.id);
+                  return (
+                    <div key={t.id} style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", marginBottom: 10, border: "1px solid #f0f0f0" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#4a4a4a" }}>{t.title}</p>
+                        <StatusBadge status={t.status} />
+                      </div>
+                      <p style={{ margin: "0 0 6px", fontSize: 12, color: "#9ca3af" }}>{t.category} · {new Date(t.created_at).toLocaleDateString("es-MX")}</p>
+                      {cotizacion && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: cotizacion.status === "aprobada" ? "#d1fae5" : cotizacion.status === "rechazada" ? "#fee2e2" : "#fef3c7", color: cotizacion.status === "aprobada" ? "#065f46" : cotizacion.status === "rechazada" ? "#991b1b" : "#92400e" }}>
+                            Cotización {cotizacion.status}: {fmt(cotizacion.monto_final)}
+                          </span>
+                          {cotizacion.status === "pendiente" && (
+                            <a href={`/cotizacion/${cotizacion.id}`} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#7c3aed", fontWeight: 700, textDecoration: "underline" }}>Responder →</a>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>{t.category} · {new Date(t.created_at).toLocaleDateString("es-MX")}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -475,10 +490,7 @@ export default function InquilinoPortal() {
             {contract.contrato_url && (
               <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #f3f4f6" }}>
                 <button
-                  onClick={async () => {
-                    const { data } = await supabase.storage.from("contratos").createSignedUrl(contract.contrato_url, 60);
-                    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
-                  }}
+                  onClick={async () => { const { data } = await supabase.storage.from("contratos").createSignedUrl(contract.contrato_url, 60); if (data?.signedUrl) window.open(data.signedUrl, "_blank"); }}
                   style={{ width: "100%", background: "#b91c3c", color: "#fff", border: "none", borderRadius: 10, padding: "12px", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>
                   📄 Ver mi contrato PDF
                 </button>
