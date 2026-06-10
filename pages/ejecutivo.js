@@ -92,7 +92,7 @@ export default function Ejecutivo() {
       supabase.from("condominios").select("honorarios_emporio, activo").eq("activo", true),
       supabase.from("comisiones_admin").select("periodo, monto, status, fecha_cobro").eq("status", "cobrada"),
       supabase.from("contracts").select("commission_status, commission_type, commission_value, monthly_rent, updated_at").eq("status", "activo").eq("commission_status", "cobrada"),
-      supabase.from("gastos_condominio").select("concepto, monto, fecha"),
+      supabase.from("gastos_condominio").select("concepto, monto, fecha, categoria"),
     ]);
     setCierres(c.data || []);
     setPolizaCaja(pc.data || []);
