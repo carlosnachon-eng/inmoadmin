@@ -223,8 +223,6 @@ export default function Caja() {
             { label: "Saldo Total Klar", value: fmt(saldo),         color: saldo >= 0 ? "#065f46" : "#dc2626", bg: saldo >= 0 ? "#f0fdf4" : "#fff5f5" },
             { label: "Total entradas",   value: fmt(totalEntradas), color: "#065f46", bg: "#f0fdf4" },
             { label: "Total salidas",    value: fmt(totalSalidas),  color: "#dc2626", bg: "#fff5f5" },
-            { label: "Efectivo",         value: fmt(efectivo),      color: "#92400e", bg: "#fffbeb" },
-            { label: "Transferencia",    value: fmt(banco),         color: "#1e40af", bg: "#eff6ff" },
             { label: "Saldo general",    value: fmt(saldoGeneral),  color: saldoGeneral >= 0 ? "#065f46" : "#dc2626", bg: "#f9fafb" },
             { label: "Saldo póliza",     value: fmt(saldoPoliza),   color: saldoPoliza >= 0 ? "#7c3aed" : "#dc2626", bg: "#faf5ff" },
           ].map((s, i) => (
