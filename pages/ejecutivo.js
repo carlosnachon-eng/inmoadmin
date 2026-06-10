@@ -69,6 +69,7 @@ export default function Ejecutivo() {
   const [condominios, setCondominios] = useState([]);
   const [comisionesAdmin, setComisionesAdmin] = useState([]);
   const [contratosComision, setContratosComision] = useState([]);
+  const [gastosCondominio, setGastosCondominio] = useState([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -83,7 +84,7 @@ export default function Ejecutivo() {
 
   const loadData = async () => {
     setLoading(true);
-    const [c, pc, cm, t, cond, ca, ct] = await Promise.all([
+    const [c, pc, cm, t, cond, ca, ct, gc] = await Promise.all([
       supabase.from("cierres").select("fecha_cierre, comision, anio, mes"),
       supabase.from("poliza_caja").select("fecha, monto, tipo, concepto"),
       supabase.from("cash_movements").select("date, amount, type, category, description"),
@@ -91,6 +92,7 @@ export default function Ejecutivo() {
       supabase.from("condominios").select("honorarios_emporio, activo").eq("activo", true),
       supabase.from("comisiones_admin").select("periodo, monto, status, fecha_cobro").eq("status", "cobrada"),
       supabase.from("contracts").select("commission_status, commission_type, commission_value, monthly_rent, updated_at").eq("status", "activo").eq("commission_status", "cobrada"),
+      supabase.from("gastos_condominio").select("concepto, monto, fecha"),
     ]);
     setCierres(c.data || []);
     setPolizaCaja(pc.data || []);
@@ -99,6 +101,7 @@ export default function Ejecutivo() {
     setCondominios(cond.data || []);
     setComisionesAdmin(ca.data || []);
     setContratosComision(ct.data || []);
+    setGastosCondominio(gc.data || []);
     setLoading(false);
   };
 
@@ -168,9 +171,15 @@ export default function Ejecutivo() {
       .filter(t => t.status === "cerrado" && enMes(t.updated_at || t.created_at, m, a) && t.payer !== "inmobiliaria")
       .reduce((acc, t) => acc + Math.max(0, (t.charged_amount || 0) - (t.provider_cost || 0)), 0);
 
-    // Condominios — honorarios fijos mensuales que cobra Emporio por administrar
-    // Se considera ingreso fijo mientras el condominio esté activo
-    const ingrCondominios = condominios.reduce((acc, c) => acc + (c.honorarios_emporio || 0), 0);
+    // Condominios — honorarios registrados en gastos_condominio con concepto "ADMINISTRACION EMPORIO"
+    const ingrCondominios = gastosCondominio
+      .filter(g => {
+        if (!g.concepto?.toUpperCase().includes("ADMINISTRACION EMPORIO")) return false;
+        if (!g.fecha) return false;
+        const d = new Date(g.fecha + "T12:00:00");
+        return d.getMonth() === m && d.getFullYear() === a;
+      })
+      .reduce((acc, g) => acc + (g.monto || 0), 0);
 
     return {
       cierres: ingrCierres,
