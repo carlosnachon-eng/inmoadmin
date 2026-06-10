@@ -666,15 +666,33 @@ export default function Liquidaciones() {
     const { error } = await supabase.from("owner_payments").insert([data]);
     if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
     if (form.rent_receiver === "inmobiliaria") {
-      await supabase.from("cash_movements").insert([{
-        type: "salida", category: "liquidacion_propietario",
-        description: `Liquidación ${form.owner_name} - ${form.period_description}`,
-        amount: parseFloat(form.amount_paid) || 0,
-        payment_method: form.payment_method,
-        date: form.payment_date || today,
-        notes: `Comisión retenida: ${fmt(parseFloat(form.total_commission) || 0)}`,
-        created_by: profile?.email, created_at: new Date().toISOString()
-      }]);
+  const comisionRetenida = parseFloat(form.total_commission) || 0;
+  const montoLiquidado   = parseFloat(form.amount_paid) || 0;
+
+  // 1. Salida: lo que le pagamos al propietario
+  await supabase.from("cash_movements").insert([{
+    type: "salida", category: "liquidacion_propietario",
+    description: `Liquidación ${form.owner_name} - ${form.period_description}`,
+    amount: montoLiquidado,
+    payment_method: form.payment_method,
+    date: form.payment_date || today,
+    notes: `Comisión retenida: ${fmt(comisionRetenida)}`,
+    created_by: profile?.email, created_at: new Date().toISOString()
+  }]);
+
+  // 2. Entrada: la comisión que se queda Emporio
+  if (comisionRetenida > 0) {
+    await supabase.from("cash_movements").insert([{
+      type: "entrada", category: "comision_cobrada",
+      description: `Comisión administración ${form.owner_name} - ${form.period_description}`,
+      amount: comisionRetenida,
+      payment_method: form.payment_method,
+      date: form.payment_date || today,
+      notes: `Retenida de liquidación. Renta total: ${fmt(parseFloat(form.total_rent) || 0)}`,
+      created_by: profile?.email, created_at: new Date().toISOString()
+    }]);
+  }
+}
 
       // Marcar comisiones automáticas del periodo como cobradas en comisiones_admin
       const meses = { enero:"01",febrero:"02",marzo:"03",abril:"04",mayo:"05",junio:"06",julio:"07",agosto:"08",septiembre:"09",octubre:"10",noviembre:"11",diciembre:"12" };
