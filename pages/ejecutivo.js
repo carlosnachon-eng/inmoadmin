@@ -171,20 +171,15 @@ export default function Ejecutivo() {
       .filter(t => t.status === "cerrado" && enMes(t.updated_at || t.created_at, m, a) && t.payer !== "inmobiliaria")
       .reduce((acc, t) => acc + Math.max(0, (t.charged_amount || 0) - (t.provider_cost || 0)), 0);
 
-    // Condominios — honorarios desde cash_movements (categoria honorarios_condominio)
-    // o desde gastos_condominio con categoria honorarios_emporio o concepto ADMINISTRACION EMPORIO
-    const ingrCondCash = cashMovements
-      .filter(mv => enMes(mv.date, m, a) && mv.type === "entrada" && mv.category === "honorarios_condominio")
-      .reduce((acc, mv) => acc + (mv.amount || 0), 0);
-    const ingrCondGastos = gastosCondominio
+    // Condominios — directo de gastos_condominio con categoria honorarios_emporio
+    const ingrCondominios = gastosCondominio
       .filter(g => {
-        if (!["honorarios_emporio"].includes(g.categoria) && !g.concepto?.toUpperCase().includes("ADMINISTRACION EMPORIO")) return false;
+        if (g.categoria !== "honorarios_emporio" && !g.concepto?.toUpperCase().includes("ADMINISTRACION EMPORIO")) return false;
         if (!g.fecha) return false;
         const d = new Date(g.fecha + "T12:00:00");
         return d.getMonth() === m && d.getFullYear() === a;
       })
       .reduce((acc, g) => acc + (g.monto || 0), 0);
-    const ingrCondominios = ingrCondCash > 0 ? ingrCondCash : ingrCondGastos;
 
     return {
       cierres: ingrCierres,
