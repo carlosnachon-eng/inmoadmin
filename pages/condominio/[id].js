@@ -17,13 +17,14 @@ const periodoLabel = (p) => {
 };
 
 const CATEGORIAS = {
-  agua:          { label: "Agua",          icon: "💧" },
-  luz:           { label: "Luz",           icon: "⚡" },
-  limpieza:      { label: "Limpieza",      icon: "🧹" },
-  mantenimiento: { label: "Mantenimiento", icon: "🔧" },
-  vigilancia:    { label: "Vigilancia",    icon: "👮" },
-  jardineria:    { label: "Jardinería",    icon: "🌿" },
-  otro:          { label: "Otro",          icon: "📦" },
+  agua:               { label: "Agua",                icon: "💧" },
+  luz:                { label: "Luz",                 icon: "⚡" },
+  limpieza:           { label: "Limpieza",            icon: "🧹" },
+  mantenimiento:      { label: "Mantenimiento",       icon: "🔧" },
+  vigilancia:         { label: "Vigilancia",          icon: "👮" },
+  jardineria:         { label: "Jardinería",          icon: "🌿" },
+  honorarios_emporio: { label: "Honorarios Emporio",  icon: "🏢" },
+  otro:               { label: "Otro",                icon: "📦" },
 };
 
 const savePDF = (doc, filename) => {
@@ -449,11 +450,26 @@ export default function CondominioDetalle() {
       comprobante_url,
       notas: formGasto.notas || null,
     }]);
+
+    // Si son honorarios de Emporio → registrar automáticamente en caja Klar
+    if (formGasto.categoria === "honorarios_emporio") {
+      await supabase.from("cash_movements").insert([{
+        type: "entrada",
+        category: "honorarios_condominio",
+        description: `${formGasto.concepto} — ${cond?.nombre || "Condominio"}`,
+        amount: parseFloat(formGasto.monto),
+        payment_method: "transferencia",
+        date: formGasto.fecha,
+        notes: `Honorarios de administración condominio ${cond?.nombre || ""}`,
+        created_at: new Date().toISOString(),
+      }]);
+    }
+
     setSaving(false);
     setModalGasto(false);
     setFormGasto(emptyGasto);
     setArchivoComprobante(null);
-    showToast("Gasto registrado");
+    showToast(formGasto.categoria === "honorarios_emporio" ? "Honorarios registrados y enviados a caja ✅" : "Gasto registrado");
     loadData();
   };
 
