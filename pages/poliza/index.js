@@ -8,6 +8,7 @@ import TabPropietarios from '../../components/poliza/TabPropietarios'
 import TabSolicitudes from '../../components/poliza/TabSolicitudes'
 import TabCajaPoliza from '../../components/poliza/TabCajaPoliza'
 import TabCompraventa from '../../components/poliza/TabCompraventa'
+import TabKpisPoliza from '../../components/poliza/TabKpisPoliza'
 import ModalNuevoExpediente from '../../components/poliza/ModalNuevoExpediente'
 import ModalExpediente from '../../components/poliza/ModalExpediente'
 import ModalPropietario from '../../components/poliza/ModalPropietario'
@@ -63,9 +64,15 @@ export default function PolizaPanel() {
       const { data } = await supabase.from('solicitudes_inquilino').select('*').order('created_at', { ascending: false })
       setSolicitudes(data || [])
     }
-    if (tabId === 'caja' && caja.length === 0) {
-      const { data } = await supabase.from('poliza_caja').select('*').order('fecha', { ascending: false })
-      setCaja(data || [])
+    if (tabId === 'caja' || tabId === 'kpis') {
+      if (caja.length === 0) {
+        const { data } = await supabase.from('poliza_caja').select('*').order('fecha', { ascending: false })
+        setCaja(data || [])
+      }
+    }
+    if (tabId === 'kpis' && expedientes.length === 0) {
+      const { data } = await supabase.from('poliza_expedientes').select('*').order('created_at', { ascending: false })
+      setExpedientes(data || [])
     }
     if (tabId === 'compraventa' && propietarios.length === 0) {
       const [{ data: prop }, { data: comp }] = await Promise.all([
@@ -107,6 +114,7 @@ export default function PolizaPanel() {
     { id: 'solicitudes', label: `Solicitudes (${solicitudes.length})` },
     { id: 'caja', label: '💰 Caja Póliza' },
     { id: 'compraventa', label: '🔑 Compraventa' },
+    { id: 'kpis', label: '📊 KPIs' },
   ]
 
   const closeModal = () => { setModal(null); setSelected(null) }
@@ -180,6 +188,7 @@ export default function PolizaPanel() {
                 onReload={loadAll}
               />
             )}
+            {tab === 'kpis' && <TabKpisPoliza expedientes={expedientes} caja={caja} />}
           </>
         )}
       </main>
