@@ -26,6 +26,7 @@ export const nav = [
   { id: "cierres",       label: "Cierres",         icon: "📊",  link: "/cierres" },
   { id: "firmas",        label: "Firmas",          icon: "📝",  link: "/firmas" },
   { id: "poliza",        label: "Póliza",          icon: "⚖️",  link: "/poliza" },
+  { id: "kpis_mtto",     label: "KPIs Mtto/Admon", icon: "📊", link: "/kpis-mtto-admon" },
   { id: "condominios",   label: "Condominios",     icon: "🏢",  link: "/condominios" },
   { id: "recibos",       label: "Recibos",         icon: "🧾",  link: "/recibos" },
   { id: "cartas",        label: "Cartas de Oferta", icon: "📄",  link: "/cartas" },
