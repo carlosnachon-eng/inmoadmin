@@ -1,30 +1,33 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { C, st, Badge, fmt } from '../../lib/polizaUtils'
+import { C, st, fmt } from '../../lib/polizaUtils'
 
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
+const CONCEPTOS = {
+  investigacion: 'Investigación', anticipo_poliza: 'Anticipo póliza',
+  pago_poliza: 'Pago póliza', saldo_poliza: 'Saldo póliza', otro: 'Otro',
+}
+
+const emptyForm = () => ({
+  tipo: 'ingreso', concepto: 'pago_poliza', descripcion: '', monto: '',
+  metodo_pago: 'efectivo', fecha: new Date().toISOString().split('T')[0]
+})
+
 export default function TabCajaPoliza({ movimientos, onReload }) {
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ tipo: 'ingreso', concepto: 'pago_poliza', descripcion: '', monto: '', metodo_pago: 'efectivo' })
+  const [editando, setEditando] = useState(null)
+  const [form, setForm] = useState(emptyForm())
   const [saving, setSaving] = useState(false)
 
-  // Filtros
   const now = new Date()
   const [filtroAnio, setFiltroAnio] = useState(now.getFullYear())
-  const [filtroMes, setFiltroMes] = useState(now.getMonth() + 1) // 0 = todos
+  const [filtroMes, setFiltroMes] = useState(now.getMonth() + 1)
 
-  const CONCEPTOS = {
-    investigacion: 'Investigación', anticipo_poliza: 'Anticipo póliza',
-    pago_poliza: 'Pago póliza', saldo_poliza: 'Saldo póliza', otro: 'Otro',
-  }
-
-  // Años disponibles desde los movimientos
   const aniosDisponibles = [...new Set(movimientos.map(m => m.fecha?.slice(0, 4)).filter(Boolean))].sort((a, b) => b - a)
   if (!aniosDisponibles.includes(String(now.getFullYear()))) aniosDisponibles.unshift(String(now.getFullYear()))
 
-  // Filtrado
   const movimientosFiltrados = movimientos.filter(m => {
     if (!m.fecha) return false
     const [anio, mes] = m.fecha.split('-').map(Number)
@@ -37,13 +40,45 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
   const egresos  = movimientosFiltrados.filter(m => m.tipo === 'egreso').reduce((a, m) => a + (m.monto || 0), 0)
   const saldo    = ingresos - egresos
 
-  const handleSave = async () => {
-    if (!form.monto || !form.descripcion) return
-    setSaving(true)
-    await supabase.from('poliza_caja').insert({ ...form, monto: parseFloat(form.monto), fecha: new Date().toISOString().split('T')[0] })
-    setSaving(false)
+  const openNew = () => {
+    setEditando(null)
+    setForm(emptyForm())
+    setShowForm(true)
+  }
+
+  const openEdit = (m) => {
+    setEditando(m.id)
+    setForm({
+      tipo: m.tipo, concepto: m.concepto, descripcion: m.descripcion,
+      monto: String(m.monto), metodo_pago: m.metodo_pago, fecha: m.fecha,
+    })
+    setShowForm(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const cancelForm = () => {
     setShowForm(false)
-    setForm({ tipo: 'ingreso', concepto: 'pago_poliza', descripcion: '', monto: '', metodo_pago: 'efectivo' })
+    setEditando(null)
+    setForm(emptyForm())
+  }
+
+  const handleSave = async () => {
+    if (!form.monto || !form.descripcion || !form.fecha) return
+    setSaving(true)
+    const payload = { ...form, monto: parseFloat(form.monto) }
+    if (editando) {
+      await supabase.from('poliza_caja').update(payload).eq('id', editando)
+    } else {
+      await supabase.from('poliza_caja').insert(payload)
+    }
+    setSaving(false)
+    cancelForm()
+    onReload()
+  }
+
+  const handleDelete = async (id) => {
+    if (!confirm('¿Eliminar este movimiento?')) return
+    await supabase.from('poliza_caja').delete().eq('id', id)
     onReload()
   }
 
@@ -54,26 +89,18 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
 
       {/* Filtros */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
-        <select
-          value={filtroAnio}
-          onChange={e => setFiltroAnio(parseInt(e.target.value))}
-          style={{ ...st.input, width: 'auto', fontWeight: 700 }}
-        >
+        <select value={filtroAnio} onChange={e => setFiltroAnio(parseInt(e.target.value))}
+          style={{ ...st.input, width: 'auto', fontWeight: 700 }}>
           {aniosDisponibles.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
-        <select
-          value={filtroMes}
-          onChange={e => setFiltroMes(parseInt(e.target.value))}
-          style={{ ...st.input, width: 'auto' }}
-        >
+        <select value={filtroMes} onChange={e => setFiltroMes(parseInt(e.target.value))}
+          style={{ ...st.input, width: 'auto' }}>
           <option value={0}>Todos los meses</option>
           {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
         </select>
         {filtroMes !== 0 && (
-          <button
-            onClick={() => setFiltroMes(0)}
-            style={{ ...st.btn, background: '#f3f4f6', color: '#6b7280', fontSize: 12 }}
-          >
+          <button onClick={() => setFiltroMes(0)}
+            style={{ ...st.btn, background: '#f3f4f6', color: '#6b7280', fontSize: 12 }}>
             Limpiar
           </button>
         )}
@@ -96,17 +123,26 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
         ))}
       </div>
 
-      {/* Botón nuevo movimiento */}
+      {/* Botón nuevo */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <button onClick={() => setShowForm(!showForm)} style={{ ...st.btn, ...st.btnGold }}>
-          {showForm ? 'Cancelar' : '+ Movimiento manual'}
+        <button onClick={showForm && !editando ? cancelForm : openNew}
+          style={{ ...st.btn, ...st.btnGold }}>
+          {showForm && !editando ? 'Cancelar' : '+ Movimiento manual'}
         </button>
       </div>
 
-      {/* Formulario */}
+      {/* Formulario nuevo / edición */}
       {showForm && (
-        <div style={{ ...st.card, marginBottom: 20, padding: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+        <div style={{ ...st.card, marginBottom: 20, padding: 16, border: editando ? '2px solid #3b82f6' : undefined }}>
+          <p style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: editando ? '#1e40af' : C.text }}>
+            {editando ? '✏️ Editar movimiento' : 'Nuevo movimiento'}
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div>
+              <label style={st.label}>Fecha</label>
+              <input type="date" value={form.fecha}
+                onChange={e => setForm(f => ({...f, fecha: e.target.value}))} style={st.input} />
+            </div>
             <div>
               <label style={st.label}>Tipo</label>
               <select value={form.tipo} onChange={e => setForm(f => ({...f, tipo: e.target.value}))} style={st.input}>
@@ -131,16 +167,23 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={st.label}>Descripción</label>
-              <input value={form.descripcion} onChange={e => setForm(f => ({...f, descripcion: e.target.value}))} style={st.input} />
+              <input value={form.descripcion}
+                onChange={e => setForm(f => ({...f, descripcion: e.target.value}))} style={st.input} />
             </div>
             <div>
               <label style={st.label}>Monto</label>
-              <input type="number" value={form.monto} onChange={e => setForm(f => ({...f, monto: e.target.value}))} style={st.input} />
+              <input type="number" value={form.monto}
+                onChange={e => setForm(f => ({...f, monto: e.target.value}))} style={st.input} />
             </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button onClick={handleSave} disabled={saving} style={{ ...st.btn, ...st.btnGold, opacity: saving ? 0.6 : 1 }}>
-              {saving ? 'Guardando...' : 'Registrar'}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button onClick={cancelForm}
+              style={{ ...st.btn, background: '#f3f4f6', color: '#6b7280' }}>
+              Cancelar
+            </button>
+            <button onClick={handleSave} disabled={saving}
+              style={{ ...st.btn, ...st.btnGold, opacity: saving ? 0.6 : 1 }}>
+              {saving ? 'Guardando...' : editando ? 'Guardar cambios' : 'Registrar'}
             </button>
           </div>
         </div>
@@ -160,17 +203,42 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
                 <th style={st.th}>Descripción</th>
                 <th style={st.th}>Método</th>
                 <th style={st.th}>Monto</th>
+                <th style={st.th}></th>
               </tr>
             </thead>
             <tbody>
               {movimientosFiltrados.map(m => (
-                <tr key={m.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                <tr key={m.id} style={{ borderTop: `1px solid ${C.border}`, background: editando === m.id ? '#eff6ff' : 'transparent' }}>
                   <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.fecha}</span></td>
-                  <td style={st.td}><Badge status={m.tipo === 'ingreso' ? 'activo' : 'rechazado'} /></td>
+                  <td style={st.td}>
+                    <span style={{
+                      display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+                      background: m.tipo === 'ingreso' ? C.greenBg : C.redBg,
+                      color: m.tipo === 'ingreso' ? C.greenText : C.redText,
+                    }}>
+                      {m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'}
+                    </span>
+                  </td>
                   <td style={st.td}><span style={{ fontSize: 12 }}>{CONCEPTOS[m.concepto] || m.concepto}</span></td>
                   <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.descripcion}</span></td>
                   <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.metodo_pago}</span></td>
-                  <td style={st.td}><span style={{ fontWeight: 700, color: m.tipo === 'ingreso' ? C.greenText : C.redText }}>{m.tipo === 'ingreso' ? '+' : '-'}{fmt(m.monto)}</span></td>
+                  <td style={st.td}>
+                    <span style={{ fontWeight: 700, color: m.tipo === 'ingreso' ? C.greenText : C.redText }}>
+                      {m.tipo === 'ingreso' ? '+' : '-'}{fmt(m.monto)}
+                    </span>
+                  </td>
+                  <td style={st.td}>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button onClick={() => openEdit(m)}
+                        style={{ ...st.btn, padding: '4px 10px', fontSize: 11, background: '#f3f4f6', color: '#374151' }}>
+                        Editar
+                      </button>
+                      <button onClick={() => handleDelete(m.id)}
+                        style={{ ...st.btn, padding: '4px 8px', fontSize: 11, background: '#fee2e2', color: '#991b1b' }}>
+                        ✕
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
