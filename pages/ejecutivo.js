@@ -88,7 +88,7 @@ export default function Ejecutivo() {
       supabase.from("poliza_caja").select("fecha, monto, tipo, concepto"),
       supabase.from("cash_movements").select("date, amount, type, category, description"),
       supabase.from("maintenance_tickets").select("status, charged_amount, provider_cost, updated_at, created_at, payer"),
-      supabase.from("condominio_unidades").select("cuota_mensual, status").eq("status", "activo"),
+      supabase.from("condominios").select("honorarios_emporio, activo").eq("activo", true),
       supabase.from("comisiones_admin").select("periodo, monto, status, fecha_cobro").eq("status", "cobrada"),
       supabase.from("contracts").select("commission_status, commission_type, commission_value, monthly_rent, updated_at").eq("status", "activo").eq("commission_status", "cobrada"),
     ]);
@@ -168,13 +168,9 @@ export default function Ejecutivo() {
       .filter(t => t.status === "cerrado" && enMes(t.updated_at || t.created_at, m, a) && t.payer !== "inmobiliaria")
       .reduce((acc, t) => acc + Math.max(0, (t.charged_amount || 0) - (t.provider_cost || 0)), 0);
 
-    // Condominios — intentar desde cash_movements primero, luego tabla condominio_unidades
-    const ingrCondCash = cashMovements
-      .filter(mv => enMes(mv.date, m, a) && mv.type === "entrada" && 
-        (mv.category === "cuota_condominio" || (mv.description || "").toLowerCase().includes("condominio")))
-      .reduce((acc, mv) => acc + (mv.amount || 0), 0);
-    const ingrCondUnidades = condominios.reduce((acc, u) => acc + (u.cuota_mensual || 0), 0);
-    const ingrCondominios = ingrCondCash > 0 ? ingrCondCash : ingrCondUnidades;
+    // Condominios — honorarios fijos mensuales que cobra Emporio por administrar
+    // Se considera ingreso fijo mientras el condominio esté activo
+    const ingrCondominios = condominios.reduce((acc, c) => acc + (c.honorarios_emporio || 0), 0);
 
     return {
       cierres: ingrCierres,
