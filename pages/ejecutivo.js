@@ -30,7 +30,7 @@ const KpiCard = ({ label, value, sub, color, bg, icon, tendencia }) => (
     {sub && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9ca3af" }}>{sub}</p>}
     {tendencia !== undefined && tendencia !== null && (
       <p style={{ margin: "6px 0 0", fontSize: 12, fontWeight: 700, color: tendencia >= 0 ? "#065f46" : "#dc2626" }}>
-        {tendencia >= 0 ? "▲" : "▼"} {fmtPct(Math.abs(tendencia))} vs mes anterior
+        {tendencia >= 0 ? "▲" : "▼"} {tendencia >= 0 ? "+" : "-"}{Math.abs(tendencia).toFixed(1)}% vs mes anterior
       </p>
     )}
   </div>
@@ -83,7 +83,7 @@ export default function Ejecutivo() {
   const loadData = async () => {
     setLoading(true);
     const [c, pc, cm, t, cond, ca] = await Promise.all([
-      supabase.from("cierres").select("fecha_cierre, comision, status"),
+      supabase.from("cierres").select("fecha_cierre, comision, anio, mes"),
       supabase.from("poliza_caja").select("fecha, monto, tipo, concepto"),
       supabase.from("cash_movements").select("date, amount, type, category, description"),
       supabase.from("maintenance_tickets").select("status, charged_amount, provider_cost, updated_at, created_at, payer"),
@@ -124,9 +124,9 @@ export default function Ejecutivo() {
   };
 
   const ingresoPorMes = (m, a) => {
-    // Cierres
+    // Cierres — usar campos anio/mes directamente (más confiable que parsear fecha)
     const ingrCierres = cierres
-      .filter(c => enMes(c.fecha_cierre, m, a))
+      .filter(c => c.anio === a && c.mes === (m + 1))
       .reduce((acc, c) => acc + (c.comision || 0), 0);
 
     // Pólizas — solo ingresos (tipo ingreso)
@@ -154,8 +154,13 @@ export default function Ejecutivo() {
       .filter(t => t.status === "cerrado" && enMes(t.updated_at || t.created_at, m, a) && t.payer !== "inmobiliaria")
       .reduce((acc, t) => acc + Math.max(0, (t.charged_amount || 0) - (t.provider_cost || 0)), 0);
 
-    // Condominios — cuota mensual fija de unidades activas
-    const ingrCondominios = condominios.reduce((acc, u) => acc + (u.cuota_mensual || 0), 0);
+    // Condominios — intentar desde cash_movements primero, luego tabla condominio_unidades
+    const ingrCondCash = cashMovements
+      .filter(mv => enMes(mv.date, m, a) && mv.type === "entrada" && 
+        (mv.category === "cuota_condominio" || (mv.description || "").toLowerCase().includes("condominio")))
+      .reduce((acc, mv) => acc + (mv.amount || 0), 0);
+    const ingrCondUnidades = condominios.reduce((acc, u) => acc + (u.cuota_mensual || 0), 0);
+    const ingrCondominios = ingrCondCash > 0 ? ingrCondCash : ingrCondUnidades;
 
     return {
       cierres: ingrCierres,
