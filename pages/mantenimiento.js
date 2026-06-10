@@ -7,7 +7,6 @@ const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
 }).format(n || 0);
 
-// ── ETAPAS DEL FLUJO ────────────────────────────────────────────────────────
 const ETAPAS = [
   { key: "nuevo",      label: "Nuevo",      icon: "🆕", color: "#6b7280" },
   { key: "revisado",   label: "Revisado",   icon: "👀", color: "#1e40af" },
@@ -22,7 +21,6 @@ const ETAPAS = [
 const etapaIndex = (key) => ETAPAS.findIndex(e => e.key === key);
 const etapaInfo  = (key) => ETAPAS.find(e => e.key === key) || ETAPAS[0];
 
-// ── SEMÁFORO ────────────────────────────────────────────────────────────────
 const getSemaforo = (ticket) => {
   if (["cerrado", "cancelado"].includes(ticket.status)) return null;
   const horasDesdeCreacion = (Date.now() - new Date(ticket.created_at)) / 36e5;
@@ -44,7 +42,6 @@ const tiempoTranscurrido = (fecha) => {
   return `hace ${d} día${d > 1 ? "s" : ""}`;
 };
 
-// ── COMPONENTES ─────────────────────────────────────────────────────────────
 const Modal = ({ title, onClose, children }) => (
   <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
     <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
@@ -86,7 +83,6 @@ const Btn = ({ children, onClick, color = "#1a1a2e", disabled, small }) => (
   </button>
 );
 
-// ── DIAGRAMA DE FLUJO ────────────────────────────────────────────────────────
 const DiagramaFlujo = ({ statusActual }) => {
   const etapasLineales = ETAPAS.filter(e => e.key !== "cancelado");
   const idx = etapaIndex(statusActual);
@@ -94,9 +90,8 @@ const DiagramaFlujo = ({ statusActual }) => {
     <div style={{ overflowX: "auto", paddingBottom: 4 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 0, minWidth: "max-content" }}>
         {etapasLineales.map((e, i) => {
-          const activo  = e.key === statusActual;
-          const pasado  = idx > i;
-          const futuro  = idx < i;
+          const activo = e.key === statusActual;
+          const pasado = idx > i;
           return (
             <div key={e.key} style={{ display: "flex", alignItems: "center" }}>
               <div style={{
@@ -123,7 +118,6 @@ const DiagramaFlujo = ({ statusActual }) => {
   );
 };
 
-// ── PÁGINA PRINCIPAL ────────────────────────────────────────────────────────
 export default function Mantenimiento() {
   const router = useRouter();
   const [session, setSession]   = useState(null);
@@ -141,6 +135,13 @@ export default function Mantenimiento() {
   const [filterProperty, setFilterProperty] = useState("");
   const [expandedId, setExpandedId] = useState(null);
 
+  // ── Cotizaciones ──
+  const [showModalCotizar, setShowModalCotizar] = useState(false);
+  const [ticketCotizando, setTicketCotizando] = useState(null);
+  const [cotizacionForm, setCotizacionForm] = useState({ costo_proveedor: "", margen_pct: "30" });
+  const [savingCotizacion, setSavingCotizacion] = useState(false);
+  const [quotes, setQuotes] = useState([]);
+
   const emptyTicket = {
     property_name: "", tenant_name: "", title: "", description: "",
     category: "otro", priority: "media", payer: "propietario",
@@ -153,7 +154,6 @@ export default function Mantenimiento() {
   const isAdmin = profile?.role === "admin";
   const today = new Date().toISOString().split("T")[0];
 
-  // ── AUTH ──
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -173,21 +173,21 @@ export default function Mantenimiento() {
     setProfile(data); setAuthLoading(false);
   };
 
-  // ── DATA ──
   const loadData = async () => {
     setLoading(true);
-    const [t, p] = await Promise.all([
+    const [t, p, q] = await Promise.all([
       supabase.from("maintenance_tickets").select("*").order("created_at", { ascending: false }),
       supabase.from("properties").select("id, name").order("name"),
+      supabase.from("maintenance_quotes").select("*"),
     ]);
     setTickets(t.data || []);
     setProperties(p.data || []);
+    setQuotes(q.data || []);
     setLoading(false);
   };
 
   useEffect(() => { if (session) loadData(); }, [session]);
 
-  // ── GUARDAR ──
   const saveTicket = async () => {
     setSaving(true);
     const data = {
@@ -198,7 +198,6 @@ export default function Mantenimiento() {
       status: editing ? form.status : "nuevo",
       created_by: profile?.email,
     };
-
     if (editing) {
       const { error } = await supabase.from("maintenance_tickets").update({ ...data, updated_at: new Date().toISOString() }).eq("id", editing);
       if (error) { showToast("Error: " + error.message, false); setSaving(false); return; }
@@ -206,7 +205,6 @@ export default function Mantenimiento() {
     } else {
       const { error } = await supabase.from("maintenance_tickets").insert([data]);
       if (error) { showToast("Error: " + error.message, false); setSaving(false); return; }
-      // Notificación por email
       try {
         await fetch("/api/send-email", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -224,11 +222,9 @@ export default function Mantenimiento() {
                     <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:120px;">Propiedad</td><td style="padding:8px 0;font-weight:700;font-size:14px;">${data.property_name}</td></tr>
                     <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Inquilino</td><td style="padding:8px 0;font-size:14px;">${data.tenant_name || "—"}</td></tr>
                     <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Título</td><td style="padding:8px 0;font-weight:700;font-size:14px;">${data.title}</td></tr>
-                    <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Categoría</td><td style="padding:8px 0;font-size:14px;">${data.category}</td></tr>
                     <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Prioridad</td><td style="padding:8px 0;font-size:14px;font-weight:700;color:${data.priority === "urgente" ? "#dc2626" : data.priority === "alta" ? "#d97706" : "#374151"};">${data.priority.toUpperCase()}</td></tr>
                     <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Descripción</td><td style="padding:8px 0;font-size:13px;color:#374151;">${data.description || "—"}</td></tr>
                     <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Quién paga</td><td style="padding:8px 0;font-size:14px;">${data.payer}</td></tr>
-                    <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Creado por</td><td style="padding:8px 0;font-size:13px;">${data.created_by || "Portal inquilino"}</td></tr>
                   </table>
                 </div>
                 <p style="text-align:center;margin-top:16px;font-size:12px;color:#9ca3af;">
@@ -239,7 +235,7 @@ export default function Mantenimiento() {
           })
         });
       } catch (e) { console.error("Email error:", e); }
-      showToast("Ticket creado — notificación enviada");
+      showToast("Ticket creado");
     }
     setSaving(false);
     setShowModal(false);
@@ -248,10 +244,8 @@ export default function Mantenimiento() {
     loadData();
   };
 
-  // ── CAMBIAR ETAPA ──
   const cambiarEtapa = async (id, status) => {
     await supabase.from("maintenance_tickets").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
-    // Si se cierra, registrar movimiento de caja si aplica
     if (status === "cerrado") {
       const t = tickets.find(t => t.id === id);
       if (t && t.provider_cost > 0) {
@@ -298,7 +292,96 @@ export default function Mantenimiento() {
     setShowModal(true);
   };
 
-  // ── FILTROS ──
+  // ── Cotizar ──
+  const openCotizar = (t) => {
+    setTicketCotizando(t);
+    setCotizacionForm({ costo_proveedor: t.provider_cost || "", margen_pct: "30" });
+    setShowModalCotizar(true);
+  };
+
+  const saveCotizacion = async () => {
+    setSavingCotizacion(true);
+    const costo = parseFloat(cotizacionForm.costo_proveedor) || 0;
+    const margen = parseFloat(cotizacionForm.margen_pct) || 30;
+    const monto_final = Math.round(costo * (1 + margen / 100));
+
+    const { data: prop } = await supabase.from("properties").select("owner_email").eq("name", ticketCotizando.property_name).single();
+    const { data: contrato } = await supabase.from("contracts").select("tenant_email, owner_name").eq("property_name", ticketCotizando.property_name).eq("status", "activo").single();
+
+    const owner_email = prop?.owner_email || null;
+    const tenant_email = contrato?.tenant_email || null;
+
+    const { data: quote, error } = await supabase.from("maintenance_quotes").insert([{
+      ticket_id: ticketCotizando.id,
+      property_name: ticketCotizando.property_name,
+      tenant_name: ticketCotizando.tenant_name,
+      owner_email,
+      tenant_email,
+      payer: ticketCotizando.payer,
+      descripcion: ticketCotizando.title,
+      costo_proveedor: costo,
+      margen_pct: margen,
+      monto_final,
+      status: "pendiente",
+    }]).select().single();
+
+    if (error) { showToast("Error: " + error.message, false); setSavingCotizacion(false); return; }
+
+    await supabase.from("maintenance_tickets").update({
+      status: "cotizado",
+      provider_cost: costo,
+      charged_amount: monto_final,
+      updated_at: new Date().toISOString(),
+    }).eq("id", ticketCotizando.id);
+
+    const linkCotizacion = `https://app.emporioinmobiliario.com.mx/cotizacion/${quote.id}`;
+    const emailDestino = ticketCotizando.payer === "inquilino" ? tenant_email : owner_email;
+    const nombreDestino = ticketCotizando.payer === "inquilino" ? ticketCotizando.tenant_name : (contrato?.owner_name || "Propietario");
+
+    if (emailDestino && ticketCotizando.payer !== "condominio" && ticketCotizando.payer !== "inmobiliaria") {
+      try {
+        await fetch("/api/send-email", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: [emailDestino],
+            subject: `🔧 Cotización de mantenimiento — ${ticketCotizando.property_name}`,
+            html: `
+              <div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#f9fafb;">
+                <div style="background:#b91c3c;padding:20px;border-radius:12px;margin-bottom:20px;">
+                  <h2 style="color:#fff;margin:0;">🔧 Cotización de Mantenimiento</h2>
+                  <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px;">Emporio Inmobiliario</p>
+                </div>
+                <div style="background:#fff;border-radius:12px;padding:20px;border:1px solid #e5e7eb;">
+                  <p style="font-size:15px;color:#374151;">Hola <strong>${nombreDestino}</strong>,</p>
+                  <p style="color:#374151;">Te enviamos una cotización para el siguiente trabajo en <strong>${ticketCotizando.property_name}</strong>:</p>
+                  <div style="background:#f9fafb;border-radius:8px;padding:16px;margin:16px 0;">
+                    <p style="margin:0 0 8px;font-weight:700;color:#1a1a2e;">${ticketCotizando.title}</p>
+                    <p style="margin:0;font-size:24px;font-weight:900;color:#b91c3c;">$${monto_final.toLocaleString("es-MX")}</p>
+                  </div>
+                  <p style="color:#6b7280;font-size:13px;">Para aprobar o rechazar la cotización, haz clic en el siguiente botón:</p>
+                  <a href="${linkCotizacion}" style="display:block;background:#b91c3c;color:#fff;text-align:center;padding:14px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;margin-top:16px;">
+                    Ver y responder cotización →
+                  </a>
+                </div>
+                <p style="text-align:center;margin-top:16px;font-size:12px;color:#9ca3af;">Emporio Inmobiliario · 222 257 3237</p>
+              </div>
+            `
+          })
+        });
+      } catch (e) { console.error(e); }
+    }
+
+    showToast(
+      ticketCotizando.payer === "condominio"
+        ? "Cotización guardada — aprobación interna pendiente"
+        : `Cotización enviada a ${emailDestino || "sin email registrado"}`
+    );
+    setSavingCotizacion(false);
+    setShowModalCotizar(false);
+    setTicketCotizando(null);
+    loadData();
+  };
+
   const ticketsFiltrados = tickets.filter(t => {
     if (filterStatus && t.status !== filterStatus) return false;
     if (filterPriority && t.priority !== filterPriority) return false;
@@ -306,7 +389,6 @@ export default function Mantenimiento() {
     return true;
   });
 
-  // ── STATS ──
   const totalAbiertos   = tickets.filter(t => !["cerrado","cancelado"].includes(t.status)).length;
   const urgentes        = tickets.filter(t => t.priority === "urgente" && !["cerrado","cancelado"].includes(t.status)).length;
   const sinAtender      = tickets.filter(t => t.status === "nuevo").length;
@@ -322,11 +404,7 @@ export default function Mantenimiento() {
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
   );
-
-  if (!session) {
-    if (typeof window !== "undefined") window.location.href = "/";
-    return null;
-  }
+  if (!session) { if (typeof window !== "undefined") window.location.href = "/"; return null; }
 
   return (
     <div style={{ minHeight: "100vh", background: brand.bg, fontFamily: "system-ui, sans-serif" }}>
@@ -335,8 +413,7 @@ export default function Mantenimiento() {
           {toast.msg}
         </div>
       )}
-      <PageHeader title="Mantenimiento" icon="🔧" actions={<><Btn color={brand.red} onClick={() => { setForm(emptyTicket); setEditing(null); setShowModal(true); }}>+ Nuevo ticket</Btn></>} />
-
+      <PageHeader title="Mantenimiento" icon="🔧" actions={<Btn color={brand.red} onClick={() => { setForm(emptyTicket); setEditing(null); setShowModal(true); }}>+ Nuevo ticket</Btn>} />
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
 
@@ -380,7 +457,6 @@ export default function Mantenimiento() {
 
         {/* LISTA */}
         {loading && <div style={{ textAlign: "center", padding: 48 }}><p style={{ color: "#6b7280" }}>Cargando...</p></div>}
-
         {!loading && ticketsFiltrados.length === 0 && (
           <div style={{ background: "#fff", borderRadius: 14, padding: 48, textAlign: "center" }}>
             <p style={{ fontSize: 32 }}>🔧</p>
@@ -394,6 +470,7 @@ export default function Mantenimiento() {
             const semaforo = getSemaforo(t);
             const expanded = expandedId === t.id;
             const utilidad = (t.charged_amount || 0) - (t.provider_cost || 0);
+            const quote    = quotes.find(q => q.ticket_id === t.id);
 
             return (
               <div key={t.id} style={{
@@ -401,11 +478,10 @@ export default function Mantenimiento() {
                 border: `2px solid ${t.priority === "urgente" ? "#fca5a5" : t.priority === "alta" ? "#fcd34d" : "#f0f0f0"}`,
                 boxShadow: "0 1px 3px rgba(0,0,0,0.06)", overflow: "hidden",
               }}>
-                {/* CABECERA */}
                 <div style={{ padding: "14px 18px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
 
-                    {/* INFO PRINCIPAL */}
+                    {/* INFO */}
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
                         <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>{t.title}</h3>
@@ -415,19 +491,11 @@ export default function Mantenimiento() {
                           </span>
                         )}
                       </div>
-                      <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>
-                        📍 {t.property_name || "—"} · 👤 {t.tenant_name || "—"}
-                      </p>
+                      <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>📍 {t.property_name || "—"} · 👤 {t.tenant_name || "—"}</p>
                       <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>
                         Creado {tiempoTranscurrido(t.created_at)}
                         {(() => {
-                          const equipoEmails = [
-                            "carlos.nachon@emporioinmobiliario.mx",
-                            "guillermo@emporioinmobiliario.com.mx",
-                            "administracion@emporioinmobiliario.com.mx",
-                            "ariannet81@gmail.com","angelicamomox@gmail.com",
-                            "rddd298@gmail.com","ivanmtzco@gmail.com","nextelmoto2@gmail.com"
-                          ];
+                          const equipoEmails = ["carlos.nachon@emporioinmobiliario.mx","guillermo@emporioinmobiliario.com.mx","administracion@emporioinmobiliario.com.mx","ariannet81@gmail.com","angelicamomox@gmail.com","rddd298@gmail.com","ivanmtzco@gmail.com","nextelmoto2@gmail.com"];
                           if (!t.created_by) return <span style={{color:"#1e40af",fontWeight:700}}> · 📱 Portal inquilino</span>;
                           if (equipoEmails.includes(t.created_by)) return ` · por ${t.created_by.split("@")[0]}`;
                           return <span style={{color:"#1e40af",fontWeight:700}}> · 📱 Reportado por inquilino</span>;
@@ -435,7 +503,7 @@ export default function Mantenimiento() {
                       </p>
                     </div>
 
-                    {/* ETAPA + ACCIONES */}
+                    {/* ACCIONES */}
                     <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: etapa.color, background: etapa.color + "18", padding: "4px 10px", borderRadius: 99 }}>
                         {etapa.icon} {etapa.label}
@@ -445,6 +513,10 @@ export default function Mantenimiento() {
                         {ETAPAS.map(e => <option key={e.key} value={e.key}>{e.icon} {e.label}</option>)}
                       </select>
                       <Btn small color="#6b7280" onClick={() => openEdit(t)}>Editar</Btn>
+                      {/* Botón Cotizar — solo cuando está revisado y no es inmobiliaria */}
+                      {t.status === "revisado" && t.payer !== "inmobiliaria" && !quote && (
+                        <Btn small color="#7c3aed" onClick={() => openCotizar(t)}>📋 Cotizar</Btn>
+                      )}
                       {isAdmin && <Btn small color="#dc2626" onClick={() => eliminar(t.id, t.title)}>X</Btn>}
                       <button onClick={() => setExpandedId(expanded ? null : t.id)}
                         style={{ background: "#f3f4f6", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#6b7280" }}>
@@ -466,13 +538,27 @@ export default function Mantenimiento() {
                     {t.provider_cost > 0 && t.charged_amount > 0 && (
                       <span style={{ fontSize: 11, background: "#faf5ff", color: "#7c3aed", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>Utilidad: {fmt(utilidad)}</span>
                     )}
+                    {/* Badge de cotización */}
+                    {quote && (
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
+                        background: quote.status === "aprobada" ? "#d1fae5" : quote.status === "rechazada" ? "#fee2e2" : "#fef3c7",
+                        color: quote.status === "aprobada" ? "#065f46" : quote.status === "rechazada" ? "#991b1b" : "#92400e",
+                      }}>
+                        Cotización: {quote.status} · {fmt(quote.monto_final)}
+                      </span>
+                    )}
+                    {quote?.status === "rechazada" && quote.motivo_rechazo && (
+                      <span style={{ fontSize: 11, background: "#fff5f5", color: "#991b1b", padding: "2px 8px", borderRadius: 6 }}>
+                        Motivo: {quote.motivo_rechazo}
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 {/* DETALLE EXPANDIDO */}
                 {expanded && (
                   <div style={{ borderTop: "1px solid #f3f4f6", padding: "14px 18px", background: "#fafafa" }}>
-                    {/* DIAGRAMA */}
                     <div style={{ marginBottom: 14 }}>
                       <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Flujo del ticket</p>
                       <DiagramaFlujo statusActual={t.status} />
@@ -481,6 +567,16 @@ export default function Mantenimiento() {
                       <div style={{ marginTop: 12 }}>
                         <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>Descripción</p>
                         <p style={{ margin: 0, fontSize: 13, color: "#374151", lineHeight: 1.5 }}>{t.description}</p>
+                      </div>
+                    )}
+                    {/* Link cotización si existe */}
+                    {quote && (
+                      <div style={{ marginTop: 12, background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #e5e7eb" }}>
+                        <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#6b7280" }}>COTIZACIÓN</p>
+                        <p style={{ margin: "0 0 4px", fontSize: 13, color: "#374151" }}>Costo: {fmt(quote.costo_proveedor)} + {quote.margen_pct}% = <strong>{fmt(quote.monto_final)}</strong></p>
+                        <a href={`/cotizacion/${quote.id}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#7c3aed", fontWeight: 700 }}>
+                          Ver página de cotización →
+                        </a>
                       </div>
                     )}
                   </div>
@@ -539,6 +635,7 @@ export default function Mantenimiento() {
               <Sel value={form.payer} onChange={e => setForm({ ...form, payer: e.target.value })}>
                 <option value="propietario">El propietario</option>
                 <option value="inquilino">El inquilino</option>
+                <option value="condominio">Condominio</option>
                 <option value="inmobiliaria">Nosotros</option>
               </Sel>
             </Field>
@@ -569,6 +666,62 @@ export default function Mantenimiento() {
               Cancelar
             </button>
             <Btn onClick={saveTicket} disabled={saving || !form.title}>{saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear ticket"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* MODAL COTIZACIÓN */}
+      {showModalCotizar && ticketCotizando && (
+        <Modal title="📋 Generar cotización" onClose={() => { setShowModalCotizar(false); setTicketCotizando(null); }}>
+          <div style={{ background: "#f9fafb", borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
+            <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{ticketCotizando.title}</p>
+            <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>📍 {ticketCotizando.property_name} · Paga: {ticketCotizando.payer}</p>
+          </div>
+
+          <Field label="Costo del proveedor ($)" hint="Lo que te cobra Don Germán o el trabajador">
+            <Input
+              type="number" placeholder="0"
+              value={cotizacionForm.costo_proveedor}
+              onChange={e => setCotizacionForm(f => ({ ...f, costo_proveedor: e.target.value }))}
+            />
+          </Field>
+
+          <Field label="Margen de Emporio (%)" hint="Porcentaje que se agrega — default 30%">
+            <Input
+              type="number" placeholder="30"
+              value={cotizacionForm.margen_pct}
+              onChange={e => setCotizacionForm(f => ({ ...f, margen_pct: e.target.value }))}
+            />
+          </Field>
+
+          {parseFloat(cotizacionForm.costo_proveedor) > 0 && (
+            <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+              <p style={{ margin: "0 0 4px", fontSize: 11, color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>Total al cliente</p>
+              <p style={{ margin: 0, fontSize: 28, fontWeight: 900, color: "#065f46" }}>
+                {fmt(Math.round((parseFloat(cotizacionForm.costo_proveedor) || 0) * (1 + (parseFloat(cotizacionForm.margen_pct) || 30) / 100)))}
+              </p>
+              <p style={{ margin: "4px 0 0", fontSize: 11, color: "#6b7280" }}>
+                Costo: {fmt(parseFloat(cotizacionForm.costo_proveedor || 0))} + {cotizacionForm.margen_pct || 30}% gestión
+              </p>
+            </div>
+          )}
+
+          {ticketCotizando.payer === "condominio" && (
+            <div style={{ background: "#eff6ff", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
+              <p style={{ margin: 0, fontSize: 12, color: "#1e40af", fontWeight: 600 }}>
+                ℹ️ Payer: Condominio — la aprobación se gestiona internamente desde InmoAdmin, no se enviará link externo.
+              </p>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button onClick={() => { setShowModalCotizar(false); setTicketCotizando(null); }}
+              style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>
+              Cancelar
+            </button>
+            <Btn onClick={saveCotizacion} disabled={savingCotizacion || !cotizacionForm.costo_proveedor} color="#7c3aed">
+              {savingCotizacion ? "Guardando..." : ticketCotizando.payer === "condominio" ? "Guardar cotización" : "Enviar cotización"}
+            </Btn>
           </div>
         </Modal>
       )}
