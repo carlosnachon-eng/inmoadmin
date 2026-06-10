@@ -4,12 +4,15 @@ import { C, st, Badge, fmt, fmtDate } from '../../lib/polizaUtils'
 
 export default function TabExpedientes({ expedientes, propietarios, solicitudes, onSelect, onReload, onRenovar }) {
   const [enviando, setEnviando] = useState(null)
+  const [archivando, setArchivando] = useState(null)
+  const [filtroStatus, setFiltroStatus] = useState('activo')
 
   const hoy = new Date()
+
   const proximasRenovaciones = expedientes
     .filter(e => {
       if (!e.fecha_vigencia) return false
-      // Excluir si ya tiene una renovación activa
+      if (e.status === 'archivado') return false
       const tieneRenovacion = expedientes.some(r => r.expediente_anterior_id === e.id && r.status === 'activo')
       if (tieneRenovacion) return false
       const vigencia = new Date(e.fecha_vigencia + 'T12:00:00')
@@ -22,6 +25,33 @@ export default function TabExpedientes({ expedientes, propietarios, solicitudes,
       return { ...e, diasRestantes }
     })
     .sort((a, b) => a.diasRestantes - b.diasRestantes)
+
+  // Filtro de status en tabla
+  const expedientesFiltrados = filtroStatus === 'todos'
+    ? expedientes
+    : expedientes.filter(e => e.status === filtroStatus)
+
+  const statusOptions = [
+    { value: 'activo', label: 'Activos' },
+    { value: 'archivado', label: 'Archivados' },
+    { value: 'todos', label: 'Todos' },
+  ]
+
+  const archivarExpediente = async (e) => {
+    if (!confirm(`¿Archivar el expediente de "${e.nombre_arrendatario}"?\n\nEsto indica que el cliente no renovó con Emporio. El expediente se conserva pero ya no aparecerá en renovaciones pendientes.`)) return
+    setArchivando(e.id)
+    try {
+      await supabase.from('poliza_expedientes').update({
+        status: 'archivado',
+        updated_at: new Date().toISOString(),
+      }).eq('id', e.id)
+      onReload()
+    } catch (err) {
+      alert('Error al archivar: ' + err.message)
+    } finally {
+      setArchivando(null)
+    }
+  }
 
   const enviarRecordatorio = async (e) => {
     setEnviando(e.id)
@@ -64,6 +94,7 @@ export default function TabExpedientes({ expedientes, propietarios, solicitudes,
 
   return (
     <div>
+      {/* Próximas renovaciones */}
       {proximasRenovaciones.length > 0 && (
         <div style={{ marginBottom: 32 }}>
           <p style={{ ...st.sectionTitle, color: C.goldText, marginBottom: 4 }}>⏰ Próximas renovaciones</p>
@@ -110,8 +141,7 @@ export default function TabExpedientes({ expedientes, propietarios, solicitudes,
                       {e.telefono_arrendatario && (
                         <a
                           href={`https://wa.me/52${e.telefono_arrendatario.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${e.nombre_arrendatario}, te contactamos de Emporio Blindaje Legal. Tu contrato de arrendamiento del inmueble en ${e.direccion_inmueble} vence el ${fmtDate(e.fecha_vigencia)}. Por favor comunícate con nosotros para gestionar tu renovación. 📞 2222573237`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                          target="_blank" rel="noopener noreferrer"
                           style={{ ...st.btn, padding: '5px 12px', fontSize: 11, background: '#25D366', color: '#fff', textDecoration: 'none', display: 'inline-block' }}>
                           💬 WA Inquilino
                         </a>
@@ -119,8 +149,7 @@ export default function TabExpedientes({ expedientes, propietarios, solicitudes,
                       {e.telefono_arrendador && (
                         <a
                           href={`https://wa.me/52${e.telefono_arrendador.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${e.nombre_arrendador}, te contactamos de Emporio Blindaje Legal. El contrato de arrendamiento del inmueble en ${e.direccion_inmueble} vence el ${fmtDate(e.fecha_vigencia)}. Por favor comunícate con nosotros para coordinar la renovación. 📞 2222573237`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                          target="_blank" rel="noopener noreferrer"
                           style={{ ...st.btn, padding: '5px 12px', fontSize: 11, background: '#128C7E', color: '#fff', textDecoration: 'none', display: 'inline-block' }}>
                           💬 WA Propietario
                         </a>
@@ -129,6 +158,13 @@ export default function TabExpedientes({ expedientes, propietarios, solicitudes,
                         onClick={() => onRenovar(e)}
                         style={{ ...st.btn, padding: '5px 12px', fontSize: 11, background: C.blue, color: '#fff' }}>
                         🔄 Renovar
+                      </button>
+                      {/* Botón archivar — para cuando el cliente no quiere renovar */}
+                      <button
+                        onClick={() => archivarExpediente(e)}
+                        disabled={archivando === e.id}
+                        style={{ ...st.btn, padding: '5px 12px', fontSize: 11, background: '#6b7280', color: '#fff', opacity: archivando === e.id ? 0.6 : 1 }}>
+                        {archivando === e.id ? 'Archivando...' : '📦 No renueva — Archivar'}
                       </button>
                     </div>
                   </div>
@@ -139,58 +175,93 @@ export default function TabExpedientes({ expedientes, propietarios, solicitudes,
         </div>
       )}
 
-      <p style={st.sectionTitle}>Expedientes de póliza</p>
-      <p style={st.sectionSub}>Haz clic en un expediente para editarlo o generar documentos</p>
-      <div style={st.card}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={st.tableHead}>
-            <tr>
-              <th style={st.th}>Arrendatario</th>
-              <th style={st.th}>Inmueble</th>
-              <th style={st.th}>Renta</th>
-              <th style={st.th}>Inicio</th>
-              <th style={st.th}>Vigencia</th>
-              <th style={st.th}>Tipo</th>
-              <th style={st.th}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {expedientes.map(e => {
-              const vigenciaColor = (() => {
-                if (!e.fecha_vigencia) return C.muted
-                const dias = Math.ceil((new Date(e.fecha_vigencia + 'T12:00:00') - new Date()) / (1000 * 60 * 60 * 24))
-                if (dias < 0) return C.redText
-                if (dias <= 30) return '#c2410c'
-                if (dias <= 60) return C.goldText
-                return C.greenText
-              })()
+      {/* Tabla de expedientes */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div>
+          <p style={{ ...st.sectionTitle, margin: 0 }}>Expedientes de póliza</p>
+          <p style={{ ...st.sectionSub, margin: 0 }}>Haz clic en un expediente para editarlo o generar documentos</p>
+        </div>
+        {/* Filtro de status */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {statusOptions.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setFiltroStatus(opt.value)}
+              style={{
+                ...st.btn,
+                padding: '6px 14px',
+                fontSize: 12,
+                background: filtroStatus === opt.value ? C.dark || '#1a1a2e' : '#f3f4f6',
+                color: filtroStatus === opt.value ? '#fff' : '#6b7280',
+                fontWeight: filtroStatus === opt.value ? 700 : 500,
+              }}
+            >
+              {opt.label}
+              <span style={{ marginLeft: 5, opacity: 0.7 }}>
+                ({opt.value === 'todos' ? expedientes.length : expedientes.filter(e => e.status === opt.value).length})
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
 
-              return (
-                <tr key={e.id} onClick={() => onSelect(e)}
-                  style={st.trHover}
-                  onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
-                  <td style={st.td}>
-                    <p style={{ margin: 0, fontWeight: 600, color: C.text }}>{e.nombre_arrendatario || '—'}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{e.nombre_arrendador || '—'}</p>
-                  </td>
-                  <td style={st.td}>
-                    <p style={{ margin: 0, fontSize: 12, color: C.muted, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.direccion_inmueble || '—'}</p>
-                  </td>
-                  <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(e.renta_mensual)}</span></td>
-                  <td style={st.td}><span style={{ color: C.muted, fontSize: 12 }}>{fmtDate(e.fecha_inicio)}</span></td>
-                  <td style={st.td}>
-                    <span style={{ color: vigenciaColor, fontSize: 12, fontWeight: e.fecha_vigencia ? 600 : 400 }}>
-                      {e.fecha_vigencia ? fmtDate(e.fecha_vigencia) : '—'}
-                    </span>
-                  </td>
-                  <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{e.tipo_contrato?.replace(/_/g, ' ') || '—'}</span></td>
-                  <td style={st.td}><Badge status={e.status} /></td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      <div style={st.card}>
+        {expedientesFiltrados.length === 0 ? (
+          <p style={{ color: C.faint, textAlign: 'center', padding: 32 }}>
+            {filtroStatus === 'archivado' ? 'Sin expedientes archivados' : 'Sin expedientes activos'}
+          </p>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={st.tableHead}>
+              <tr>
+                <th style={st.th}>Arrendatario</th>
+                <th style={st.th}>Inmueble</th>
+                <th style={st.th}>Renta</th>
+                <th style={st.th}>Inicio</th>
+                <th style={st.th}>Vigencia</th>
+                <th style={st.th}>Tipo</th>
+                <th style={st.th}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {expedientesFiltrados.map(e => {
+                const vigenciaColor = (() => {
+                  if (!e.fecha_vigencia) return C.muted
+                  if (e.status === 'archivado') return C.muted
+                  const dias = Math.ceil((new Date(e.fecha_vigencia + 'T12:00:00') - new Date()) / (1000 * 60 * 60 * 24))
+                  if (dias < 0) return C.redText
+                  if (dias <= 30) return '#c2410c'
+                  if (dias <= 60) return C.goldText
+                  return C.greenText
+                })()
+
+                return (
+                  <tr key={e.id} onClick={() => onSelect(e)}
+                    style={{ ...st.trHover, opacity: e.status === 'archivado' ? 0.6 : 1 }}
+                    onMouseEnter={el => el.currentTarget.style.background = '#f9fafb'}
+                    onMouseLeave={el => el.currentTarget.style.background = 'transparent'}>
+                    <td style={st.td}>
+                      <p style={{ margin: 0, fontWeight: 600, color: C.text }}>{e.nombre_arrendatario || '—'}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{e.nombre_arrendador || '—'}</p>
+                    </td>
+                    <td style={st.td}>
+                      <p style={{ margin: 0, fontSize: 12, color: C.muted, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.direccion_inmueble || '—'}</p>
+                    </td>
+                    <td style={st.td}><span style={{ color: C.goldText, fontWeight: 700 }}>{fmt(e.renta_mensual)}</span></td>
+                    <td style={st.td}><span style={{ color: C.muted, fontSize: 12 }}>{fmtDate(e.fecha_inicio)}</span></td>
+                    <td style={st.td}>
+                      <span style={{ color: vigenciaColor, fontSize: 12, fontWeight: e.fecha_vigencia ? 600 : 400 }}>
+                        {e.fecha_vigencia ? fmtDate(e.fecha_vigencia) : '—'}
+                      </span>
+                    </td>
+                    <td style={st.td}><span style={{ fontSize: 11, color: C.muted }}>{e.tipo_contrato?.replace(/_/g, ' ') || '—'}</span></td>
+                    <td style={st.td}><Badge status={e.status} /></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   )
