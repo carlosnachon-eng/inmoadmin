@@ -2,19 +2,40 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { C, st, Badge, fmt } from '../../lib/polizaUtils'
 
+const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+
 export default function TabCajaPoliza({ movimientos, onReload }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ tipo: 'ingreso', concepto: 'pago_poliza', descripcion: '', monto: '', metodo_pago: 'efectivo' })
   const [saving, setSaving] = useState(false)
 
-  const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + (m.monto || 0), 0)
-  const egresos  = movimientos.filter(m => m.tipo === 'egreso').reduce((a, m) => a + (m.monto || 0), 0)
-  const saldo    = ingresos - egresos
+  // Filtros
+  const now = new Date()
+  const [filtroAnio, setFiltroAnio] = useState(now.getFullYear())
+  const [filtroMes, setFiltroMes] = useState(now.getMonth() + 1) // 0 = todos
 
   const CONCEPTOS = {
     investigacion: 'Investigación', anticipo_poliza: 'Anticipo póliza',
     pago_poliza: 'Pago póliza', saldo_poliza: 'Saldo póliza', otro: 'Otro',
   }
+
+  // Años disponibles desde los movimientos
+  const aniosDisponibles = [...new Set(movimientos.map(m => m.fecha?.slice(0, 4)).filter(Boolean))].sort((a, b) => b - a)
+  if (!aniosDisponibles.includes(String(now.getFullYear()))) aniosDisponibles.unshift(String(now.getFullYear()))
+
+  // Filtrado
+  const movimientosFiltrados = movimientos.filter(m => {
+    if (!m.fecha) return false
+    const [anio, mes] = m.fecha.split('-').map(Number)
+    if (anio !== filtroAnio) return false
+    if (filtroMes !== 0 && mes !== filtroMes) return false
+    return true
+  })
+
+  const ingresos = movimientosFiltrados.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + (m.monto || 0), 0)
+  const egresos  = movimientosFiltrados.filter(m => m.tipo === 'egreso').reduce((a, m) => a + (m.monto || 0), 0)
+  const saldo    = ingresos - egresos
 
   const handleSave = async () => {
     if (!form.monto || !form.descripcion) return
@@ -30,6 +51,38 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
     <div>
       <p style={st.sectionTitle}>Caja — Póliza Jurídica</p>
       <p style={st.sectionSub}>Registro de cobros y pagos del área jurídica</p>
+
+      {/* Filtros */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
+        <select
+          value={filtroAnio}
+          onChange={e => setFiltroAnio(parseInt(e.target.value))}
+          style={{ ...st.input, width: 'auto', fontWeight: 700 }}
+        >
+          {aniosDisponibles.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <select
+          value={filtroMes}
+          onChange={e => setFiltroMes(parseInt(e.target.value))}
+          style={{ ...st.input, width: 'auto' }}
+        >
+          <option value={0}>Todos los meses</option>
+          {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+        </select>
+        {filtroMes !== 0 && (
+          <button
+            onClick={() => setFiltroMes(0)}
+            style={{ ...st.btn, background: '#f3f4f6', color: '#6b7280', fontSize: 12 }}
+          >
+            Limpiar
+          </button>
+        )}
+        <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 600 }}>
+          {movimientosFiltrados.length} movimiento{movimientosFiltrados.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Totales */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
         {[
           { label: 'Total ingresos', value: fmt(ingresos), color: C.greenText, bg: C.greenBg },
@@ -42,11 +95,15 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
           </div>
         ))}
       </div>
+
+      {/* Botón nuevo movimiento */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <button onClick={() => setShowForm(!showForm)} style={{ ...st.btn, ...st.btnGold }}>
           {showForm ? 'Cancelar' : '+ Movimiento manual'}
         </button>
       </div>
+
+      {/* Formulario */}
       {showForm && (
         <div style={{ ...st.card, marginBottom: 20, padding: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -88,9 +145,11 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
           </div>
         </div>
       )}
+
+      {/* Tabla */}
       <div style={st.card}>
-        {movimientos.length === 0 ? (
-          <p style={{ color: C.faint, textAlign: 'center', padding: 32 }}>Sin movimientos registrados</p>
+        {movimientosFiltrados.length === 0 ? (
+          <p style={{ color: C.faint, textAlign: 'center', padding: 32 }}>Sin movimientos para este periodo</p>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead style={st.tableHead}>
@@ -104,7 +163,7 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
               </tr>
             </thead>
             <tbody>
-              {movimientos.map(m => (
+              {movimientosFiltrados.map(m => (
                 <tr key={m.id} style={{ borderTop: `1px solid ${C.border}` }}>
                   <td style={st.td}><span style={{ fontSize: 12, color: C.muted }}>{m.fecha}</span></td>
                   <td style={st.td}><Badge status={m.tipo === 'ingreso' ? 'activo' : 'rechazado'} /></td>
