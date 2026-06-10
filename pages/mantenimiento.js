@@ -318,7 +318,7 @@ export default function Mantenimiento() {
       owner_email,
       tenant_email,
       payer: ticketCotizando.payer,
-      descripcion: ticketCotizando.title,
+      descripcion: cotizacionForm.descripcion || ticketCotizando.title,
       costo_proveedor: costo,
       margen_pct: margen,
       monto_final,
@@ -355,7 +355,7 @@ export default function Mantenimiento() {
                   <p style="font-size:15px;color:#374151;">Hola <strong>${nombreDestino}</strong>,</p>
                   <p style="color:#374151;">Te enviamos una cotización para el siguiente trabajo en <strong>${ticketCotizando.property_name}</strong>:</p>
                   <div style="background:#f9fafb;border-radius:8px;padding:16px;margin:16px 0;">
-                    <p style="margin:0 0 8px;font-weight:700;color:#1a1a2e;">${ticketCotizando.title}</p>
+                    <p style="margin:0 0 8px;font-weight:700;color:#1a1a2e;">${cotizacionForm.descripcion || ticketCotizando.title}</p>
                     <p style="margin:0;font-size:24px;font-weight:900;color:#b91c3c;">$${monto_final.toLocaleString("es-MX")}</p>
                   </div>
                   <p style="color:#6b7280;font-size:13px;">Para aprobar o rechazar la cotización, haz clic en el siguiente botón:</p>
@@ -678,6 +678,16 @@ export default function Mantenimiento() {
             <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>📍 {ticketCotizando.property_name} · Paga: {ticketCotizando.payer}</p>
           </div>
 
+          <Field label="Trabajo a realizar" hint="Describe la solución — esto es lo que verá el cliente">
+            <textarea
+              placeholder="Ej: Cambio de llave de paso y revisión de tubería en baño principal"
+              value={cotizacionForm.descripcion || ""}
+              onChange={e => setCotizacionForm(f => ({ ...f, descripcion: e.target.value }))}
+              rows={3}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
+            />
+          </Field>
+
           <Field label="Costo del proveedor ($)" hint="Lo que te cobra Don Germán o el trabajador">
             <Input
               type="number" placeholder="0"
@@ -719,7 +729,7 @@ export default function Mantenimiento() {
               style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>
               Cancelar
             </button>
-            <Btn onClick={saveCotizacion} disabled={savingCotizacion || !cotizacionForm.costo_proveedor} color="#7c3aed">
+            <Btn onClick={saveCotizacion} disabled={savingCotizacion || !cotizacionForm.costo_proveedor || !cotizacionForm.descripcion} color="#7c3aed">
               {savingCotizacion ? "Guardando..." : ticketCotizando.payer === "condominio" ? "Guardar cotización" : "Enviar cotización"}
             </Btn>
           </div>
