@@ -24,6 +24,7 @@ export const nav = [
   { id: "reports",       label: "Reportes",        icon: "📈",  link: "/reportes" },
   { id: "commissions",   label: "Comisiones",      icon: "💼",  link: "/comisiones" },
   { id: "cierres",       label: "Cierres",         icon: "📊",  link: "/cierres" },
+  { id: "ejecutivo",   label: "Resumen Ejecutivo", icon: "👑", link: "/ejecutivo" },
   { id: "firmas",        label: "Firmas",          icon: "📝",  link: "/firmas" },
   { id: "poliza",        label: "Póliza",          icon: "⚖️",  link: "/poliza" },
   { id: "kpis_mtto",     label: "KPIs Mtto/Admon", icon: "📊", link: "/kpis-mtto-admon" },
