@@ -713,6 +713,15 @@ export default function PropietarioPortal() {
                   </div>
                   <p style={{ margin: "0 0 6px", fontSize: 12, color: "#9ca3af" }}>📍 {t.property_name}</p>
                   {t.description && <p style={{ margin: "0 0 8px", fontSize: 13, color: "#374151" }}>{t.description}</p>}
+                  {Array.isArray(t.fotos) && t.fotos.length > 0 && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                      {t.fotos.map((url, i) => (
+                        <a key={i} href={url} target="_blank" rel="noreferrer">
+                          <img src={url} alt={`Foto ${i + 1}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px solid #e5e7eb" }} />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <span style={{ fontSize: 12, background: "#f3f4f6", color: "#374151", padding: "2px 8px", borderRadius: 6 }}>Paga: {t.payer}</span>
                     {t.payer === "propietario" && t.charged_amount > 0 && (
