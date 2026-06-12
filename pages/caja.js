@@ -82,6 +82,7 @@ export default function Caja() {
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
   const isAdmin = profile?.role === "admin";
+  const esCarlos = session?.user?.email === "carlos.nachon@emporioinmobiliario.mx";
   const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
@@ -217,23 +218,33 @@ export default function Caja() {
           </p>
         </div>
 
-        {/* STATS */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 20 }}>
-          {[
-            { label: "Saldo Total Klar", value: fmt(saldo),         color: saldo >= 0 ? "#065f46" : "#dc2626", bg: saldo >= 0 ? "#f0fdf4" : "#fff5f5" },
-            { label: "Total entradas",   value: fmt(totalEntradas), color: "#065f46", bg: "#f0fdf4" },
-            { label: "Total salidas",    value: fmt(totalSalidas),  color: "#dc2626", bg: "#fff5f5" },
-            { label: "Saldo general",    value: fmt(saldoGeneral),  color: saldoGeneral >= 0 ? "#065f46" : "#dc2626", bg: "#f9fafb" },
-            { label: "Saldo póliza",     value: fmt(saldoPoliza),   color: saldoPoliza >= 0 ? "#7c3aed" : "#dc2626", bg: "#faf5ff" },
-          ].map((s, i) => (
-            <div key={i} style={{ background: s.bg, borderRadius: 14, padding: "14px 16px" }}>
-              <p style={{ margin: "0 0 4px", fontSize: 10, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
-              <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</p>
-            </div>
-          ))}
-        </div>
+        {/* STATS — solo Carlos ve los saldos */}
+        {esCarlos && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 20 }}>
+            {[
+              { label: "Saldo Total Klar", value: fmt(saldo),         color: saldo >= 0 ? "#065f46" : "#dc2626", bg: saldo >= 0 ? "#f0fdf4" : "#fff5f5" },
+              { label: "Total entradas",   value: fmt(totalEntradas), color: "#065f46", bg: "#f0fdf4" },
+              { label: "Total salidas",    value: fmt(totalSalidas),  color: "#dc2626", bg: "#fff5f5" },
+              { label: "Saldo general",    value: fmt(saldoGeneral),  color: saldoGeneral >= 0 ? "#065f46" : "#dc2626", bg: "#f9fafb" },
+              { label: "Saldo póliza",     value: fmt(saldoPoliza),   color: saldoPoliza >= 0 ? "#7c3aed" : "#dc2626", bg: "#faf5ff" },
+            ].map((s, i) => (
+              <div key={i} style={{ background: s.bg, borderRadius: 14, padding: "14px 16px" }}>
+                <p style={{ margin: "0 0 4px", fontSize: 10, color: "#6b7280", fontWeight: 600, textTransform: "uppercase" }}>{s.label}</p>
+                <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {!esCarlos && (
+          <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, padding: "12px 16px", marginBottom: 20 }}>
+            <p style={{ margin: 0, fontSize: 13, color: "#92400e", fontWeight: 600 }}>
+              🔒 Puedes registrar entradas y salidas. Los saldos e historial solo son visibles para administración.
+            </p>
+          </div>
+        )}
 
-        {/* FILTROS */}
+        {/* FILTROS Y TABLA — solo Carlos */}
+        {esCarlos && (<>
         <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 14, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
           <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
             <option value="">Entradas y salidas</option>
@@ -309,6 +320,8 @@ export default function Caja() {
               </table>
             )}
           </div>
+        )}
+        </>
         )}
       </div>
 
