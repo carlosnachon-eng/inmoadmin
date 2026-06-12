@@ -134,6 +134,30 @@ export default function Mantenimiento() {
   const [filterPriority, setFilterPriority] = useState("");
   const [filterProperty, setFilterProperty] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [subiendoFoto, setSubiendoFoto] = useState(null);
+
+  const subirFotoTicket = async (ticket, file) => {
+    setSubiendoFoto(ticket.id);
+    try {
+      const ext = file.name.split(".").pop();
+      const fileName = `${(ticket.property_name || "ticket").replace(/\s+/g, "_")}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("mantenimiento-fotos").upload(fileName, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage.from("mantenimiento-fotos").getPublicUrl(fileName);
+      const fotosActuales = Array.isArray(ticket.fotos) ? ticket.fotos : [];
+      await supabase.from("maintenance_tickets").update({ fotos: [...fotosActuales, publicUrl] }).eq("id", ticket.id);
+      showToast("Foto agregada ✅");
+      loadData();
+    } catch (e) { showToast("Error al subir foto: " + e.message, false); }
+    setSubiendoFoto(null);
+  };
+
+  const eliminarFotoTicket = async (ticket, url) => {
+    const fotosActuales = (Array.isArray(ticket.fotos) ? ticket.fotos : []).filter(f => f !== url);
+    await supabase.from("maintenance_tickets").update({ fotos: fotosActuales }).eq("id", ticket.id);
+    showToast("Foto eliminada");
+    loadData();
+  };
 
   // ── Cotizaciones ──
   const [showModalCotizar, setShowModalCotizar] = useState(false);
@@ -569,6 +593,30 @@ export default function Mantenimiento() {
                         <p style={{ margin: 0, fontSize: 13, color: "#374151", lineHeight: 1.5 }}>{t.description}</p>
                       </div>
                     )}
+
+                    {/* FOTOS */}
+                    <div style={{ marginTop: 14 }}>
+                      <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>
+                        📷 Fotos {Array.isArray(t.fotos) && t.fotos.length > 0 ? `(${t.fotos.length})` : ""}
+                      </p>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        {(Array.isArray(t.fotos) ? t.fotos : []).map((url, i) => (
+                          <div key={i} style={{ position: "relative", width: 90, height: 90, borderRadius: 10, overflow: "hidden", border: "1px solid #e5e7eb" }}>
+                            <a href={url} target="_blank" rel="noreferrer">
+                              <img src={url} alt={`Foto ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "pointer" }} />
+                            </a>
+                            <button onClick={() => eliminarFotoTicket(t, url)}
+                              style={{ position: "absolute", top: 3, right: 3, background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 11, lineHeight: 1, padding: 0 }}>✕</button>
+                          </div>
+                        ))}
+                        <label style={{ width: 90, height: 90, borderRadius: 10, border: "2px dashed #d1d5db", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#9ca3af", fontSize: 11, gap: 2 }}>
+                          <span style={{ fontSize: 22 }}>{subiendoFoto === t.id ? "⏳" : "📷"}</span>
+                          {subiendoFoto === t.id ? "Subiendo..." : "Agregar"}
+                          <input type="file" accept="image/*" style={{ display: "none" }} disabled={subiendoFoto === t.id}
+                            onChange={e => { const f = e.target.files[0]; if (f) subirFotoTicket(t, f); e.target.value = ""; }} />
+                        </label>
+                      </div>
+                    </div>
                     {/* Link cotización si existe */}
                     {quote && (
                       <div style={{ marginTop: 12, background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #e5e7eb" }}>
