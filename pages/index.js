@@ -558,6 +558,11 @@ export default function Home() {
   const [serviciosResumen, setServiciosResumen] = useState({});
   const [comprobantesRevision, setComprobantesRevision] = useState([]);
 
+  // Filtros de propiedades
+  const [busquedaProp, setBusquedaProp] = useState("");
+  const [filtroStatusProp, setFiltroStatusProp] = useState("");
+  const [filtroServicios, setFiltroServicios] = useState(false);
+
   const emptyProp = { name: "", address: "", property_type: "depto", rent_amount: "", status: "disponible", notes: "", owner_email: "", owner_phone: "" };
   const emptyExpense = { property_name: "", category: "condominio", description: "", amount: "", paid_by: "propietario", payment_method: "transferencia", date: new Date().toISOString().split("T")[0], notes: "" };
   const [propForm, setPropForm] = useState(emptyProp);
@@ -862,14 +867,69 @@ export default function Home() {
           </div>
         )}
 
-        {!loading && view === "properties" && (
+        {!loading && view === "properties" && (() => {
+          // Aplicar filtros
+          const propiedadesFiltradas = properties.filter(p => {
+            if (busquedaProp) {
+              const q = busquedaProp.toLowerCase();
+              const enNombre = (p.name || "").toLowerCase().includes(q);
+              const enDireccion = (p.address || "").toLowerCase().includes(q);
+              const enCorreo = (p.owner_email || "").toLowerCase().includes(q);
+              if (!enNombre && !enDireccion && !enCorreo) return false;
+            }
+            if (filtroStatusProp && p.status !== filtroStatusProp) return false;
+            if (filtroServicios) {
+              const ss = serviciosResumen[p.name];
+              if (ss !== "atrasado" && ss !== "pendiente") return false;
+            }
+            return true;
+          });
+          return (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
-              <h2 style={{ margin: 0, fontSize: isMobile ? 18 : 22, fontWeight: 800, color: brand.gray }}>Propiedades ({properties.length})</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+              <h2 style={{ margin: 0, fontSize: isMobile ? 18 : 22, fontWeight: 800, color: brand.gray }}>
+                Propiedades ({propiedadesFiltradas.length}{propiedadesFiltradas.length !== properties.length ? ` de ${properties.length}` : ""})
+              </h2>
               <Btn onClick={() => { setEditing(null); setShowModal("property"); }}>+ Nueva propiedad</Btn>
             </div>
+
+            {/* Filtros */}
+            <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 18, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f0f0f0" }}>
+              <input
+                type="text"
+                placeholder="🔍 Buscar por nombre, dirección o correo..."
+                value={busquedaProp}
+                onChange={e => setBusquedaProp(e.target.value)}
+                style={{ flex: 1, minWidth: 200, padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, boxSizing: "border-box" }}
+              />
+              <select value={filtroStatusProp} onChange={e => setFiltroStatusProp(e.target.value)}
+                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+                <option value="">Todos los estados</option>
+                <option value="ocupada">Ocupada</option>
+                <option value="disponible">Disponible</option>
+                <option value="mantenimiento">En mantenimiento</option>
+              </select>
+              <button onClick={() => setFiltroServicios(!filtroServicios)}
+                style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${filtroServicios ? "#dc2626" : "#e5e7eb"}`, background: filtroServicios ? "#fff5f5" : "#fff", color: filtroServicios ? "#dc2626" : "#6b7280", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                🔴 Servicios pendientes
+              </button>
+              {(busquedaProp || filtroStatusProp || filtroServicios) && (
+                <button onClick={() => { setBusquedaProp(""); setFiltroStatusProp(""); setFiltroServicios(false); }}
+                  style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "#f3f4f6", color: "#6b7280", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                  ✕ Limpiar
+                </button>
+              )}
+            </div>
+
+            {propiedadesFiltradas.length === 0 && (
+              <div style={{ background: "#fff", borderRadius: 14, padding: 40, textAlign: "center", border: "1px solid #f0f0f0" }}>
+                <p style={{ fontSize: 32, margin: "0 0 8px" }}>🔍</p>
+                <p style={{ color: "#9ca3af", fontSize: 14 }}>No hay propiedades con esos filtros</p>
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
-              {properties.map(p => {
+              {propiedadesFiltradas.map(p => {
                 const gastosPropiedad = propertyExpenses.filter(e => e.property_name === p.name);
                 const totalGastos = gastosPropiedad.reduce((a, e) => a + (e.amount || 0), 0);
                 const servStatus = serviciosResumen[p.name];
@@ -956,7 +1016,8 @@ export default function Home() {
               })}
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
 
       {serviciosProperty && (
