@@ -828,7 +828,12 @@ export default function Liquidaciones() {
     doc.text(`Periodo: ${mes}  ·  ${propsProp.length} propiedad${propsProp.length !== 1 ? "es" : ""}  ·  ${contratosProp.length} contrato${contratosProp.length !== 1 ? "s" : ""} activo${contratosProp.length !== 1 ? "s" : ""}`, 14, 61);
 
     let y = 84;
-    const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0);
+    const yaLiquidadoPre = liqProp.some(l => {
+      const desc = (l.period_description || "").toLowerCase();
+      const mesMes2 = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
+      return desc.includes(mesMes2) && desc.includes(String(anioCorte)) && l.status === "pagado";
+    });
+    const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 && !yaLiquidadoPre ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0);
     const boxH = 28 + extraLines * 7;
 
     doc.setFillColor(185, 28, 60); doc.rect(14, y, 182, 7, "F");
@@ -888,7 +893,8 @@ export default function Liquidaciones() {
       doc.text(`-${fmt(gastosOpProp)}`, 105, lineY);
       lineY += 7;
     }
-    if (totalAdelanto > 0) {
+    const mesYaLiquidado = liqDelMes.some(l => l.status === "pagado");
+    if (totalAdelanto > 0 && !mesYaLiquidado) {
       doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
       doc.text("Adelanto pagado:", 18, lineY);
       doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
@@ -897,7 +903,13 @@ export default function Liquidaciones() {
     }
 
     let labelLiq, montoLiq, boxColor;
-    if (rentaDirecta > 0) {
+    const periodoYaLiquidado = liqDelMes.some(l => l.status === "pagado") && totalAdelanto > 0;
+    if (periodoYaLiquidado) {
+      // El mes ya fue liquidado y pagado — es el cierre del periodo, no un adelanto
+      labelLiq = "Periodo liquidado — pagado:";
+      montoLiq = totalAdelanto;
+      boxColor = [6, 95, 70];
+    } else if (rentaDirecta > 0) {
       // Propietario con renta directa: el balance dice quién debe a quién
       const balanceFinal = balanceEmporio - totalAdelanto;
       if (balanceFinal >= 0) {
@@ -919,7 +931,11 @@ export default function Liquidaciones() {
     doc.text(labelLiq, 108, lineY + 1);
     doc.text(fmt(montoLiq), 190, lineY + 1, { align: "right" });
     // Nota aclaratoria para renta directa
-    if (rentaDirecta > 0) {
+    if (periodoYaLiquidado) {
+      y += boxH + 14;
+      doc.setFont("helvetica", "italic"); doc.setFontSize(7.5); doc.setTextColor(122, 122, 122);
+      doc.text("Este periodo ya fue liquidado y pagado. El detalle del pago aparece en el Historial de Liquidaciones.", 14, y - 8, { maxWidth: 182 });
+    } else if (rentaDirecta > 0) {
       y += boxH + 14;
       doc.setFont("helvetica", "italic"); doc.setFontSize(7.5); doc.setTextColor(122, 122, 122);
       doc.text("Las rentas con depósito directo ya fueron recibidas en tu cuenta bancaria; este balance considera únicamente el dinero en poder de Emporio.", 14, y - 8, { maxWidth: 182 });
