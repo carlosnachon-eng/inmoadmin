@@ -79,6 +79,7 @@ export default function Cobranza() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterMonth, setFilterMonth] = useState(String(new Date().getMonth() + 1));
+  const [modalRecibido, setModalRecibido] = useState(null); // { pago, contrato }
 
   const today = new Date().toISOString().split("T")[0];
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
@@ -124,21 +125,46 @@ export default function Cobranza() {
   const updateStatus = async (id, status) => {
     const pago = payments.find(p => p.id === id);
     const contrato = pago ? contracts.find(c => c.id === pago.contract_id) : null;
-    await supabase.from("payments").update({ status }).eq("id", id);
-    if (status === "pagado" && pago) {
-      const rentReceiver = contrato?.rent_receiver || "inmobiliaria";
-      if (rentReceiver === "inmobiliaria") {
-        const comision = contrato ? calcComision(contrato) : 0;
-        await supabase.from("cash_movements").insert([{
-          type: "entrada", category: "renta_cobrada",
-          description: `Renta ${pago.tenant_name} - ${pago.property_name}`,
-          amount: pago.amount, payment_method: "transferencia", date: today,
-          notes: comision > 0 ? `Comisión incluida: ${fmt(comision)} (se retiene al liquidar)` : "",
-          created_by: profile?.email, created_at: new Date().toISOString()
-        }]);
-      }
+    const rentReceiver = contrato?.rent_receiver || "inmobiliaria";
+
+    // Renta directa al propietario marcada como pagada → preguntar quién recibió
+    if (status === "pagado" && pago && rentReceiver === "propietario") {
+      setModalRecibido({ pago, contrato });
+      return;
+    }
+
+    await supabase.from("payments").update({ status, ...(status === "pagado" ? { recibido_por: "emporio" } : {}) }).eq("id", id);
+    if (status === "pagado" && pago && rentReceiver === "inmobiliaria") {
+      const comision = contrato ? calcComision(contrato) : 0;
+      await supabase.from("cash_movements").insert([{
+        type: "entrada", category: "renta_cobrada",
+        description: `Renta ${pago.tenant_name} - ${pago.property_name}`,
+        amount: pago.amount, payment_method: "transferencia", date: today,
+        notes: comision > 0 ? `Comisión incluida: ${fmt(comision)} (se retiene al liquidar)` : "",
+        created_by: profile?.email, created_at: new Date().toISOString()
+      }]);
     }
     showToast("Actualizado");
+    loadData();
+  };
+
+  // Confirmación de quién recibió el pago (solo rentas directas al propietario)
+  const confirmarRecibido = async (recibidoPor) => {
+    const { pago } = modalRecibido;
+    await supabase.from("payments").update({ status: "pagado", recibido_por: recibidoPor }).eq("id", pago.id);
+    if (recibidoPor === "emporio") {
+      await supabase.from("cash_movements").insert([{
+        type: "entrada", category: "renta_cobrada",
+        description: `Renta ${pago.tenant_name} - ${pago.property_name} (efectivo en oficina, renta directa)`,
+        amount: pago.amount, payment_method: "efectivo", date: today,
+        notes: "Renta de contrato directo al propietario, cobrada por Emporio",
+        created_by: profile?.email, created_at: new Date().toISOString()
+      }]);
+      showToast("Pagado — entrada registrada en caja ✅");
+    } else {
+      showToast("Pagado — directo a cuenta del propietario");
+    }
+    setModalRecibido(null);
     loadData();
   };
 
@@ -292,7 +318,7 @@ export default function Cobranza() {
                       <td style={{ padding: "11px 14px", fontWeight: 600, fontSize: 14 }}>{p.tenant_name || "-"}</td>
                       <td style={{ padding: "11px 14px", fontSize: 13, color: "#6b7280" }}>
                         {p.property_name || "-"}
-                        {contrato && <span style={{ display: "block", fontSize: 10, color: contrato.rent_receiver === "propietario" ? "#3730a3" : "#065f46" }}>{contrato.rent_receiver === "propietario" ? "al propietario" : "a Emporio"}</span>}
+                        {contrato && <span style={{ display: "block", fontSize: 10, color: contrato.rent_receiver === "propietario" ? "#3730a3" : "#065f46" }}>{contrato.rent_receiver === "propietario" ? (p.recibido_por === "emporio" ? "al propietario · 💵 cobrada en oficina" : "al propietario") : "a Emporio"}</span>}
                       </td>
                       <td style={{ padding: "11px 14px", fontWeight: 700 }}>{fmt(p.amount)}</td>
                       <td style={{ padding: "11px 14px", fontSize: 13, color: "#6b7280" }}>{p.due_date || "-"}</td>
@@ -326,6 +352,35 @@ export default function Cobranza() {
           </div>
         )}
       </div>
+
+      {/* MODAL QUIÉN RECIBIÓ */}
+      {modalRecibido && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1500, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+            <h3 style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 800, color: "#1a1a2e" }}>¿Quién recibió este pago?</h3>
+            <p style={{ margin: "0 0 18px", fontSize: 13, color: "#6b7280" }}>
+              {modalRecibido.pago.tenant_name} · {modalRecibido.pago.property_name} · <strong>{fmt(modalRecibido.pago.amount)}</strong>
+              <br />Este contrato es de renta directa al propietario.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button onClick={() => confirmarRecibido("propietario")}
+                style={{ padding: "14px 16px", borderRadius: 10, border: "2px solid #7c3aed", background: "#faf5ff", color: "#7c3aed", fontWeight: 700, cursor: "pointer", fontSize: 14, textAlign: "left" }}>
+                🏦 Directo a la cuenta del propietario
+                <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "#9ca3af", marginTop: 2 }}>El dinero no pasó por Emporio</span>
+              </button>
+              <button onClick={() => confirmarRecibido("emporio")}
+                style={{ padding: "14px 16px", borderRadius: 10, border: "2px solid #065f46", background: "#f0fdf4", color: "#065f46", fontWeight: 700, cursor: "pointer", fontSize: 14, textAlign: "left" }}>
+                💵 Emporio en oficina (efectivo/depósito)
+                <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "#9ca3af", marginTop: 2 }}>Se registrará la entrada en caja automáticamente</span>
+              </button>
+              <button onClick={() => setModalRecibido(null)}
+                style={{ padding: "10px", borderRadius: 8, border: "none", background: "#f3f4f6", color: "#6b7280", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL MANUAL */}
       {showModal && (
