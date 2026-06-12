@@ -764,10 +764,14 @@ export default function Liquidaciones() {
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
     const cobradaPorEmporio = (pago) => {
+      // 1) Campo explícito (nuevo flujo de cobranza)
+      if (pago.recibido_por === "emporio") return true;
+      if (pago.recibido_por === "propietario") return false;
+      // 2) Por tipo de contrato
       const c = contratosProp.find(c => c.id === pago.contract_id);
       if (!c) return false;
       if ((c.rent_receiver || "inmobiliaria") === "inmobiliaria") return true;
-      // Excepción: renta directa pero pagada en oficina → registrada como entrada en caja
+      // 3) Fallback histórico: renta directa pero hay entrada en caja que menciona la propiedad
       return entradasDelMes.some(mv => (mv.description || "").toLowerCase().includes((pago.property_name || "").toLowerCase()) && pago.property_name);
     };
     const rentaEmporio = pagosPagadosMes.filter(p => cobradaPorEmporio(p)).reduce((a, p) => a + (p.amount || 0), 0);
