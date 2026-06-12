@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { C, st, fmt } from '../../lib/polizaUtils'
 
@@ -17,6 +17,13 @@ const emptyForm = () => ({
 
 export default function TabCajaPoliza({ movimientos, onReload }) {
   const [showForm, setShowForm] = useState(false)
+  const [esCarlos, setEsCarlos] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setEsCarlos(session?.user?.email === 'carlos.nachon@emporioinmobiliario.mx')
+    })
+  }, [])
   const [editando, setEditando] = useState(null)
   const [form, setForm] = useState(emptyForm())
   const [saving, setSaving] = useState(false)
@@ -92,7 +99,8 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
       <p style={st.sectionTitle}>Caja — Póliza Jurídica</p>
       <p style={st.sectionSub}>Registro de cobros y pagos del área jurídica</p>
 
-      {/* Totales globales */}
+      {/* Totales globales — solo Carlos */}
+      {esCarlos && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
         {[
           { label: 'Ingresos totales', value: fmt(ingresosTotal), color: C.greenText, bg: C.greenBg },
@@ -105,7 +113,17 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
           </div>
         ))}
       </div>
+      )}
+      {!esCarlos && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px', marginBottom: 20 }}>
+          <p style={{ margin: 0, fontSize: 13, color: '#92400e', fontWeight: 600 }}>
+            🔒 Puedes registrar movimientos. Los saldos e historial solo son visibles para administración.
+          </p>
+        </div>
+      )}
 
+      {/* Filtros — solo Carlos */}
+      {esCarlos && (<>
       {/* Filtros */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
         <select value={filtroAnio} onChange={e => setFiltroAnio(parseInt(e.target.value))}
@@ -141,6 +159,8 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
           </div>
         ))}
       </div>
+
+      </>)}
 
       {/* Botón nuevo */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
@@ -208,6 +228,8 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
         </div>
       )}
 
+      {/* Tabla — solo Carlos */}
+      {esCarlos && (<>
       {/* Tabla */}
       <div style={st.card}>
         {movimientosFiltrados.length === 0 ? (
@@ -264,6 +286,7 @@ export default function TabCajaPoliza({ movimientos, onReload }) {
           </table>
         )}
       </div>
+      </>)}
     </div>
   )
 }
