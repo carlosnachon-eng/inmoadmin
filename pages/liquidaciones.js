@@ -750,11 +750,36 @@ export default function Liquidaciones() {
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
     const totalRentaProp = pagosPagadosMes.reduce((a, p) => a + (p.amount || 0), 0);
+
+    // ── Clasificar rentas: directo a cuenta del propietario vs cobradas por Emporio ──
+    // Una renta cuenta como "cobrada por Emporio" si:
+    //  a) el contrato es rent_receiver = inmobiliaria, o
+    //  b) hay una entrada en caja (renta_cobrada) ese mes que menciona la propiedad (ej. pago en efectivo en oficina)
+    const { data: entradasCajaMes } = await supabase.from("cash_movements")
+      .select("description, amount, date, type, category")
+      .eq("type", "entrada").eq("category", "renta_cobrada");
+    const entradasDelMes = (entradasCajaMes || []).filter(mv => {
+      if (!mv.date) return false;
+      const d = new Date(mv.date + "T12:00:00");
+      return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
+    });
+    const cobradaPorEmporio = (pago) => {
+      const c = contratosProp.find(c => c.id === pago.contract_id);
+      if (!c) return false;
+      if ((c.rent_receiver || "inmobiliaria") === "inmobiliaria") return true;
+      // Excepción: renta directa pero pagada en oficina → registrada como entrada en caja
+      return entradasDelMes.some(mv => (mv.description || "").toLowerCase().includes((pago.property_name || "").toLowerCase()) && pago.property_name);
+    };
+    const rentaEmporio = pagosPagadosMes.filter(p => cobradaPorEmporio(p)).reduce((a, p) => a + (p.amount || 0), 0);
+    const rentaDirecta = totalRentaProp - rentaEmporio;
+
     const contratosPagados = contratosProp.filter(c => pagosPagadosMes.some(p => p.contract_id === c.id));
     const totalComProp   = contratosPagados.reduce((a, c) => a + calcComision(c), 0);
     const costoMantProp  = ticketsProp.filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
     const gastosOpProp   = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
     const totalLiqProp   = totalRentaProp - totalComProp - costoMantProp - gastosOpProp;
+    // Balance real considerando solo el dinero que Emporio tiene en su poder
+    const balanceEmporio = rentaEmporio - totalComProp - costoMantProp - gastosOpProp;
     const liqDelMes = liqProp.filter(l => {
       const desc = (l.period_description || "").toLowerCase();
       const mesMes = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
@@ -799,7 +824,7 @@ export default function Liquidaciones() {
     doc.text(`Periodo: ${mes}  ·  ${propsProp.length} propiedad${propsProp.length !== 1 ? "es" : ""}  ·  ${contratosProp.length} contrato${contratosProp.length !== 1 ? "s" : ""} activo${contratosProp.length !== 1 ? "s" : ""}`, 14, 61);
 
     let y = 84;
-    const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 ? 1 : 0);
+    const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0);
     const boxH = 28 + extraLines * 7;
 
     doc.setFillColor(185, 28, 60); doc.rect(14, y, 182, 7, "F");
@@ -814,19 +839,37 @@ export default function Liquidaciones() {
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
     const numPagados = pagosTotalesMesResumen.filter(p => p.status === "pagado").length;
-    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(74, 74, 74);
-    doc.text(`Renta cobrada del mes:`, 18, y + 14);
-    doc.setFont("helvetica", "bold");
-    doc.text(fmt(totalRentaProp), 105, y + 14);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(122, 122, 122);
-    doc.text(`(${numPagados} de ${pagosTotalesMesResumen.length} rentas pagadas)`, 140, y + 14);
-    doc.setFontSize(9);
+    let lineY = y + 14;
+    // Si hay rentas directas al propietario, desglosar
+    if (rentaDirecta > 0) {
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(74, 74, 74);
+      doc.text(`Rentas cobradas directo en tu cuenta:`, 18, lineY);
+      doc.setFont("helvetica", "bold");
+      doc.text(fmt(rentaDirecta), 105, lineY);
+      lineY += 7;
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+      doc.text(`Rentas cobradas por Emporio:`, 18, lineY);
+      doc.setFont("helvetica", "bold");
+      doc.text(fmt(rentaEmporio), 105, lineY);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(122, 122, 122);
+      doc.text(`(${numPagados} de ${pagosTotalesMesResumen.length} rentas pagadas)`, 140, lineY);
+      doc.setFontSize(9);
+      lineY += 7;
+    } else {
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(74, 74, 74);
+      doc.text(`Renta cobrada del mes:`, 18, lineY);
+      doc.setFont("helvetica", "bold");
+      doc.text(fmt(totalRentaProp), 105, lineY);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(122, 122, 122);
+      doc.text(`(${numPagados} de ${pagosTotalesMesResumen.length} rentas pagadas)`, 140, lineY);
+      doc.setFontSize(9);
+      lineY += 7;
+    }
     doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
-    doc.text(`Comisión administración:`, 18, y + 21);
+    doc.text(`Comisión administración:`, 18, lineY);
     doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
-    doc.text(`-${fmt(totalComProp)}`, 105, y + 21);
-
-    let lineY = y + 28;
+    doc.text(`-${fmt(totalComProp)}`, 105, lineY);
+    lineY += 7;
     if (costoMantProp > 0) {
       doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
       doc.text("Mantenimiento:", 18, lineY);
@@ -849,13 +892,36 @@ export default function Liquidaciones() {
       lineY += 7;
     }
 
-    const labelLiq = totalAdelanto > 0 ? "Pendiente por pagar:" : "Líquido a recibir:";
-    const montoLiq = totalAdelanto > 0 ? totalPendiente : totalLiqProp;
-    doc.setFillColor(6, 95, 70); doc.rect(105, lineY - 5, 91, 10, "F");
+    let labelLiq, montoLiq, boxColor;
+    if (rentaDirecta > 0) {
+      // Propietario con renta directa: el balance dice quién debe a quién
+      const balanceFinal = balanceEmporio - totalAdelanto;
+      if (balanceFinal >= 0) {
+        labelLiq = totalAdelanto > 0 ? "Pendiente por pagarte:" : "Emporio te entrega:";
+        montoLiq = balanceFinal;
+        boxColor = [6, 95, 70];
+      } else {
+        labelLiq = "Saldo a pagar a Emporio:";
+        montoLiq = Math.abs(balanceFinal);
+        boxColor = [185, 28, 60];
+      }
+    } else {
+      labelLiq = totalAdelanto > 0 ? "Pendiente por pagar:" : "Líquido a recibir:";
+      montoLiq = totalAdelanto > 0 ? totalPendiente : totalLiqProp;
+      boxColor = [6, 95, 70];
+    }
+    doc.setFillColor(boxColor[0], boxColor[1], boxColor[2]); doc.rect(105, lineY - 5, 91, 10, "F");
     doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
     doc.text(labelLiq, 108, lineY + 1);
     doc.text(fmt(montoLiq), 190, lineY + 1, { align: "right" });
-    y += boxH + 14;
+    // Nota aclaratoria para renta directa
+    if (rentaDirecta > 0) {
+      y += boxH + 14;
+      doc.setFont("helvetica", "italic"); doc.setFontSize(7.5); doc.setTextColor(122, 122, 122);
+      doc.text("Las rentas con depósito directo ya fueron recibidas en tu cuenta bancaria; este balance considera únicamente el dinero en poder de Emporio.", 14, y - 8, { maxWidth: 182 });
+    } else {
+      y += boxH + 14;
+    }
 
     const headStyle = { fillColor: [74, 74, 74], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 };
     const altRow = { fillColor: [250, 250, 250] };
