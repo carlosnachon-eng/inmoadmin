@@ -707,6 +707,16 @@ export default function Liquidaciones() {
   };
 
   const descargarPDF = async (ownerName, ownerEmail, mesCorteParam) => {
+    const fmt = (n) => {
+      const v = n || 0;
+      const dec = v % 1 === 0 ? 0 : 2;
+      return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: dec, maximumFractionDigits: dec }).format(v);
+    };
+    const fmtFecha = (f) => {
+      if (!f) return "—";
+      const d = new Date(f.includes("T") ? f : f + "T12:00:00");
+      return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+    };
     const { default: jsPDF } = await import("jspdf");
     const { default: autoTable } = await import("jspdf-autotable");
     const doc = new jsPDF();
@@ -798,10 +808,19 @@ export default function Liquidaciones() {
     doc.setFillColor(255, 245, 247); doc.rect(14, y + 7, 182, boxH, "F");
     doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3);
     doc.rect(14, y + 7, 182, boxH, "S");
+    const pagosTotalesMesResumen = (pagosMesCalc || []).filter(p => {
+      if (!p.due_date) return false;
+      const d = new Date(p.due_date + "T12:00:00");
+      return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
+    });
+    const numPagados = pagosTotalesMesResumen.filter(p => p.status === "pagado").length;
     doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(74, 74, 74);
-    doc.text(`Renta mensual total:`, 18, y + 14);
+    doc.text(`Renta cobrada del mes:`, 18, y + 14);
     doc.setFont("helvetica", "bold");
     doc.text(fmt(totalRentaProp), 105, y + 14);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(122, 122, 122);
+    doc.text(`(${numPagados} de ${pagosTotalesMesResumen.length} rentas pagadas)`, 140, y + 14);
+    doc.setFontSize(9);
     doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
     doc.text(`Comisión administración:`, 18, y + 21);
     doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
@@ -848,21 +867,7 @@ export default function Liquidaciones() {
       return yPos + 10;
     };
 
-    y = sectionTitle("Propiedades", y);
-    autoTable(doc, {
-      startY: y,
-      head: [["Propiedad", "Inquilino", "Renta", "Comisión", "Líquido", "Día pago"]],
-      body: propsProp.map(prop => {
-        const c = contratosProp.find(c => c.property_name === prop.name);
-        const com = c ? calcComision(c) : 0;
-        return [prop.name, c?.tenant_name || "—", fmt(prop.rent_amount), fmt(com), fmt((prop.rent_amount || 0) - com), c ? `Día ${c.payment_day}` : "—"];
-      }),
-      styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: tableMargin,
-    });
-    y = doc.lastAutoTable.finalY + 12;
-    if (y > 230) { doc.addPage(); y = 15; }
-
-    y = sectionTitle("Pagos del Mes", y);
+    y = sectionTitle("Propiedades y cobranza del mes", y);
     const contractIdsMes = contratosProp.map(c => c.id);
     const { data: pagosFrescos } = await supabase.from("payments").select("*").in("contract_id", contractIdsMes.length > 0 ? contractIdsMes : ["none"]);
     const pagosMesPDF = (pagosFrescos || []).filter(p => {
@@ -872,17 +877,28 @@ export default function Liquidaciones() {
     });
     autoTable(doc, {
       startY: y,
-      head: [["Inquilino", "Propiedad", "Monto", "Vencimiento", "Estado"]],
-      body: pagosMesPDF.length > 0 ? pagosMesPDF.map(p => [
-        p.tenant_name || "—", p.property_name || "—", fmt(p.amount), p.due_date || "—",
-        p.status === "pagado" ? "Pagado" : p.status === "atrasado" ? "Atrasado" : "Pendiente"
-      ]) : [["Sin pagos registrados este mes", "", "", "", ""]],
+      head: [["Propiedad", "Inquilino", "Renta", "Comisión", "Líquido", "Vence", "Estado"]],
+      body: propsProp.map(prop => {
+        const c = contratosProp.find(c => c.property_name === prop.name);
+        const com = c ? calcComision(c) : 0;
+        const pago = pagosMesPDF.find(p => p.property_name === prop.name);
+        const estado = pago ? (pago.status === "pagado" ? "Pagado" : pago.status === "atrasado" ? "Atrasado" : "Pendiente") : "—";
+        return [
+          prop.name,
+          c?.tenant_name || "—",
+          fmt(prop.rent_amount),
+          fmt(com),
+          fmt((prop.rent_amount || 0) - com),
+          pago?.due_date ? fmtFecha(pago.due_date) : (c ? `Día ${c.payment_day}` : "—"),
+          estado,
+        ];
+      }),
       styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow,
       didParseCell: (data) => {
-        if (data.section === "body" && data.column.index === 4) {
-          if (data.cell.raw === "Pagado") data.cell.styles.textColor = [6, 95, 70];
-          if (data.cell.raw === "Atrasado") data.cell.styles.textColor = [185, 28, 60];
-          if (data.cell.raw === "Pendiente") data.cell.styles.textColor = [146, 64, 14];
+        if (data.section === "body" && data.column.index === 6) {
+          if (data.cell.raw === "Pagado") { data.cell.styles.textColor = [6, 95, 70]; data.cell.styles.fontStyle = "bold"; }
+          if (data.cell.raw === "Atrasado") { data.cell.styles.textColor = [185, 28, 60]; data.cell.styles.fontStyle = "bold"; }
+          if (data.cell.raw === "Pendiente") { data.cell.styles.textColor = [146, 64, 14]; data.cell.styles.fontStyle = "bold"; }
         }
       },
       margin: tableMargin,
@@ -893,10 +909,10 @@ export default function Liquidaciones() {
     y = sectionTitle("Historial de Liquidaciones", y);
     autoTable(doc, {
       startY: y,
-      head: [["Periodo", "Renta", "Comisión", "Te pagamos", "Fecha", "Estado"]],
+      head: [["Periodo", "Renta", "Comisión", "Pagado", "Fecha", "Estado"]],
       body: liqProp.length > 0 ? liqProp.map(l => [
         l.period_description || "—", fmt(l.total_rent), fmt(l.total_commission),
-        fmt(l.amount_paid), l.payment_date || "—",
+        fmt(l.amount_paid), fmtFecha(l.payment_date),
         l.status === "pagado" ? "Pagado" : l.status === "pagado_parcial" ? "Parcial" : "Pendiente"
       ]) : [["Sin liquidaciones registradas", "", "", "", "", ""]],
       styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: tableMargin,
@@ -913,7 +929,7 @@ export default function Liquidaciones() {
         t.payer === "propietario" ? "Propietario" : t.payer === "inquilino" ? "Inquilino" : "Inmobiliaria",
         t.payer === "propietario" && t.charged_amount > 0 ? fmt(t.charged_amount) : "—",
         t.status === "cerrado" || t.status === "resuelto" ? "Resuelto" : t.status === "en_proceso" ? "En proceso" : "Abierto",
-        new Date(t.created_at).toLocaleDateString("es-MX")
+        fmtFecha(t.created_at)
       ]) : [["Sin reportes de mantenimiento", "", "", "", "", ""]],
       styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: tableMargin,
     });
@@ -925,7 +941,10 @@ export default function Liquidaciones() {
       autoTable(doc, {
         startY: y,
         head: [["Concepto", "Propiedad", "Descripción", "Monto", "Quién paga", "Fecha"]],
-        body: gastosProp.map(e => [e.category || "—", e.property_name || "—", e.description || "—", fmt(e.amount), e.paid_by === "propietario" ? "Propietario" : "Emporio", e.date || "—"]),
+        body: gastosProp.map(e => {
+          const catLabels = { condominio: "Condominio", predial: "Predial", agua: "Agua", luz: "Luz", gas: "Gas", seguro: "Seguro", mantenimiento_comun: "Mantenimiento común", otro: "Otro" };
+          return [catLabels[e.category] || e.category || "—", e.property_name || "—", e.description || "—", fmt(e.amount), e.paid_by === "propietario" ? "Propietario" : "Emporio", fmtFecha(e.date)];
+        }),
         styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: tableMargin,
       });
     }
