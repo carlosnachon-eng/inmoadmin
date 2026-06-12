@@ -132,19 +132,37 @@ export default function InquilinoPortal() {
     setLoading(false);
   };
 
+  const [ticketFotos, setTicketFotos] = useState([]);
+
   const submitTicket = async () => {
     if (!contract) return;
     setSaving(true);
+    // Subir fotos primero
+    let fotosUrls = [];
+    try {
+      for (const file of ticketFotos) {
+        const ext = file.name.split(".").pop();
+        const fileName = `${contract.property_name.replace(/\s+/g, "_")}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+        const { error: upErr } = await supabase.storage.from("mantenimiento-fotos").upload(fileName, file, { upsert: true });
+        if (!upErr) {
+          const { data: { publicUrl } } = supabase.storage.from("mantenimiento-fotos").getPublicUrl(fileName);
+          fotosUrls.push(publicUrl);
+        }
+      }
+    } catch (e) { console.error("Error subiendo fotos:", e); }
+
     const { error } = await supabase.from("maintenance_tickets").insert([{
       property_name: contract.property_name, tenant_name: contract.tenant_name,
       title: ticketForm.title, description: ticketForm.description,
       category: ticketForm.category, priority: ticketForm.priority, status: "nuevo",
       created_by: session.user.email,
+      fotos: fotosUrls,
     }]);
     setSaving(false);
     if (error) { showToast("Error al enviar: " + error.message, false); return; }
     showToast("✅ Reporte enviado, te contactaremos pronto");
     setTicketForm({ title: "", description: "", category: "otro", priority: "media" });
+    setTicketFotos([]);
     setTab("mantenimiento"); loadTenantData();
   };
 
@@ -435,6 +453,26 @@ export default function InquilinoPortal() {
                   </select>
                 </div>
               </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Fotos del problema (opcional, máx. 3)</label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  {ticketFotos.map((f, i) => (
+                    <div key={i} style={{ position: "relative", width: 72, height: 72, borderRadius: 10, overflow: "hidden", border: "1px solid #e5e7eb" }}>
+                      <img src={URL.createObjectURL(f)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <button onClick={() => setTicketFotos(ticketFotos.filter((_, j) => j !== i))}
+                        style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 11, lineHeight: 1, padding: 0 }}>✕</button>
+                    </div>
+                  ))}
+                  {ticketFotos.length < 3 && (
+                    <label style={{ width: 72, height: 72, borderRadius: 10, border: "2px dashed #d1d5db", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#9ca3af", fontSize: 11, gap: 2 }}>
+                      <span style={{ fontSize: 20 }}>📷</span>
+                      Agregar
+                      <input type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+                        onChange={e => { const f = e.target.files[0]; if (f) setTicketFotos([...ticketFotos, f]); e.target.value = ""; }} />
+                    </label>
+                  )}
+                </div>
+              </div>
               <button onClick={submitTicket} disabled={saving || !ticketForm.title} style={{ width: "100%", background: "#b91c3c", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontSize: 15, opacity: saving ? 0.6 : 1 }}>
                 {saving ? "Enviando..." : "Enviar reporte"}
               </button>
@@ -452,6 +490,15 @@ export default function InquilinoPortal() {
                         <StatusBadge status={t.status} />
                       </div>
                       <p style={{ margin: "0 0 6px", fontSize: 12, color: "#9ca3af" }}>{t.category} · {new Date(t.created_at).toLocaleDateString("es-MX")}</p>
+                      {Array.isArray(t.fotos) && t.fotos.length > 0 && (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                          {t.fotos.map((url, i) => (
+                            <a key={i} href={url} target="_blank" rel="noreferrer">
+                              <img src={url} alt={`Foto ${i + 1}`} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: "1px solid #e5e7eb" }} />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                       {cotizacion && (
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: cotizacion.status === "aprobada" ? "#d1fae5" : cotizacion.status === "rechazada" ? "#fee2e2" : "#fef3c7", color: cotizacion.status === "aprobada" ? "#065f46" : cotizacion.status === "rechazada" ? "#991b1b" : "#92400e" }}>
