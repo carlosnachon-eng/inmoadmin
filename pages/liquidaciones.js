@@ -14,19 +14,20 @@ const calcComision = (c) => {
 };
 
 const savePDF = (doc, filename) => {
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-    || /iPad|iPhone|iPod/.test(navigator.userAgent);
-  if (isSafari) {
-    const uri = doc.output("datauristring");
-    const win = window.open();
-    if (win) {
-      win.document.write(`<iframe src="${uri}" style="width:100%;height:100%;border:none;" title="${filename}"></iframe>`);
-    } else {
-      const link = document.createElement("a");
-      link.href = uri;
-      link.download = filename;
-      link.click();
-    }
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  if (isIOS || isSafari) {
+    // iOS/Safari bloquea data URIs en iframes — usar blob URL en pestaña nueva
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   } else {
     doc.save(filename);
   }
