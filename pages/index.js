@@ -2,6 +2,15 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import Layout, { brand, Btn } from "../components/Layout";
 
+const ASESORES_EMAILS = [
+  'ariannet81@gmail.com',
+  'angelicamomox@gmail.com',
+  'rddd298@gmail.com',
+  'ivanmtzco@gmail.com',
+  'nextelmoto2@gmail.com',
+  'islas.amanda111@gmail.com',
+];
+
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
 }).format(n || 0);
@@ -595,6 +604,11 @@ export default function Home() {
   const loadProfile = async (userId) => {
     const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
     setProfile(data); setAuthLoading(false);
+    // Asesores solo pueden ver KPIs y Guías
+    const email = (await supabase.auth.getSession()).data.session?.user?.email;
+    if (email && ASESORES_EMAILS.includes(email)) {
+      window.location.href = '/kpis';
+    }
   };
 
   const logout = async () => { await supabase.auth.signOut(); setSession(null); setProfile(null); };
