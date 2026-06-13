@@ -270,6 +270,7 @@ export default function Liquidaciones() {
     fecha: new Date().toISOString().split("T")[0],
   };
   const [formPago, setFormPago] = useState(emptyFormPago);
+  const [pagoYaAbonado, setPagoYaAbonado] = useState(0);
 
   const today = new Date().toISOString().split("T")[0];
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
@@ -369,14 +370,23 @@ export default function Liquidaciones() {
   };
 
   const openModalPago = (owner) => {
-    const pendiente = calcPendienteMes(owner.email);
+    const pendienteTotal = calcPendienteMes(owner.email);
     const [anio, mes] = mesCorte.split("-").map(Number);
     const fechaCorte = new Date(anio, mes - 1, 1);
     const periodoLabel = fechaCorte.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+    // Calcular ya abonado en este periodo (parciales sin un "pagado" en el mismo periodo)
+    const liqDelPeriodo = ownerPayments.filter(l => 
+      l.owner_email === owner.email && (l.period_description || "") === periodoLabel
+    );
+    const tieneCompleto = liqDelPeriodo.some(l => l.status === "pagado");
+    const yaAbonado = tieneCompleto ? 0 : liqDelPeriodo.filter(l => l.status === "pagado_parcial")
+      .reduce((a, l) => a + (l.amount_paid || 0), 0);
+    const saldoReal = Math.max(0, pendienteTotal - yaAbonado);
     setPropietarioPago(owner);
+    setPagoYaAbonado(yaAbonado);
     setFormPago({
       ...emptyFormPago,
-      monto: pendiente > 0 ? pendiente.toString() : "",
+      monto: saldoReal > 0 ? saldoReal.toString() : "",
       periodo: periodoLabel,
       fecha: today,
     });
@@ -397,6 +407,11 @@ export default function Liquidaciones() {
   const guardarPago = async () => {
     if (!formPago.monto || parseFloat(formPago.monto) <= 0) {
       showToast("Ingresa un monto válido", false); return;
+    }
+    const pendienteActual = calcPendienteMes(propietarioPago.email);
+    const saldoMaximo = Math.max(0, pendienteActual - pagoYaAbonado);
+    if (formPago.concepto === "total" && parseFloat(formPago.monto) > pendienteActual + 1) {
+      showToast(`⚠️ El monto ($${parseFloat(formPago.monto).toLocaleString()}) excede el pendiente del mes ($${pendienteActual.toLocaleString()}). Verifica el monto.`, false); return;
     }
     if (formPago.forma_pago === "efectivo" && !firmaTrazada) {
       showToast("El propietario debe firmar de recibido", false); return;
@@ -1379,6 +1394,9 @@ export default function Liquidaciones() {
             <div style={{ textAlign: "right" }}>
               <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Pendiente del mes</p>
               <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#b45309" }}>{fmt(calcPendienteMes(propietarioPago.email))}</p>
+              {pagoYaAbonado > 0 && (
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#1e40af", fontWeight: 600 }}>Ya abonado: {fmt(pagoYaAbonado)} · Saldo: {fmt(Math.max(0, calcPendienteMes(propietarioPago.email) - pagoYaAbonado))}</p>
+              )}
             </div>
           </div>
 
