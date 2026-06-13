@@ -347,7 +347,25 @@ export default function Liquidaciones() {
     // Si ya existe una liquidación "pagado" completa, el pendiente es 0
     const yaLiquidadoCompleto = liqDelMes.some(l => l.status === "pagado");
     if (yaLiquidadoCompleto) return 0;
-    return Math.max(0, totalRenta - totalCom - totalAdelanto);
+    // Tickets de meses anteriores con saldo pendiente
+    const propNamesCalc = propsProp.map(p => p.name);
+    const saldoMantAnt = tickets.filter(t => {
+      if (!propNamesCalc.includes(t.property_name)) return false;
+      if (t.payer !== "propietario") return false;
+      if (!t.charged_amount || t.charged_amount <= 0) return false;
+      if (["cerrado", "resuelto"].includes(t.status)) return false;
+      if (!t.created_at) return false;
+      const d = new Date(t.created_at);
+      const esMesActual = d.getMonth() === (mes - 1) && d.getFullYear() === anio;
+      const esFuturo = d.getFullYear() > anio || (d.getFullYear() === anio && d.getMonth() > mes - 1);
+      if (esMesActual || esFuturo) return false;
+      const saldo = (t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0);
+      return saldo > 0;
+    }).reduce((a, t) => {
+      const saldo = (t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0);
+      return a + saldo;
+    }, 0);
+    return Math.max(0, totalRenta - totalCom - totalAdelanto + saldoMantAnt);
   };
 
   const openModalPago = (owner) => {
