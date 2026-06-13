@@ -340,8 +340,25 @@ export default function PropietarioPortal() {
 
   const totalRenta = contracts.reduce((a, c) => a + (c.monthly_rent || 0), 0);
   const totalComisiones = contracts.reduce((a, c) => a + calcComision(c), 0);
-  const costoMant = tickets.filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
-  const totalLiquido = totalRenta - totalComisiones - costoMant;
+  // Mantenimiento del mes actual con anticipo descontado
+  const costoMant = tickets.filter(t => t.payer === "propietario" && t.charged_amount > 0)
+    .reduce((a, t) => a + ((t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0)), 0);
+  // Tickets de meses anteriores con saldo pendiente (arrastre)
+  const hoyCalc = new Date();
+  const saldoMantAntProp = (typeof allTickets !== "undefined" ? allTickets : tickets).filter(t => {
+    if (t.payer !== "propietario") return false;
+    if (!t.charged_amount || t.charged_amount <= 0) return false;
+    if (["cerrado", "resuelto"].includes(t.status)) return false;
+    if (!t.created_at) return false;
+    const d = new Date(t.created_at);
+    // Solo tickets anteriores al mes actual
+    const esMesActual = d.getMonth() === hoyCalc.getMonth() && d.getFullYear() === hoyCalc.getFullYear();
+    return !esMesActual && d < hoyCalc;
+  }).reduce((a, t) => {
+    const saldo = (t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0);
+    return a + Math.max(0, saldo);
+  }, 0);
+  const totalLiquido = totalRenta - totalComisiones - costoMant - saldoMantAntProp;
   const totalCobrado = payments.filter(p => p.status === "pagado").reduce((a, p) => a + (p.amount || 0), 0);
   const totalLiquidado = liquidaciones.filter(l => l.status === "pagado").reduce((a, l) => a + (l.amount_paid || 0), 0);
   const hoy = new Date();
