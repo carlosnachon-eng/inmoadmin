@@ -666,7 +666,12 @@ export default function Liquidaciones() {
       l.status === "pagado_parcial"
     ).reduce((a, l) => a + (l.amount_paid || 0), 0);
     const montoFinal = Math.max(0, totalLiq - anticiposPeriodo);
-    const propNames = propsProp.map(p => p.name).join(", ");
+    // Solo propiedades con renta cobrada este mes
+    const propsCobradas = propsProp.filter(p => pagosCobradosMes.some(pago => {
+      const c = contratosProp.find(c => c.id === pago.contract_id);
+      return c && c.property_name === p.name;
+    }));
+    const propNames = propsCobradas.length > 0 ? propsCobradas.map(p => p.name).join(", ") : propsProp.map(p => p.name).join(", ");
     const rentReceivers = [...new Set(contratosProp.map(c => c.rent_receiver || "inmobiliaria"))];
     const dominant = rentReceivers.length === 1 ? rentReceivers[0] : "inmobiliaria";
     setForm({
