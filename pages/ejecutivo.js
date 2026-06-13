@@ -59,6 +59,7 @@ export default function Ejecutivo() {
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth());
 
   const [cierres, setCierres] = useState([]);
+  const [cierrePagos, setCierrePagos] = useState([]);
   const [polizaCaja, setPolizaCaja] = useState([]);
   const [cashMovements, setCashMovements] = useState([]);
   const [tickets, setTickets] = useState([]);
@@ -80,8 +81,9 @@ export default function Ejecutivo() {
 
   const loadData = async () => {
     setLoading(true);
-    const [c, pc, cm, t, cond, ca, ct, gc] = await Promise.all([
+    const [c, cp, pc, cm, t, cond, ca, ct, gc] = await Promise.all([
       supabase.from("cierres").select("fecha_cierre, comision, cobrado, pendiente, anio, mes"),
+      supabase.from("cierre_pagos").select("cierre_id, monto, fecha"),
       supabase.from("poliza_caja").select("fecha, monto, tipo, concepto"),
       supabase.from("cash_movements").select("date, amount, type, category, description"),
       supabase.from("maintenance_tickets").select("status, charged_amount, provider_cost, updated_at, created_at, payer"),
@@ -91,6 +93,7 @@ export default function Ejecutivo() {
       supabase.from("gastos_condominio").select("concepto, monto, fecha, categoria"),
     ]);
     setCierres(c.data || []);
+    setCierrePagos(cp.data || []);
     setPolizaCaja(pc.data || []);
     setCashMovements(cm.data || []);
     setTickets(t.data || []);
@@ -124,11 +127,20 @@ export default function Ejecutivo() {
   };
 
   const ingresoPorMes = (m, a) => {
-    // Cierres — generado, cobrado y pendiente
+    // Cierres generado — por mes de cierre (cuando se cerró el trato)
     const cierresMes = cierres.filter(c => c.anio === a && c.mes === (m + 1));
-    const cierresGenerado  = cierresMes.reduce((acc, c) => acc + (c.comision || 0), 0);
-    const cierresCobrado   = cierresMes.reduce((acc, c) => acc + (c.cobrado || 0), 0);
-    const cierresPendiente = cierresMes.reduce((acc, c) => acc + (c.pendiente || 0), 0);
+    const cierresGenerado = cierresMes.reduce((acc, c) => acc + (c.comision || 0), 0);
+
+    // Cierres cobrado — por fecha real del pago (de cierre_pagos)
+    const cierresCobrado = cierrePagos
+      .filter(p => enMes(p.fecha, m, a))
+      .reduce((acc, p) => acc + (p.monto || 0), 0);
+
+    // Por cobrar — pendiente global de cierres cerrados hasta este mes
+    // (todos los cierres con pendiente > 0 cuyo mes/anio <= mes actual)
+    const cierresPendiente = cierres
+      .filter(c => (c.anio < a || (c.anio === a && c.mes <= (m + 1))) && (c.pendiente || 0) > 0)
+      .reduce((acc, c) => acc + (c.pendiente || 0), 0);
 
     // Pólizas
     const ingrPolizas = polizaCaja
@@ -178,9 +190,7 @@ export default function Ejecutivo() {
       administracion: ingrAdmin,
       mantenimiento: ingrMtto,
       condominios: ingrCondominios,
-      // "total" usa cobrado real de cierres + otros rubros
       total: cierresCobrado + otrosTotal,
-      // "generado" usa comision generada de cierres + otros rubros
       totalGenerado: cierresGenerado + otrosTotal,
     };
   };
@@ -193,20 +203,19 @@ export default function Ejecutivo() {
   const tendencia = (actual, anterior) => anterior > 0 ? ((actual - anterior) / anterior) * 100 : null;
 
   const acumuladoAnio = Array.from({ length: 12 }, (_, m) => ingresoPorMes(m, anio));
-  const totalAnio          = acumuladoAnio.reduce((a, m) => a + m.total, 0);
-  const totalAnioGenerado  = acumuladoAnio.reduce((a, m) => a + m.totalGenerado, 0);
-  const totalAnioPendiente = acumuladoAnio.reduce((a, m) => a + m.cierresPendiente, 0);
-
-  const mesesConDatos = acumuladoAnio.filter(m => m.total > 0).length;
-  const promedioMensual = mesesConDatos > 0 ? totalAnio / mesesConDatos : 0;
-  const mesActual = new Date().getMonth();
+  const totalAnio         = acumuladoAnio.reduce((a, m) => a + m.total, 0);
+  const mesesConDatos     = acumuladoAnio.filter(m => m.total > 0).length;
+  const promedioMensual   = mesesConDatos > 0 ? totalAnio / mesesConDatos : 0;
+  const mesActual         = new Date().getMonth();
   const mesesTranscurridos = anio === new Date().getFullYear() ? mesActual + 1 : 12;
-  const proyeccion = mesesTranscurridos > 0 ? (totalAnio / mesesTranscurridos) * 12 : 0;
+  const proyeccion        = mesesTranscurridos > 0 ? (totalAnio / mesesTranscurridos) * 12 : 0;
+
+  // Pendiente global actual (no por mes, sino el total acumulado pendiente)
+  const pendienteGlobal = cierres.reduce((a, c) => a + (c.pendiente || 0), 0);
 
   const porRubroAnio = {
     cierresGenerado:  acumuladoAnio.reduce((a, m) => a + m.cierresGenerado, 0),
     cierresCobrado:   acumuladoAnio.reduce((a, m) => a + m.cierresCobrado, 0),
-    cierresPendiente: acumuladoAnio.reduce((a, m) => a + m.cierresPendiente, 0),
     polizas:          acumuladoAnio.reduce((a, m) => a + m.polizas, 0),
     administracion:   acumuladoAnio.reduce((a, m) => a + m.administracion, 0),
     mantenimiento:    acumuladoAnio.reduce((a, m) => a + m.mantenimiento, 0),
@@ -249,17 +258,17 @@ export default function Ejecutivo() {
                 <div style={{ background: "#f9fafb", borderRadius: 10, padding: "12px 14px" }}>
                   <p style={{ margin: "0 0 4px", fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Generado</p>
                   <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#1a1a2e" }}>{fmt(datosMes.cierresGenerado)}</p>
-                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Comisiones del mes</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Comisiones cerradas este mes</p>
                 </div>
                 <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "12px 14px", border: "1px solid #bbf7d0" }}>
                   <p style={{ margin: "0 0 4px", fontSize: 10, color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>Cobrado ✅</p>
                   <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#065f46" }}>{fmt(datosMes.cierresCobrado)}</p>
-                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Efectivamente en caja</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Pagos recibidos este mes</p>
                 </div>
-                <div style={{ background: datosMes.cierresPendiente > 0 ? "#fff7ed" : "#f9fafb", borderRadius: 10, padding: "12px 14px", border: datosMes.cierresPendiente > 0 ? "1px solid #fed7aa" : "none" }}>
-                  <p style={{ margin: "0 0 4px", fontSize: 10, color: datosMes.cierresPendiente > 0 ? "#92400e" : "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Por cobrar {datosMes.cierresPendiente > 0 ? "⏳" : ""}</p>
-                  <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: datosMes.cierresPendiente > 0 ? "#dc2626" : "#9ca3af" }}>{fmt(datosMes.cierresPendiente)}</p>
-                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Pendiente de cobro</p>
+                <div style={{ background: pendienteGlobal > 0 ? "#fff7ed" : "#f9fafb", borderRadius: 10, padding: "12px 14px", border: pendienteGlobal > 0 ? "1px solid #fed7aa" : "none" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: 10, color: pendienteGlobal > 0 ? "#92400e" : "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Por cobrar global ⏳</p>
+                  <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: pendienteGlobal > 0 ? "#dc2626" : "#9ca3af" }}>{fmt(pendienteGlobal)}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Pendiente de todos los cierres</p>
                 </div>
               </div>
             </div>
@@ -308,14 +317,17 @@ export default function Ejecutivo() {
                 <div style={{ background: "#f9fafb", borderRadius: 10, padding: "12px 14px" }}>
                   <p style={{ margin: "0 0 4px", fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Generado</p>
                   <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#1a1a2e" }}>{fmt(porRubroAnio.cierresGenerado)}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Comisiones cerradas en {anio}</p>
                 </div>
                 <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "12px 14px", border: "1px solid #bbf7d0" }}>
                   <p style={{ margin: "0 0 4px", fontSize: 10, color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>Cobrado ✅</p>
                   <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#065f46" }}>{fmt(porRubroAnio.cierresCobrado)}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Pagos recibidos en {anio}</p>
                 </div>
-                <div style={{ background: porRubroAnio.cierresPendiente > 0 ? "#fff7ed" : "#f9fafb", borderRadius: 10, padding: "12px 14px", border: porRubroAnio.cierresPendiente > 0 ? "1px solid #fed7aa" : "none" }}>
-                  <p style={{ margin: "0 0 4px", fontSize: 10, color: porRubroAnio.cierresPendiente > 0 ? "#92400e" : "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Por cobrar ⏳</p>
-                  <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: porRubroAnio.cierresPendiente > 0 ? "#dc2626" : "#9ca3af" }}>{fmt(porRubroAnio.cierresPendiente)}</p>
+                <div style={{ background: pendienteGlobal > 0 ? "#fff7ed" : "#f9fafb", borderRadius: 10, padding: "12px 14px", border: pendienteGlobal > 0 ? "1px solid #fed7aa" : "none" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: 10, color: pendienteGlobal > 0 ? "#92400e" : "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Por cobrar global ⏳</p>
+                  <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: pendienteGlobal > 0 ? "#dc2626" : "#9ca3af" }}>{fmt(pendienteGlobal)}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Pendiente de todos los cierres</p>
                 </div>
               </div>
             </div>
@@ -349,9 +361,8 @@ export default function Ejecutivo() {
                   <thead>
                     <tr style={{ background: "#f9fafb" }}>
                       <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>Mes</th>
-                      <th style={{ padding: "10px 8px", textAlign: "right", fontSize: 10, fontWeight: 700, color: "#b91c3c", textTransform: "uppercase", whiteSpace: "nowrap" }}>🏠 Generado</th>
+                      <th style={{ padding: "10px 8px", textAlign: "right", fontSize: 10, fontWeight: 700, color: "#374151", textTransform: "uppercase", whiteSpace: "nowrap" }}>🏠 Generado</th>
                       <th style={{ padding: "10px 8px", textAlign: "right", fontSize: 10, fontWeight: 700, color: "#065f46", textTransform: "uppercase", whiteSpace: "nowrap" }}>🏠 Cobrado</th>
-                      <th style={{ padding: "10px 8px", textAlign: "right", fontSize: 10, fontWeight: 700, color: "#dc2626", textTransform: "uppercase", whiteSpace: "nowrap" }}>🏠 Por cobrar</th>
                       <th style={{ padding: "10px 8px", textAlign: "right", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>⚖️ Pólizas</th>
                       <th style={{ padding: "10px 8px", textAlign: "right", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>🏢 Admón</th>
                       <th style={{ padding: "10px 8px", textAlign: "right", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>🔧 Mtto</th>
@@ -361,9 +372,8 @@ export default function Ejecutivo() {
                   </thead>
                   <tbody>
                     {acumuladoAnio.map((d, i) => {
-                      const esActual = i === mesSeleccionado && anio === new Date().getFullYear();
+                      const esActual = i === mesSeleccionado;
                       const esFuturo = anio === new Date().getFullYear() && i > new Date().getMonth();
-                      const hayPendiente = d.cierresPendiente > 0;
                       return (
                         <tr key={i}
                           onClick={() => setMesSeleccionado(i)}
@@ -374,9 +384,6 @@ export default function Ejecutivo() {
                           </td>
                           <td style={{ padding: "10px 8px", textAlign: "right", fontSize: 12, color: d.cierresCobrado > 0 ? "#065f46" : "#d1d5db", fontWeight: 700 }}>
                             {d.cierresCobrado > 0 ? fmt(d.cierresCobrado) : "—"}
-                          </td>
-                          <td style={{ padding: "10px 8px", textAlign: "right", fontSize: 12, color: hayPendiente ? "#dc2626" : "#d1d5db", fontWeight: hayPendiente ? 700 : 400 }}>
-                            {hayPendiente ? fmt(d.cierresPendiente) : "—"}
                           </td>
                           {["polizas","administracion","mantenimiento","condominios"].map(r => (
                             <td key={r} style={{ padding: "10px 8px", textAlign: "right", fontSize: 12, color: d[r] > 0 ? "#374151" : "#d1d5db", fontWeight: d[r] > 0 ? 600 : 400 }}>
@@ -393,7 +400,6 @@ export default function Ejecutivo() {
                       <td style={{ padding: "12px 12px", fontWeight: 800, fontSize: 14, color: "#1a1a2e" }}>TOTAL</td>
                       <td style={{ padding: "12px 8px", textAlign: "right", fontWeight: 700, fontSize: 13, color: "#374151" }}>{fmt(porRubroAnio.cierresGenerado)}</td>
                       <td style={{ padding: "12px 8px", textAlign: "right", fontWeight: 700, fontSize: 13, color: "#065f46" }}>{fmt(porRubroAnio.cierresCobrado)}</td>
-                      <td style={{ padding: "12px 8px", textAlign: "right", fontWeight: 700, fontSize: 13, color: porRubroAnio.cierresPendiente > 0 ? "#dc2626" : "#9ca3af" }}>{fmt(porRubroAnio.cierresPendiente)}</td>
                       {["polizas","administracion","mantenimiento","condominios"].map(r => (
                         <td key={r} style={{ padding: "12px 8px", textAlign: "right", fontWeight: 700, fontSize: 13, color: "#374151" }}>{fmt(porRubroAnio[r])}</td>
                       ))}
