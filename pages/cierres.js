@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
@@ -36,6 +36,12 @@ export default function Cierres() {
   const [busqueda, setBusqueda] = useState("");
   const [filtroPendiente, setFiltroPendiente] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [cierre_pagos, setCierrePagos] = useState([]);
+  const [expandedId, setExpandedId] = useState(null);
+  const [showModalPago, setShowModalPago] = useState(false);
+  const [cierreActivoPago, setCierreActivoPago] = useState(null);
+  const [formPago, setFormPago] = useState({ concepto: "apartado", monto: "", fecha: new Date().toISOString().split("T")[0], metodo_pago: "transferencia", notas: "" });
+  const [savingPago, setSavingPago] = useState(false);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -71,8 +77,12 @@ export default function Cierres() {
 
   const loadCierres = async () => {
     setLoading(true);
-    const { data } = await supabase.from("cierres").select("*").order("fecha_cierre", { ascending: false });
-    setCierres(data || []);
+    const [{ data: cierresData }, { data: pagosData }] = await Promise.all([
+      supabase.from("cierres").select("*").order("fecha_cierre", { ascending: false }),
+      supabase.from("cierre_pagos").select("*").order("fecha", { ascending: true }),
+    ]);
+    setCierres(cierresData || []);
+    setCierrePagos(pagosData || []);
     setLoading(false);
   };
 
@@ -239,6 +249,74 @@ export default function Cierres() {
     const pagVend = parseFloat(v) || 0;
     const comVend = parseFloat(form.com_vendedor) || 0;
     setForm(f => ({ ...f, pag_vendedor: v, pend_vend: Math.max(0, comVend - pagVend).toFixed(2) }));
+  };
+
+  // ── Pagos de cierre ──
+  const openPago = (cierre) => {
+    setCierreActivoPago(cierre);
+    const pagosDelCierre = cierre_pagos.filter(p => p.cierre_id === cierre.id);
+    const totalPagado = pagosDelCierre.reduce((a, p) => a + (p.monto || 0), 0);
+    const saldoPend = Math.max(0, (cierre.comision || 0) - totalPagado);
+    // Detectar concepto sugerido
+    const tienePagos = pagosDelCierre.length;
+    const esVenta = (cierre.operacion || "") === "VENTA";
+    let conceptoSugerido = "apartado";
+    if (tienePagos === 1 && esVenta) conceptoSugerido = "promesa";
+    else if (tienePagos >= 2 && esVenta) conceptoSugerido = "escritura";
+    else if (tienePagos === 1 && !esVenta) conceptoSugerido = "complemento";
+    setFormPago({ concepto: conceptoSugerido, monto: saldoPend > 0 ? saldoPend.toString() : "", fecha: new Date().toISOString().split("T")[0], metodo_pago: "transferencia", notas: "" });
+    setShowModalPago(true);
+  };
+
+  const savePago = async () => {
+    if (!cierreActivoPago || !formPago.monto) return;
+    setSavingPago(true);
+    const { error } = await supabase.from("cierre_pagos").insert([{
+      cierre_id: cierreActivoPago.id,
+      concepto: formPago.concepto,
+      monto: parseFloat(formPago.monto) || 0,
+      fecha: formPago.fecha,
+      metodo_pago: formPago.metodo_pago,
+      notas: formPago.notas,
+    }]);
+    if (!error) {
+      // Actualizar cobrado en cierres
+      const pagosActuales = cierre_pagos.filter(p => p.cierre_id === cierreActivoPago.id);
+      const totalCobrado = pagosActuales.reduce((a, p) => a + (p.monto || 0), 0) + (parseFloat(formPago.monto) || 0);
+      const pendiente = Math.max(0, (cierreActivoPago.comision || 0) - totalCobrado);
+      await supabase.from("cierres").update({
+        cobrado: totalCobrado,
+        pendiente,
+        cobrado_bool: totalCobrado >= (cierreActivoPago.comision || 0) && (cierreActivoPago.comision || 0) > 0,
+      }).eq("id", cierreActivoPago.id);
+      showToast("Pago registrado ✅");
+      setShowModalPago(false);
+      loadCierres();
+    } else {
+      showToast("Error: " + error.message, false);
+    }
+    setSavingPago(false);
+  };
+
+  const deletePago = async (pagoId, cierreId, monto) => {
+    if (!confirm("¿Eliminar este pago?")) return;
+    await supabase.from("cierre_pagos").delete().eq("id", pagoId);
+    // Recalcular cobrado
+    const pagosRestantes = cierre_pagos.filter(p => p.cierre_id === cierreId && p.id !== pagoId);
+    const totalCobrado = pagosRestantes.reduce((a, p) => a + (p.monto || 0), 0);
+    const cierre = cierres.find(c => c.id === cierreId);
+    const pendiente = Math.max(0, (cierre?.comision || 0) - totalCobrado);
+    await supabase.from("cierres").update({
+      cobrado: totalCobrado, pendiente,
+      cobrado_bool: totalCobrado >= (cierre?.comision || 0) && (cierre?.comision || 0) > 0,
+    }).eq("id", cierreId);
+    showToast("Pago eliminado");
+    loadCierres();
+  };
+
+  const saveFechaCobro = async (cierreId, campo, fecha) => {
+    await supabase.from("cierres").update({ [campo]: fecha || null }).eq("id", cierreId);
+    loadCierres();
   };
 
   // Filtrado
@@ -486,6 +564,48 @@ export default function Cierres() {
                         <p style={{ margin: 0, fontSize: 16, fontWeight: 900, color: "#065f46" }}>{fmt(empNeto)}</p>
                       </div>
                     </div>
+
+                    {/* Pagos del cierre */}
+                    {(() => {
+                      const pagosC = cierre_pagos.filter(p => p.cierre_id === c.id);
+                      return (
+                        <div style={{ marginTop: 8 }}>
+                          {pagosC.length > 0 && (
+                            <div style={{ marginBottom: 8 }}>
+                              <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>Pagos registrados</p>
+                              {pagosC.map((p, i) => (
+                                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", background: "#f0fdf4", borderRadius: 6, marginBottom: 3 }}>
+                                  <div>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: "#374151", textTransform: "capitalize" }}>{p.concepto}</span>
+                                    <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 6 }}>{p.fecha}</span>
+                                    {p.metodo_pago && <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 4 }}>· {p.metodo_pago}</span>}
+                                  </div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                    <span style={{ fontSize: 12, fontWeight: 800, color: "#065f46" }}>{fmt(p.monto)}</span>
+                                    <button onClick={() => deletePago(p.id, c.id, p.monto)} style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 12, padding: 0 }}>✕</button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
+                            <div>
+                              <p style={{ margin: "0 0 2px", fontSize: 10, color: "#7c3aed", fontWeight: 700 }}>Cobro asesor</p>
+                              <input type="date" value={c.fecha_cobro_asesor || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_asesor", e.target.value)}
+                                style={{ width: "100%", padding: "4px 6px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 11, boxSizing: "border-box" }} />
+                            </div>
+                            <div>
+                              <p style={{ margin: "0 0 2px", fontSize: 10, color: "#0369a1", fontWeight: 700 }}>Cobro gerente</p>
+                              <input type="date" value={c.fecha_cobro_gerente || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_gerente", e.target.value)}
+                                style={{ width: "100%", padding: "4px 6px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 11, boxSizing: "border-box" }} />
+                            </div>
+                          </div>
+                          <button onClick={() => openPago(c)} style={{ width: "100%", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#065f46" }}>
+                            + Registrar pago
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })
@@ -519,7 +639,8 @@ export default function Cierres() {
                         const hayPend = c.pendiente > 0 || c.pend_vend > 0 || gerPend > 0;
                         const esRenov = esRenovacion(c.propiedad);
                         return (
-                          <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6", background: hayPend ? "#fffdf5" : "#fff" }}>
+                          <React.Fragment key={c.id}>
+                          <tr style={{ borderTop: "1px solid #f3f4f6", background: hayPend ? "#fffdf5" : "#fff" }}>
                             <td style={{ padding: "9px 10px", fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>{c.fecha_cierre || "-"}</td>
                             <td style={{ padding: "9px 10px", fontWeight: 600, fontSize: 12, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {c.propiedad}
@@ -547,11 +668,54 @@ export default function Cierres() {
                             <td style={{ padding: "9px 10px", fontSize: 12, fontWeight: 800, color: "#065f46" }}>{fmt(empNeto)}</td>
                             <td style={{ padding: "9px 10px" }}>
                               <div style={{ display: "flex", gap: 4 }}>
-                                <button onClick={() => openEdit(c)} style={{ background: "#f3f4f6", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Editar</button>
+                                <button onClick={() => openPago(c)} style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#065f46" }}>+ Pago</button>
+                                <button onClick={() => setExpandedId(expandedId === c.id ? null : c.id)} style={{ background: "#f3f4f6", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>···</button>
                                 <button onClick={() => deleteCierre(c.id, c.propiedad)} style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#991b1b" }}>X</button>
                               </div>
                             </td>
                           </tr>
+                          {expandedId === c.id ? (
+                            <tr style={{ background: "#f8faff" }}>
+                              <td colSpan={14} style={{ padding: "12px 16px" }}>
+                                <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
+                                  <div style={{ flex: 1, minWidth: 280 }}>
+                                    <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>Pagos registrados</p>
+                                    {cierre_pagos.filter(p => p.cierre_id === c.id).length === 0 && (
+                                      <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 8px" }}>Sin pagos aún</p>
+                                    )}
+                                    {cierre_pagos.filter(p => p.cierre_id === c.id).map((p, i) => (
+                                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "#fff", borderRadius: 8, marginBottom: 4, border: "1px solid #e5e7eb" }}>
+                                        <div>
+                                          <span style={{ fontSize: 12, fontWeight: 700, textTransform: "capitalize" }}>{p.concepto}</span>
+                                          <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>{p.fecha}</span>
+                                          <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>· {p.metodo_pago}</span>
+                                          {p.notas && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>· {p.notas}</span>}
+                                        </div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                          <span style={{ fontSize: 13, fontWeight: 800, color: "#065f46" }}>{fmt(p.monto)}</span>
+                                          <button onClick={() => deletePago(p.id, c.id, p.monto)} style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 13 }}>✕</button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                    <button onClick={() => openPago(c)} style={{ marginTop: 4, background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#065f46" }}>+ Registrar pago</button>
+                                  </div>
+                                  <div style={{ minWidth: 240 }}>
+                                    <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>Fechas cobro comisiones</p>
+                                    <div style={{ marginBottom: 8 }}>
+                                      <p style={{ margin: "0 0 3px", fontSize: 11, color: "#7c3aed", fontWeight: 700 }}>Asesor — {c.vendedor}</p>
+                                      <input type="date" value={c.fecha_cobro_asesor || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_asesor", e.target.value)} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12 }} />
+                                    </div>
+                                    <div style={{ marginBottom: 8 }}>
+                                      <p style={{ margin: "0 0 3px", fontSize: 11, color: "#0369a1", fontWeight: 700 }}>Gerente — Guillermo</p>
+                                      <input type="date" value={c.fecha_cobro_gerente || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_gerente", e.target.value)} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12 }} />
+                                    </div>
+                                    <button onClick={() => { openEdit(c); setExpandedId(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✏️ Editar cierre</button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                          </React.Fragment>
                         );
                       })}
                     </tbody>
