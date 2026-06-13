@@ -1115,28 +1115,31 @@ export default function Liquidaciones() {
       startY: y,
       head: [["Periodo", "Renta", "Comisión", "Pagado", "Fecha", "Estado"]],
       body: (() => {
-        // Solo mostrar liquidaciones hasta el último día del mes del reporte
+        // Mostrar todas las liquidaciones hasta el último día del mes del reporte
         const ultimoDiaMes = new Date(anioCorte, mesNumCorte, 0);
-        // Periodos que ya tienen un registro "pagado" — excluir sus parciales
-        const periodosConPagadoPDF = new Set(
-          liqProp.filter(l => {
-            if (!l.payment_date) return false;
-            const fp = new Date(l.payment_date + "T12:00:00");
-            return l.status === "pagado" && fp <= ultimoDiaMes;
-          }).map(l => l.period_description)
-        );
         const liqHastaMes = liqProp.filter(l => {
           if (!l.payment_date) return l.status !== "pagado";
           const fechaPago = new Date(l.payment_date + "T12:00:00");
-          if (fechaPago > ultimoDiaMes) return false;
-          // Si este periodo ya tiene un "pagado", no mostrar los parciales
-          if (l.status !== "pagado" && periodosConPagadoPDF.has(l.period_description)) return false;
-          return true;
+          return fechaPago <= ultimoDiaMes;
+        }).sort((a, b) => {
+          // Ordenar por periodo y dentro del periodo: parciales primero, pagado al final
+          if (a.period_description !== b.period_description) {
+            return (a.period_description || "").localeCompare(b.period_description || "");
+          }
+          if (a.status === "pagado_parcial" && b.status === "pagado") return -1;
+          if (a.status === "pagado" && b.status === "pagado_parcial") return 1;
+          return new Date(a.payment_date) - new Date(b.payment_date);
         });
         return liqHastaMes.length > 0 ? liqHastaMes.map(l => [
           l.period_description || "—", fmt(l.total_rent), fmt(l.total_commission),
           fmt(l.amount_paid), fmtFecha(l.payment_date),
-          l.status === "pagado" ? "Pagado" : l.status === "pagado_parcial" ? "Parcial" : "Pendiente"
+          (() => {
+            // Si hay un "pagado" en el mismo periodo, los parciales son "Anticipo"
+            const hayPagadoEnPeriodo = liqHastaMes.some(x => x.period_description === l.period_description && x.status === "pagado");
+            if (l.status === "pagado") return hayPagadoEnPeriodo && liqHastaMes.filter(x => x.period_description === l.period_description).length > 1 ? "Finiquito" : "Pagado";
+            if (l.status === "pagado_parcial") return hayPagadoEnPeriodo ? "Anticipo" : "Parcial";
+            return "Pendiente";
+          })()
         ]) : [["Sin liquidaciones registradas", "", "", "", "", ""]];
       })(),
       styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: tableMargin,
