@@ -753,6 +753,28 @@ export default function Liquidaciones() {
       const d = new Date(t.created_at);
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
+
+    // Tickets de meses anteriores con saldo pendiente (charged_amount - advance_amount > 0, no cerrados)
+    const ticketsPendientesAnteriores = tickets.filter(t => {
+      if (!propsProp.some(p => p.name === t.property_name)) return false;
+      if (t.payer !== "propietario") return false;
+      if (!t.charged_amount || t.charged_amount <= 0) return false;
+      if (["cerrado", "resuelto"].includes(t.status)) return false;
+      if (!t.created_at) return false;
+      const d = new Date(t.created_at);
+      // Solo tickets de meses ANTERIORES al mes del reporte
+      const esMesActual = d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
+      if (esMesActual) return false;
+      const esFuturo = d.getFullYear() > anioCorte || (d.getFullYear() === anioCorte && d.getMonth() > mesNumCorte - 1);
+      if (esFuturo) return false;
+      // Tiene saldo pendiente
+      const saldo = (t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0);
+      return saldo > 0;
+    });
+    const saldoPendienteAnteriores = ticketsPendientesAnteriores.reduce((a, t) => {
+      const saldo = (t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0);
+      return a + saldo;
+    }, 0);
     const gastosProp = propertyExpenses.filter(e => {
       if (!propsProp.some(p => p.name === e.property_name)) return false;
       if (e.paid_by !== "propietario") return false;
@@ -814,9 +836,9 @@ export default function Liquidaciones() {
     const anticipoMantProp   = ticketsMantProp.reduce((a, t) => a + (t.advance_amount || 0), 0);
     const costoMantProp      = costoMantPropTotal - anticipoMantProp;
     const gastosOpProp   = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
-    const totalLiqProp   = totalRentaProp - totalComProp - costoMantProp - gastosOpProp;
+    const totalLiqProp   = totalRentaProp - totalComProp - costoMantProp - gastosOpProp - saldoPendienteAnteriores;
     // Balance real considerando solo el dinero que Emporio tiene en su poder
-    const balanceEmporio = rentaEmporio - totalComProp - costoMantProp - gastosOpProp;
+    const balanceEmporio = rentaEmporio - totalComProp - costoMantProp - gastosOpProp - saldoPendienteAnteriores;
     const liqDelMes = liqProp.filter(l => {
       const desc = (l.period_description || "").toLowerCase();
       const mesMes = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
@@ -866,7 +888,7 @@ export default function Liquidaciones() {
       const mesMes2 = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
       return desc.includes(mesMes2) && desc.includes(String(anioCorte)) && l.status === "pagado";
     });
-    const extraLines = (costoMantPropTotal > 0 ? 1 : 0) + (anticipoMantProp > 0 ? 2 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 && !yaLiquidadoPre ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0) + (totalComYaCobrada > 0 ? 1 : 0) + (totalComProp > 0 ? 1 : 0);
+    const extraLines = (costoMantPropTotal > 0 ? 1 : 0) + (anticipoMantProp > 0 ? 2 : 0) + (saldoPendienteAnteriores > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 && !yaLiquidadoPre ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0) + (totalComYaCobrada > 0 ? 1 : 0) + (totalComProp > 0 ? 1 : 0);
     const boxH = 28 + extraLines * 7;
 
     doc.setFillColor(185, 28, 60); doc.rect(14, y, 182, 7, "F");
@@ -940,6 +962,13 @@ export default function Liquidaciones() {
         doc.text(`-${fmt(costoMantProp)}`, 105, lineY);
         lineY += 7;
       }
+    }
+    if (saldoPendienteAnteriores > 0) {
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+      doc.text("Mantenimiento meses anteriores:", 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
+      doc.text(`-${fmt(saldoPendienteAnteriores)}`, 105, lineY);
+      lineY += 7;
     }
     if (gastosOpProp > 0) {
       doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
@@ -1071,10 +1100,14 @@ export default function Liquidaciones() {
     if (y > 230) { doc.addPage(); y = 15; }
 
     y = sectionTitle("Mantenimiento", y);
+    const todosTicketsPDF = [
+      ...ticketsProp,
+      ...ticketsPendientesAnteriores.map(t => ({ ...t, _esPendienteAnterior: true }))
+    ];
     autoTable(doc, {
       startY: y,
       head: [["Título", "Propiedad", "Quién paga", "Costo", "Estado", "Fecha"]],
-      body: ticketsProp.length > 0 ? ticketsProp.map(t => [
+      body: todosTicketsPDF.length > 0 ? todosTicketsPDF.map(t => [
         t.title || "—", t.property_name || "—",
         t.payer === "propietario" ? "Propietario" : t.payer === "inquilino" ? "Inquilino" : "Inmobiliaria",
         t.payer === "propietario" && t.charged_amount > 0 ? fmt(t.charged_amount) : "—",
