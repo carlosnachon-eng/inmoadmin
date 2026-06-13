@@ -275,8 +275,7 @@ export default function Cierres() {
       notas: formPago.notas,
     }]);
     if (!error) {
-      const pagosActuales = cierre_pagos.filter(p => p.cierre_id === cierreActivoPago.id);
-      const totalCobrado = pagosActuales.reduce((a, p) => a + (p.monto || 0), 0) + (parseFloat(formPago.monto) || 0);
+      const totalCobrado = (cierreActivoPago.cobrado || 0) + (parseFloat(formPago.monto) || 0);
       const pendiente = Math.max(0, (cierreActivoPago.comision || 0) - totalCobrado);
       await supabase.from("cierres").update({
         cobrado: totalCobrado,
