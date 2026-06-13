@@ -14,6 +14,7 @@ const ASESORES = {
   'ivanmtzco@gmail.com': 'Iván',
   'nextelmoto2@gmail.com': 'Andrea',
   'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
+  'islas.amanda111@gmail.com': 'Amanda',
 }
 
 const ADMINS = [
@@ -24,14 +25,14 @@ const ADMINS = [
 const VENDEDOR_MAP = {
   'Ariannet': 'ari', 'Angélica': 'angelica', 'Iván': 'ivan',
   'Rosario': 'rosario', 'Andrea': 'andrea', 'Guillermo': 'guillermo',
+  'Amanda': 'amanda',
 }
 
-const MEDALLAS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣']
-const NOMBRES_LISTA = ['Ariannet', 'Angélica', 'Rosario', 'Iván', 'Andrea', 'Guillermo']
+const MEDALLAS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣']
+const NOMBRES_LISTA = ['Ariannet', 'Angélica', 'Rosario', 'Iván', 'Andrea', 'Guillermo', 'Amanda']
 const META_INGRESOS = 90000
 const BONOS = [5000, 3000, 1500]
 
-// Meta de citas dinámica: (días del mes - domingos) × 2
 function calcularMetaCitas(anio, mes) {
   const diasEnMes = new Date(anio, mes, 0).getDate()
   let domingos = 0
@@ -192,7 +193,6 @@ export default function KPIs() {
           </div>
         )}
 
-        {/* Header */}
         <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '14px 20px' }}>
           <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 32, objectFit: 'contain' }} />
@@ -212,7 +212,6 @@ export default function KPIs() {
                 </div>
               )}
 
-              {/* Mini tarjeta de bono personal */}
               {miStats && (
                 <div style={{
                   background: miStats.cumpleIngresos && miStats.cumpleCitas ? '#f0fdf4' : miStats.cumpleIngresos || miStats.cumpleCitas ? '#fffbeb' : '#f8f8f8',
@@ -279,7 +278,6 @@ export default function KPIs() {
                 </button>
               </div>
 
-              {/* Bonos */}
               <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
                 <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
                   🎯 Bonos · {fmt(META_INGRESOS)} + {META_CITAS_MES} citas
@@ -320,7 +318,6 @@ export default function KPIs() {
                           <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, marginBottom: 6 }}>
                             {a.citas_efectivas} citas · {fmt(a.ingresos)}
                           </div>
-                          {/* Semáforo bono inline */}
                           <div style={{
                             display: 'inline-flex', alignItems: 'center', gap: 4,
                             background: a.cumpleIngresos && a.cumpleCitas ? '#f0fdf4' : a.cumpleIngresos || a.cumpleCitas ? '#fffbeb' : '#f3f4f6',
