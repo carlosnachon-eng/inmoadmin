@@ -1102,10 +1102,21 @@ export default function Liquidaciones() {
       body: (() => {
         // Solo mostrar liquidaciones hasta el último día del mes del reporte
         const ultimoDiaMes = new Date(anioCorte, mesNumCorte, 0);
+        // Periodos que ya tienen un registro "pagado" — excluir sus parciales
+        const periodosConPagadoPDF = new Set(
+          liqProp.filter(l => {
+            if (!l.payment_date) return false;
+            const fp = new Date(l.payment_date + "T12:00:00");
+            return l.status === "pagado" && fp <= ultimoDiaMes;
+          }).map(l => l.period_description)
+        );
         const liqHastaMes = liqProp.filter(l => {
-          if (!l.payment_date) return l.status !== "pagado"; // pendientes sin fecha siempre
+          if (!l.payment_date) return l.status !== "pagado";
           const fechaPago = new Date(l.payment_date + "T12:00:00");
-          return fechaPago <= ultimoDiaMes;
+          if (fechaPago > ultimoDiaMes) return false;
+          // Si este periodo ya tiene un "pagado", no mostrar los parciales
+          if (l.status !== "pagado" && periodosConPagadoPDF.has(l.period_description)) return false;
+          return true;
         });
         return liqHastaMes.length > 0 ? liqHastaMes.map(l => [
           l.period_description || "—", fmt(l.total_rent), fmt(l.total_commission),
@@ -1500,7 +1511,15 @@ export default function Liquidaciones() {
                 const liquidoMensual = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0) - calcComision(c), 0);
                 const pendienteMes = calcPendienteMes(expediente.email);
                 const ticketsAbiertos = ticketsProp.filter(t => !["cerrado","resuelto"].includes(t.status));
-                const totalLiquidado = liqProp.reduce((a, l) => a + (l.amount_paid || 0), 0);
+                // Total liquidado: si hay un registro "pagado" en un periodo, no sumar los parciales del mismo periodo
+                const periodosConPagado = new Set(
+                  liqProp.filter(l => l.status === "pagado").map(l => l.period_description)
+                );
+                const totalLiquidado = liqProp.reduce((a, l) => {
+                  // Si este periodo ya tiene un "pagado", ignorar los parciales
+                  if (l.status !== "pagado" && periodosConPagado.has(l.period_description)) return a;
+                  return a + (l.amount_paid || 0);
+                }, 0);
                 const conceptoLabel = { adelanto: "Adelanto", parcial: "Pago parcial", total: "Liquidación total" };
 
                 return (
