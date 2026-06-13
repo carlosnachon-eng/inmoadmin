@@ -17,7 +17,6 @@ const PCT_BAJO = 0.03;
 const PCT_VENDEDOR_DEFAULT = 20;
 const CARLOS = "carlos.nachon@emporioinmobiliario.mx";
 
-// Renovaciones: no aplica gerente y no cuentan para la meta mensual
 const esRenovacion = (propiedad) => (propiedad || "").toLowerCase().startsWith("renov");
 
 export default function Cierres() {
@@ -86,7 +85,6 @@ export default function Cierres() {
     setLoading(false);
   };
 
-  // Calcula % gerente usando comision TOTAL, excluyendo renovaciones
   const getPctGerente = (anio, mes, allCierres) => {
     const totalMes = allCierres
       .filter(c => c.anio === anio && c.mes === mes && !esRenovacion(c.propiedad))
@@ -94,7 +92,6 @@ export default function Cierres() {
     return totalMes >= META_GERENTE ? PCT_ALTO : PCT_BAJO;
   };
 
-  // Monto gerente por cierre — 0 si es renovacion o antes de sept 2025
   const getMontoGerente = (c, allCierres) => {
     if (esRenovacion(c.propiedad)) return 0;
     if (c.anio < 2025 || (c.anio === 2025 && c.mes < 9)) return 0;
@@ -188,7 +185,6 @@ export default function Cierres() {
   };
 
   const handlePropiedadChange = (v) => {
-    const comVend = esRenovacion(v) ? form.com_vendedor : ((parseFloat(form.comision) || 0) * (parseFloat(form.pct_vendedor) || PCT_VENDEDOR_DEFAULT) / 100).toFixed(2);
     setForm(f => ({
       ...f,
       propiedad: v,
@@ -257,7 +253,6 @@ export default function Cierres() {
     const pagosDelCierre = cierre_pagos.filter(p => p.cierre_id === cierre.id);
     const totalPagado = pagosDelCierre.reduce((a, p) => a + (p.monto || 0), 0);
     const saldoPend = Math.max(0, (cierre.comision || 0) - totalPagado);
-    // Detectar concepto sugerido
     const tienePagos = pagosDelCierre.length;
     const esVenta = (cierre.operacion || "") === "VENTA";
     let conceptoSugerido = "apartado";
@@ -280,7 +275,6 @@ export default function Cierres() {
       notas: formPago.notas,
     }]);
     if (!error) {
-      // Actualizar cobrado en cierres
       const pagosActuales = cierre_pagos.filter(p => p.cierre_id === cierreActivoPago.id);
       const totalCobrado = pagosActuales.reduce((a, p) => a + (p.monto || 0), 0) + (parseFloat(formPago.monto) || 0);
       const pendiente = Math.max(0, (cierreActivoPago.comision || 0) - totalCobrado);
@@ -301,7 +295,6 @@ export default function Cierres() {
   const deletePago = async (pagoId, cierreId, monto) => {
     if (!confirm("¿Eliminar este pago?")) return;
     await supabase.from("cierre_pagos").delete().eq("id", pagoId);
-    // Recalcular cobrado
     const pagosRestantes = cierre_pagos.filter(p => p.cierre_id === cierreId && p.id !== pagoId);
     const totalCobrado = pagosRestantes.reduce((a, p) => a + (p.monto || 0), 0);
     const cierre = cierres.find(c => c.id === cierreId);
@@ -348,7 +341,6 @@ export default function Cierres() {
 
   const aniosDisponibles = [...new Set(cierres.map(c => c.anio))].sort((a, b) => b - a);
 
-  // Info mes para gerente — usa comision TOTAL, excluye renovaciones
   const getMesInfo = (anio, mes) => {
     const total = cierres
       .filter(c => c.anio === anio && c.mes === mes && !esRenovacion(c.propiedad))
@@ -492,7 +484,7 @@ export default function Cierres() {
           ))}
         </div>
 
-        {/* Vista mobile — tarjetas */}
+        {/* Vista mobile */}
         {isMobile ? (
           <div>
             {loading ? (
@@ -565,7 +557,6 @@ export default function Cierres() {
                       </div>
                     </div>
 
-                    {/* Pagos del cierre */}
                     {(() => {
                       const pagosC = cierre_pagos.filter(p => p.cierre_id === c.id);
                       return (
@@ -787,7 +778,7 @@ export default function Cierres() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modal Nuevo/Editar Cierre */}
       {showModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 12 }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: isMobile ? 18 : 24, width: "100%", maxWidth: 640, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
@@ -807,7 +798,6 @@ export default function Cierres() {
               ))}
             </div>
 
-            {/* Info basica */}
             <div style={{ background: "#f9fafb", borderRadius: 10, padding: 12, marginBottom: 10 }}>
               <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 800, color: "#6b7280", textTransform: "uppercase" }}>Informacion del cierre</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -833,7 +823,6 @@ export default function Cierres() {
               </div>
             </div>
 
-            {/* Comision y cobros */}
             <div style={{ background: "#f9fafb", borderRadius: 10, padding: 12, marginBottom: 10 }}>
               <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 800, color: "#6b7280", textTransform: "uppercase" }}>Comision y cobros</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
@@ -852,7 +841,6 @@ export default function Cierres() {
               </div>
             </div>
 
-            {/* Vendedor */}
             <div style={{ background: "#faf5ff", borderRadius: 10, padding: 12, marginBottom: 10 }}>
               <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 800, color: "#7c3aed", textTransform: "uppercase" }}>
                 Comision vendedor — {form.vendedor}
@@ -880,7 +868,6 @@ export default function Cierres() {
               </div>
             </div>
 
-            {/* Gerente — solo si NO es renovacion */}
             {!esRenov && (
               <div style={{ background: "#eff6ff", borderRadius: 10, padding: 12, marginBottom: 10 }}>
                 <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 800, color: "#1e40af", textTransform: "uppercase" }}>Gerente — Guillermo</p>
@@ -904,7 +891,6 @@ export default function Cierres() {
               </div>
             )}
 
-            {/* Resumen Emporio */}
             <div style={{ background: "#f0fdf4", borderRadius: 10, padding: 12, marginBottom: 12, border: "1px solid #86efac" }}>
               <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 800, color: "#065f46", textTransform: "uppercase" }}>Resumen Emporio</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
@@ -935,6 +921,85 @@ export default function Cierres() {
           </div>
         </div>
       )}
+
+      {/* Modal Registrar Pago */}
+      {showModalPago && cierreActivoPago && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 12 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: isMobile ? 18 : 24, width: "100%", maxWidth: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#1a1a2e" }}>Registrar pago</h2>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{cierreActivoPago.propiedad}</p>
+              </div>
+              <button onClick={() => setShowModalPago(false)} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 16 }}>✕</button>
+            </div>
+
+            <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", gap: 20 }}>
+              <div>
+                <p style={{ margin: 0, fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Comisión total</p>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>{fmt(cierreActivoPago.comision)}</p>
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: 10, color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>Ya cobrado</p>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#065f46" }}>{fmt(cierreActivoPago.cobrado)}</p>
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: 10, color: "#dc2626", fontWeight: 700, textTransform: "uppercase" }}>Pendiente</p>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#dc2626" }}>{fmt(cierreActivoPago.pendiente)}</p>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 10 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4, textTransform: "uppercase" }}>Concepto</label>
+                <select value={formPago.concepto} onChange={e => setFormPago(f => ({ ...f, concepto: e.target.value }))}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", background: "#fff" }}>
+                  <option value="apartado">Apartado</option>
+                  <option value="promesa">Promesa</option>
+                  <option value="escritura">Escritura</option>
+                  <option value="complemento">Complemento</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4, textTransform: "uppercase" }}>Monto</label>
+                <input type="number" value={formPago.monto} onChange={e => setFormPago(f => ({ ...f, monto: e.target.value }))}
+                  placeholder="0" style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid #86efac", fontSize: 14, boxSizing: "border-box" }} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4, textTransform: "uppercase" }}>Fecha</label>
+                  <input type="date" value={formPago.fecha} onChange={e => setFormPago(f => ({ ...f, fecha: e.target.value }))}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4, textTransform: "uppercase" }}>Método</label>
+                  <select value={formPago.metodo_pago} onChange={e => setFormPago(f => ({ ...f, metodo_pago: e.target.value }))}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", background: "#fff" }}>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="deposito">Depósito</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4, textTransform: "uppercase" }}>Notas (opcional)</label>
+                <input value={formPago.notas} onChange={e => setFormPago(f => ({ ...f, notas: e.target.value }))}
+                  placeholder="Referencia, observaciones..." style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+              <button onClick={() => setShowModalPago(false)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+              <button onClick={savePago} disabled={savingPago || !formPago.monto}
+                style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 10, padding: "11px 24px", cursor: savingPago ? "not-allowed" : "pointer", fontWeight: 700, fontSize: 14, opacity: savingPago ? 0.7 : 1 }}>
+                {savingPago ? "Guardando..." : "Registrar pago"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
