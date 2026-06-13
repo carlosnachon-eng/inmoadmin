@@ -9,7 +9,7 @@ const MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 const VENDEDORES = ["Carlos", "Ivonne", "Rubi", "Miguel", "Ari", "Andrea",
-  "Guillermo", "Rosario", "Angelica", "Fabiola", "Majo", "Ivan", "Oficina", "Direccion", "Otro"];
+  "Guillermo", "Rosario", "Angelica", "Fabiola", "Majo", "Ivan", "Amanda", "Oficina", "Direccion", "Otro"];
 
 const META_GERENTE = 380000;
 const PCT_ALTO = 0.05;
