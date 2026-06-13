@@ -19,9 +19,7 @@ export default async function handler(req, res) {
   const hoy = new Date();
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
   const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split('T')[0];
-  const en30dias = new Date(hoy); en30dias.setDate(en30dias.getDate() + 30);
 
-  // ── Datos de arrendamiento ──
   const [
     { data: properties },
     { data: payments },
@@ -36,26 +34,24 @@ export default async function handler(req, res) {
     supabase.from("kpis_diarios").select("asesor, citas_efectivas").gte("fecha", inicioMes).lte("fecha", finMes),
   ]);
 
-  // Arrendamiento
-  const propOcupadas   = (properties || []).filter(p => p.status === "ocupada");
+  const propOcupadas    = (properties || []).filter(p => p.status === "ocupada");
   const propDisponibles = (properties || []).filter(p => p.status === "disponible");
-  const rentaMensual   = propOcupadas.reduce((a, p) => a + (p.rent_amount || 0), 0);
-  const cobrado        = (payments || []).filter(p => p.status === "pagado").reduce((a, p) => a + (p.amount || 0), 0);
-  const pendiente      = (payments || []).filter(p => p.status === "pendiente").reduce((a, p) => a + (p.amount || 0), 0);
-  const atrasado       = (payments || []).filter(p => p.status === "atrasado").reduce((a, p) => a + (p.amount || 0), 0);
+  const rentaMensual    = propOcupadas.reduce((a, p) => a + (p.rent_amount || 0), 0);
+  const cobrado         = (payments || []).filter(p => p.status === "pagado").reduce((a, p) => a + (p.amount || 0), 0);
+  const pendiente       = (payments || []).filter(p => p.status === "pendiente").reduce((a, p) => a + (p.amount || 0), 0);
+  const atrasado        = (payments || []).filter(p => p.status === "atrasado").reduce((a, p) => a + (p.amount || 0), 0);
 
-  // Pólizas por vencer en 30 días
   const polizasPorVencer = (expedientes || []).filter(e => {
     if (!e.fecha_vigencia) return false;
     const dias = Math.ceil((new Date(e.fecha_vigencia + 'T12:00:00') - hoy) / (1000 * 60 * 60 * 24));
     return dias <= 30 && dias >= 0;
   });
 
-  // Ventas — cierres por asesor
-  const ASESORES = ['Ariannet', 'Angélica', 'Rosario', 'Iván', 'Andrea', 'Guillermo'];
+  const ASESORES = ['Ariannet', 'Angélica', 'Rosario', 'Iván', 'Andrea', 'Guillermo', 'Amanda'];
   const VENDEDOR_MAP = {
     'Ariannet': 'ari', 'Angélica': 'angelica', 'Iván': 'ivan',
     'Rosario': 'rosario', 'Andrea': 'andrea', 'Guillermo': 'guillermo',
+    'Amanda': 'amanda',
   };
   const META_INGRESOS = 90000;
 
@@ -74,15 +70,12 @@ export default async function handler(req, res) {
 
   const html = `
   <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;background:#f8f8f8;padding:24px;">
-
-    <!-- Header -->
     <div style="background:#1a1a2e;border-radius:12px;padding:24px;text-align:center;margin-bottom:16px;">
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style="height:48px;margin-bottom:8px;" />
       <h1 style="color:#c8a96e;margin:0;font-size:18px;font-weight:800;">Reporte Semanal</h1>
       <p style="color:rgba(255,255,255,0.6);margin:4px 0 0;font-size:13px;">${hoy.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
     </div>
 
-    <!-- Arrendamiento -->
     <div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;border:1px solid #e5e7eb;">
       <h2 style="margin:0 0 16px;font-size:14px;font-weight:800;color:#374151;text-transform:uppercase;letter-spacing:1px;">🏢 Arrendamiento — ${mes}</h2>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
@@ -125,14 +118,13 @@ export default async function handler(req, res) {
       </div>` : ''}
     </div>
 
-    <!-- Ventas -->
     <div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;border:1px solid #e5e7eb;">
       <h2 style="margin:0 0 4px;font-size:14px;font-weight:800;color:#374151;text-transform:uppercase;letter-spacing:1px;">🏆 Ventas — ${mes}</h2>
       <p style="margin:0 0 16px;font-size:12px;color:#9ca3af;">${totalCierres} cierres · ${fmt(totalIngresos)} en ingresos</p>
       ${rankingVentas.map((a, i) => `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f3f4f6;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <span style="font-size:16px;">${['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣'][i]}</span>
+          <span style="font-size:16px;">${['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣'][i]}</span>
           <div>
             <div style="font-size:13px;font-weight:700;color:#374151;">${a.nombre}</div>
             <div style="font-size:11px;color:#9ca3af;">${a.citas} citas efectivas</div>
@@ -146,7 +138,7 @@ export default async function handler(req, res) {
     </div>
 
     <p style="text-align:center;font-size:12px;color:#9ca3af;margin:0;">
-      <a href="https://app.emporioinmobiliario.com.mx" style="color:#b91c3c;font-weight:600;">Abrir ImoAdmin →</a>
+      <a href="https://app.emporioinmobiliario.com.mx" style="color:#b91c3c;font-weight:600;">Abrir InmoAdmin →</a>
     </p>
   </div>`;
 
