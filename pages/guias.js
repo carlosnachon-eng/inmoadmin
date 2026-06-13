@@ -16,6 +16,7 @@ const USUARIOS_PERMITIDOS = [
   'rddd298@gmail.com',
   'ivanmtzco@gmail.com',
   'nextelmoto2@gmail.com',
+  'islas.amanda111@gmail.com',
 ]
 
 const SECCIONES = [
@@ -350,6 +351,7 @@ export default function Guias() {
         'nextelmoto2@gmail.com': 'Andrea',
         'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
         'carlos.nachon@emporioinmobiliario.mx': 'Carlos',
+        'islas.amanda111@gmail.com': 'Amanda',
       }
       const nombre = emailMap[session.user.email] || ''
       if (nombre) setFicha('asesor_nombre', nombre)
