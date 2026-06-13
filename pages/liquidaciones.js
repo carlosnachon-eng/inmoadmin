@@ -635,6 +635,21 @@ export default function Liquidaciones() {
       total_liquid:     parseFloat(form.total_liquid)     || 0,
       amount_paid:      parseFloat(form.amount_paid)      || 0,
     };
+
+    // ── Bloquear doble liquidación total del mismo periodo ──
+    if (form.status === "pagado") {
+      const { data: existentes } = await supabase.from("owner_payments")
+        .select("id, status")
+        .eq("owner_email", form.owner_email)
+        .eq("period_description", form.period_description)
+        .eq("status", "pagado");
+      if (existentes && existentes.length > 0) {
+        setSaving(false);
+        showToast("⚠️ Este periodo ya fue liquidado completamente. No se puede liquidar dos veces.", false);
+        return;
+      }
+    }
+
     const { error } = await supabase.from("owner_payments").insert([data]);
     if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
 
@@ -778,8 +793,22 @@ export default function Liquidaciones() {
     const rentaDirecta = totalRentaProp - rentaEmporio;
 
     const contratosPagados = contratosProp.filter(c => pagosPagadosMes.some(p => p.contract_id === c.id));
-    const totalComProp   = contratosPagados.reduce((a, c) => a + calcComision(c), 0);
-    const costoMantProp  = ticketsProp.filter(t => t.payer === "propietario" && t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
+
+    // Comisión: solo contratos cuya comisión NO esté ya cobrada en comisiones_admin para este periodo
+    const { data: comisionesAdminMes } = await supabase.from("comisiones_admin")
+      .select("contract_id, status")
+      .in("contract_id", contratosProp.map(c => c.id))
+      .eq("periodo", `${anioCorte}-${String(mesNumCorte).padStart(2, "0")}`)
+      .eq("status", "cobrada");
+    const contratosComisionPendiente = contratosPagados.filter(c =>
+      !(comisionesAdminMes || []).some(ca => ca.contract_id === c.id)
+    );
+    const totalComProp = contratosComisionPendiente.reduce((a, c) => a + calcComision(c), 0);
+    const totalComYaCobrada = contratosPagados.reduce((a, c) => a + calcComision(c), 0) - totalComProp;
+    const ticketsMantProp = ticketsProp.filter(t => t.payer === "propietario" && t.charged_amount > 0);
+    const costoMantPropTotal = ticketsMantProp.reduce((a, t) => a + (t.charged_amount || 0), 0);
+    const anticipoMantProp   = ticketsMantProp.reduce((a, t) => a + (t.advance_amount || 0), 0);
+    const costoMantProp      = costoMantPropTotal - anticipoMantProp;
     const gastosOpProp   = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
     const totalLiqProp   = totalRentaProp - totalComProp - costoMantProp - gastosOpProp;
     // Balance real considerando solo el dinero que Emporio tiene en su poder
@@ -833,7 +862,7 @@ export default function Liquidaciones() {
       const mesMes2 = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
       return desc.includes(mesMes2) && desc.includes(String(anioCorte)) && l.status === "pagado";
     });
-    const extraLines = (costoMantProp > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 && !yaLiquidadoPre ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0);
+    const extraLines = (costoMantPropTotal > 0 ? 1 : 0) + (anticipoMantProp > 0 ? 2 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 && !yaLiquidadoPre ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0) + (totalComYaCobrada > 0 ? 1 : 0) + (totalComProp > 0 ? 1 : 0);
     const boxH = 28 + extraLines * 7;
 
     doc.setFillColor(185, 28, 60); doc.rect(14, y, 182, 7, "F");
@@ -875,16 +904,38 @@ export default function Liquidaciones() {
       lineY += 7;
     }
     doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
-    doc.text(`Comisión administración:`, 18, lineY);
-    doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
-    doc.text(`-${fmt(totalComProp)}`, 105, lineY);
-    lineY += 7;
-    if (costoMantProp > 0) {
+    if (totalComProp > 0) {
+      doc.text(`Comisión administración:`, 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
+      doc.text(`-${fmt(totalComProp)}`, 105, lineY);
+      lineY += 7;
+    }
+    if (totalComYaCobrada > 0) {
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+      doc.text(`Comisión ya cobrada (incluida en renta):`, 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
+      doc.text(`✓ ${fmt(totalComYaCobrada)}`, 105, lineY);
+      lineY += 7;
+    }
+    if (costoMantPropTotal > 0) {
       doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
       doc.text("Mantenimiento:", 18, lineY);
       doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
-      doc.text(`-${fmt(costoMantProp)}`, 105, lineY);
+      doc.text(`-${fmt(costoMantPropTotal)}`, 105, lineY);
       lineY += 7;
+      if (anticipoMantProp > 0) {
+        doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(74, 74, 74);
+        doc.text(`  Anticipo pagado:`, 18, lineY);
+        doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
+        doc.text(`+${fmt(anticipoMantProp)}`, 105, lineY);
+        doc.setFontSize(9);
+        lineY += 7;
+        doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+        doc.text(`  Saldo mantenimiento:`, 18, lineY);
+        doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
+        doc.text(`-${fmt(costoMantProp)}`, 105, lineY);
+        lineY += 7;
+      }
     }
     if (gastosOpProp > 0) {
       doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
