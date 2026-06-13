@@ -646,17 +646,34 @@ export default function Liquidaciones() {
     const [anioLiq, mesLiq] = mesCorte.split("-").map(Number);
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
     const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
-    const totalRent = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0), 0);
-    const totalCom  = contratosProp.reduce((a, c) => a + calcComision(c), 0);
+    const contractIds = contratosProp.map(c => c.id);
+    // Solo rentas efectivamente cobradas (pagadas) en el mes del corte
+    const pagosCobradosMes = payments.filter(p => {
+      if (p.status !== "pagado" || !p.due_date) return false;
+      if (!contractIds.includes(p.contract_id)) return false;
+      const d = new Date(p.due_date + "T12:00:00");
+      return d.getMonth() === (mesLiq - 1) && d.getFullYear() === anioLiq;
+    });
+    const totalRent = pagosCobradosMes.reduce((a, p) => a + (p.amount || 0), 0);
+    const contratosPagados = contratosProp.filter(c => pagosCobradosMes.some(p => p.contract_id === c.id));
+    const totalCom  = contratosPagados.reduce((a, c) => a + calcComision(c), 0);
     const totalLiq  = totalRent - totalCom;
+    // Descontar anticipos ya entregados en este periodo
+    const periodoLabel = new Date(anioLiq, mesLiq - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+    const anticiposPeriodo = ownerPayments.filter(l =>
+      l.owner_email === ownerEmail &&
+      (l.period_description || "") === periodoLabel &&
+      l.status === "pagado_parcial"
+    ).reduce((a, l) => a + (l.amount_paid || 0), 0);
+    const montoFinal = Math.max(0, totalLiq - anticiposPeriodo);
     const propNames = propsProp.map(p => p.name).join(", ");
     const rentReceivers = [...new Set(contratosProp.map(c => c.rent_receiver || "inmobiliaria"))];
     const dominant = rentReceivers.length === 1 ? rentReceivers[0] : "inmobiliaria";
     setForm({
       owner_name: ownerName, owner_email: ownerEmail,
-      period_description: new Date(anioLiq, mesLiq - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" }),
+      period_description: periodoLabel,
       total_rent: totalRent.toString(), total_commission: totalCom.toString(),
-      total_liquid: totalLiq.toString(), amount_paid: totalLiq.toString(),
+      total_liquid: totalLiq.toString(), amount_paid: montoFinal.toString(),
       payment_method: "transferencia", payment_date: today, status: "pagado",
       notes: `Propiedades: ${propNames}`, rent_receiver: dominant
     });
