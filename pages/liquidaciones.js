@@ -610,6 +610,7 @@ export default function Liquidaciones() {
   };
 
   const openLiquidar = (ownerName, ownerEmail) => {
+    const [anioLiq, mesLiq] = mesCorte.split("-").map(Number);
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
     const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
     const totalRent = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0), 0);
@@ -620,7 +621,7 @@ export default function Liquidaciones() {
     const dominant = rentReceivers.length === 1 ? rentReceivers[0] : "inmobiliaria";
     setForm({
       owner_name: ownerName, owner_email: ownerEmail,
-      period_description: new Date(anio, mes - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" }),
+      period_description: new Date(anioLiq, mesLiq - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" }),
       total_rent: totalRent.toString(), total_commission: totalCom.toString(),
       total_liquid: totalLiq.toString(), amount_paid: totalLiq.toString(),
       payment_method: "transferencia", payment_date: today, status: "pagado",
