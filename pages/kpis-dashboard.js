@@ -12,14 +12,14 @@ const ADMINS = [
   'guillermo@emporioinmobiliario.com.mx',
 ]
 
-const ASESORES = ['Ariannet', 'Angélica', 'Rosario', 'Iván', 'Andrea', 'Guillermo']
+const ASESORES = ['Ariannet', 'Angélica', 'Rosario', 'Iván', 'Andrea', 'Guillermo', 'Amanda']
 
 const VENDEDOR_MAP = {
   'Ariannet': 'ari', 'Angélica': 'angelica', 'Iván': 'ivan',
-  'Rosario': 'rosario', 'Andrea': 'andrea', 'Guillermo': 'guillermo',
+  'Rosario': 'rosario', 'Andrea': 'andrea', 'Guillermo': 'guillermo', 'Amanda': 'amanda',
 }
 
-const MEDALLAS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣']
+const MEDALLAS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣']
 const META_CONVERSION = 0.15
 const META_INGRESOS = 90000
 const BONOS = [5000, 3000, 1500]
