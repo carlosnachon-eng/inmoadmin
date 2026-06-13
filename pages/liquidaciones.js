@@ -1005,15 +1005,16 @@ export default function Liquidaciones() {
     }
 
     let labelLiq, montoLiq, boxColor;
-    const periodoYaLiquidado = liqDelMes.some(l => l.status === "pagado") && totalAdelanto > 0;
+    const liqPagadaCompleta = liqDelMes.find(l => l.status === "pagado");
+    const periodoYaLiquidado = !!liqPagadaCompleta && totalAdelanto > 0;
     if (periodoYaLiquidado) {
-      // El mes ya fue liquidado y pagado — es el cierre del periodo, no un adelanto
+      // El mes ya fue liquidado y pagado — mostrar solo el monto de la liquidación completa
       labelLiq = "Periodo liquidado — pagado:";
-      montoLiq = totalAdelanto;
+      montoLiq = liqDelMes.reduce((a, l) => a + (l.amount_paid || 0), 0); // total real pagado incluyendo parciales
       boxColor = [6, 95, 70];
     } else if (rentaDirecta > 0) {
       // Propietario con renta directa: el balance dice quién debe a quién
-      const balanceFinal = balanceEmporio - totalAdelanto;
+      const balanceFinal = balanceEmporio - liqDelMes.reduce((a, l) => a + (l.amount_paid || 0), 0);
       if (balanceFinal >= 0) {
         labelLiq = totalAdelanto > 0 ? "Pendiente por pagarte:" : "Emporio te entrega:";
         montoLiq = balanceFinal;
