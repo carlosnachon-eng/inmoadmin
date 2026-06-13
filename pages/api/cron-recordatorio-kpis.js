@@ -12,6 +12,7 @@ const ASESORES = [
   { nombre: 'Iván',      email: 'ivanmtzco@gmail.com' },
   { nombre: 'Andrea',    email: 'nextelmoto2@gmail.com' },
   { nombre: 'Guillermo', email: 'guillermo@emporioinmobiliario.com.mx' },
+  { nombre: 'Amanda',    email: 'islas.amanda111@gmail.com' },
 ];
 
 export default async function handler(req, res) {
@@ -21,14 +22,12 @@ export default async function handler(req, res) {
 
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
 
-  // Ver quién ya capturó hoy
   const { data: registrosHoy } = await supabase
     .from('kpis_diarios')
     .select('email')
     .eq('fecha', hoy);
 
   const emailsCapturados = new Set((registrosHoy || []).map(r => r.email));
-
   const pendientes = ASESORES.filter(a => !emailsCapturados.has(a.email));
 
   let enviados = 0;
