@@ -344,6 +344,9 @@ export default function Liquidaciones() {
       return l.owner_email === ownerEmail && desc.includes(mesMes) && desc.includes(String(anio));
     });
     const totalAdelanto = liqDelMes.reduce((a, l) => a + (l.amount_paid || 0), 0);
+    // Si ya existe una liquidación "pagado" completa, el pendiente es 0
+    const yaLiquidadoCompleto = liqDelMes.some(l => l.status === "pagado");
+    if (yaLiquidadoCompleto) return 0;
     return Math.max(0, totalRenta - totalCom - totalAdelanto);
   };
 
@@ -617,7 +620,7 @@ export default function Liquidaciones() {
     const dominant = rentReceivers.length === 1 ? rentReceivers[0] : "inmobiliaria";
     setForm({
       owner_name: ownerName, owner_email: ownerEmail,
-      period_description: new Date().toLocaleDateString("es-MX", { month: "long", year: "numeric" }),
+      period_description: new Date(anio, mes - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" }),
       total_rent: totalRent.toString(), total_commission: totalCom.toString(),
       total_liquid: totalLiq.toString(), amount_paid: totalLiq.toString(),
       payment_method: "transferencia", payment_date: today, status: "pagado",
@@ -914,7 +917,7 @@ export default function Liquidaciones() {
       doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
       doc.text(`Comisión ya cobrada (incluida en renta):`, 18, lineY);
       doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
-      doc.text(`✓ ${fmt(totalComYaCobrada)}`, 105, lineY);
+      doc.text(`${fmt(totalComYaCobrada)} (ya cobrada)`, 105, lineY);
       lineY += 7;
     }
     if (costoMantPropTotal > 0) {
@@ -1047,11 +1050,20 @@ export default function Liquidaciones() {
     autoTable(doc, {
       startY: y,
       head: [["Periodo", "Renta", "Comisión", "Pagado", "Fecha", "Estado"]],
-      body: liqProp.length > 0 ? liqProp.map(l => [
-        l.period_description || "—", fmt(l.total_rent), fmt(l.total_commission),
-        fmt(l.amount_paid), fmtFecha(l.payment_date),
-        l.status === "pagado" ? "Pagado" : l.status === "pagado_parcial" ? "Parcial" : "Pendiente"
-      ]) : [["Sin liquidaciones registradas", "", "", "", "", ""]],
+      body: (() => {
+        // Solo mostrar liquidaciones hasta el último día del mes del reporte
+        const ultimoDiaMes = new Date(anioCorte, mesNumCorte, 0);
+        const liqHastaMes = liqProp.filter(l => {
+          if (!l.payment_date) return l.status !== "pagado"; // pendientes sin fecha siempre
+          const fechaPago = new Date(l.payment_date + "T12:00:00");
+          return fechaPago <= ultimoDiaMes;
+        });
+        return liqHastaMes.length > 0 ? liqHastaMes.map(l => [
+          l.period_description || "—", fmt(l.total_rent), fmt(l.total_commission),
+          fmt(l.amount_paid), fmtFecha(l.payment_date),
+          l.status === "pagado" ? "Pagado" : l.status === "pagado_parcial" ? "Parcial" : "Pendiente"
+        ]) : [["Sin liquidaciones registradas", "", "", "", "", ""]];
+      })(),
       styles: { fontSize: 8, cellPadding: 3 }, headStyles: headStyle, alternateRowStyles: altRow, margin: tableMargin,
     });
     y = doc.lastAutoTable.finalY + 12;
