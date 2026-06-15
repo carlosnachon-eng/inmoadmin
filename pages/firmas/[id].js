@@ -19,6 +19,25 @@ const STATUS_COLORS = {
   bloqueada:  { bg: '#fdecea', color: '#ef4444', label: 'Bloqueada' },
 }
 
+const CAL_LINKS = {
+  'arrendamiento': 'https://cal.com/carlos-nachon-rbhjbk/firma-de-contrato-de-arrendamiento',
+  'renta':         'https://cal.com/carlos-nachon-rbhjbk/firma-de-contrato-de-arrendamiento',
+  'compraventa':   'https://cal.com/carlos-nachon-rbhjbk/firma-de-promesa-de-compraventa',
+  'venta':         'https://cal.com/carlos-nachon-rbhjbk/firma-de-promesa-de-compraventa',
+  'avaluo':        'https://cal.com/carlos-nachon-rbhjbk/avaluo-de-propiedad',
+  'avalúo':        'https://cal.com/carlos-nachon-rbhjbk/avaluo-de-propiedad',
+  'entrega':       'https://cal.com/carlos-nachon-rbhjbk/entrega-de-llaves',
+}
+
+const getCalLink = (tipo) => {
+  if (!tipo) return null
+  const t = tipo.toLowerCase()
+  for (const [key, link] of Object.entries(CAL_LINKS)) {
+    if (t.includes(key)) return link
+  }
+  return null
+}
+
 export default function DetalleFirma() {
   const router = useRouter()
   const { id } = router.query
@@ -31,9 +50,7 @@ export default function DetalleFirma() {
   const [etapaActiva, setEtapaActiva] = useState(null)
   const [loading, setLoading] = useState(true)
   const [avanzando, setAvanzando] = useState(false)
-  const [editando, setEditando] = useState(false)
-  const [editForm, setEditForm] = useState({})
-  const [guardando, setGuardando] = useState(false)
+  const [showCal, setShowCal] = useState(false)
 
   useEffect(() => { if (!id) return; cargarTodo() }, [id])
 
@@ -47,31 +64,6 @@ export default function DetalleFirma() {
     setEtapas(e || [])
     setComentarios(c || [])
     setLoading(false)
-  }
-
-  function abrirEdicion() {
-    setEditForm({
-      titulo: firma.titulo || '',
-      nombre_vendedor: firma.nombre_vendedor || '',
-      modalidad_firma: firma.modalidad_firma || 'presencial',
-      monto_cierre: firma.monto_cierre || '',
-    })
-    setEditando(true)
-  }
-
-  async function guardarEdicion() {
-    setGuardando(true)
-    const { error } = await supabase.from('firmas').update({
-      titulo: editForm.titulo,
-      nombre_vendedor: editForm.nombre_vendedor,
-      modalidad_firma: editForm.modalidad_firma,
-      monto_cierre: editForm.monto_cierre ? parseFloat(editForm.monto_cierre) : null,
-    }).eq('id', id)
-    setGuardando(false)
-    if (!error) {
-      setEditando(false)
-      cargarTodo()
-    }
   }
 
   async function completarEtapa(etapa) {
@@ -114,9 +106,7 @@ export default function DetalleFirma() {
   const progreso = etapas.filter(e => e.status === 'completada').length
   const total = etapas.filter(e => e.status !== 'no_aplica').length
   const pct = total > 0 ? Math.round((progreso / total) * 100) : 0
-
-  const inputSt = { width: '100%', padding: '8px 10px', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', fontSize: '0.9rem', background: 'rgba(255,255,255,0.1)', color: '#fff', boxSizing: 'border-box' }
-  const labelSt = { color: '#aac4de', fontSize: '0.75rem', display: 'block', marginBottom: '4px' }
+  const calLink = getCalLink(firma.tipo)
 
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
@@ -132,190 +122,191 @@ export default function DetalleFirma() {
         </div>
         <Link href="/firmas" style={{ fontSize: '0.85rem', color: '#9ca3af', textDecoration: 'none', fontWeight: 600 }}>← Volver</Link>
       </div>
+
       <div style={{ padding: '0 0.75rem' }}>
 
-      {/* Expediente card */}
-      <div style={{ background: '#1a3c5e', borderRadius: '10px', padding: '1.25rem', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div>
-            <p style={{ color: '#c8a45a', fontSize: '0.8rem', margin: '0 0 4px' }}>
-              {firma.tipo?.toUpperCase()} {firma.es_contado ? '(Contado)' : ''}
-            </p>
-            <h1 style={{ color: '#fff', fontSize: '1.15rem', margin: 0 }}>{firma.titulo}</h1>
-            {firma.direccion && <p style={{ color: '#aac4de', fontSize: '0.85rem', margin: '4px 0 0' }}>{firma.direccion}</p>}
+        {/* Info del expediente */}
+        <div style={{ background: '#1a3c5e', borderRadius: '10px', padding: '1.25rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div>
+              <p style={{ color: '#c8a45a', fontSize: '0.8rem', margin: '0 0 4px' }}>
+                {firma.tipo?.toUpperCase()} {firma.es_contado ? '(Contado)' : ''}
+              </p>
+              <h1 style={{ color: '#fff', fontSize: '1.15rem', margin: 0 }}>{firma.titulo}</h1>
+              {firma.direccion && <p style={{ color: '#aac4de', fontSize: '0.85rem', margin: '4px 0 0' }}>{firma.direccion}</p>}
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span style={{
+                background: firma.status === 'completado' ? '#22c55e' : firma.status === 'cancelado' ? '#ef4444' : firma.urgente ? '#f59e0b' : '#c8a45a',
+                color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600
+              }}>
+                {firma.status === 'completado' ? 'Completado' : firma.status === 'cancelado' ? 'Cancelado' : firma.urgente ? 'Urgente' : 'En proceso'}
+              </span>
+              {firma.status === 'activo' && (
+                <button onClick={async () => {
+                  if (!confirm('Cancelar este expediente?')) return
+                  await supabase.from('firmas').update({ status: 'cancelado' }).eq('id', id)
+                  cargarTodo()
+                }} style={{ background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+              )}
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={abrirEdicion} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
-              ✏️ Editar
-            </button>
-            <span style={{
-              background: firma.status === 'completado' ? '#22c55e' : firma.status === 'cancelado' ? '#ef4444' : firma.urgente ? '#f59e0b' : '#c8a45a',
-              color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600
-            }}>
-              {firma.status === 'completado' ? 'Completado' : firma.status === 'cancelado' ? 'Cancelado' : firma.urgente ? 'Urgente' : 'En proceso'}
-            </span>
-            {firma.status === 'activo' && (
-              <button onClick={async () => {
-                if (!confirm('Cancelar este expediente?')) return
-                await supabase.from('firmas').update({ status: 'cancelado' }).eq('id', id)
-                cargarTodo()
-              }} style={{ background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
-                Cancelar
-              </button>
-            )}
-          </div>
-        </div>
 
-        <div style={{ marginTop: '1rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-            <span style={{ color: '#aac4de', fontSize: '0.8rem' }}>Progreso</span>
-            <span style={{ color: '#fff', fontSize: '0.8rem', fontWeight: 600 }}>{pct}% ({progreso}/{total} etapas)</span>
+          <div style={{ marginTop: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ color: '#aac4de', fontSize: '0.8rem' }}>Progreso</span>
+              <span style={{ color: '#fff', fontSize: '0.8rem', fontWeight: 600 }}>{pct}% ({progreso}/{total} etapas)</span>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '4px', height: '8px' }}>
+              <div style={{ background: '#c8a45a', width: `${pct}%`, height: '8px', borderRadius: '4px', transition: 'width 0.3s' }} />
+            </div>
           </div>
-          <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '4px', height: '8px' }}>
-            <div style={{ background: '#c8a45a', width: `${pct}%`, height: '8px', borderRadius: '4px', transition: 'width 0.3s' }} />
-          </div>
-        </div>
 
-        {/* Datos del expediente */}
-        {!editando ? (
           <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
             {[
               ['Comprador/Inquilino', firma.nombre_comprador],
-              ['Propietario', firma.nombre_vendedor || '—  (pendiente)'],
+              ['Propietario', firma.nombre_vendedor],
               ['Forma de pago', firma.forma_pago],
               ['Modalidad', firma.modalidad_firma],
-              ['Monto de cierre', firma.monto_cierre ? '$' + Number(firma.monto_cierre).toLocaleString('es-MX') : '—  (pendiente)'],
-            ].map(([k, v]) => (
+            ].map(([k, v]) => v && (
               <div key={k}>
                 <p style={{ color: '#aac4de', fontSize: '0.72rem', margin: '0 0 2px' }}>{k}</p>
-                <p style={{ color: v?.includes('pendiente') ? '#f59e0b' : '#fff', fontSize: '0.85rem', margin: 0, textTransform: 'capitalize' }}>{v}</p>
+                <p style={{ color: '#fff', fontSize: '0.85rem', margin: 0, textTransform: 'capitalize' }}>{v}</p>
               </div>
             ))}
           </div>
-        ) : (
-          <div style={{ marginTop: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '1rem' }}>
-            <p style={{ color: '#c8a45a', fontSize: '0.82rem', fontWeight: 700, margin: '0 0 12px' }}>Editar expediente</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        </div>
+
+        {/* Bloque Agendar Cita */}
+        {calLink && (
+          <div style={{ background: '#fff', borderRadius: '10px', border: '1px solid #e5e7eb', marginBottom: '1.5rem', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <label style={labelSt}>Título del expediente</label>
-                <input style={inputSt} value={editForm.titulo} onChange={e => setEditForm(f => ({ ...f, titulo: e.target.value }))} />
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#1a3c5e' }}>📅 Agendar cita</p>
+                <p style={{ margin: '2px 0 0', fontSize: 11, color: '#9ca3af' }}>
+                  {firma.tipo?.toLowerCase().includes('arrendamiento') || firma.tipo?.toLowerCase().includes('renta')
+                    ? 'Firma de contrato de arrendamiento'
+                    : firma.tipo?.toLowerCase().includes('venta') || firma.tipo?.toLowerCase().includes('compraventa')
+                    ? 'Firma de promesa de compraventa'
+                    : firma.tipo?.toLowerCase().includes('avaluo') || firma.tipo?.toLowerCase().includes('avalúo')
+                    ? 'Avalúo de propiedad'
+                    : 'Entrega de llaves'
+                  } · 📍 Por confirmar
+                </p>
               </div>
-              <div>
-                <label style={labelSt}>Nombre del propietario</label>
-                <input style={inputSt} value={editForm.nombre_vendedor} onChange={e => setEditForm(f => ({ ...f, nombre_vendedor: e.target.value }))} placeholder="Apellido Nombre" />
-              </div>
-              <div>
-                <label style={labelSt}>Modalidad de firma</label>
-                <select style={inputSt} value={editForm.modalidad_firma} onChange={e => setEditForm(f => ({ ...f, modalidad_firma: e.target.value }))}>
-                  <option value="presencial">Presencial</option>
-                  <option value="digital">Digital</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelSt}>Monto de cierre de la operación</label>
-                <input style={inputSt} type="number" value={editForm.monto_cierre} onChange={e => setEditForm(f => ({ ...f, monto_cierre: e.target.value }))} placeholder="3000000" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setShowCal(!showCal)}
+                  style={{ background: showCal ? '#f3f4f6' : '#1a3c5e', color: showCal ? '#6b7280' : '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  {showCal ? 'Cerrar' : '📅 Ver calendario'}
+                </button>
+                <a href={calLink} target="_blank" rel="noopener noreferrer"
+                  style={{ background: '#C8102E', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                  🔗 Copiar link
+                </a>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <button onClick={() => setEditando(false)} style={{ flex: 1, background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', padding: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>
-                Cancelar
-              </button>
-              <button onClick={guardarEdicion} disabled={guardando} style={{ flex: 2, background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>
-                {guardando ? 'Guardando...' : '✓ Guardar cambios'}
-              </button>
-            </div>
+            {showCal && (
+              <div style={{ borderTop: '1px solid #e5e7eb', height: 600 }}>
+                <iframe
+                  src={calLink}
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                  title="Agendar cita"
+                />
+              </div>
+            )}
           </div>
         )}
-      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: typeof window !== 'undefined' && window.innerWidth < 768 ? '1fr' : '1fr 320px', gap: '1.5rem' }}>
-        <div>
-          <h2 style={{ fontSize: '1rem', color: '#1a3c5e', marginBottom: '1rem' }}>Etapas del proceso</h2>
-          {etapas.map((etapa, i) => {
-            const sc = STATUS_COLORS[etapa.status] || STATUS_COLORS.pendiente
-            const esActual = etapa.status === 'pendiente' && (i === 0 || etapas[i-1]?.status === 'completada' || etapas[i-1]?.status === 'no_aplica')
-            const abierta = etapaActiva === etapa.id
-            return (
-              <div key={etapa.id} style={{
-                background: '#fff', borderRadius: '8px', marginBottom: '8px',
-                border: esActual ? '2px solid #1a3c5e' : '1px solid #eee',
-                opacity: etapa.status === 'no_aplica' ? 0.5 : 1
-              }}>
-                <div style={{ padding: '0.9rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <div style={{
-                    width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
-                    background: etapa.status === 'completada' ? '#22c55e' : esActual ? '#1a3c5e' : '#eee',
-                    color: etapa.status === 'completada' || esActual ? '#fff' : '#999',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '0.8rem', fontWeight: 700
-                  }}>
-                    {etapa.status === 'completada' ? 'OK' : etapa.orden}
+        <div style={{ display: 'grid', gridTemplateColumns: typeof window !== 'undefined' && window.innerWidth < 768 ? '1fr' : '1fr 320px', gap: '1.5rem' }}>
+          <div>
+            <h2 style={{ fontSize: '1rem', color: '#1a3c5e', marginBottom: '1rem' }}>Etapas del proceso</h2>
+            {etapas.map((etapa, i) => {
+              const sc = STATUS_COLORS[etapa.status] || STATUS_COLORS.pendiente
+              const esActual = etapa.status === 'pendiente' && (i === 0 || etapas[i-1]?.status === 'completada' || etapas[i-1]?.status === 'no_aplica')
+              const abierta = etapaActiva === etapa.id
+              return (
+                <div key={etapa.id} style={{
+                  background: '#fff', borderRadius: '8px', marginBottom: '8px',
+                  border: esActual ? '2px solid #1a3c5e' : '1px solid #eee',
+                  opacity: etapa.status === 'no_aplica' ? 0.5 : 1
+                }}>
+                  <div style={{ padding: '0.9rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{
+                      width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+                      background: etapa.status === 'completada' ? '#22c55e' : esActual ? '#1a3c5e' : '#eee',
+                      color: etapa.status === 'completada' || esActual ? '#fff' : '#999',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '0.8rem', fontWeight: 700
+                    }}>
+                      {etapa.status === 'completada' ? 'OK' : etapa.orden}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: esActual ? 600 : 400, color: etapa.status === 'no_aplica' ? '#bbb' : '#222' }}>
+                        {etapa.nombre}
+                      </p>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: '#888' }}>
+                        {RESPONSABLE_LABELS[etapa.responsable]}
+                        {etapa.completada_at && ` — ${new Date(etapa.completada_at).toLocaleDateString('es-MX')}`}
+                      </p>
+                    </div>
+                    <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 600, background: sc.bg, color: sc.color }}>
+                      {sc.label}
+                    </span>
+                    {esActual && (
+                      <button onClick={() => setEtapaActiva(abierta ? null : etapa.id)}
+                        style={{ background: '#1a3c5e', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 12px', fontSize: '0.8rem', cursor: 'pointer' }}>
+                        {abierta ? 'Cerrar' : 'Completar'}
+                      </button>
+                    )}
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: esActual ? 600 : 400, color: etapa.status === 'no_aplica' ? '#bbb' : '#222' }}>
-                      {etapa.nombre}
-                    </p>
-                    <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: '#888' }}>
-                      {RESPONSABLE_LABELS[etapa.responsable]}
-                      {etapa.completada_at && ` — ${new Date(etapa.completada_at).toLocaleDateString('es-MX')}`}
-                    </p>
-                  </div>
-                  <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 600, background: sc.bg, color: sc.color }}>
-                    {sc.label}
-                  </span>
-                  {esActual && (
-                    <button onClick={() => setEtapaActiva(abierta ? null : etapa.id)}
-                      style={{ background: '#1a3c5e', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 12px', fontSize: '0.8rem', cursor: 'pointer' }}>
-                      {abierta ? 'Cerrar' : 'Completar'}
-                    </button>
+                  {abierta && (
+                    <div style={{ borderTop: '1px solid #eee', padding: '0.9rem 1rem', background: '#fafafa', borderRadius: '0 0 8px 8px' }}>
+                      <label style={{ fontSize: '0.82rem', color: '#555', display: 'block', marginBottom: '6px' }}>Notas (opcional)</label>
+                      <textarea value={notaEtapa} onChange={e => setNotaEtapa(e.target.value)} rows={2}
+                        placeholder="Agrega observaciones si es necesario..."
+                        style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.88rem', boxSizing: 'border-box', resize: 'none' }} />
+                      <button onClick={() => completarEtapa(etapa)} disabled={avanzando}
+                        style={{ marginTop: '8px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 20px', fontSize: '0.88rem', fontWeight: 600, cursor: 'pointer' }}>
+                        {avanzando ? 'Guardando...' : 'Marcar como completada y notificar'}
+                      </button>
+                    </div>
+                  )}
+                  {etapa.notas && etapa.status === 'completada' && (
+                    <div style={{ borderTop: '1px solid #eee', padding: '0.6rem 1rem', fontSize: '0.8rem', color: '#666', background: '#fafafa', borderRadius: '0 0 8px 8px' }}>
+                      Nota: {etapa.notas}
+                    </div>
                   )}
                 </div>
-                {abierta && (
-                  <div style={{ borderTop: '1px solid #eee', padding: '0.9rem 1rem', background: '#fafafa', borderRadius: '0 0 8px 8px' }}>
-                    <label style={{ fontSize: '0.82rem', color: '#555', display: 'block', marginBottom: '6px' }}>Notas (opcional)</label>
-                    <textarea value={notaEtapa} onChange={e => setNotaEtapa(e.target.value)} rows={2}
-                      placeholder="Agrega observaciones si es necesario..."
-                      style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.88rem', boxSizing: 'border-box', resize: 'none' }} />
-                    <button onClick={() => completarEtapa(etapa)} disabled={avanzando}
-                      style={{ marginTop: '8px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 20px', fontSize: '0.88rem', fontWeight: 600, cursor: 'pointer' }}>
-                      {avanzando ? 'Guardando...' : 'Marcar como completada y notificar'}
-                    </button>
-                  </div>
-                )}
-                {etapa.notas && etapa.status === 'completada' && (
-                  <div style={{ borderTop: '1px solid #eee', padding: '0.6rem 1rem', fontSize: '0.8rem', color: '#666', background: '#fafafa', borderRadius: '0 0 8px 8px' }}>
-                    Nota: {etapa.notas}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
 
-        <div>
-          <h2 style={{ fontSize: '1rem', color: '#1a3c5e', marginBottom: '1rem' }}>Bitacora</h2>
-          <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #eee', padding: '1rem', marginBottom: '1rem' }}>
-            <textarea value={comentario} onChange={e => setComentario(e.target.value)} rows={3}
-              placeholder="Escribe un comentario..."
-              style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.88rem', boxSizing: 'border-box', resize: 'none' }} />
-            <button onClick={enviarComentario}
-              style={{ marginTop: '8px', background: '#1a3c5e', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer', width: '100%' }}>
-              Agregar comentario
-            </button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {comentarios.map(c => (
-              <div key={c.id} style={{ background: c.tipo === 'cambio_etapa' ? '#f0f7ff' : '#fff', border: '1px solid #eee', borderRadius: '8px', padding: '0.75rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1a3c5e' }}>{c.usuario_nombre || 'Sistema'}</span>
-                  <span style={{ fontSize: '0.72rem', color: '#aaa' }}>{new Date(c.created_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</span>
+          <div>
+            <h2 style={{ fontSize: '1rem', color: '#1a3c5e', marginBottom: '1rem' }}>Bitacora</h2>
+            <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #eee', padding: '1rem', marginBottom: '1rem' }}>
+              <textarea value={comentario} onChange={e => setComentario(e.target.value)} rows={3}
+                placeholder="Escribe un comentario..."
+                style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.88rem', boxSizing: 'border-box', resize: 'none' }} />
+              <button onClick={enviarComentario}
+                style={{ marginTop: '8px', background: '#1a3c5e', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer', width: '100%' }}>
+                Agregar comentario
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {comentarios.map(c => (
+                <div key={c.id} style={{ background: c.tipo === 'cambio_etapa' ? '#f0f7ff' : '#fff', border: '1px solid #eee', borderRadius: '8px', padding: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1a3c5e' }}>{c.usuario_nombre || 'Sistema'}</span>
+                    <span style={{ fontSize: '0.72rem', color: '#aaa' }}>{new Date(c.created_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.83rem', color: '#444' }}>{c.mensaje}</p>
                 </div>
-                <p style={{ margin: 0, fontSize: '0.83rem', color: '#444' }}>{c.mensaje}</p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
-      </div>
       </div>
     </div>
   )
