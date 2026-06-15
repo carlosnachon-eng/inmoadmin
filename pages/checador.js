@@ -88,6 +88,7 @@ export default function Checador() {
   const [formTraspaso, setFormTraspaso] = useState({ tipo_receptor: 'personal', para_email: '', nombre_externo: '', notas: '' })
   const [formBaja, setFormBaja] = useState({ motivo: MOTIVOS_BAJA[0], notas: '' })
   const [savingLlave, setSavingLlave] = useState(false)
+  const [uploadingFoto, setUploadingFoto] = useState(null)
   const [busquedaLlave, setBusquedaLlave] = useState('')
   const [filtroLlave, setFiltroLlave] = useState('todas')
 
@@ -268,9 +269,15 @@ export default function Checador() {
     setMovimientos(data || [])
   }
 
+  const [movimientosBajas, setMovimientosBajas] = useState([])
+
   const loadLlavesInactivas = async () => {
-    const { data } = await supabase.from('llaves').select('*').eq('activa', false).order('updated_at', { ascending: false })
-    setLlavesInactivas(data || [])
+    const [{ data: inactivas }, { data: bajas }] = await Promise.all([
+      supabase.from('llaves').select('*').eq('activa', false).order('created_at', { ascending: false }),
+      supabase.from('llaves_movimientos').select('*').eq('tipo', 'baja').order('timestamp', { ascending: false }),
+    ])
+    setLlavesInactivas(inactivas || [])
+    setMovimientosBajas(bajas || [])
   }
 
   const guardarLlave = async () => {
@@ -290,6 +297,22 @@ export default function Checador() {
     setShowModalLlave(false)
     setFormLlave({ numero: '', propiedad: '', notas: '' })
     loadLlaves()
+  }
+
+  const subirFotoLlave = async (llave, file) => {
+    if (!file) return
+    setUploadingFoto(llave.id)
+    try {
+      const ext = file.name.split('.').pop()
+      const fileName = `llave_${llave.numero}_${Date.now()}.${ext}`
+      const { error: uploadError } = await supabase.storage.from('llaves-fotos').upload(fileName, file, { upsert: true })
+      if (uploadError) throw uploadError
+      const { data: { publicUrl } } = supabase.storage.from('llaves-fotos').getPublicUrl(fileName)
+      await supabase.from('llaves').update({ foto_url: publicUrl }).eq('id', llave.id)
+      showToast('📷 Foto guardada ✅')
+      loadLlaves()
+    } catch (e) { showToast('Error: ' + e.message, false) }
+    setUploadingFoto(null)
   }
 
   // Prestar (Carlos, Guillermo, Tania → a cualquiera)
@@ -749,6 +772,13 @@ export default function Checador() {
                           {llave.notas && <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>{llave.notas}</p>}
                         </div>
                       </div>
+                      {llave.foto_url && (
+                        <div style={{ marginBottom: 8 }}>
+                          <img src={llave.foto_url} alt={`Llave #${llave.numero}`}
+                            style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 8, border: '1px solid #e5e7eb', cursor: 'pointer' }}
+                            onClick={() => window.open(llave.foto_url, '_blank')} />
+                        </div>
+                      )}
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {/* Prestar — solo Carlos, Guillermo, Tania */}
                         {puedePrestar && enResguardo && (
@@ -784,6 +814,16 @@ export default function Checador() {
                             style={{ background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
                             Dar de baja
                           </button>
+                        )}
+                        {/* Foto — admins y Tania */}
+                        {(esAdmin || esCarlos || email === 'asistente1@emporioinmobiliario.mx') && (
+                          <label style={{ cursor: 'pointer' }}>
+                            <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                              onChange={e => e.target.files[0] && subirFotoLlave(llave, e.target.files[0])} />
+                            <span style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: 8, padding: '7px 10px', fontSize: 12, fontWeight: 700, display: 'inline-block', cursor: 'pointer' }}>
+                              {uploadingFoto === llave.id ? '⏳' : llave.foto_url ? '📷 Actualizar' : '📷 Foto'}
+                            </span>
+                          </label>
                         )}
                       </div>
                     </div>
@@ -1083,7 +1123,7 @@ export default function Checador() {
               {llavesInactivas.length === 0 ? (
                 <p style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>Sin llaves dadas de baja</p>
               ) : llavesInactivas.map(l => {
-                const movBaja = movimientos.find(m => m.llave_id === l.id && m.tipo === 'baja')
+                const movBaja = movimientosBajas.find(m => m.llave_id === l.id)
                 return (
                   <div key={l.id} style={{ background: '#f9fafb', borderRadius: 10, padding: '12px 14px', marginBottom: 8, border: '1px solid #e5e7eb' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
