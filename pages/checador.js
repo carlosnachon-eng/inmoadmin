@@ -1067,7 +1067,7 @@ export default function Checador() {
             <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 }}>
               <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800 }}>↔️ Traspasar llave #{showModalTraspaso.numero}</h3>
               <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{showModalTraspaso.propiedad}</p>
-              <ReceptorForm form={formTraspaso} setForm={setFormTraspaso} excluirEmail={llave?.portador_email} />
+              <ReceptorForm form={formTraspaso} setForm={setFormTraspaso} />
               <div style={{ marginTop: 10 }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Notas</label>
                 <input value={formTraspaso.notas} onChange={e => setFormTraspaso(f => ({ ...f, notas: e.target.value }))}
