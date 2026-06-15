@@ -8,13 +8,13 @@ const supabase = createClient(
 )
 
 const ASESORES = {
-  'ariannet81@gmail.com': 'Ariannet',
-  'angelicamomox@gmail.com': 'Angélica',
-  'rddd298@gmail.com': 'Rosario',
-  'ivanmtzco@gmail.com': 'Iván',
-  'nextelmoto2@gmail.com': 'Andrea',
+  'ariannet81@gmail.com':              'Ariannet',
+  'angelicamomox@gmail.com':           'Angélica',
+  'rddd298@gmail.com':                 'Rosario',
+  'ivanmtzco@gmail.com':               'Iván',
+  'nextelmoto2@gmail.com':             'Andrea',
   'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
-  'islas.amanda111@gmail.com': 'Amanda',
+  'islas.amanda111@gmail.com':         'Amanda',
 }
 
 const ADMINS = [
@@ -24,16 +24,14 @@ const ADMINS = [
 
 const VENDEDOR_MAP = {
   'Ariannet': 'ari', 'Angélica': 'angelica', 'Iván': 'ivan',
-  'Rosario': 'rosario', 'Andrea': 'andrea', 'Guillermo': 'guillermo',
-  'Amanda': 'amanda',
+  'Rosario': 'rosario', 'Andrea': 'andrea', 'Guillermo': 'guillermo', 'Amanda': 'amanda',
 }
 
 const MEDALLAS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣']
 const NOMBRES_LISTA = ['Ariannet', 'Angélica', 'Rosario', 'Iván', 'Andrea', 'Guillermo', 'Amanda']
 const META_INGRESOS = 90000
-const BONOS = [5000, 3000, 1500]
 
-function calcularMetaCitas(anio, mes) {
+const calcularMetaCitas = (anio, mes) => {
   const diasEnMes = new Date(anio, mes, 0).getDate()
   let domingos = 0
   for (let d = 1; d <= diasEnMes; d++) {
@@ -54,12 +52,9 @@ export default function KPIs() {
   const [vistaRanking, setVistaRanking] = useState(false)
   const [kpis, setKpis] = useState([])
   const [cierres, setCierres] = useState([])
+  const [checadas, setChecadas] = useState([])
   const [animado, setAnimado] = useState(false)
   const [hoy, setHoy] = useState('')
-
-  const anio = new Date().getFullYear()
-  const mes = new Date().getMonth() + 1
-  const META_CITAS_MES = calcularMetaCitas(anio, mes)
 
   useEffect(() => {
     supabase.rpc('get_fecha_mexico').then(({ data }) => {
@@ -82,28 +77,31 @@ export default function KPIs() {
   }, [])
 
   useEffect(() => {
-    if (session && esAsesor && hoy) { cargarRegistroHoy(hoy); cargarRanking() }
-  }, [session, hoy])
+    if (session && esAsesor) { cargarRegistroHoy(); cargarRanking() }
+  }, [session])
 
   useEffect(() => {
     if (vistaRanking) { setAnimado(false); setTimeout(() => setAnimado(true), 100) }
   }, [vistaRanking])
 
-  const cargarRegistroHoy = async (fechaHoy) => {
-    const fecha = fechaHoy || hoy
-    if (!fecha) return
-    const { data } = await supabase.from('kpis_diarios').select('*').eq('email', email).eq('fecha', fecha).single()
+  const cargarRegistroHoy = async () => {
+    const { data } = await supabase.from('kpis_diarios').select('*').eq('email', email).eq('fecha', hoy).single()
     if (data) { setRegistroHoy(data); setForm({ citas_agendadas: data.citas_agendadas, citas_efectivas: data.citas_efectivas, citas_calificadas: data.citas_calificadas }) }
   }
 
   const cargarRanking = async () => {
+    const anio = new Date().getFullYear()
+    const mes = new Date().getMonth() + 1
     const inicio = `${anio}-${String(mes).padStart(2, '0')}-01`
     const fin = new Date(anio, mes, 0).toISOString().split('T')[0]
-    const [{ data: kpisData }, { data: cierresData }] = await Promise.all([
+    const [{ data: kpisData }, { data: cierresData }, { data: checadasData }] = await Promise.all([
       supabase.from('kpis_diarios').select('*').gte('fecha', inicio).lte('fecha', fin),
       supabase.from('cierres').select('vendedor, comision').gte('fecha_cierre', inicio).lte('fecha_cierre', fin),
+      supabase.from('checadas').select('*').eq('email', email).gte('fecha', inicio).lte('fecha', fin),
     ])
-    setKpis(kpisData || []); setCierres(cierresData || [])
+    setKpis(kpisData || [])
+    setCierres(cierresData || [])
+    setChecadas(checadasData || [])
   }
 
   const guardar = async () => {
@@ -113,21 +111,27 @@ export default function KPIs() {
     showToast('✓ Guardado'); setGuardando(false); cargarRegistroHoy()
   }
 
+  const anio = new Date().getFullYear()
+  const mes = new Date().getMonth() + 1
+  const META_CITAS_MES = calcularMetaCitas(anio, mes)
+
+  // Puntualidad del mes — checadas sin tardanza injustificada
+  const tardanzasInjustificadas = checadas.filter(c => c.llego_tarde && !c.tiene_cita).length
+  const juntasFaltadas = checadas.filter(c => c.tipo === 'junta').length === 0 && new Date().getDay() > 2
+    ? 1 : 0 // simplificado: si ya pasó el martes y no checó junta
+  const esPuntual = tardanzasInjustificadas === 0
+
   const statsAsesor = (n) => {
     const registros = kpis.filter(k => k.asesor === n)
-    const diasCapturados = registros.length
     const cierresAsesor = cierres.filter(c => (c.vendedor || '').toLowerCase() === (VENDEDOR_MAP[n] || n.toLowerCase()))
-    const citas_efectivas = registros.reduce((a, k) => a + (k.citas_efectivas || 0), 0)
     const ingresos = cierresAsesor.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0)
+    const citas_efectivas = registros.reduce((a, k) => a + (k.citas_efectivas || 0), 0)
     return {
       citas_efectivas,
-      diasCapturados,
       operaciones: cierresAsesor.length,
       ingresos,
       cumpleIngresos: ingresos >= META_INGRESOS,
-      cumpleCitas: diasCapturados > 0 ? (citas_efectivas / diasCapturados) >= 2 : false,
-      citasFaltantes: Math.max(0, META_CITAS_MES - citas_efectivas),
-      ingresosFaltantes: Math.max(0, META_INGRESOS - ingresos),
+      cumpleCitas: citas_efectivas >= META_CITAS_MES,
     }
   }
 
@@ -135,7 +139,17 @@ export default function KPIs() {
     .map(n => ({ nombre: n, ...statsAsesor(n) }))
     .sort((a, b) => b.operaciones - a.operaciones || b.ingresos - a.ingresos)
 
-  const candidatosBono = rankingData.filter(a => a.cumpleIngresos && a.cumpleCitas).slice(0, 3)
+  const BONOS = [5000, 3000, 1500]
+  // Para el bono ahora también se requiere puntualidad
+  const candidatosBono = rankingData
+    .filter(a => a.cumpleIngresos && a.cumpleCitas && (a.nombre !== nombre || esPuntual))
+    .slice(0, 3)
+
+  const miStats = nombre ? statsAsesor(nombre) : null
+  const miBonoIndex = candidatosBono.findIndex(c => c.nombre === nombre)
+  const miBonoMonto = miBonoIndex >= 0 ? BONOS[miBonoIndex] : null
+
+  const cumpleParaBono = miStats?.cumpleIngresos && miStats?.cumpleCitas && esPuntual
 
   const Counter = ({ label, field, color, bg }) => (
     <div style={{ background: '#fff', borderRadius: 14, padding: 20, border: `1px solid ${color}33` }}>
@@ -175,9 +189,6 @@ export default function KPIs() {
   }
 
   const fechaDisplay = new Date(hoy + 'T12:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
-  const miStats = nombre ? statsAsesor(nombre) : null
-  const miBonoIndex = candidatosBono.findIndex(c => c.nombre === nombre)
-  const miBonoMonto = miBonoIndex >= 0 ? BONOS[miBonoIndex] : null
 
   return (
     <>
@@ -186,6 +197,7 @@ export default function KPIs() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
         <style>{`* { box-sizing: border-box; margin: 0; padding: 0; } @keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } } .card-enter { animation: slideUp 0.35s ease forwards; }`}</style>
       </Head>
+
       <div style={{ minHeight: '100vh', background: '#f8f8f8', fontFamily: 'system-ui, sans-serif' }}>
         {toast && (
           <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: toast.ok ? '#065f46' : '#b91c3c', color: '#fff', padding: '12px 24px', borderRadius: 100, fontWeight: 700, fontSize: 14, zIndex: 999 }}>
@@ -207,32 +219,60 @@ export default function KPIs() {
           {!vistaRanking ? (
             <>
               {registroHoy && (
-                <div style={{ background: '#f0fdf4', border: '1px solid #6ee7b7', borderRadius: 10, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: '#065f46', fontWeight: 600 }}>
+                <div style={{ background: '#f0fdf4', border: '1px solid #6ee7b7', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#065f46', fontWeight: 600 }}>
                   ✓ Ya registraste hoy — puedes actualizar
                 </div>
               )}
 
+              {/* Estado del bono */}
               {miStats && (
                 <div style={{
-                  background: miStats.cumpleIngresos && miStats.cumpleCitas ? '#f0fdf4' : miStats.cumpleIngresos || miStats.cumpleCitas ? '#fffbeb' : '#f8f8f8',
-                  border: `1px solid ${miStats.cumpleIngresos && miStats.cumpleCitas ? '#6ee7b7' : miStats.cumpleIngresos || miStats.cumpleCitas ? '#fcd34d' : '#e5e7eb'}`,
-                  borderRadius: 12, padding: '12px 16px', marginBottom: 20
+                  background: cumpleParaBono ? '#f0fdf4' : '#f8f8f8',
+                  border: `1px solid ${cumpleParaBono ? '#6ee7b7' : '#e5e7eb'}`,
+                  borderRadius: 12, padding: '14px 16px', marginBottom: 16
                 }}>
-                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-                    🎯 Tu bono este mes · Meta: {fmt(META_INGRESOS)} + {META_CITAS_MES} citas
+                  <p style={{ margin: '0 0 10px', fontSize: 11, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>
+                    🎯 Tu bono este mes
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {/* Ingresos */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, color: '#374151' }}>
+                        {miStats.cumpleIngresos ? '✅' : '🔴'} Meta ingresos {fmt(META_INGRESOS)}
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: miStats.cumpleIngresos ? '#065f46' : '#dc2626' }}>
+                        {fmt(miStats.ingresos)}
+                      </span>
+                    </div>
+                    {/* Citas */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, color: '#374151' }}>
+                        {miStats.cumpleCitas ? '✅' : '🔴'} Meta citas ({META_CITAS_MES} este mes)
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: miStats.cumpleCitas ? '#065f46' : '#dc2626' }}>
+                        {miStats.citas_efectivas}
+                      </span>
+                    </div>
+                    {/* Puntualidad */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, color: '#374151' }}>
+                        {esPuntual ? '✅' : '🔴'} Puntualidad
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: esPuntual ? '#065f46' : '#dc2626' }}>
+                        {esPuntual ? 'Sin tardanzas' : `${tardanzasInjustificadas} tardanza(s)`}
+                      </span>
+                    </div>
                   </div>
-                  {miStats.cumpleIngresos && miStats.cumpleCitas ? (
-                    <div style={{ fontSize: 14, fontWeight: 800, color: '#065f46' }}>
-                      🟢 {miBonoMonto ? `¡Vas ganando ${fmt(miBonoMonto)}!` : '¡Cumples ambas metas!'}
+                  {cumpleParaBono ? (
+                    <div style={{ marginTop: 10, background: '#065f46', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#fff' }}>
+                        🎉 {miBonoMonto ? `¡Vas ganando ${fmt(miBonoMonto)}!` : '¡Cumples todos los requisitos!'}
+                      </p>
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>
-                        {miStats.cumpleIngresos || miStats.cumpleCitas ? '🟡 En camino' : '🔴 Sin bono por ahora'}
-                      </div>
-                      {!miStats.cumpleIngresos && <div style={{ fontSize: 12, color: '#b91c3c' }}>Faltan {fmt(miStats.ingresosFaltantes)} en ingresos</div>}
-                      {!miStats.cumpleCitas && <div style={{ fontSize: 12, color: '#92400e' }}>Faltan {miStats.citasFaltantes} citas efectivas</div>}
-                    </div>
+                    <p style={{ margin: '10px 0 0', fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
+                      Cumple los 3 requisitos para ser candidato al bono
+                    </p>
                   )}
                 </div>
               )}
@@ -278,36 +318,17 @@ export default function KPIs() {
                 </button>
               </div>
 
-              <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
-                <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-                  🎯 Bonos · {fmt(META_INGRESOS)} + {META_CITAS_MES} citas
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {BONOS.map((bono, i) => {
-                    const candidato = candidatosBono[i]
-                    return (
-                      <div key={i} style={{ flex: 1, background: candidato ? '#f0fdf4' : '#f8f8f8', border: `1px solid ${candidato ? '#6ee7b7' : '#e5e7eb'}`, borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
-                        <div style={{ fontSize: 16 }}>{['🥇','🥈','🥉'][i]}</div>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: candidato ? '#065f46' : '#9ca3af' }}>{fmt(bono)}</div>
-                        <div style={{ fontSize: 10, color: candidato ? '#4a4a4a' : '#d1d5db' }}>{candidato ? candidato.nombre : '—'}</div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {rankingData.map((a, i) => {
                   const esTuyo = a.nombre === nombre
                   const esPrimero = i === 0
-                  const bonoIndex = candidatosBono.findIndex(c => c.nombre === a.nombre)
-                  const bonoMonto = bonoIndex >= 0 ? BONOS[bonoIndex] : null
+                  const esCandidato = a.cumpleIngresos && a.cumpleCitas
                   return (
                     <div key={a.nombre} className={animado ? 'card-enter' : ''} style={{ opacity: animado ? 1 : 0 }}>
-                      <div style={{ background: esTuyo ? '#eff6ff' : esPrimero ? '#fff0f3' : '#fff', border: `1px solid ${esTuyo ? '#93c5fd' : esPrimero ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 12, padding: '14px 18px', display: 'grid', gridTemplateColumns: '44px 1fr auto', gap: 14, alignItems: 'start', position: 'relative', overflow: 'hidden' }}>
+                      <div style={{ background: esTuyo ? '#eff6ff' : esPrimero ? '#fff0f3' : '#fff', border: `1px solid ${esTuyo ? '#93c5fd' : esPrimero ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 12, padding: '14px 18px', display: 'grid', gridTemplateColumns: '44px 1fr auto', gap: 14, alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
                         {esTuyo && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#3b82f6' }} />}
                         {esPrimero && !esTuyo && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#b91c3c' }} />}
-                        <div style={{ textAlign: 'center', paddingTop: 4 }}>
+                        <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: i < 3 ? 26 : 16 }}>{MEDALLAS[i]}</div>
                           <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>#{i + 1}</div>
                         </div>
@@ -318,14 +339,8 @@ export default function KPIs() {
                           <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, marginBottom: 6 }}>
                             {a.citas_efectivas} citas · {fmt(a.ingresos)}
                           </div>
-                          <div style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            background: a.cumpleIngresos && a.cumpleCitas ? '#f0fdf4' : a.cumpleIngresos || a.cumpleCitas ? '#fffbeb' : '#f3f4f6',
-                            border: `1px solid ${a.cumpleIngresos && a.cumpleCitas ? '#6ee7b7' : a.cumpleIngresos || a.cumpleCitas ? '#fcd34d' : '#e5e7eb'}`,
-                            borderRadius: 99, padding: '3px 10px', fontSize: 11, fontWeight: 700,
-                            color: a.cumpleIngresos && a.cumpleCitas ? '#065f46' : a.cumpleIngresos || a.cumpleCitas ? '#92400e' : '#9ca3af'
-                          }}>
-                            {a.cumpleIngresos && a.cumpleCitas ? `🟢 ${bonoMonto ? fmt(bonoMonto) : 'Bono'}` : a.cumpleIngresos || a.cumpleCitas ? '🟡 En camino' : '🔴 Sin bono'}
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: esCandidato ? '#f0fdf4' : '#f3f4f6', border: `1px solid ${esCandidato ? '#6ee7b7' : '#e5e7eb'}`, borderRadius: 99, padding: '3px 10px', fontSize: 11, fontWeight: 700, color: esCandidato ? '#065f46' : '#9ca3af' }}>
+                            {esCandidato ? '🟢 Candidato bono' : '🔴 Sin bono'}
                           </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
