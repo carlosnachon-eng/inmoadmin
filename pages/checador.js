@@ -484,7 +484,7 @@ export default function Checador() {
               )}
 
               {/* Junta martes */}
-              {esJuntaHoy() && (
+              {esJuntaHoy() && (persona?.rol === 'asesor' || persona?.rol === 'gerente') && (
                 <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 12, padding: 14, marginBottom: 14 }}>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#1e40af' }}>📅 Junta de equipo hoy</p>
                   <p style={{ margin: '2px 0 0', fontSize: 12, color: '#1e40af' }}>10:00 AM · Tolerancia 0 minutos</p>
@@ -506,7 +506,7 @@ export default function Checador() {
               {puedeChecar() && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
                   {/* Junta */}
-                  {esJuntaHoy() && !checadasHoy.some(c => c.tipo === 'junta') && (
+                  {esJuntaHoy() && (persona?.rol === 'asesor' || persona?.rol === 'gerente') && !checadasHoy.some(c => c.tipo === 'junta') && (
                     <button onClick={() => checar('junta')} disabled={guardando}
                       style={{ width: '100%', padding: 18, borderRadius: 14, border: 'none', background: guardando ? '#e5e7eb' : '#1e40af', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer' }}>
                       {guardando ? 'Registrando...' : '📅 Registrar asistencia a junta'}
