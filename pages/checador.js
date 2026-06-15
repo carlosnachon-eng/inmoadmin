@@ -8,6 +8,7 @@ const supabase = createClient(
 )
 
 const PERSONAL = {
+  'carlos.nachon@emporioinmobiliario.mx': { nombre: 'Carlos',   rol: 'admin',  horario: null },
   'ariannet81@gmail.com':              { nombre: 'Ariannet', rol: 'asesor',  horario: 'guardia' },
   'angelicamomox@gmail.com':           { nombre: 'Angélica', rol: 'asesor',  horario: 'guardia' },
   'rddd298@gmail.com':                 { nombre: 'Rosario',  rol: 'asesor',  horario: 'guardia' },
@@ -444,7 +445,7 @@ export default function Checador() {
         <select value={form.para_email} onChange={e => setForm(f => ({ ...f, para_email: e.target.value }))}
           style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
           <option value="">Selecciona persona...</option>
-          {Object.entries(PERSONAL).filter(([em]) => em !== excluirEmail).map(([em, p]) => (
+          {Object.entries(PERSONAL).map(([em, p]) => (
             <option key={em} value={em}>{p.nombre}</option>
           ))}
         </select>
