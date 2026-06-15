@@ -19,23 +19,6 @@ const STATUS_COLORS = {
   bloqueada:  { bg: '#fdecea', color: '#ef4444', label: 'Bloqueada' },
 }
 
-const CAL_LINKS = {
-  arrendamiento: 'https://cal.com/carlos-nachon-rbhjbk/firma-de-contrato-de-arrendamiento',
-  compraventa:   'https://cal.com/carlos-nachon-rbhjbk/firma-de-promesa-de-compraventa',
-  avaluo:        'https://cal.com/carlos-nachon-rbhjbk/avaluo-de-propiedad',
-  entrega:       'https://cal.com/carlos-nachon-rbhjbk/entrega-de-llaves',
-}
-
-const getCalLink = (tipo) => {
-  if (!tipo) return null
-  const t = tipo.toLowerCase()
-  if (t.includes('arrend') || t.includes('renta')) return CAL_LINKS.arrendamiento
-  if (t.includes('compra') || t.includes('venta') || t.includes('promesa')) return CAL_LINKS.compraventa
-  if (t.includes('avalu')) return CAL_LINKS.avaluo
-  if (t.includes('entrega') || t.includes('llave')) return CAL_LINKS.entrega
-  return null
-}
-
 export default function DetalleFirma() {
   const router = useRouter()
   const { id } = router.query
@@ -48,8 +31,6 @@ export default function DetalleFirma() {
   const [etapaActiva, setEtapaActiva] = useState(null)
   const [loading, setLoading] = useState(true)
   const [avanzando, setAvanzando] = useState(false)
-  const [showAgenda, setShowAgenda] = useState(false)
-  const [tipoAgenda, setTipoAgenda] = useState('arrendamiento')
 
   useEffect(() => { if (!id) return; cargarTodo() }, [id])
 
@@ -105,9 +86,6 @@ export default function DetalleFirma() {
   const progreso = etapas.filter(e => e.status === 'completada').length
   const total = etapas.filter(e => e.status !== 'no_aplica').length
   const pct = total > 0 ? Math.round((progreso / total) * 100) : 0
-
-  const calLinkAuto = getCalLink(firma.tipo)
-
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
       {/* Header */}
@@ -179,60 +157,6 @@ export default function DetalleFirma() {
           </div>
         </div>
 
-        {/* ── SECCIÓN AGENDAR ── */}
-        <div style={{ background: '#fff', borderRadius: '10px', border: '1px solid #e5e7eb', padding: '1rem', marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showAgenda ? 14 : 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 20 }}>📅</span>
-              <div>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#1a3c5e' }}>Agendar cita</p>
-                <p style={{ margin: 0, fontSize: 12, color: '#9ca3af' }}>Coordina firma, avalúo o entrega de llaves</p>
-              </div>
-            </div>
-            <button onClick={() => setShowAgenda(!showAgenda)}
-              style={{ background: showAgenda ? '#f3f4f6' : '#1a3c5e', color: showAgenda ? '#6b7280' : '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
-              {showAgenda ? 'Cerrar' : '+ Agendar'}
-            </button>
-          </div>
-
-          {showAgenda && (
-            <div>
-              <p style={{ margin: '0 0 10px', fontSize: 12, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Tipo de cita</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 14 }}>
-                {[
-                  { id: 'arrendamiento', label: '📝 Firma de arrendamiento', link: CAL_LINKS.arrendamiento },
-                  { id: 'compraventa',   label: '🏠 Firma de compraventa',   link: CAL_LINKS.compraventa },
-                  { id: 'avaluo',        label: '📊 Avalúo de propiedad',    link: CAL_LINKS.avaluo },
-                  { id: 'entrega',       label: '🔑 Entrega de llaves',      link: CAL_LINKS.entrega },
-                ].map(op => (
-                  <button key={op.id} onClick={() => setTipoAgenda(op.id)}
-                    style={{ padding: '10px 12px', borderRadius: 8, border: `2px solid ${tipoAgenda === op.id ? '#1a3c5e' : '#e5e7eb'}`, background: tipoAgenda === op.id ? '#eff6ff' : '#fff', color: tipoAgenda === op.id ? '#1a3c5e' : '#6b7280', cursor: 'pointer', fontSize: 13, fontWeight: tipoAgenda === op.id ? 700 : 400, textAlign: 'left' }}>
-                    {op.label}
-                  </button>
-                ))}
-              </div>
-
-              {calLinkAuto && tipoAgenda === (
-                calLinkAuto === CAL_LINKS.arrendamiento ? 'arrendamiento' :
-                calLinkAuto === CAL_LINKS.compraventa ? 'compraventa' :
-                calLinkAuto === CAL_LINKS.avaluo ? 'avaluo' : 'entrega'
-              ) && (
-                <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 12, color: '#92400e' }}>
-                  ⭐ Sugerido según el tipo de expediente
-                </div>
-              )}
-
-              <a href={CAL_LINKS[tipoAgenda]} target="_blank" rel="noreferrer"
-                style={{ display: 'block', width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: '#C8102E', color: '#fff', textAlign: 'center', textDecoration: 'none', fontSize: 14, fontWeight: 800, boxSizing: 'border-box' }}>
-                Abrir calendario para agendar →
-              </a>
-
-              <p style={{ margin: '8px 0 0', fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
-                Se abrirá Cal.com — el cliente elige fecha y le llega confirmación a su correo
-              </p>
-            </div>
-          )}
-        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: typeof window !== 'undefined' && window.innerWidth < 768 ? '1fr' : '1fr 320px', gap: '1.5rem' }}>
           <div>
