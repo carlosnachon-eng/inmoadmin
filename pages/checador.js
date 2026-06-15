@@ -269,15 +269,11 @@ export default function Checador() {
     }
 
     // Validar ubicación
-    if (lat !== null && lng !== null) {
-      const dist = distanciaMetros(lat, lng, OFICINA_LAT, OFICINA_LNG)
-      if (dist > RADIO_METROS) {
-        const continuar = confirm(`📍 Estás a ${Math.round(dist)} metros de la oficina.\n\n¿Confirmas que estás en las instalaciones?`)
-        if (!continuar) {
-          setGuardando(false)
-          return
-        }
-      }
+    const dist = distanciaMetros(lat, lng, OFICINA_LAT, OFICINA_LNG)
+    if (dist > RADIO_METROS) {
+      showToast(`📍 Estás a ${Math.round(dist)}m de la oficina. No puedes checar desde aquí.`, false)
+      setGuardando(false)
+      return
     }
 
     // Detectar si llega tarde
