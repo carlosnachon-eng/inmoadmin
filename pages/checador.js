@@ -75,9 +75,9 @@ const MOTIVOS_SIN_RECEPTOR = ['Se perdió', 'Se duplicó el registro']
 function ReceptorForm({ form, setForm }) {
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <div style={{ display: 'flex', gap: 6 }}>
-        {[{ v: 'personal', l: '👤 Del equipo' }, { v: 'externo', l: '🌐 Externo' }].map(op => (
-          <button key={op.v} onClick={() => setForm(f => ({ ...f, tipo_receptor: op.v, para_email: '', nombre_externo: '' }))}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {[{ v: 'personal', l: '👤 Equipo' }, { v: 'externo', l: '🌐 Externo' }, { v: 'candado', l: '🔒 Candado' }].map(op => (
+          <button key={op.v} onClick={() => setForm(f => ({ ...f, tipo_receptor: op.v, para_email: '', nombre_externo: '', codigo_candado: '' }))}
             style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${form.tipo_receptor === op.v ? '#1a1a2e' : '#e5e7eb'}`, background: form.tipo_receptor === op.v ? '#1a1a2e' : '#fff', color: form.tipo_receptor === op.v ? '#fff' : '#9ca3af', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
             {op.l}
           </button>
@@ -91,10 +91,19 @@ function ReceptorForm({ form, setForm }) {
             <option key={em} value={em}>{p.nombre}</option>
           ))}
         </select>
-      ) : (
+      ) : form.tipo_receptor === 'externo' ? (
         <input value={form.nombre_externo} onChange={e => setForm(f => ({ ...f, nombre_externo: e.target.value }))}
           placeholder="Ej: Propietario Juan López, Mantenimiento..."
           style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+      ) : (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <input value={form.nombre_externo} onChange={e => setForm(f => ({ ...f, nombre_externo: e.target.value }))}
+            placeholder="Nombre o dirección de la propiedad..."
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #1a1a2e', fontSize: 14, boxSizing: 'border-box' }} />
+          <input value={form.codigo_candado || ''} onChange={e => setForm(f => ({ ...f, codigo_candado: e.target.value }))}
+            placeholder="Código del candado (opcional)"
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+        </div>
       )}
     </div>
   )
@@ -126,9 +135,9 @@ export default function Checador() {
   const [showHistorialBajas, setShowHistorialBajas] = useState(false)
   const [llavesInactivas, setLlavesInactivas] = useState([])
   const [formLlave, setFormLlave] = useState({ numero: '', propiedad: '', notas: '' })
-  const [formPrestamo, setFormPrestamo] = useState({ tipo_receptor: 'personal', para_email: '', nombre_externo: '', notas: '' })
+  const [formPrestamo, setFormPrestamo] = useState({ tipo_receptor: 'personal', para_email: '', nombre_externo: '', codigo_candado: '', notas: '' })
   const [formTomar, setFormTomar] = useState({ notas: '' })
-  const [formTraspaso, setFormTraspaso] = useState({ tipo_receptor: 'personal', para_email: '', nombre_externo: '', notas: '' })
+  const [formTraspaso, setFormTraspaso] = useState({ tipo_receptor: 'personal', para_email: '', nombre_externo: '', codigo_candado: '', notas: '' })
   const [formBaja, setFormBaja] = useState({ motivo: MOTIVOS_BAJA[0], receptor: '', notas: '' })
   const [savingLlave, setSavingLlave] = useState(false)
   const [uploadingFoto, setUploadingFoto] = useState(null)
@@ -378,10 +387,13 @@ export default function Checador() {
   // Prestar (Carlos, Guillermo, Tania → a cualquiera)
   const prestarLlave = async (llave) => {
     const paraEmail = formPrestamo.tipo_receptor === 'personal' ? formPrestamo.para_email : null
+    const esCandado = formPrestamo.tipo_receptor === 'candado'
     const paraNombre = formPrestamo.tipo_receptor === 'personal'
       ? (PERSONAL[formPrestamo.para_email]?.nombre || '')
-      : formPrestamo.nombre_externo
-    if (!paraNombre) return
+      : esCandado
+        ? `🔒 Candado — ${formPrestamo.nombre_externo}${formPrestamo.codigo_candado ? ` (${formPrestamo.codigo_candado})` : ''}`
+        : formPrestamo.nombre_externo
+    if (!paraNombre || paraNombre === '🔒 Candado — ') return
     setSavingLlave(true)
     const { error } = await supabase.from('llaves').update({
       en_resguardo: false,
@@ -401,7 +413,7 @@ export default function Checador() {
     } else { showToast('Error: ' + error.message, false) }
     setSavingLlave(false)
     setShowModalPrestamo(null)
-    setFormPrestamo({ tipo_receptor: 'personal', para_email: '', nombre_externo: '', notas: '' })
+    setFormPrestamo({ tipo_receptor: 'personal', para_email: '', nombre_externo: '', codigo_candado: '', notas: '' })
     loadLlaves(); loadMovimientos()
   }
 
@@ -476,7 +488,7 @@ export default function Checador() {
     } else { showToast('Error: ' + error.message, false) }
     setSavingLlave(false)
     setShowModalTraspaso(null)
-    setFormTraspaso({ tipo_receptor: 'personal', para_email: '', nombre_externo: '', notas: '' })
+    setFormTraspaso({ tipo_receptor: 'personal', para_email: '', nombre_externo: '', codigo_candado: '', notas: '' })
     loadLlaves(); loadMovimientos()
   }
 
