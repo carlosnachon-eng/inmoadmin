@@ -1123,19 +1123,36 @@ export default function Checador() {
               {llavesInactivas.length === 0 ? (
                 <p style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>Sin llaves dadas de baja</p>
               ) : llavesInactivas.map(l => {
-                const movBaja = movimientosBajas.find(m => m.llave_id === l.id)
+                const movBaja = movimientosBajas.find(m => m.numero === l.numero)
                 return (
                   <div key={l.id} style={{ background: '#f9fafb', borderRadius: 10, padding: '12px 14px', marginBottom: 8, border: '1px solid #e5e7eb' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <span style={{ background: '#6b7280', color: '#fff', borderRadius: 6, padding: '2px 8px', fontSize: 13, fontWeight: 900 }}>#{l.numero}</span>
                       <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>{l.propiedad}</span>
                     </div>
-                    {movBaja && (
-                      <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>
-                        {movBaja.notas} · por {movBaja.de_nombre} · {fmt12(movBaja.timestamp)}
-                      </p>
+                    {movBaja ? (
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 10, color: '#9ca3af', textTransform: 'uppercase' }}>Dado de baja por</p>
+                            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#374151' }}>{movBaja.de_nombre}</p>
+                          </div>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 10, color: '#9ca3af', textTransform: 'uppercase' }}>Fecha y hora</p>
+                            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#374151' }}>{new Date(movBaja.timestamp).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })} · {fmt12(movBaja.timestamp)}</p>
+                          </div>
+                        </div>
+                        {movBaja.notas && (
+                          <div>
+                            <p style={{ margin: 0, fontSize: 10, color: '#9ca3af', textTransform: 'uppercase' }}>Motivo</p>
+                            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#dc2626' }}>{movBaja.notas}</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>Sin detalle de baja registrado</p>
                     )}
-                    {l.notas && <p style={{ margin: '2px 0 0', fontSize: 11, color: '#9ca3af' }}>{l.notas}</p>}
+                    {l.notas && <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>Nota: {l.notas}</p>}
                   </div>
                 )
               })}
