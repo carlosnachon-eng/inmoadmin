@@ -55,7 +55,8 @@ const diasFuera = (fecha_prestamo) => {
   return Math.floor((ahora - prestamo) / (1000 * 60 * 60 * 24))
 }
 
-const MOTIVOS_BAJA = ['Se rentó la propiedad', 'Se vendió la propiedad', 'Se perdió', 'Se duplicó el registro', 'Otro']
+const MOTIVOS_BAJA = ['Se rentó la propiedad', 'Se vendió la propiedad', 'Se devolvió al propietario', 'Se perdió', 'Se duplicó el registro', 'Otro']
+const MOTIVOS_SIN_RECEPTOR = ['Se perdió', 'Se duplicó el registro']
 
 function ReceptorForm({ form, setForm }) {
   return (
@@ -467,7 +468,7 @@ export default function Checador() {
         de_nombre: nombreBaja,
         para_email: null,
         para_nombre: null,
-        notas: `${formBaja.motivo} — Entregada a: ${formBaja.receptor}${formBaja.notas ? ' — ' + formBaja.notas : ''}`,
+        notas: `${formBaja.motivo}${formBaja.receptor ? ' — Entregada a: ' + formBaja.receptor : ''}${formBaja.notas ? ' — ' + formBaja.notas : ''}`,
       })
       if (errorMov) { showToast('Error registrando movimiento: ' + errorMov.message, false) }
       else { showToast(`Llave #${llave.numero} dada de baja`) }
@@ -1178,17 +1179,19 @@ export default function Checador() {
               <div style={{ display: 'grid', gap: 10 }}>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Motivo</label>
-                  <select value={formBaja.motivo} onChange={e => setFormBaja(f => ({ ...f, motivo: e.target.value }))}
+                  <select value={formBaja.motivo} onChange={e => setFormBaja(f => ({ ...f, motivo: e.target.value, receptor: MOTIVOS_SIN_RECEPTOR.includes(e.target.value) ? '' : f.receptor }))}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
                     {MOTIVOS_BAJA.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>¿A quién se entrega? *</label>
-                  <input value={formBaja.receptor} onChange={e => setFormBaja(f => ({ ...f, receptor: e.target.value }))}
-                    placeholder="Nombre del inquilino, propietario, cliente..."
-                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #1a1a2e', fontSize: 14, boxSizing: 'border-box' }} />
-                </div>
+                {!MOTIVOS_SIN_RECEPTOR.includes(formBaja.motivo) && (
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>¿A quién se entrega? *</label>
+                    <input value={formBaja.receptor} onChange={e => setFormBaja(f => ({ ...f, receptor: e.target.value }))}
+                      placeholder="Nombre del inquilino, propietario, cliente..."
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #1a1a2e', fontSize: 14, boxSizing: 'border-box' }} />
+                  </div>
+                )}
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Notas adicionales</label>
                   <input value={formBaja.notas} onChange={e => setFormBaja(f => ({ ...f, notas: e.target.value }))}
@@ -1197,8 +1200,8 @@ export default function Checador() {
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
                 <button onClick={() => setShowModalBaja(null)} style={{ flex: 1, padding: 12, borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
-                <button onClick={() => darDeBajaLlave(showModalBaja)} disabled={savingLlave || !formBaja.receptor}
-                  style={{ flex: 2, padding: 12, borderRadius: 10, border: 'none', background: !formBaja.receptor ? '#e5e7eb' : '#dc2626', color: !formBaja.receptor ? '#9ca3af' : '#fff', cursor: savingLlave || !formBaja.receptor ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                <button onClick={() => darDeBajaLlave(showModalBaja)} disabled={savingLlave || (!MOTIVOS_SIN_RECEPTOR.includes(formBaja.motivo) && !formBaja.receptor)}
+                  style={{ flex: 2, padding: 12, borderRadius: 10, border: 'none', background: (!MOTIVOS_SIN_RECEPTOR.includes(formBaja.motivo) && !formBaja.receptor) ? '#e5e7eb' : '#dc2626', color: (!MOTIVOS_SIN_RECEPTOR.includes(formBaja.motivo) && !formBaja.receptor) ? '#9ca3af' : '#fff', cursor: (savingLlave || (!MOTIVOS_SIN_RECEPTOR.includes(formBaja.motivo) && !formBaja.receptor)) ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
                   {savingLlave ? 'Procesando...' : 'Dar de baja'}
                 </button>
               </div>
