@@ -19,25 +19,6 @@ const STATUS_COLORS = {
   bloqueada:  { bg: '#fdecea', color: '#ef4444', label: 'Bloqueada' },
 }
 
-const CAL_LINKS = {
-  'arrendamiento': 'https://cal.com/carlos-nachon-rbhjbk/firma-de-contrato-de-arrendamiento',
-  'renta':         'https://cal.com/carlos-nachon-rbhjbk/firma-de-contrato-de-arrendamiento',
-  'compraventa':   'https://cal.com/carlos-nachon-rbhjbk/firma-de-promesa-de-compraventa',
-  'venta':         'https://cal.com/carlos-nachon-rbhjbk/firma-de-promesa-de-compraventa',
-  'avaluo':        'https://cal.com/carlos-nachon-rbhjbk/avaluo-de-propiedad',
-  'avalúo':        'https://cal.com/carlos-nachon-rbhjbk/avaluo-de-propiedad',
-  'entrega':       'https://cal.com/carlos-nachon-rbhjbk/entrega-de-llaves',
-}
-
-const getCalLink = (tipo) => {
-  if (!tipo) return null
-  const t = tipo.toLowerCase()
-  for (const [key, link] of Object.entries(CAL_LINKS)) {
-    if (t.includes(key)) return link
-  }
-  return null
-}
-
 export default function DetalleFirma() {
   const router = useRouter()
   const { id } = router.query
@@ -50,7 +31,6 @@ export default function DetalleFirma() {
   const [etapaActiva, setEtapaActiva] = useState(null)
   const [loading, setLoading] = useState(true)
   const [avanzando, setAvanzando] = useState(false)
-  const [showCal, setShowCal] = useState(false)
 
   useEffect(() => { if (!id) return; cargarTodo() }, [id])
 
@@ -106,8 +86,6 @@ export default function DetalleFirma() {
   const progreso = etapas.filter(e => e.status === 'completada').length
   const total = etapas.filter(e => e.status !== 'no_aplica').length
   const pct = total > 0 ? Math.round((progreso / total) * 100) : 0
-  const calLink = getCalLink(firma.tipo)
-
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
       {/* Header */}
@@ -179,45 +157,6 @@ export default function DetalleFirma() {
           </div>
         </div>
 
-        {/* Bloque Agendar Cita */}
-        {calLink && (
-          <div style={{ background: '#fff', borderRadius: '10px', border: '1px solid #e5e7eb', marginBottom: '1.5rem', overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#1a3c5e' }}>📅 Agendar cita</p>
-                <p style={{ margin: '2px 0 0', fontSize: 11, color: '#9ca3af' }}>
-                  {firma.tipo?.toLowerCase().includes('arrendamiento') || firma.tipo?.toLowerCase().includes('renta')
-                    ? 'Firma de contrato de arrendamiento'
-                    : firma.tipo?.toLowerCase().includes('venta') || firma.tipo?.toLowerCase().includes('compraventa')
-                    ? 'Firma de promesa de compraventa'
-                    : firma.tipo?.toLowerCase().includes('avaluo') || firma.tipo?.toLowerCase().includes('avalúo')
-                    ? 'Avalúo de propiedad'
-                    : 'Entrega de llaves'
-                  } · 📍 Por confirmar
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => setShowCal(!showCal)}
-                  style={{ background: showCal ? '#f3f4f6' : '#1a3c5e', color: showCal ? '#6b7280' : '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                  {showCal ? 'Cerrar' : '📅 Ver calendario'}
-                </button>
-                <a href={calLink} target="_blank" rel="noopener noreferrer"
-                  style={{ background: '#C8102E', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-                  🔗 Copiar link
-                </a>
-              </div>
-            </div>
-            {showCal && (
-              <div style={{ borderTop: '1px solid #e5e7eb', height: 600 }}>
-                <iframe
-                  src={calLink}
-                  style={{ width: '100%', height: '100%', border: 'none' }}
-                  title="Agendar cita"
-                />
-              </div>
-            )}
-          </div>
-        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: typeof window !== 'undefined' && window.innerWidth < 768 ? '1fr' : '1fr 320px', gap: '1.5rem' }}>
           <div>
