@@ -119,6 +119,11 @@ export default function Checador() {
   const [uploadingFoto, setUploadingFoto] = useState(null)
   const [busquedaLlave, setBusquedaLlave] = useState('')
   const [filtroLlave, setFiltroLlave] = useState('todas')
+  const [filtroMovTipo, setFiltroMovTipo] = useState('todos')
+  const [filtroMovPersona, setFiltroMovPersona] = useState('todos')
+  const [filtroMovBusqueda, setFiltroMovBusqueda] = useState('')
+  const [movsPagina, setMovsPagina] = useState(1)
+  const MOVS_POR_PAGINA = 15
 
   // Admin
   const [vistaAdmin, setVistaAdmin] = useState('hoy')
@@ -846,24 +851,98 @@ export default function Checador() {
                 )}
               </div>
 
-              {movimientos.length > 0 && (
-                <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: '1px solid #e5e7eb', marginTop: 16 }}>
-                  <p style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Últimos movimientos</p>
-                  {movimientos.slice(0, 10).map((m, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #f3f4f6' }}>
-                      <div>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: m.tipo === 'devolucion' ? '#065f46' : m.tipo === 'baja' ? '#6b7280' : m.tipo === 'prestamo' ? '#b91c3c' : '#92400e' }}>
-                          {m.tipo === 'prestamo' ? '🔑' : m.tipo === 'devolucion' ? '✅' : m.tipo === 'baja' ? '🗂️' : '↔️'} #{m.numero} {m.propiedad}
-                        </span>
-                        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#9ca3af' }}>
-                          {m.tipo === 'baja' ? `Baja — ${m.notas}` : `${m.de_nombre} → ${m.para_nombre}`}
-                        </p>
-                      </div>
-                      <span style={{ fontSize: 11, color: '#9ca3af' }}>{fmt12(m.timestamp)}</span>
-                    </div>
-                  ))}
+              {/* Historial de movimientos mejorado */}
+              <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: '1px solid #e5e7eb', marginTop: 16 }}>
+                <p style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Historial de movimientos</p>
+                
+                {/* Filtros */}
+                <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+                  <input placeholder="Buscar # o propiedad..." value={filtroMovBusqueda} onChange={e => { setFiltroMovBusqueda(e.target.value); setMovsPagina(1) }}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, boxSizing: 'border-box' }} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <select value={filtroMovTipo} onChange={e => { setFiltroMovTipo(e.target.value); setMovsPagina(1) }}
+                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, background: '#fff' }}>
+                      <option value="todos">Todos los tipos</option>
+                      <option value="prestamo">🔑 Préstamos</option>
+                      <option value="devolucion">✅ Devoluciones</option>
+                      <option value="traspaso">↔️ Traspasos</option>
+                      <option value="baja">🗂️ Bajas</option>
+                    </select>
+                    <select value={filtroMovPersona} onChange={e => { setFiltroMovPersona(e.target.value); setMovsPagina(1) }}
+                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, background: '#fff' }}>
+                      <option value="todos">Todas las personas</option>
+                      {Object.values(PERSONAL).map(p => (
+                        <option key={p.nombre} value={p.nombre}>{p.nombre}</option>
+                      ))}
+                      <option value="Carlos">Carlos</option>
+                    </select>
+                  </div>
                 </div>
-              )}
+
+                {(() => {
+                  const movsFiltrados = movimientos.filter(m => {
+                    if (filtroMovTipo !== 'todos' && m.tipo !== filtroMovTipo) return false
+                    if (filtroMovPersona !== 'todos' && m.de_nombre !== filtroMovPersona && m.para_nombre !== filtroMovPersona) return false
+                    if (filtroMovBusqueda) {
+                      const q = filtroMovBusqueda.toLowerCase()
+                      if (!m.propiedad?.toLowerCase().includes(q) && !m.numero?.toString().includes(q)) return false
+                    }
+                    return true
+                  })
+                  const totalPaginas = Math.ceil(movsFiltrados.length / MOVS_POR_PAGINA)
+                  const movsEnPagina = movsFiltrados.slice((movsPagina - 1) * MOVS_POR_PAGINA, movsPagina * MOVS_POR_PAGINA)
+
+                  return (
+                    <>
+                      {movsFiltrados.length === 0 ? (
+                        <p style={{ textAlign: 'center', color: '#9ca3af', padding: 20, fontSize: 13 }}>Sin movimientos</p>
+                      ) : (
+                        <>
+                          <p style={{ margin: '0 0 8px', fontSize: 11, color: '#9ca3af' }}>{movsFiltrados.length} movimiento(s)</p>
+                          {movsEnPagina.map((m, i) => (
+                            <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                                    <span style={{ background: '#1a1a2e', color: '#fff', borderRadius: 5, padding: '1px 6px', fontSize: 11, fontWeight: 900 }}>#{m.numero}</span>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>{m.propiedad}</span>
+                                    <span style={{ fontSize: 10, background: m.tipo === 'devolucion' ? '#f0fdf4' : m.tipo === 'baja' ? '#f3f4f6' : m.tipo === 'prestamo' ? '#fff0f3' : '#fffbeb', color: m.tipo === 'devolucion' ? '#065f46' : m.tipo === 'baja' ? '#6b7280' : m.tipo === 'prestamo' ? '#b91c3c' : '#92400e', padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>
+                                      {m.tipo === 'prestamo' ? '🔑 préstamo' : m.tipo === 'devolucion' ? '✅ devolución' : m.tipo === 'baja' ? '🗂️ baja' : '↔️ traspaso'}
+                                    </span>
+                                  </div>
+                                  <p style={{ margin: 0, fontSize: 11, color: '#6b7280' }}>
+                                    {m.tipo === 'baja' ? `${m.notas}` : `${m.de_nombre} → ${m.para_nombre}`}
+                                  </p>
+                                  {m.notas && m.tipo !== 'baja' && <p style={{ margin: '2px 0 0', fontSize: 11, color: '#9ca3af' }}>{m.notas}</p>}
+                                </div>
+                                <div style={{ textAlign: 'right', minWidth: 80 }}>
+                                  <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#374151' }}>{fmt12(m.timestamp)}</p>
+                                  <p style={{ margin: 0, fontSize: 10, color: '#9ca3af' }}>{new Date(m.timestamp).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+
+                          {/* Paginación */}
+                          {totalPaginas > 1 && (
+                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                              <button onClick={() => setMovsPagina(p => Math.max(1, p - 1))} disabled={movsPagina === 1}
+                                style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: movsPagina === 1 ? 'not-allowed' : 'pointer', color: movsPagina === 1 ? '#d1d5db' : '#374151', fontSize: 13, fontWeight: 700 }}>
+                                ←
+                              </button>
+                              <span style={{ fontSize: 12, color: '#6b7280' }}>{movsPagina} / {totalPaginas}</span>
+                              <button onClick={() => setMovsPagina(p => Math.min(totalPaginas, p + 1))} disabled={movsPagina === totalPaginas}
+                                style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: movsPagina === totalPaginas ? 'not-allowed' : 'pointer', color: movsPagina === totalPaginas ? '#d1d5db' : '#374151', fontSize: 13, fontWeight: 700 }}>
+                                →
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )
+                })()}
+              </div>
             </div>
           )}
 
