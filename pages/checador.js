@@ -69,6 +69,7 @@ export default function Checador() {
   const [historial, setHistorial] = useState([])
   const [guardando, setGuardando] = useState(false)
   const [tieneCita, setTieneCita] = useState(false)
+  const [motivoTarde, setMotivoTarde] = useState('')
 
   // Llaves
   const [llaves, setLlaves] = useState([])
@@ -214,9 +215,44 @@ export default function Checador() {
       }
     }
 
-    await supabase.from('checadas').insert({ email, nombre: persona.nombre, tipo, fecha: hoy, lat, lng, tiene_cita: tipo === 'entrada' ? tieneCita : false })
+    // Detectar si llega tarde
+    const horaLimite = tipo === 'junta' ? '10:00' : (horaEsperada || '09:00')
+    const tolerancia = tipo === 'junta' ? 0 : 15
+    const [hLim, mLim] = horaLimite.split(':').map(Number)
+    const limiteConTolerancia = hLim * 60 + mLim + tolerancia
+    const [hAct, mAct] = getHoraMexico().split(':').map(Number)
+    const minutosActual = hAct * 60 + mAct
+    const llegaTardeAhora = tipo !== 'salida' && minutosActual > limiteConTolerancia
+
+    await supabase.from('checadas').insert({
+      email, nombre: persona.nombre, tipo, fecha: hoy, lat, lng,
+      tiene_cita: tipo === 'entrada' ? tieneCita : false,
+      llego_tarde: llegaTardeAhora,
+      motivo_tarde: llegaTardeAhora ? (tieneCita ? 'Cita con cliente' : motivoTarde) : null,
+    })
+
+    // Notificación en tiempo real si llegó tarde o tiene cita
+    if ((llegaTardeAhora || tieneCita) && tipo !== 'salida') {
+      try {
+        await fetch('/api/notif-checada', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nombre: persona.nombre,
+            tipo,
+            hora: getHoraMexico(),
+            tieneCita,
+            llegaTarde: llegaTardeAhora,
+            motivo: tieneCita ? 'Cita con cliente' : motivoTarde,
+            horaEsperada: horaLimite,
+          })
+        })
+      } catch(e) { /* silencioso */ }
+    }
+
     showToast(tipo === 'entrada' ? '🟢 Entrada registrada' : tipo === 'salida' ? '🔴 Salida registrada' : '📅 Junta registrada')
     setGuardando(false)
+    setMotivoTarde('')
     loadChecadasHoy(); loadHistorial()
     if (esAdmin || esCarlos) loadChecadasAdmin()
   }
@@ -560,24 +596,54 @@ export default function Checador() {
                 </div>
               )}
 
-              {persona.rol === 'asesor' && tieneGuardiaHoy() && !yaEntro && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, marginBottom: 14, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={tieneCita} onChange={e => setTieneCita(e.target.checked)} style={{ width: 18, height: 18 }} />
-                  <div>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#374151' }}>Tengo cita este día</p>
-                    <p style={{ margin: '2px 0 0', fontSize: 11, color: '#9ca3af' }}>Justifica llegada después de las 9:15</p>
+              {persona.rol === 'asesor' && tieneGuardiaHoy() && !yaEntro && (() => {
+                const [hLim, mLim] = ((horaEsperada || '09:00')).split(':').map(Number)
+                const limiteMin = hLim * 60 + mLim + 15
+                const [hAct, mAct] = getHoraMexico().split(':').map(Number)
+                const esTarde = hAct * 60 + mAct > limiteMin
+                return (
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, marginBottom: 8, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={tieneCita} onChange={e => { setTieneCita(e.target.checked); if (e.target.checked) setMotivoTarde('') }} style={{ width: 18, height: 18 }} />
+                      <div>
+                        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#374151' }}>Tengo cita este día</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#9ca3af' }}>Justifica llegada después de las 9:15</p>
+                      </div>
+                    </label>
+                    {esTarde && !tieneCita && (
+                      <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 14 }}>
+                        <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: '#92400e' }}>⚠️ Estás llegando tarde — indica el motivo</p>
+                        <input value={motivoTarde} onChange={e => setMotivoTarde(e.target.value)}
+                          placeholder="Ej: Tráfico, emergencia familiar..."
+                          style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #fcd34d', fontSize: 14, boxSizing: 'border-box' }} />
+                      </div>
+                    )}
                   </div>
-                </label>
-              )}
+                )
+              })()}
 
               {puedeChecar() && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-                  {esJuntaHoy() && (persona.rol === 'asesor' || persona.rol === 'gerente') && !yaChecoJunta && (
-                    <button onClick={() => checar('junta')} disabled={guardando}
-                      style={{ width: '100%', padding: 18, borderRadius: 14, border: 'none', background: '#1e40af', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer' }}>
-                      📅 Registrar asistencia a junta
-                    </button>
-                  )}
+                  {esJuntaHoy() && (persona.rol === 'asesor' || persona.rol === 'gerente') && !yaChecoJunta && (() => {
+                    const [hAct, mAct] = getHoraMexico().split(':').map(Number)
+                    const tardeFuera = hAct * 60 + mAct > 10 * 60 // después de 10:00 AM exacto
+                    return (
+                      <div>
+                        {tardeFuera && (
+                          <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 14, marginBottom: 8 }}>
+                            <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: '#92400e' }}>⚠️ Llegaste tarde a la junta — indica el motivo</p>
+                            <input value={motivoTarde} onChange={e => setMotivoTarde(e.target.value)}
+                              placeholder="Ej: Tráfico, cita previa..."
+                              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #fcd34d', fontSize: 14, boxSizing: 'border-box' }} />
+                          </div>
+                        )}
+                        <button onClick={() => checar('junta')} disabled={guardando || (tardeFuera && !motivoTarde)}
+                          style={{ width: '100%', padding: 18, borderRadius: 14, border: 'none', background: tardeFuera && !motivoTarde ? '#e5e7eb' : '#1e40af', color: tardeFuera && !motivoTarde ? '#9ca3af' : '#fff', fontSize: 16, fontWeight: 800, cursor: guardando || (tardeFuera && !motivoTarde) ? 'not-allowed' : 'pointer' }}>
+                          📅 Registrar asistencia a junta
+                        </button>
+                      </div>
+                    )
+                  })()}
                   {(tieneGuardiaHoy() || persona.rol === 'staff') && !yaEntro && (
                     <button onClick={() => checar('entrada')} disabled={guardando}
                       style={{ width: '100%', padding: 18, borderRadius: 14, border: 'none', background: '#065f46', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer' }}>
