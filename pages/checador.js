@@ -57,6 +57,34 @@ const diasFuera = (fecha_prestamo) => {
 
 const MOTIVOS_BAJA = ['Se rentó la propiedad', 'Se vendió la propiedad', 'Se perdió', 'Se duplicó el registro', 'Otro']
 
+function ReceptorForm({ form, setForm }) {
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[{ v: 'personal', l: '👤 Del equipo' }, { v: 'externo', l: '🌐 Externo' }].map(op => (
+          <button key={op.v} onClick={() => setForm(f => ({ ...f, tipo_receptor: op.v, para_email: '', nombre_externo: '' }))}
+            style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${form.tipo_receptor === op.v ? '#1a1a2e' : '#e5e7eb'}`, background: form.tipo_receptor === op.v ? '#1a1a2e' : '#fff', color: form.tipo_receptor === op.v ? '#fff' : '#9ca3af', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+            {op.l}
+          </button>
+        ))}
+      </div>
+      {form.tipo_receptor === 'personal' ? (
+        <select value={form.para_email} onChange={e => setForm(f => ({ ...f, para_email: e.target.value }))}
+          style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
+          <option value="">Selecciona persona...</option>
+          {Object.entries(PERSONAL).map(([em, p]) => (
+            <option key={em} value={em}>{p.nombre}</option>
+          ))}
+        </select>
+      ) : (
+        <input value={form.nombre_externo} onChange={e => setForm(f => ({ ...f, nombre_externo: e.target.value }))}
+          placeholder="Ej: Propietario Juan López, Mantenimiento..."
+          style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+      )}
+    </div>
+  )
+}
+
 export default function Checador() {
   const [session, setSession] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
@@ -489,31 +517,6 @@ export default function Checador() {
   if (!soloLlaves && persona) TABS.push({ id: 'checador', label: '⏰ Checador' })
   TABS.push({ id: 'llaves', label: '🔑 Llaves' })
   if (esAdmin || esCarlos) TABS.push({ id: 'admin', label: '📊 Admin' })
-
-  const ReceptorForm = ({ form, setForm, excluirEmail }) => (
-    <div style={{ display: 'grid', gap: 10 }}>
-      <div style={{ display: 'flex', gap: 6 }}>
-        {[{ v: 'personal', l: '👤 Del equipo' }, { v: 'externo', l: '🌐 Externo' }].map(op => (
-          <button key={op.v} onClick={() => setForm(f => ({ ...f, tipo_receptor: op.v, para_email: '', nombre_externo: '' }))}
-            style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${form.tipo_receptor === op.v ? '#1a1a2e' : '#e5e7eb'}`, background: form.tipo_receptor === op.v ? '#1a1a2e' : '#fff', color: form.tipo_receptor === op.v ? '#fff' : '#9ca3af', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
-            {op.l}
-          </button>
-        ))}
-      </div>
-      {form.tipo_receptor === 'personal' ? (
-        <select value={form.para_email} onChange={e => setForm(f => ({ ...f, para_email: e.target.value }))}
-          style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
-          <option value="">Selecciona persona...</option>
-          {Object.entries(PERSONAL).map(([em, p]) => (
-            <option key={em} value={em}>{p.nombre}</option>
-          ))}
-        </select>
-      ) : (
-        <input value={form.nombre_externo} onChange={e => setForm(f => ({ ...f, nombre_externo: e.target.value }))}
-          placeholder="Ej: Propietario Juan López, Mantenimiento..." style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
-      )}
-    </div>
-  )
 
   return (
     <>
