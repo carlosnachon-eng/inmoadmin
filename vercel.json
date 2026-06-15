@@ -15,6 +15,10 @@
     {
       "path": "/api/cron-recordatorio-kpis",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron-checador",
+      "schedule": "0 14 * * 1-6"
     }
   ]
 }
