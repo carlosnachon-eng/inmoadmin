@@ -25,6 +25,20 @@ const ADMINS = [
   'guillermo@emporioinmobiliario.com.mx',
 ]
 
+const OFICINA_LAT = 19.0135225
+const OFICINA_LNG = -98.268092
+const RADIO_METROS = 100
+
+const distanciaMetros = (lat1, lng1, lat2, lng2) => {
+  const R = 6371000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2)
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+}
+
 const PUEDE_PRESTAR = [
   'carlos.nachon@emporioinmobiliario.mx',
   'guillermo@emporioinmobiliario.com.mx',
@@ -234,9 +248,13 @@ export default function Checador() {
     const hoy = getFechaMexico()
     let lat = null, lng = null
     try {
-      const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 }))
+      const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, enableHighAccuracy: true }))
       lat = pos.coords.latitude; lng = pos.coords.longitude
-    } catch (e) { }
+    } catch (e) {
+      showToast('⚠️ Debes habilitar el GPS para poder checar', false)
+      setGuardando(false)
+      return
+    }
 
     // Alerta de llaves al checar salida
     if (tipo === 'salida') {
@@ -244,6 +262,18 @@ export default function Checador() {
       if (misLlaves.length > 0) {
         const nombres = misLlaves.map(l => `#${l.numero} ${l.propiedad}`).join(', ')
         if (!confirm(`⚠️ Tienes ${misLlaves.length} llave(s) en tu poder:\n${nombres}\n\n¿Ya las devolviste?`)) {
+          setGuardando(false)
+          return
+        }
+      }
+    }
+
+    // Validar ubicación
+    if (lat !== null && lng !== null) {
+      const dist = distanciaMetros(lat, lng, OFICINA_LAT, OFICINA_LNG)
+      if (dist > RADIO_METROS) {
+        const continuar = confirm(`📍 Estás a ${Math.round(dist)} metros de la oficina.\n\n¿Confirmas que estás en las instalaciones?`)
+        if (!continuar) {
           setGuardando(false)
           return
         }
