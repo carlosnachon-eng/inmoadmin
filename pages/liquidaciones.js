@@ -324,6 +324,23 @@ export default function Liquidaciones() {
 
   useEffect(() => { if (session) loadData(); }, [session]);
 
+  // ── Tickets de mantenimiento con saldo pendiente del propietario, de meses ANTERIORES al periodo, no descontados aún ──
+  const getTicketsPendientesAnteriores = (propNames, anio, mes) => {
+    return tickets.filter(t => {
+      if (!propNames.includes(t.property_name)) return false;
+      if (t.payer !== "propietario") return false;
+      if (!t.charged_amount || t.charged_amount <= 0) return false;
+      if (t.descontado_de_liquidacion) return false; // ya se descontó en una liquidación previa
+      if (!t.created_at) return false;
+      const d = new Date(t.created_at);
+      const esMesActual = d.getMonth() === (mes - 1) && d.getFullYear() === anio;
+      const esFuturo = d.getFullYear() > anio || (d.getFullYear() === anio && d.getMonth() > mes - 1);
+      if (esMesActual || esFuturo) return false;
+      const saldo = (t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0);
+      return saldo > 0;
+    });
+  };
+
   const calcPendienteMes = (ownerEmail) => {
     const [anio, mes] = mesCorte.split("-").map(Number);
     const fechaCorte = new Date(anio, mes - 1, 1);
@@ -348,21 +365,9 @@ export default function Liquidaciones() {
     // Si ya existe una liquidación "pagado" completa, el pendiente es 0
     const yaLiquidadoCompleto = liqDelMes.some(l => l.status === "pagado");
     if (yaLiquidadoCompleto) return 0;
-    // Tickets de meses anteriores con saldo pendiente
+    // Tickets de meses anteriores con saldo pendiente (no descontados aún de una liquidación)
     const propNamesCalc = propsProp.map(p => p.name);
-    const saldoMantAnt = tickets.filter(t => {
-      if (!propNamesCalc.includes(t.property_name)) return false;
-      if (t.payer !== "propietario") return false;
-      if (!t.charged_amount || t.charged_amount <= 0) return false;
-      if (["cerrado", "resuelto"].includes(t.status)) return false;
-      if (!t.created_at) return false;
-      const d = new Date(t.created_at);
-      const esMesActual = d.getMonth() === (mes - 1) && d.getFullYear() === anio;
-      const esFuturo = d.getFullYear() > anio || (d.getFullYear() === anio && d.getMonth() > mes - 1);
-      if (esMesActual || esFuturo) return false;
-      const saldo = (t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0);
-      return saldo > 0;
-    }).reduce((a, t) => {
+    const saldoMantAnt = getTicketsPendientesAnteriores(propNamesCalc, anio, mes).reduce((a, t) => {
       const saldo = (t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0);
       return a + saldo;
     }, 0);
@@ -496,6 +501,19 @@ export default function Liquidaciones() {
       notes: `${formPago.concepto === "adelanto" ? "Adelanto" : formPago.concepto === "parcial" ? "Pago parcial" : "Liquidación total"}${formPago.property_name ? ` — ${formPago.property_name}` : ""} · Recibo: ${recibo.id.slice(0,8).toUpperCase()}`,
       rent_receiver: "inmobiliaria",
     }]);
+
+    // Si esto fue una liquidación TOTAL, marcar los tickets de mantenimiento pendientes de meses anteriores como ya descontados
+    if (formPago.concepto === "total") {
+      const [anioP, mesP] = mesCorte.split("-").map(Number);
+      const propsPropPago = properties.filter(p => p.owner_email === propietarioPago.email);
+      const propNamesPago = propsPropPago.map(p => p.name);
+      const ticketsADescontar = getTicketsPendientesAnteriores(propNamesPago, anioP, mesP);
+      if (ticketsADescontar.length > 0) {
+        await supabase.from("maintenance_tickets")
+          .update({ descontado_de_liquidacion: true })
+          .in("id", ticketsADescontar.map(t => t.id));
+      }
+    }
 
     await generarPDFRecibo({
       ...formPago,
@@ -712,6 +730,23 @@ export default function Liquidaciones() {
     const { error } = await supabase.from("owner_payments").insert([data]);
     if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
 
+    // ── Marcar tickets de mantenimiento de meses anteriores (con saldo a cargo del propietario) como ya descontados ──
+    // Esto evita que sigan apareciendo como "pendientes" en reportes de meses futuros una vez liquidados.
+    if (form.status === "pagado") {
+      const [anioForm, mesForm] = (() => {
+        // period_description viene como "mayo de 2026" — usar mesCorte como fuente confiable de mes/año
+        return mesCorte.split("-").map(Number);
+      })();
+      const propsPropForm = properties.filter(p => p.owner_email === form.owner_email);
+      const propNamesForm = propsPropForm.map(p => p.name);
+      const ticketsADescontar = getTicketsPendientesAnteriores(propNamesForm, anioForm, mesForm);
+      if (ticketsADescontar.length > 0) {
+        await supabase.from("maintenance_tickets")
+          .update({ descontado_de_liquidacion: true })
+          .in("id", ticketsADescontar.map(t => t.id));
+      }
+    }
+
     if (form.rent_receiver === "inmobiliaria") {
       const comisionRetenida = parseFloat(form.total_commission) || 0;
       const montoLiquidado   = parseFloat(form.amount_paid) || 0;
@@ -809,23 +844,8 @@ export default function Liquidaciones() {
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
 
-    // Tickets de meses anteriores con saldo pendiente (charged_amount - advance_amount > 0, no cerrados)
-    const ticketsPendientesAnteriores = tickets.filter(t => {
-      if (!propsProp.some(p => p.name === t.property_name)) return false;
-      if (t.payer !== "propietario") return false;
-      if (!t.charged_amount || t.charged_amount <= 0) return false;
-      if (["cerrado", "resuelto"].includes(t.status)) return false;
-      if (!t.created_at) return false;
-      const d = new Date(t.created_at);
-      // Solo tickets de meses ANTERIORES al mes del reporte
-      const esMesActual = d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
-      if (esMesActual) return false;
-      const esFuturo = d.getFullYear() > anioCorte || (d.getFullYear() === anioCorte && d.getMonth() > mesNumCorte - 1);
-      if (esFuturo) return false;
-      // Tiene saldo pendiente
-      const saldo = (t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0);
-      return saldo > 0;
-    });
+    // Tickets de meses anteriores con saldo pendiente, EXCLUYENDO los ya descontados en una liquidación previa
+    const ticketsPendientesAnteriores = getTicketsPendientesAnteriores(propsProp.map(p => p.name), anioCorte, mesNumCorte);
     const saldoPendienteAnteriores = ticketsPendientesAnteriores.reduce((a, t) => {
       const saldo = (t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0);
       return a + saldo;
@@ -848,9 +868,6 @@ export default function Liquidaciones() {
     const totalRentaProp = pagosPagadosMes.reduce((a, p) => a + (p.amount || 0), 0);
 
     // ── Clasificar rentas: directo a cuenta del propietario vs cobradas por Emporio ──
-    // Una renta cuenta como "cobrada por Emporio" si:
-    //  a) el contrato es rent_receiver = inmobiliaria, o
-    //  b) hay una entrada en caja (renta_cobrada) ese mes que menciona la propiedad (ej. pago en efectivo en oficina)
     const { data: entradasCajaMes } = await supabase.from("cash_movements")
       .select("description, amount, date, type, category")
       .eq("type", "entrada").eq("category", "renta_cobrada");
@@ -860,14 +877,11 @@ export default function Liquidaciones() {
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
     const cobradaPorEmporio = (pago) => {
-      // 1) Campo explícito (nuevo flujo de cobranza)
       if (pago.recibido_por === "emporio") return true;
       if (pago.recibido_por === "propietario") return false;
-      // 2) Por tipo de contrato
       const c = contratosProp.find(c => c.id === pago.contract_id);
       if (!c) return false;
       if ((c.rent_receiver || "inmobiliaria") === "inmobiliaria") return true;
-      // 3) Fallback histórico: renta directa pero hay entrada en caja que menciona la propiedad
       return entradasDelMes.some(mv => (mv.description || "").toLowerCase().includes((pago.property_name || "").toLowerCase()) && pago.property_name);
     };
     const rentaEmporio = pagosPagadosMes.filter(p => cobradaPorEmporio(p)).reduce((a, p) => a + (p.amount || 0), 0);
@@ -959,7 +973,6 @@ export default function Liquidaciones() {
     });
     const numPagados = pagosTotalesMesResumen.filter(p => p.status === "pagado").length;
     let lineY = y + 14;
-    // Si hay rentas directas al propietario, desglosar
     if (rentaDirecta > 0) {
       doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(74, 74, 74);
       doc.text(`Rentas cobradas directo en tu cuenta:`, 18, lineY);
@@ -1045,12 +1058,10 @@ export default function Liquidaciones() {
     const liqPagadaCompleta = liqDelMes.find(l => l.status === "pagado");
     const periodoYaLiquidado = !!liqPagadaCompleta && totalAdelanto > 0;
     if (periodoYaLiquidado) {
-      // El mes ya fue liquidado y pagado — mostrar solo el monto de la liquidación completa
       labelLiq = "Periodo liquidado — pagado:";
-      montoLiq = liqDelMes.reduce((a, l) => a + (l.amount_paid || 0), 0); // total real pagado incluyendo parciales
+      montoLiq = liqDelMes.reduce((a, l) => a + (l.amount_paid || 0), 0);
       boxColor = [6, 95, 70];
     } else if (rentaDirecta > 0) {
-      // Propietario con renta directa: el balance dice quién debe a quién
       const balanceFinal = balanceEmporio - liqDelMes.reduce((a, l) => a + (l.amount_paid || 0), 0);
       if (balanceFinal >= 0) {
         labelLiq = totalAdelanto > 0 ? "Pendiente por pagarte:" : "Emporio te entrega:";
@@ -1070,7 +1081,6 @@ export default function Liquidaciones() {
     doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
     doc.text(labelLiq, 108, lineY + 1);
     doc.text(fmt(montoLiq), 190, lineY + 1, { align: "right" });
-    // Nota aclaratoria para renta directa
     if (periodoYaLiquidado) {
       y += boxH + 14;
       doc.setFont("helvetica", "italic"); doc.setFontSize(7.5); doc.setTextColor(122, 122, 122);
@@ -1137,14 +1147,12 @@ export default function Liquidaciones() {
       startY: y,
       head: [["Periodo", "Renta", "Comisión", "Pagado", "Fecha", "Estado"]],
       body: (() => {
-        // Mostrar todas las liquidaciones hasta el último día del mes del reporte
         const ultimoDiaMes = new Date(anioCorte, mesNumCorte, 0);
         const liqHastaMes = liqProp.filter(l => {
           if (!l.payment_date) return l.status !== "pagado";
           const fechaPago = new Date(l.payment_date + "T12:00:00");
           return fechaPago <= ultimoDiaMes;
         }).sort((a, b) => {
-          // Ordenar por periodo y dentro del periodo: parciales primero, pagado al final
           if (a.period_description !== b.period_description) {
             return (a.period_description || "").localeCompare(b.period_description || "");
           }
@@ -1156,7 +1164,6 @@ export default function Liquidaciones() {
           l.period_description || "—", fmt(l.total_rent), fmt(l.total_commission),
           fmt(l.amount_paid), fmtFecha(l.payment_date),
           (() => {
-            // Si hay un "pagado" en el mismo periodo, los parciales son "Anticipo"
             const hayPagadoEnPeriodo = liqHastaMes.some(x => x.period_description === l.period_description && x.status === "pagado");
             if (l.status === "pagado") return hayPagadoEnPeriodo && liqHastaMes.filter(x => x.period_description === l.period_description).length > 1 ? "Finiquito" : "Pagado";
             if (l.status === "pagado_parcial") return hayPagadoEnPeriodo ? "Anticipo" : "Parcial";
@@ -1554,12 +1561,10 @@ export default function Liquidaciones() {
                 const liquidoMensual = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0) - calcComision(c), 0);
                 const pendienteMes = calcPendienteMes(expediente.email);
                 const ticketsAbiertos = ticketsProp.filter(t => !["cerrado","resuelto"].includes(t.status));
-                // Total liquidado: si hay un registro "pagado" en un periodo, no sumar los parciales del mismo periodo
                 const periodosConPagado = new Set(
                   liqProp.filter(l => l.status === "pagado").map(l => l.period_description)
                 );
                 const totalLiquidado = liqProp.reduce((a, l) => {
-                  // Si este periodo ya tiene un "pagado", ignorar los parciales
                   if (l.status !== "pagado" && periodosConPagado.has(l.period_description)) return a;
                   return a + (l.amount_paid || 0);
                 }, 0);
@@ -1740,6 +1745,9 @@ export default function Liquidaciones() {
                               <span style={{ fontSize: 11, background: "#fff", color: "#374151", padding: "2px 8px", borderRadius: 6, border: "1px solid #e5e7eb" }}>Paga: {t.payer}</span>
                               {t.payer === "propietario" && t.charged_amount > 0 && (
                                 <span style={{ fontSize: 11, color: "#b91c3c", background: "#fff0f3", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>Cargo: {fmt(t.charged_amount)}</span>
+                              )}
+                              {t.descontado_de_liquidacion && (
+                                <span style={{ fontSize: 11, color: "#065f46", background: "#d1fae5", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>✓ Descontado de liquidación</span>
                               )}
                               <span style={{ fontSize: 11, color: "#9ca3af" }}>{new Date(t.created_at).toLocaleDateString("es-MX")}</span>
                             </div>
