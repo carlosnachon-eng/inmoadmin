@@ -192,7 +192,7 @@ export default function Liquidaciones() {
       const { default: jsPDF } = await import("jspdf");
       const doc = new jsPDF({ format: "a5" });
       const hoy = new Date(recibo.fecha).toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
-      const conceptoMap = { adelanto: "Adelanto de renta", parcial: "Pago parcial de liquidación", total: "Liquidación total" };
+      const conceptoMap = { adelanto: "Adelanto de renta", parcial: "Pago parcial de liquidación", total: "Liquidación total", mantenimiento: "Pago de mantenimiento" };
       const concepto = conceptoMap[recibo.concepto] || recibo.concepto;
       const folio = recibo.id.slice(0, 8).toUpperCase();
       let logoDataUrl = null;
@@ -268,6 +268,7 @@ export default function Liquidaciones() {
     forma_pago: "transferencia",
     periodo: "",
     fecha: new Date().toISOString().split("T")[0],
+    ticket_id: "",
   };
   const [formPago, setFormPago] = useState(emptyFormPago);
   const [pagoYaAbonado, setPagoYaAbonado] = useState(0);
@@ -418,6 +419,9 @@ export default function Liquidaciones() {
     if (formPago.concepto === "total" && parseFloat(formPago.monto) > pendienteActual + 1) {
       showToast(`⚠️ El monto ($${parseFloat(formPago.monto).toLocaleString()}) excede el pendiente del mes ($${pendienteActual.toLocaleString()}). Verifica el monto.`, false); return;
     }
+    if (formPago.concepto === "mantenimiento" && !formPago.ticket_id) {
+      showToast("Selecciona qué mantenimiento se está cobrando", false); return;
+    }
     if (formPago.forma_pago === "efectivo" && !firmaTrazada) {
       showToast("El propietario debe firmar de recibido", false); return;
     }
@@ -487,20 +491,23 @@ export default function Liquidaciones() {
     }
 
     const statusLiquidacion = formPago.concepto === "total" ? "pagado" : "pagado_parcial";
-    await supabase.from("owner_payments").insert([{
-      owner_name: propietarioPago.name,
-      owner_email: propietarioPago.email,
-      period_description: formPago.periodo,
-      total_rent: 0,
-      total_commission: 0,
-      total_liquid: parseFloat(formPago.monto),
-      amount_paid: parseFloat(formPago.monto),
-      payment_method: formPago.forma_pago,
-      payment_date: formPago.fecha,
-      status: statusLiquidacion,
-      notes: `${formPago.concepto === "adelanto" ? "Adelanto" : formPago.concepto === "parcial" ? "Pago parcial" : "Liquidación total"}${formPago.property_name ? ` — ${formPago.property_name}` : ""} · Recibo: ${recibo.id.slice(0,8).toUpperCase()}`,
-      rent_receiver: "inmobiliaria",
-    }]);
+    // Para pagos de mantenimiento específico, no afecta el balance de liquidación mensual — solo se registra como referencia/recibo
+    if (formPago.concepto !== "mantenimiento") {
+      await supabase.from("owner_payments").insert([{
+        owner_name: propietarioPago.name,
+        owner_email: propietarioPago.email,
+        period_description: formPago.periodo,
+        total_rent: 0,
+        total_commission: 0,
+        total_liquid: parseFloat(formPago.monto),
+        amount_paid: parseFloat(formPago.monto),
+        payment_method: formPago.forma_pago,
+        payment_date: formPago.fecha,
+        status: statusLiquidacion,
+        notes: `${formPago.concepto === "adelanto" ? "Adelanto" : formPago.concepto === "parcial" ? "Pago parcial" : "Liquidación total"}${formPago.property_name ? ` — ${formPago.property_name}` : ""} · Recibo: ${recibo.id.slice(0,8).toUpperCase()}`,
+        rent_receiver: "inmobiliaria",
+      }]);
+    }
 
     // Si esto fue una liquidación TOTAL, marcar los tickets de mantenimiento pendientes de meses anteriores como ya descontados
     if (formPago.concepto === "total") {
@@ -513,6 +520,18 @@ export default function Liquidaciones() {
           .update({ descontado_de_liquidacion: true })
           .in("id", ticketsADescontar.map(t => t.id));
       }
+    }
+
+    // Si esto fue un pago de mantenimiento puntual, marcar SOLO ese ticket como descontado y guardar evidencia
+    if (formPago.concepto === "mantenimiento" && formPago.ticket_id) {
+      await supabase.from("maintenance_tickets")
+        .update({
+          descontado_de_liquidacion: true,
+          fecha_cobro_propietario: formPago.fecha,
+          forma_cobro_propietario: formPago.forma_pago,
+          recibo_cobro_id: recibo.id,
+        })
+        .eq("id", formPago.ticket_id);
     }
 
     await generarPDFRecibo({
@@ -538,7 +557,7 @@ export default function Liquidaciones() {
     const { default: jsPDF } = await import("jspdf");
     const doc = new jsPDF({ format: "a5" });
     const hoy = new Date(datos.fecha).toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
-    const concepto = { adelanto: "Adelanto de renta", parcial: "Pago parcial de liquidación", total: "Liquidación total" }[datos.concepto] || datos.concepto;
+    const concepto = { adelanto: "Adelanto de renta", parcial: "Pago parcial de liquidación", total: "Liquidación total", mantenimiento: "Pago de mantenimiento" }[datos.concepto] || datos.concepto;
 
     let logoDataUrl = null;
     try {
@@ -1434,16 +1453,51 @@ export default function Liquidaciones() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Concepto">
-              <Sel value={formPago.concepto} onChange={e => setFormPago({ ...formPago, concepto: e.target.value })}>
+              <Sel value={formPago.concepto} onChange={e => {
+                const nuevoConcepto = e.target.value;
+                if (nuevoConcepto === "mantenimiento") {
+                  setFormPago({ ...formPago, concepto: nuevoConcepto, monto: "", ticket_id: "" });
+                } else {
+                  setFormPago({ ...formPago, concepto: nuevoConcepto });
+                }
+              }}>
                 <option value="adelanto">Adelanto</option>
                 <option value="parcial">Pago parcial</option>
                 <option value="total">Liquidación total</option>
+                <option value="mantenimiento">🔧 Pago de mantenimiento</option>
               </Sel>
             </Field>
             <Field label="Monto a entregar">
-              <Input type="number" value={formPago.monto} onChange={e => setFormPago({ ...formPago, monto: e.target.value })} placeholder="0" />
+              <Input type="number" value={formPago.monto} onChange={e => setFormPago({ ...formPago, monto: e.target.value })} placeholder="0" disabled={formPago.concepto === "mantenimiento" && !!formPago.ticket_id} />
             </Field>
           </div>
+
+          {formPago.concepto === "mantenimiento" && (() => {
+            const ticketsPendientesProp = tickets.filter(t =>
+              t.payer === "propietario" &&
+              properties.some(p => p.owner_email === propietarioPago.email && p.name === t.property_name) &&
+              t.charged_amount > 0 &&
+              !t.descontado_de_liquidacion
+            );
+            return (
+              <Field label="¿Qué mantenimiento se está cobrando?">
+                <Sel value={formPago.ticket_id} onChange={e => {
+                  const tk = ticketsPendientesProp.find(t => t.id === e.target.value);
+                  const saldo = tk ? (tk.charged_amount || 0) - (tk.advance_paid ? (tk.advance_amount || 0) : 0) : "";
+                  setFormPago({ ...formPago, ticket_id: e.target.value, monto: saldo ? saldo.toString() : "", property_name: tk?.property_name || "" });
+                }}>
+                  <option value="">— Selecciona el ticket —</option>
+                  {ticketsPendientesProp.map(t => {
+                    const saldo = (t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0);
+                    return <option key={t.id} value={t.id}>{t.title} — {t.property_name} — {fmt(saldo)}</option>;
+                  })}
+                </Sel>
+                {ticketsPendientesProp.length === 0 && (
+                  <p style={{ margin: "6px 0 0", fontSize: 12, color: "#9ca3af" }}>Este propietario no tiene mantenimientos pendientes de cobro.</p>
+                )}
+              </Field>
+            );
+          })()}
 
           <Field label="Propiedad que aplica (opcional — dejar vacío si es pago general)">
             <Sel value={formPago.property_name} onChange={e => setFormPago({ ...formPago, property_name: e.target.value })}>
@@ -1517,7 +1571,7 @@ export default function Liquidaciones() {
             <button onClick={() => { setShowModalPago(false); setFormPago(emptyFormPago); setFirmaTrazada(false); setArchivoComprobante(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>
               Cancelar
             </button>
-            <Btn onClick={guardarPago} disabled={savingPago || !formPago.monto || (formPago.forma_pago === "efectivo" && !firmaTrazada) || (formPago.forma_pago === "transferencia" && !archivoComprobante)} color="#b45309">
+            <Btn onClick={guardarPago} disabled={savingPago || !formPago.monto || (formPago.concepto === "mantenimiento" && !formPago.ticket_id) || (formPago.forma_pago === "efectivo" && !firmaTrazada) || (formPago.forma_pago === "transferencia" && !archivoComprobante)} color="#b45309">
               {savingPago ? "Guardando…" : "Registrar pago y generar recibo"}
             </Btn>
           </div>
@@ -1568,7 +1622,7 @@ export default function Liquidaciones() {
                   if (l.status !== "pagado" && periodosConPagado.has(l.period_description)) return a;
                   return a + (l.amount_paid || 0);
                 }, 0);
-                const conceptoLabel = { adelanto: "Adelanto", parcial: "Pago parcial", total: "Liquidación total" };
+                const conceptoLabel = { adelanto: "Adelanto", parcial: "Pago parcial", total: "Liquidación total", mantenimiento: "Mantenimiento" };
 
                 return (
                   <>
