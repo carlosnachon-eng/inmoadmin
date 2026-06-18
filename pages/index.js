@@ -90,6 +90,17 @@ const categoryLabels = {
   pago_proveedor: "Pago proveedor", material: "Material/Refacción", otro: "Otro",
 };
 
+// Mapeo tipo de servicio -> categoría de property_expenses
+const servicioToExpenseCategory = {
+  luz: "luz",
+  agua: "agua",
+  gas_mensual: "gas",
+  gas_recarga: "gas",
+  mantenimiento: "mantenimiento_comun",
+  internet: "otro",
+  predial: "predial",
+};
+
 const SERVICIOS_CONFIG = [
   { tipo: "luz",           label: "⚡ Luz (CFE)",       periodicidad: "bimestral" },
   { tipo: "agua",          label: "💧 Agua",            periodicidad: "mensual"   },
@@ -107,14 +118,14 @@ const semaforo = (status) => {
   return { color: "#92400e", bg: "#fef3c7", label: "⏳ Pendiente" };
 };
 
-function ModalServicios({ property, onClose, showToast }) {
+function ModalServicios({ property, onClose, showToast, profile }) {
   const [servicios, setServicios] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tabServ, setTabServ] = useState("estado");
   const [saving, setSaving] = useState(false);
   const [modalPago, setModalPago] = useState(null);
-  const [pagoForm, setPagoForm] = useState({ monto: "", notas: "", fecha_limite: "" });
+  const [pagoForm, setPagoForm] = useState({ monto: "", notas: "", fecha_limite: "", lo_pago_emporio: true });
   const [uploadingComp, setUploadingComp] = useState(null);
   const [filtroTipo, setFiltroTipo] = useState("todos");
   const [filtroPeriodo, setFiltroPeriodo] = useState("");
@@ -148,21 +159,69 @@ function ModalServicios({ property, onClose, showToast }) {
 
   const registrarPago = async (servicio) => {
     setSaving(true);
+    const config = SERVICIOS_CONFIG.find(c => c.tipo === servicio.tipo);
+    const monto = parseFloat(pagoForm.monto) || null;
+    const esCargoPropietario = (servicio.quien_paga || "inquilino") === "propietario";
+    const loPagoEmporio = esCargoPropietario && pagoForm.lo_pago_emporio;
+
+    // Si lo pagó Emporio a cuenta del propietario: crear el gasto que se descontará
+    // en la liquidación, y registrar la salida real de caja (mismo día, mismo monto —
+    // dinero que Emporio ya manejaba en su caja por cuenta del propietario, no se
+    // "repone" después; la liquidación solo lo descuenta contablemente).
+    let gastoId = null;
+    if (loPagoEmporio) {
+      if (!monto) {
+        showToast("Captura el monto para poder descontarlo de la liquidación", false);
+        setSaving(false);
+        return;
+      }
+      const { data: gastoData, error: gastoError } = await supabase.from("property_expenses").insert([{
+        property_name: property.name,
+        category: servicioToExpenseCategory[servicio.tipo] || "otro",
+        description: `${config?.label || servicio.tipo} — periodo ${periodoActual()}`,
+        amount: monto,
+        paid_by: "propietario",
+        payment_method: "transferencia",
+        date: new Date().toISOString().split("T")[0],
+        notes: pagoForm.notas || "",
+        created_by: profile?.email,
+      }]).select().single();
+
+      if (gastoError) {
+        showToast("Error al registrar gasto: " + gastoError.message, false);
+        setSaving(false);
+        return;
+      }
+      gastoId = gastoData?.id || null;
+
+      await supabase.from("cash_movements").insert([{
+        type: "salida",
+        category: "gasto_operativo",
+        description: `${config?.label || servicio.tipo}: ${property.name} (pagado por Emporio, a cuenta del propietario)`,
+        amount: monto,
+        payment_method: "transferencia",
+        date: new Date().toISOString().split("T")[0],
+        created_by: profile?.email,
+        created_at: new Date().toISOString(),
+      }]);
+    }
+
     const { error } = await supabase.from("pagos_servicios").insert({
       property_name: property.name,
       tipo: servicio.tipo,
       periodo: periodoActual(),
       status: "pagado",
-      monto: parseFloat(pagoForm.monto) || null,
+      monto,
       notas: pagoForm.notas,
       fecha_limite: pagoForm.fecha_limite || null,
       subido_por: "admin",
+      gasto_id: gastoId,
     });
     setSaving(false);
     if (error) { showToast("Error: " + error.message, false); return; }
-    showToast("Pago registrado");
+    showToast(loPagoEmporio ? "Pago registrado y descontado de la liquidación del propietario" : "Pago registrado");
     setModalPago(null);
-    setPagoForm({ monto: "", notas: "", fecha_limite: "" });
+    setPagoForm({ monto: "", notas: "", fecha_limite: "", lo_pago_emporio: true });
     loadServicios();
   };
 
@@ -211,6 +270,8 @@ function ModalServicios({ property, onClose, showToast }) {
     if (pagosDelServicio.length > 0) acc[config.tipo] = pagosDelServicio;
     return acc;
   }, {});
+
+  const servicioModalEsPropietario = modalPago && (modalPago.quien_paga || "inquilino") === "propietario";
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 1000, padding: 20, overflowY: "auto" }}>
@@ -273,10 +334,11 @@ function ModalServicios({ property, onClose, showToast }) {
                               <a href={pago.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, display: "inline-block", marginBottom: 6 }}>📄 Ver comprobante</a>
                             )}
                             {pago?.monto && <p style={{ margin: "0 0 8px", fontSize: 12, color: "#6b7280" }}>Monto registrado: {fmt(pago.monto)}</p>}
+                            {pago?.gasto_id && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#0369a1" }}>💼 Descontado de la liquidación del propietario</p>}
                             {quienPaga !== "incluido" && (
                               <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
                                 {(!pago || pago.status === "pendiente" || pago.status === "atrasado") && (
-                                  <button onClick={() => { setModalPago(serv); setPagoForm({ monto: "", notas: "", fecha_limite: "" }); }}
+                                  <button onClick={() => { setModalPago(serv); setPagoForm({ monto: "", notas: "", fecha_limite: "", lo_pago_emporio: true }); }}
                                     style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                                     ✓ Registrar pago
                                   </button>
@@ -442,6 +504,7 @@ function ModalServicios({ property, onClose, showToast }) {
                                         </p>
                                         {p.notas && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>{p.notas}</p>}
                                         {p.subido_por && p.subido_por !== "admin" && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>Subido por inquilino</p>}
+                                        {p.gasto_id && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#0369a1" }}>💼 Descontado de liquidación</p>}
                                       </div>
                                       <span style={{ background: sem.bg, color: sem.color, padding: "2px 8px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{sem.label}</span>
                                     </div>
@@ -491,7 +554,7 @@ function ModalServicios({ property, onClose, showToast }) {
             <h3 style={{ margin: "0 0 20px", fontSize: 16, fontWeight: 800, color: "#374151" }}>
               Registrar pago — {SERVICIOS_CONFIG.find(c => c.tipo === modalPago.tipo)?.label}
             </h3>
-            <Field label="Monto (opcional)">
+            <Field label={servicioModalEsPropietario ? "Monto (requerido para descontar de liquidación)" : "Monto (opcional)"}>
               <Input type="number" placeholder="0" value={pagoForm.monto} onChange={e => setPagoForm({ ...pagoForm, monto: e.target.value })} />
             </Field>
             <Field label="Fecha límite (opcional)">
@@ -500,6 +563,21 @@ function ModalServicios({ property, onClose, showToast }) {
             <Field label="Notas">
               <Input placeholder="Ej: Pagó en ventanilla CFE" value={pagoForm.notas} onChange={e => setPagoForm({ ...pagoForm, notas: e.target.value })} />
             </Field>
+            {servicioModalEsPropietario && (
+              <div style={{ background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={pagoForm.lo_pago_emporio}
+                    onChange={e => setPagoForm({ ...pagoForm, lo_pago_emporio: e.target.checked })}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span style={{ fontSize: 13, color: "#9a3412", fontWeight: 600 }}>
+                    Lo pagó Emporio a cuenta del propietario — descontar de su próxima liquidación y registrar salida de caja
+                  </span>
+                </label>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
               <button onClick={() => setModalPago(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "10px 18px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
               <button onClick={() => registrarPago(modalPago)} disabled={saving}
@@ -1039,6 +1117,7 @@ export default function Home() {
           property={serviciosProperty}
           onClose={() => { setServiciosProperty(null); loadData(); }}
           showToast={showToast}
+          profile={profile}
         />
       )}
 
