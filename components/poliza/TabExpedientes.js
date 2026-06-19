@@ -6,6 +6,8 @@ export default function TabExpedientes({ expedientes, propietarios, solicitudes,
   const [enviando, setEnviando] = useState(null)
   const [archivando, setArchivando] = useState(null)
   const [filtroStatus, setFiltroStatus] = useState('activo')
+  const [busqueda, setBusqueda] = useState('')
+  const [filtroTipo, setFiltroTipo] = useState('todos')
 
   const hoy = new Date()
 
@@ -27,9 +29,26 @@ export default function TabExpedientes({ expedientes, propietarios, solicitudes,
     .sort((a, b) => a.diasRestantes - b.diasRestantes)
 
   // Filtro de status en tabla
-  const expedientesFiltrados = filtroStatus === 'todos'
+  const porStatus = filtroStatus === 'todos'
     ? expedientes
     : expedientes.filter(e => e.status === filtroStatus)
+
+  // Tipos de contrato disponibles (dinámico, según lo que exista en los datos)
+  const tiposDisponibles = [...new Set(expedientes.map(e => e.tipo_contrato).filter(Boolean))].sort()
+
+  const porTipo = filtroTipo === 'todos'
+    ? porStatus
+    : porStatus.filter(e => e.tipo_contrato === filtroTipo)
+
+  const busquedaNorm = busqueda.trim().toLowerCase()
+  const expedientesFiltrados = busquedaNorm === ''
+    ? porTipo
+    : porTipo.filter(e => {
+        const arrendatario = (e.nombre_arrendatario || '').toLowerCase()
+        const arrendador = (e.nombre_arrendador || '').toLowerCase()
+        const inmueble = (e.direccion_inmueble || '').toLowerCase()
+        return arrendatario.includes(busquedaNorm) || arrendador.includes(busquedaNorm) || inmueble.includes(busquedaNorm)
+      })
 
   const statusOptions = [
     { value: 'activo', label: 'Activos' },
@@ -176,9 +195,14 @@ export default function TabExpedientes({ expedientes, propietarios, solicitudes,
       )}
 
       {/* Tabla de expedientes */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <p style={{ ...st.sectionTitle, margin: 0 }}>Expedientes de póliza</p>
+          <p style={{ ...st.sectionTitle, margin: 0 }}>
+            Expedientes de póliza
+            {expedientesFiltrados.length !== expedientes.length && (
+              <span style={{ fontWeight: 500, color: C.muted, fontSize: 13 }}> ({expedientesFiltrados.length} de {expedientes.length})</span>
+            )}
+          </p>
           <p style={{ ...st.sectionSub, margin: 0 }}>Haz clic en un expediente para editarlo o generar documentos</p>
         </div>
         {/* Filtro de status */}
@@ -205,10 +229,39 @@ export default function TabExpedientes({ expedientes, propietarios, solicitudes,
         </div>
       </div>
 
+      {/* Búsqueda + filtro de tipo */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        <input
+          type="text"
+          placeholder="🔍 Buscar por arrendatario, arrendador o inmueble..."
+          value={busqueda}
+          onChange={ev => setBusqueda(ev.target.value)}
+          style={{ flex: 1, minWidth: 220, padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, boxSizing: 'border-box' }}
+        />
+        <select
+          value={filtroTipo}
+          onChange={ev => setFiltroTipo(ev.target.value)}
+          style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: '#fff' }}
+        >
+          <option value="todos">Todos los tipos</option>
+          {tiposDisponibles.map(t => (
+            <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+          ))}
+        </select>
+        {(busqueda || filtroTipo !== 'todos') && (
+          <button
+            onClick={() => { setBusqueda(''); setFiltroTipo('todos') }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: '#f3f4f6', color: '#6b7280', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+          >
+            ✕ Limpiar
+          </button>
+        )}
+      </div>
+
       <div style={st.card}>
         {expedientesFiltrados.length === 0 ? (
           <p style={{ color: C.faint, textAlign: 'center', padding: 32 }}>
-            {filtroStatus === 'archivado' ? 'Sin expedientes archivados' : 'Sin expedientes activos'}
+            No hay expedientes que coincidan con estos filtros
           </p>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
