@@ -48,7 +48,7 @@ const PROPIEDAD_VACIA = {
   // Otros
   fecha_disponibilidad: "", mascotas_permitidas: null,
   amueblado: "", antiguedad_anios: "", orientacion: "",
-  comision_porcentaje: "",
+  comision_detalle: "", veridada_url: "",
   proteccion_juridica: "", proteccion_juridica_detalle: "",
 
   notas_internas: "",
@@ -240,7 +240,8 @@ export default function PropiedadesAdmin() {
       m2_terreno: p.m2_terreno || "",
       mantenimiento_monto: p.mantenimiento_monto || "",
       antiguedad_anios: p.antiguedad_anios || "",
-      comision_porcentaje: p.comision_porcentaje || "",
+      comision_detalle: p.comision_detalle || "",
+      veridada_url: p.veridada_url || "",
       fecha_disponibilidad: p.fecha_disponibilidad || "",
       proteccion_juridica: p.proteccion_juridica || "",
       proteccion_juridica_detalle: p.proteccion_juridica_detalle || "",
@@ -312,7 +313,8 @@ export default function PropiedadesAdmin() {
       m2_terreno: Number(form.m2_terreno) || 0,
       mantenimiento_monto: form.mantenimiento_monto ? Number(form.mantenimiento_monto) : null,
       antiguedad_anios: form.antiguedad_anios ? Number(form.antiguedad_anios) : null,
-      comision_porcentaje: form.comision_porcentaje ? Number(form.comision_porcentaje) : null,
+      comision_detalle: form.comision_detalle || null,
+      veridada_url: form.veridada_url || null,
       fecha_disponibilidad: form.fecha_disponibilidad || null,
       proteccion_juridica_detalle: (form.proteccion_juridica === "aval" || form.proteccion_juridica === "otra_poliza") ? form.proteccion_juridica_detalle : null,
       unidad_precio: "total",
@@ -771,20 +773,27 @@ export default function PropiedadesAdmin() {
           )}
 
           {form.operacion === "sale" && (
-            <Campo label="Tipo de crédito que acepta">
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {OPCIONES_CREDITO.map(opcion => (
-                  <label key={opcion} style={{ display: "flex", alignItems: "center", gap: 6, background: form.creditos_aceptados.includes(opcion) ? brand.redLight : "#f9fafb", border: `1px solid ${form.creditos_aceptados.includes(opcion) ? brand.red : "#e5e7eb"}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: form.creditos_aceptados.includes(opcion) ? brand.red : "#6b7280", cursor: "pointer" }}>
-                    <input type="checkbox" checked={form.creditos_aceptados.includes(opcion)} onChange={() => toggleCredito(opcion)} style={{ margin: 0 }} />
-                    {opcion}
-                  </label>
-                ))}
-              </div>
-            </Campo>
+            <>
+              <Campo label="Tipo de crédito que acepta">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {OPCIONES_CREDITO.map(opcion => (
+                    <label key={opcion} style={{ display: "flex", alignItems: "center", gap: 6, background: form.creditos_aceptados.includes(opcion) ? brand.redLight : "#f9fafb", border: `1px solid ${form.creditos_aceptados.includes(opcion) ? brand.red : "#e5e7eb"}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: form.creditos_aceptados.includes(opcion) ? brand.red : "#6b7280", cursor: "pointer" }}>
+                      <input type="checkbox" checked={form.creditos_aceptados.includes(opcion)} onChange={() => toggleCredito(opcion)} style={{ margin: 0 }} />
+                      {opcion}
+                    </label>
+                  ))}
+                </div>
+              </Campo>
+
+              <Campo label="Link de sello Veridada (si esta propiedad está verificada)">
+                <input style={inputStyle} value={form.veridada_url} onChange={e => setForm(f => ({ ...f, veridada_url: e.target.value }))} placeholder="https://veridada.mx/sello/..." />
+                <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Si lo llenas, en el sitio aparecerá un sello de "Propiedad verificada" con este link.</p>
+              </Campo>
+            </>
           )}
 
-          <Campo label="% de comisión pactada (interno, nunca se muestra al público)">
-            <input type="number" step="0.1" style={{ ...inputStyle, maxWidth: 140 }} value={form.comision_porcentaje} onChange={e => setForm(f => ({ ...f, comision_porcentaje: e.target.value }))} placeholder="5" />
+          <Campo label="Comisión pactada (interno, nunca se muestra al público)">
+            <input style={inputStyle} value={form.comision_detalle} onChange={e => setForm(f => ({ ...f, comision_detalle: e.target.value }))} placeholder={form.operacion === "rental" ? "Ej. 1 mes de renta" : "Ej. 5% sobre el total"} />
           </Campo>
 
           {/* Fotos */}
