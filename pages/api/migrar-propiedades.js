@@ -94,20 +94,25 @@ function mapPropiedad(detalle) {
   };
 }
 
-async function obtenerListaCompleta() {
+async function obtenerListaCompleta(forzarRecarga) {
   // Si ya tenemos la lista completa guardada en esta corrida de migración, la reutilizamos
   // (se guarda en la tabla de control para no volver a pedirla en cada lote).
-  const { data: control } = await supabaseAdmin
-    .from("migracion_easybroker_estado")
-    .select("*")
-    .eq("id", 1)
-    .maybeSingle();
+  // EXCEPCIÓN: si forzarRecarga viene true, ignoramos lo guardado y volvemos a
+  // preguntarle a EasyBroker — esto es importante porque si la lista guardada
+  // quedó corta por algún motivo, nunca se vuelve a corregir sola.
+  if (!forzarRecarga) {
+    const { data: control } = await supabaseAdmin
+      .from("migracion_easybroker_estado")
+      .select("*")
+      .eq("id", 1)
+      .maybeSingle();
 
-  if (control?.lista_public_ids?.length > 0) {
-    return control.lista_public_ids;
+    if (control?.lista_public_ids?.length > 0) {
+      return { publicIds: control.lista_public_ids, vinoDeCache: true };
+    }
   }
 
-  // Primera vez: pedimos todas las páginas de EasyBroker (esto es rápido, son requests ligeros sin fotos)
+  // Pedimos todas las páginas de EasyBroker (esto es rápido, son requests ligeros sin fotos)
   let page = 1;
   let todas = [];
   while (true) {
@@ -128,7 +133,7 @@ async function obtenerListaCompleta() {
     iniciado_en: new Date().toISOString(),
   });
 
-  return publicIds;
+  return { publicIds, vinoDeCache: false };
 }
 
 export default async function handler(req, res) {
@@ -145,7 +150,8 @@ export default async function handler(req, res) {
   const resultado = { creadas: 0, actualizadas: 0, errores: [] };
 
   try {
-    const todosLosIds = await obtenerListaCompleta();
+    const forzarRecarga = req.body?.forzarRecarga === true;
+    const { publicIds: todosLosIds, vinoDeCache } = await obtenerListaCompleta(forzarRecarga);
 
     const { data: control } = await supabaseAdmin
       .from("migracion_easybroker_estado")
@@ -162,6 +168,8 @@ export default async function handler(req, res) {
       return res.status(200).json({
         listo: true,
         total: todosLosIds.length,
+        total_reportado_por_easybroker: todosLosIds.length,
+        vino_de_cache: vinoDeCache,
         mensaje: "Migración completa, no quedan propiedades pendientes.",
       });
     }
@@ -219,6 +227,7 @@ export default async function handler(req, res) {
       procesados_en_este_lote: loteActual.length,
       total_procesados_hasta_ahora: nuevosProcesados.length,
       total: todosLosIds.length,
+      vino_de_cache: vinoDeCache,
       ...resultado,
     });
   } catch (e) {
