@@ -221,20 +221,55 @@ export default function PropiedadesAdmin() {
   };
 
   const correrMigracion = async () => {
-    if (!confirm("Esto va a traer todas tus propiedades activas de EasyBroker y guardarlas aquí. Si una propiedad ya existe, se actualiza (no se duplica). ¿Continuar?")) return;
+    if (!confirm("Esto va a traer todas tus propiedades activas de EasyBroker y guardarlas aquí, en lotes pequeños (puede tardar varios minutos porque tu plan de Vercel limita cada llamada a 10s). Si una propiedad ya existe, se actualiza, no se duplica. ¿Continuar?")) return;
     setMigrando(true);
     setResultadoMigracion(null);
+
+    let totalCreadas = 0, totalActualizadas = 0, totalErrores = [];
+    let vueltas = 0;
+
     try {
-      const res = await fetch("/api/migrar-propiedades", { method: "POST" });
-      const data = await res.json();
-      setResultadoMigracion(data);
-      if (res.ok) {
-        showToast(`Migración completa: ${data.creadas} creadas, ${data.actualizadas} actualizadas`);
-        loadPropiedades();
-      } else {
-        showToast("Error en la migración: " + (data.error || "desconocido"), false);
+      while (true) {
+        vueltas++;
+        if (vueltas > 200) { // límite de seguridad por si algo se atora
+          setResultadoMigracion({ error: "Se alcanzó el límite de intentos (200 llamadas). Revisa con Claude qué está pasando." });
+          break;
+        }
+
+        const res = await fetch("/api/migrar-propiedades", { method: "POST" });
+        const data = await res.json();
+
+        if (!res.ok) {
+          setResultadoMigracion({ error: data.error || "Error desconocido durante la migración", parcial: { totalCreadas, totalActualizadas, totalErrores } });
+          showToast("Error en la migración: " + (data.error || "desconocido"), false);
+          break;
+        }
+
+        totalCreadas += data.creadas || 0;
+        totalActualizadas += data.actualizadas || 0;
+        totalErrores = [...totalErrores, ...(data.errores || [])];
+
+        // Mostramos progreso en vivo mientras sigue corriendo
+        setResultadoMigracion({
+          enProgreso: !data.listo,
+          procesados: data.total_procesados_hasta_ahora || 0,
+          total: data.total || 0,
+          creadas: totalCreadas,
+          actualizadas: totalActualizadas,
+          errores: totalErrores,
+        });
+
+        if (data.listo) {
+          showToast(`Migración completa: ${totalCreadas} creadas, ${totalActualizadas} actualizadas`);
+          loadPropiedades();
+          break;
+        }
+
+        // pequeña pausa entre lotes para no saturar
+        await new Promise(r => setTimeout(r, 300));
       }
     } catch (e) {
+      setResultadoMigracion({ error: "Error de red: " + e.message, parcial: { totalCreadas, totalActualizadas } });
       showToast("Error de red al migrar: " + e.message, false);
     }
     setMigrando(false);
@@ -269,25 +304,32 @@ export default function PropiedadesAdmin() {
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 20px" }}>
 
         {resultadoMigracion && (
-          <div style={{ background: resultadoMigracion.error ? "#fee2e2" : "#f0fdf4", border: `1px solid ${resultadoMigracion.error ? "#fca5a5" : "#86efac"}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+          <div style={{ background: resultadoMigracion.error ? "#fee2e2" : resultadoMigracion.enProgreso ? "#eff6ff" : "#f0fdf4", border: `1px solid ${resultadoMigracion.error ? "#fca5a5" : resultadoMigracion.enProgreso ? "#93c5fd" : "#86efac"}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
             {resultadoMigracion.error ? (
               <p style={{ margin: 0, fontSize: 13, color: "#991b1b" }}>❌ {resultadoMigracion.error}</p>
+            ) : resultadoMigracion.enProgreso ? (
+              <>
+                <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: "#1e40af" }}>
+                  ⏳ Importando… {resultadoMigracion.procesados} de {resultadoMigracion.total} propiedades ({resultadoMigracion.creadas} nuevas, {resultadoMigracion.actualizadas} actualizadas hasta ahora)
+                </p>
+                <div style={{ background: "#dbeafe", borderRadius: 99, height: 8, overflow: "hidden" }}>
+                  <div style={{ background: "#1e40af", height: "100%", width: `${resultadoMigracion.total ? Math.min(100, (resultadoMigracion.procesados / resultadoMigracion.total) * 100) : 0}%`, transition: "width .3s" }} />
+                </div>
+                <p style={{ margin: "8px 0 0", fontSize: 11, color: "#6b7280" }}>No cierres ni recargues esta pestaña, se está guardando en lotes pequeños.</p>
+              </>
             ) : (
               <>
                 <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700, color: "#065f46" }}>
-                  ✅ Migración completa: {resultadoMigracion.procesadas} propiedades procesadas ({resultadoMigracion.creadas} nuevas, {resultadoMigracion.actualizadas} actualizadas)
+                  ✅ Migración completa: {resultadoMigracion.creadas} nuevas, {resultadoMigracion.actualizadas} actualizadas
                 </p>
-                {resultadoMigracion.total_encontradas_en_easybroker != null && (
-                  <p style={{ margin: "0 0 4px", fontSize: 12, color: "#374151" }}>
-                    EasyBroker reportó {resultadoMigracion.total_encontradas_en_easybroker} propiedades activas en {resultadoMigracion.diagnostico_paginas?.length || "?"} página(s) consultadas.
-                  </p>
-                )}
                 {resultadoMigracion.errores?.length > 0 && (
-                  <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>⚠️ {resultadoMigracion.errores.length} propiedades tuvieron error y no se importaron — revisa la consola del servidor en Vercel para más detalle.</p>
+                  <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>⚠️ {resultadoMigracion.errores.length} propiedades tuvieron error y no se importaron. IDs: {resultadoMigracion.errores.slice(0, 10).map(e => e.public_id).join(", ")}{resultadoMigracion.errores.length > 10 ? "…" : ""}</p>
                 )}
               </>
             )}
-            <button onClick={() => setResultadoMigracion(null)} style={{ marginTop: 8, background: "none", border: "none", color: "#6b7280", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>Cerrar aviso</button>
+            {!resultadoMigracion.enProgreso && (
+              <button onClick={() => setResultadoMigracion(null)} style={{ marginTop: 8, background: "none", border: "none", color: "#6b7280", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>Cerrar aviso</button>
+            )}
           </div>
         )}
 
