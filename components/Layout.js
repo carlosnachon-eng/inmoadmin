@@ -17,7 +17,7 @@ export const nav = [
   { id: "dashboard",     label: "Panel",          icon: "📊" },
   { id: "caja",          label: "Caja",            icon: "💵",  link: "/caja" },
   { id: "contracts",     label: "Contratos",       icon: "📋",  link: "/contratos" },
-  { id: "properties",    label: "Propiedades",     icon: "🏠" },
+  { id: "properties",    label: "Propiedades",     icon: "🏠",  link: "/propiedades-admin" },
   { id: "payments",      label: "Cobranza",        icon: "💰",  link: "/cobranza" },
   { id: "owner_payments",label: "Liquidaciones",   icon: "🏦",  link: "/liquidaciones" },
   { id: "tickets",       label: "Mantenimiento",   icon: "🔧",  link: "/mantenimiento" },
