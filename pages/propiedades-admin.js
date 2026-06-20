@@ -220,8 +220,11 @@ export default function PropiedadesAdmin() {
     loadPropiedades();
   };
 
-  const correrMigracion = async () => {
-    if (!confirm("Esto va a traer todas tus propiedades activas de EasyBroker y guardarlas aquí, en lotes pequeños (puede tardar varios minutos porque tu plan de Vercel limita cada llamada a 10s). Si una propiedad ya existe, se actualiza, no se duplica. ¿Continuar?")) return;
+  const correrMigracion = async (forzarRecarga = false) => {
+    const mensaje = forzarRecarga
+      ? "Esto va a volver a preguntarle a EasyBroker cuántas propiedades activas tienes (ignorando cualquier conteo guardado anteriormente) y va a completar las que falten. ¿Continuar?"
+      : "Esto va a traer todas tus propiedades activas de EasyBroker y guardarlas aquí, en lotes pequeños (puede tardar varios minutos porque tu plan de Vercel limita cada llamada a 10s). Si una propiedad ya existe, se actualiza, no se duplica. ¿Continuar?";
+    if (!confirm(mensaje)) return;
     setMigrando(true);
     setResultadoMigracion(null);
 
@@ -236,7 +239,11 @@ export default function PropiedadesAdmin() {
           break;
         }
 
-        const res = await fetch("/api/migrar-propiedades", { method: "POST" });
+        const res = await fetch("/api/migrar-propiedades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ forzarRecarga: vueltas === 1 ? forzarRecarga : false }),
+        });
         const data = await res.json();
 
         if (!res.ok) {
@@ -257,6 +264,7 @@ export default function PropiedadesAdmin() {
           creadas: totalCreadas,
           actualizadas: totalActualizadas,
           errores: totalErrores,
+          vinoDeCache: data.vino_de_cache,
         });
 
         if (data.listo) {
@@ -291,8 +299,11 @@ export default function PropiedadesAdmin() {
         icon="🏠"
         actions={
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={correrMigracion} disabled={migrando} style={{ background: "#fff", color: brand.red, border: `1.5px solid ${brand.red}`, borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: migrando ? "not-allowed" : "pointer", fontSize: 13, opacity: migrando ? 0.6 : 1 }}>
+            <button onClick={() => correrMigracion(false)} disabled={migrando} style={{ background: "#fff", color: brand.red, border: `1.5px solid ${brand.red}`, borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: migrando ? "not-allowed" : "pointer", fontSize: 13, opacity: migrando ? 0.6 : 1 }}>
               {migrando ? "Importando…" : "⬇️ Importar de EasyBroker"}
+            </button>
+            <button onClick={() => correrMigracion(true)} disabled={migrando} title="Úsalo si sospechas que el conteo se quedó corto o desactualizado" style={{ background: "#fff", color: "#6b7280", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: migrando ? "not-allowed" : "pointer", fontSize: 13, opacity: migrando ? 0.6 : 1 }}>
+              🔄 Recontar desde cero
             </button>
             <button onClick={abrirNueva} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
               + Nueva propiedad
