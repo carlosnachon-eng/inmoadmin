@@ -18,6 +18,12 @@ const TIPOS = ["Casa", "Departamento", "Terreno", "Local comercial", "Oficina", 
 const OPCIONES_CREDITO = ["Infonavit", "Fovissste", "Bancario", "Cofinavit", "Contado", "Crédito de la constructora"];
 const OPCIONES_AMUEBLADO = ["Amueblado", "Semi-amueblado", "Vacío"];
 const OPCIONES_ORIENTACION = ["Norte", "Sur", "Oriente", "Poniente", "Noreste", "Noroeste", "Sureste", "Suroeste"];
+const OPCIONES_PROTECCION_JURIDICA = [
+  { value: "", label: "Sin definir" },
+  { value: "blindaje_legal", label: "Blindaje Legal Emporio" },
+  { value: "aval", label: "Aval" },
+  { value: "otra_poliza", label: "Otra póliza jurídica" },
+];
 
 const PROPIEDAD_VACIA = {
   titulo: "", descripcion: "",
@@ -42,7 +48,8 @@ const PROPIEDAD_VACIA = {
   // Otros
   fecha_disponibilidad: "", mascotas_permitidas: null,
   amueblado: "", antiguedad_anios: "", orientacion: "",
-  tiene_blindaje_legal: false, comision_porcentaje: "",
+  comision_porcentaje: "",
+  proteccion_juridica: "", proteccion_juridica_detalle: "",
 
   notas_internas: "",
 };
@@ -235,6 +242,8 @@ export default function PropiedadesAdmin() {
       antiguedad_anios: p.antiguedad_anios || "",
       comision_porcentaje: p.comision_porcentaje || "",
       fecha_disponibilidad: p.fecha_disponibilidad || "",
+      proteccion_juridica: p.proteccion_juridica || "",
+      proteccion_juridica_detalle: p.proteccion_juridica_detalle || "",
       fotos: Array.isArray(p.fotos) ? p.fotos : [],
       amenidades: Array.isArray(p.amenidades) ? p.amenidades : [],
       creditos_aceptados: Array.isArray(p.creditos_aceptados) ? p.creditos_aceptados : [],
@@ -305,6 +314,7 @@ export default function PropiedadesAdmin() {
       antiguedad_anios: form.antiguedad_anios ? Number(form.antiguedad_anios) : null,
       comision_porcentaje: form.comision_porcentaje ? Number(form.comision_porcentaje) : null,
       fecha_disponibilidad: form.fecha_disponibilidad || null,
+      proteccion_juridica_detalle: (form.proteccion_juridica === "aval" || form.proteccion_juridica === "otra_poliza") ? form.proteccion_juridica_detalle : null,
       unidad_precio: "total",
     };
     delete payload.id;
@@ -729,18 +739,35 @@ export default function PropiedadesAdmin() {
           </div>
 
           {form.operacion === "rental" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <Campo label="Mascotas permitidas">
-                <select style={inputStyle} value={form.mascotas_permitidas === null ? "" : String(form.mascotas_permitidas)} onChange={e => setForm(f => ({ ...f, mascotas_permitidas: e.target.value === "" ? null : e.target.value === "true" }))}>
-                  <option value="">Sin especificar</option>
-                  <option value="true">Sí</option>
-                  <option value="false">No</option>
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Campo label="Mascotas permitidas">
+                  <select style={inputStyle} value={form.mascotas_permitidas === null ? "" : String(form.mascotas_permitidas)} onChange={e => setForm(f => ({ ...f, mascotas_permitidas: e.target.value === "" ? null : e.target.value === "true" }))}>
+                    <option value="">Sin especificar</option>
+                    <option value="true">Sí</option>
+                    <option value="false">No</option>
+                  </select>
+                </Campo>
+                <Campo label="Disponible a partir de">
+                  <input type="date" style={inputStyle} value={form.fecha_disponibilidad} onChange={e => setForm(f => ({ ...f, fecha_disponibilidad: e.target.value }))} />
+                </Campo>
+              </div>
+
+              <Campo label="Protección jurídica del contrato">
+                <select style={inputStyle} value={form.proteccion_juridica} onChange={e => setForm(f => ({ ...f, proteccion_juridica: e.target.value }))}>
+                  {OPCIONES_PROTECCION_JURIDICA.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
+                <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                  Lo normal es Blindaje Legal Emporio (la paga el inquilino). Usa Aval u Otra póliza solo cuando el propietario lo pidió así.
+                </p>
               </Campo>
-              <Campo label="Disponible a partir de">
-                <input type="date" style={inputStyle} value={form.fecha_disponibilidad} onChange={e => setForm(f => ({ ...f, fecha_disponibilidad: e.target.value }))} />
-              </Campo>
-            </div>
+
+              {(form.proteccion_juridica === "aval" || form.proteccion_juridica === "otra_poliza") && (
+                <Campo label={form.proteccion_juridica === "aval" ? "Detalle del aval (nombre, parentesco, etc.)" : "Detalle de la póliza (compañía, número, etc.)"}>
+                  <input style={inputStyle} value={form.proteccion_juridica_detalle} onChange={e => setForm(f => ({ ...f, proteccion_juridica_detalle: e.target.value }))} />
+                </Campo>
+              )}
+            </>
           )}
 
           {form.operacion === "sale" && (
@@ -755,15 +782,6 @@ export default function PropiedadesAdmin() {
               </div>
             </Campo>
           )}
-
-          <div style={{ marginBottom: 14 }}>
-            <SwitchToggle
-              checked={form.tiene_blindaje_legal}
-              onChange={v => setForm(f => ({ ...f, tiene_blindaje_legal: v }))}
-              label="Se ofrece con Blindaje Legal Emporio"
-              sublabel="Útil cuando piden aval o póliza jurídica específica."
-            />
-          </div>
 
           <Campo label="% de comisión pactada (interno, nunca se muestra al público)">
             <input type="number" step="0.1" style={{ ...inputStyle, maxWidth: 140 }} value={form.comision_porcentaje} onChange={e => setForm(f => ({ ...f, comision_porcentaje: e.target.value }))} placeholder="5" />
