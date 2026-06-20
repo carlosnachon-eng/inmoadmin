@@ -277,6 +277,11 @@ export default function PropiedadesAdmin() {
                 <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700, color: "#065f46" }}>
                   ✅ Migración completa: {resultadoMigracion.procesadas} propiedades procesadas ({resultadoMigracion.creadas} nuevas, {resultadoMigracion.actualizadas} actualizadas)
                 </p>
+                {resultadoMigracion.total_encontradas_en_easybroker != null && (
+                  <p style={{ margin: "0 0 4px", fontSize: 12, color: "#374151" }}>
+                    EasyBroker reportó {resultadoMigracion.total_encontradas_en_easybroker} propiedades activas en {resultadoMigracion.diagnostico_paginas?.length || "?"} página(s) consultadas.
+                  </p>
+                )}
                 {resultadoMigracion.errores?.length > 0 && (
                   <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>⚠️ {resultadoMigracion.errores.length} propiedades tuvieron error y no se importaron — revisa la consola del servidor en Vercel para más detalle.</p>
                 )}
