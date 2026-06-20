@@ -120,16 +120,29 @@ export default async function handler(req, res) {
 
   try {
     // 1) Traer el listado completo (todas las páginas)
+    // Usamos una condición de corte robusta: paramos cuando la página
+    // viene vacía o trae menos resultados que el límite pedido (50),
+    // en vez de depender de un campo de "next_page" que puede variar.
     let page = 1;
     let todasLasPropiedades = [];
+    const diagnostico = [];
     while (true) {
       const data = await fetchEasyBrokerPage(page);
       const content = data.content || [];
+      diagnostico.push({
+        page,
+        recibidas: content.length,
+        pagination_raw: data.pagination || null,
+        total_reportado_por_eb: data.pagination?.total || null,
+      });
       todasLasPropiedades = [...todasLasPropiedades, ...content];
-      if (!data.pagination?.next_page) break;
+      if (content.length === 0) break;          // página vacía -> ya no hay más
+      if (content.length < 50) break;            // página incompleta -> era la última
       page++;
-      if (page > 30) break; // límite de seguridad, ~1500 propiedades
+      if (page > 60) break;                      // límite de seguridad, ~3000 propiedades
     }
+    resultado.diagnostico_paginas = diagnostico;
+    resultado.total_encontradas_en_easybroker = todasLasPropiedades.length;
 
     // 2) Por cada propiedad, traer el detalle completo (fotos, amenidades, etc.)
     for (const resumen of todasLasPropiedades) {
