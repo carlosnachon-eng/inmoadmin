@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
@@ -15,16 +15,121 @@ const STATUS_STYLE = {
 
 const TIPOS = ["Casa", "Departamento", "Terreno", "Local comercial", "Oficina", "Edificio", "Bodega"];
 
+const OPCIONES_CREDITO = ["Infonavit", "Fovissste", "Bancario", "Cofinavit", "Contado", "Crédito de la constructora"];
+const OPCIONES_AMUEBLADO = ["Amueblado", "Semi-amueblado", "Vacío"];
+const OPCIONES_ORIENTACION = ["Norte", "Sur", "Oriente", "Poniente", "Noreste", "Noroeste", "Sureste", "Suroeste"];
+
 const PROPIEDAD_VACIA = {
   titulo: "", descripcion: "",
-  operacion: "sale", precio: "", moneda: "MXN", unidad_precio: "total",
+  operacion: "sale", precio: "", moneda: "MXN",
   tipo: "Casa", recamaras: "", banos: "", estacionamientos: "",
   m2_construccion: "", m2_terreno: "",
   direccion: "", colonia: "", ciudad: "Puebla", estado: "Puebla",
+  lat: null, lng: null,
   mostrar_ubicacion_exacta: false,
   fotos: [], amenidades: [],
-  status: "published", notas_internas: "",
+  video_url: "",
+  status: "published",
+
+  // Servicios y operación (uso interno del equipo, principalmente)
+  mantenimiento_aplica: false, mantenimiento_monto: "",
+  servicio_gas: "", servicio_agua: "", servicio_luz: "", internet_disponible: "",
+  es_administrada: false, ubicacion_llave: "", cisterna_capacidad: "",
+
+  // Crédito (venta)
+  creditos_aceptados: [],
+
+  // Otros
+  fecha_disponibilidad: "", mascotas_permitidas: null,
+  amueblado: "", antiguedad_anios: "", orientacion: "",
+  tiene_blindaje_legal: false, comision_porcentaje: "",
+
+  notas_internas: "",
 };
+
+const SwitchToggle = ({ checked, onChange, label, sublabel }) => (
+  <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", marginBottom: 4 }}>
+    <input type="checkbox" checked={!!checked} onChange={e => onChange(e.target.checked)} style={{ marginTop: 3, width: 16, height: 16, cursor: "pointer" }} />
+    <span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block" }}>{label}</span>
+      {sublabel && <span style={{ fontSize: 11, color: "#9ca3af" }}>{sublabel}</span>}
+    </span>
+  </label>
+);
+
+function MapaPin({ lat, lng, onChange }) {
+  const mapDivRef = useRef(null);
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const [cargado, setCargado] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) { setError("Falta configurar NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"); return; }
+
+    if (window.google?.maps) { setCargado(true); return; }
+
+    const existente = document.getElementById("google-maps-script");
+    if (existente) {
+      existente.addEventListener("load", () => setCargado(true));
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "google-maps-script";
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
+    script.async = true;
+    script.onload = () => setCargado(true);
+    script.onerror = () => setError("No se pudo cargar Google Maps");
+    document.head.appendChild(script);
+  }, []);
+
+  useEffect(() => {
+    if (!cargado || !mapDivRef.current) return;
+    const centro = { lat: lat || 19.0414, lng: lng || -98.2063 }; // default: Lomas de Angelópolis, Puebla
+
+    const map = new window.google.maps.Map(mapDivRef.current, {
+      center: centro,
+      zoom: lat ? 16 : 12,
+      mapTypeControl: false,
+      streetViewControl: false,
+    });
+    mapRef.current = map;
+
+    const marker = new window.google.maps.Marker({
+      position: centro,
+      map,
+      draggable: true,
+    });
+    markerRef.current = marker;
+
+    marker.addListener("dragend", () => {
+      const pos = marker.getPosition();
+      onChange(pos.lat(), pos.lng());
+    });
+
+    map.addListener("click", (e) => {
+      marker.setPosition(e.latLng);
+      onChange(e.latLng.lat(), e.latLng.lng());
+    });
+  }, [cargado]);
+
+  if (error) {
+    return <div style={{ padding: 14, background: "#fef3c7", borderRadius: 8, fontSize: 12, color: "#92400e" }}>⚠️ {error}. El mapa no está disponible, pero puedes seguir guardando la propiedad sin ubicación exacta.</div>;
+  }
+
+  return (
+    <div>
+      <div ref={mapDivRef} style={{ width: "100%", height: 260, borderRadius: 10, background: "#f3f4f6", marginBottom: 6 }}>
+        {!cargado && <div style={{ padding: 20, textAlign: "center", color: "#9ca3af", fontSize: 12 }}>Cargando mapa…</div>}
+      </div>
+      <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>
+        {lat ? `📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}` : "Haz click en el mapa para poner el pin en la ubicación exacta."}
+      </p>
+    </div>
+  );
+}
 
 const Modal = ({ title, onClose, children, wide }) => (
   <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
@@ -126,8 +231,13 @@ export default function PropiedadesAdmin() {
       estacionamientos: p.estacionamientos || "",
       m2_construccion: p.m2_construccion || "",
       m2_terreno: p.m2_terreno || "",
+      mantenimiento_monto: p.mantenimiento_monto || "",
+      antiguedad_anios: p.antiguedad_anios || "",
+      comision_porcentaje: p.comision_porcentaje || "",
+      fecha_disponibilidad: p.fecha_disponibilidad || "",
       fotos: Array.isArray(p.fotos) ? p.fotos : [],
       amenidades: Array.isArray(p.amenidades) ? p.amenidades : [],
+      creditos_aceptados: Array.isArray(p.creditos_aceptados) ? p.creditos_aceptados : [],
     });
     setModalForm(p);
   };
@@ -169,6 +279,15 @@ export default function PropiedadesAdmin() {
     setForm(f => ({ ...f, amenidades: f.amenidades.filter((_, i) => i !== idx) }));
   };
 
+  const toggleCredito = (opcion) => {
+    setForm(f => ({
+      ...f,
+      creditos_aceptados: f.creditos_aceptados.includes(opcion)
+        ? f.creditos_aceptados.filter(c => c !== opcion)
+        : [...f.creditos_aceptados, opcion],
+    }));
+  };
+
   const guardarPropiedad = async () => {
     if (!form.titulo.trim()) { showToast("Falta el título de la propiedad", false); return; }
     if (!form.precio) { showToast("Falta el precio", false); return; }
@@ -182,6 +301,11 @@ export default function PropiedadesAdmin() {
       estacionamientos: Number(form.estacionamientos) || 0,
       m2_construccion: Number(form.m2_construccion) || 0,
       m2_terreno: Number(form.m2_terreno) || 0,
+      mantenimiento_monto: form.mantenimiento_monto ? Number(form.mantenimiento_monto) : null,
+      antiguedad_anios: form.antiguedad_anios ? Number(form.antiguedad_anios) : null,
+      comision_porcentaje: form.comision_porcentaje ? Number(form.comision_porcentaje) : null,
+      fecha_disponibilidad: form.fecha_disponibilidad || null,
+      unidad_precio: "total",
     };
     delete payload.id;
     delete payload.created_at;
@@ -464,17 +588,9 @@ export default function PropiedadesAdmin() {
             </Campo>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Campo label="Precio *">
-              <input type="number" style={inputStyle} value={form.precio} onChange={e => setForm(f => ({ ...f, precio: e.target.value }))} placeholder="2500000" />
-            </Campo>
-            <Campo label="Unidad de precio">
-              <select style={inputStyle} value={form.unidad_precio} onChange={e => setForm(f => ({ ...f, unidad_precio: e.target.value }))}>
-                <option value="total">Total</option>
-                <option value="mensual">Mensual</option>
-              </select>
-            </Campo>
-          </div>
+          <Campo label="Precio total *">
+            <input type="number" style={inputStyle} value={form.precio} onChange={e => setForm(f => ({ ...f, precio: e.target.value }))} placeholder="2500000" />
+          </Campo>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
             <Campo label="Recámaras">
@@ -513,8 +629,24 @@ export default function PropiedadesAdmin() {
             </Campo>
           </div>
 
+          <Campo label="Ubicación exacta (para el equipo y para citas)">
+            <MapaPin lat={form.lat} lng={form.lng} onChange={(lat, lng) => setForm(f => ({ ...f, lat, lng }))} />
+          </Campo>
+          <div style={{ marginBottom: 14 }}>
+            <SwitchToggle
+              checked={form.mostrar_ubicacion_exacta}
+              onChange={v => setForm(f => ({ ...f, mostrar_ubicacion_exacta: v }))}
+              label="Mostrar esta ubicación exacta al público en el sitio web"
+              sublabel="Si lo apagas, en el sitio solo se muestra la zona/colonia aproximada, no el pin exacto."
+            />
+          </div>
+
           <Campo label="Descripción">
             <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={form.descripcion} onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))} />
+          </Campo>
+
+          <Campo label="Link de video (TikTok / YouTube / Reel)">
+            <input style={inputStyle} value={form.video_url} onChange={e => setForm(f => ({ ...f, video_url: e.target.value }))} placeholder="https://www.tiktok.com/@emporioinmobiliario/video/..." />
           </Campo>
 
           <Campo label="Estatus">
@@ -525,6 +657,116 @@ export default function PropiedadesAdmin() {
               <option value="leased">Rentada</option>
               <option value="draft">Borrador (no se muestra en el sitio)</option>
             </select>
+          </Campo>
+
+          <div style={{ height: 1, background: "#e5e7eb", margin: "20px 0" }} />
+          <p style={{ fontSize: 13, fontWeight: 800, color: "#1a1a2e", margin: "0 0 12px" }}>🔧 Servicios y datos de operación</p>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Campo label="Gas">
+              <input style={inputStyle} value={form.servicio_gas} onChange={e => setForm(f => ({ ...f, servicio_gas: e.target.value }))} placeholder="Estacionario / Natural" />
+            </Campo>
+            <Campo label="Agua">
+              <input style={inputStyle} value={form.servicio_agua} onChange={e => setForm(f => ({ ...f, servicio_agua: e.target.value }))} placeholder="Medidor propio / Incluida" />
+            </Campo>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Campo label="Luz">
+              <input style={inputStyle} value={form.servicio_luz} onChange={e => setForm(f => ({ ...f, servicio_luz: e.target.value }))} placeholder="Medidor propio / Compartido" />
+            </Campo>
+            <Campo label="Internet disponible">
+              <input style={inputStyle} value={form.internet_disponible} onChange={e => setForm(f => ({ ...f, internet_disponible: e.target.value }))} placeholder="Totalplay, Izzi…" />
+            </Campo>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Campo label="Capacidad de cisterna (opcional)">
+              <input style={inputStyle} value={form.cisterna_capacidad} onChange={e => setForm(f => ({ ...f, cisterna_capacidad: e.target.value }))} placeholder="10,000 litros" />
+            </Campo>
+            <Campo label="Ubicación de la llave (interno)">
+              <input style={inputStyle} value={form.ubicacion_llave} onChange={e => setForm(f => ({ ...f, ubicacion_llave: e.target.value }))} placeholder="Con el portero / Oficina Emporio" />
+            </Campo>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
+            <SwitchToggle
+              checked={form.mantenimiento_aplica}
+              onChange={v => setForm(f => ({ ...f, mantenimiento_aplica: v }))}
+              label="Aplica cuota de mantenimiento"
+            />
+            {form.mantenimiento_aplica && (
+              <input type="number" style={{ ...inputStyle, width: 140 }} value={form.mantenimiento_monto} onChange={e => setForm(f => ({ ...f, mantenimiento_monto: e.target.value }))} placeholder="$ monto" />
+            )}
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <SwitchToggle
+              checked={form.es_administrada}
+              onChange={v => setForm(f => ({ ...f, es_administrada: v }))}
+              label="Es un inmueble en administración de Emporio"
+            />
+          </div>
+
+          <div style={{ height: 1, background: "#e5e7eb", margin: "20px 0" }} />
+          <p style={{ fontSize: 13, fontWeight: 800, color: "#1a1a2e", margin: "0 0 12px" }}>🏷️ Otros datos</p>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <Campo label="Amueblado">
+              <select style={inputStyle} value={form.amueblado} onChange={e => setForm(f => ({ ...f, amueblado: e.target.value }))}>
+                <option value="">Sin especificar</option>
+                {OPCIONES_AMUEBLADO.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </Campo>
+            <Campo label="Orientación">
+              <select style={inputStyle} value={form.orientacion} onChange={e => setForm(f => ({ ...f, orientacion: e.target.value }))}>
+                <option value="">Sin especificar</option>
+                {OPCIONES_ORIENTACION.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </Campo>
+            <Campo label="Antigüedad (años)">
+              <input type="number" style={inputStyle} value={form.antiguedad_anios} onChange={e => setForm(f => ({ ...f, antiguedad_anios: e.target.value }))} />
+            </Campo>
+          </div>
+
+          {form.operacion === "rental" && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Campo label="Mascotas permitidas">
+                <select style={inputStyle} value={form.mascotas_permitidas === null ? "" : String(form.mascotas_permitidas)} onChange={e => setForm(f => ({ ...f, mascotas_permitidas: e.target.value === "" ? null : e.target.value === "true" }))}>
+                  <option value="">Sin especificar</option>
+                  <option value="true">Sí</option>
+                  <option value="false">No</option>
+                </select>
+              </Campo>
+              <Campo label="Disponible a partir de">
+                <input type="date" style={inputStyle} value={form.fecha_disponibilidad} onChange={e => setForm(f => ({ ...f, fecha_disponibilidad: e.target.value }))} />
+              </Campo>
+            </div>
+          )}
+
+          {form.operacion === "sale" && (
+            <Campo label="Tipo de crédito que acepta">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {OPCIONES_CREDITO.map(opcion => (
+                  <label key={opcion} style={{ display: "flex", alignItems: "center", gap: 6, background: form.creditos_aceptados.includes(opcion) ? brand.redLight : "#f9fafb", border: `1px solid ${form.creditos_aceptados.includes(opcion) ? brand.red : "#e5e7eb"}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: form.creditos_aceptados.includes(opcion) ? brand.red : "#6b7280", cursor: "pointer" }}>
+                    <input type="checkbox" checked={form.creditos_aceptados.includes(opcion)} onChange={() => toggleCredito(opcion)} style={{ margin: 0 }} />
+                    {opcion}
+                  </label>
+                ))}
+              </div>
+            </Campo>
+          )}
+
+          <div style={{ marginBottom: 14 }}>
+            <SwitchToggle
+              checked={form.tiene_blindaje_legal}
+              onChange={v => setForm(f => ({ ...f, tiene_blindaje_legal: v }))}
+              label="Se ofrece con Blindaje Legal Emporio"
+              sublabel="Útil cuando piden aval o póliza jurídica específica."
+            />
+          </div>
+
+          <Campo label="% de comisión pactada (interno, nunca se muestra al público)">
+            <input type="number" step="0.1" style={{ ...inputStyle, maxWidth: 140 }} value={form.comision_porcentaje} onChange={e => setForm(f => ({ ...f, comision_porcentaje: e.target.value }))} placeholder="5" />
           </Campo>
 
           {/* Fotos */}
