@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
+import { usePermiso, SinAcceso } from '../../lib/permisos'
 
 const TIPO_LABELS = {
   firma_arrendamiento: { label: 'Firma arrendamiento', color: '#1a3c5e', bg: '#eff6ff', emoji: '📝' },
@@ -14,12 +15,9 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto'
 const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
 
 export default function FirmasDashboard() {
+  const { cargando: permisoCargando, puedeVer } = usePermiso('firmas')
   const [session, setSession] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loginError, setLoginError] = useState('')
-  const [loginLoading, setLoginLoading] = useState(false)
   const [firmas, setFirmas] = useState([])
   const [filtro, setFiltro] = useState('activo')
   const [loading, setLoading] = useState(true)
@@ -95,19 +93,9 @@ export default function FirmasDashboard() {
     setShowModalDetalleDia(false)
   }
 
-  async function handleLogin(e) {
-    e.preventDefault()
-    setLoginLoading(true)
-    setLoginError('')
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) { setLoginError('Correo o contraseña incorrectos'); setLoginLoading(false); return }
-    const { data: usuario } = await supabase.from('firmas_usuarios').select('email').eq('email', data.user.email).maybeSingle()
-    if (!usuario) { await supabase.auth.signOut(); setLoginError('No tienes acceso a este módulo'); setLoginLoading(false); return }
-  }
-
   async function handleLogout() { await supabase.auth.signOut(); setSession(null) }
 
-  const RESPONSABLE_LABELS = { ventas: 'Ventas', juridico: 'Juridico', administracion: 'Administracion (Majo)', coordinacion: 'Administracion (Majo)', direccion: 'Direccion' }
+  const RESPONSABLE_LABELS = { ventas: 'Ventas', juridico: 'Juridico', administracion: 'Administracion (Tania)', coordinacion: 'Administracion (Tania)', direccion: 'Direccion' }
 
   // Calendario — construir días del mes
   const primerDia = new Date(anioActual, mesActual, 1).getDay()
@@ -135,26 +123,14 @@ export default function FirmasDashboard() {
   // Próximas citas (los próximos 7 días)
   const proximasCitas = citas.filter(c => c.fecha >= hoy).slice(0, 5)
 
-  if (authLoading) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui' }}><p style={{ color: '#888' }}>Cargando...</p></div>
+  if (authLoading || permisoCargando) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui' }}><p style={{ color: '#888' }}>Cargando...</p></div>
 
-  if (!session) return (
-    <div style={{ minHeight: '100vh', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui' }}>
-      <div style={{ background: '#fff', borderRadius: '12px', padding: '2rem', width: '100%', maxWidth: '380px', boxShadow: '0 2px 12px rgba(0,0,0,0.1)' }}>
-        <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ width: '160px', display: 'block', margin: '0 auto 1.5rem' }} />
-        <h2 style={{ textAlign: 'center', color: '#1a3c5e', fontSize: '1.1rem', marginBottom: '1.5rem' }}>Coordinacion de Firmas</h2>
-        <form onSubmit={handleLogin}>
-          <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', color: '#555' }}>Correo</label>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} required style={{ width: '100%', padding: '0.6rem', marginBottom: '1rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '1rem', boxSizing: 'border-box' }} />
-          <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', color: '#555' }}>Contraseña</label>
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} required style={{ width: '100%', padding: '0.6rem', marginBottom: '1rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '1rem', boxSizing: 'border-box' }} />
-          {loginError && <p style={{ color: '#dc2626', fontSize: '0.85rem', marginBottom: '1rem' }}>{loginError}</p>}
-          <button type="submit" disabled={loginLoading} style={{ width: '100%', padding: '0.75rem', background: '#1a3c5e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer' }}>
-            {loginLoading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-      </div>
-    </div>
-  )
+  if (!session) {
+    if (typeof window !== 'undefined') window.location.href = '/'
+    return null
+  }
+
+  if (!puedeVer) return <SinAcceso />
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
