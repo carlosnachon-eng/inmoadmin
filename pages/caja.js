@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
+import { usePermiso, SinAcceso } from "../lib/permisos";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -61,6 +62,9 @@ const Btn = ({ children, onClick, color = "#1a1a2e", disabled, small }) => (
 
 export default function Caja() {
   const router = useRouter();
+  const { cargando: permisoCargando, puedeVer: puedeVerModulo, puedeEditar: puedeVerSaldos } = usePermiso("caja");
+  // puedeVerModulo: puede entrar y registrar movimientos (Admin y Tania)
+  // puedeVerSaldos: puede ver saldos, historial y filtros completos (solo Admin)
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -81,8 +85,8 @@ export default function Caja() {
   const [form, setForm] = useState(emptyCash);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
-  const isAdmin = profile?.role === "admin";
-  const esCarlos = session?.user?.email === "carlos.nachon@emporioinmobiliario.mx";
+  const isAdmin = puedeVerSaldos; // controla quién puede eliminar movimientos
+  const esCarlos = puedeVerSaldos; // controla quién ve saldos/historial/filtros completos (antes: comparación de correo exacto)
   const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
@@ -167,7 +171,7 @@ export default function Caja() {
     loadData();
   };
 
-  if (authLoading) return (
+  if (authLoading || permisoCargando) return (
     <div style={{ minHeight: "100vh", background: "#f4f5f7", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
@@ -177,6 +181,7 @@ export default function Caja() {
     if (typeof window !== "undefined") window.location.href = "/";
     return null;
   }
+  if (!puedeVerModulo) return <SinAcceso />;
 
   // ── CÁLCULOS (sobre todos los movimientos) ──
   const totalEntradas = cashMovements.filter(m => m.type === "entrada").reduce((a, m) => a + (m.amount || 0), 0);
