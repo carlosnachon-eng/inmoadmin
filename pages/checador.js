@@ -7,23 +7,31 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-const PERSONAL = {
-  'carlos.nachon@emporioinmobiliario.mx': { nombre: 'Carlos',   rol: 'admin',  horario: null },
-  'ariannet81@gmail.com':              { nombre: 'Ariannet', rol: 'asesor',  horario: 'guardia' },
-  'angelicamomox@gmail.com':           { nombre: 'Angélica', rol: 'asesor',  horario: 'guardia' },
-  'rddd298@gmail.com':                 { nombre: 'Rosario',  rol: 'asesor',  horario: 'guardia' },
-  'ivanmtzco@gmail.com':               { nombre: 'Iván',     rol: 'asesor',  horario: 'guardia' },
-  'nextelmoto2@gmail.com':             { nombre: 'Andrea',   rol: 'asesor',  horario: 'guardia' },
-  'islas.amanda111@gmail.com':         { nombre: 'Amanda',   rol: 'asesor',  horario: 'guardia' },
-  'guillermo@emporioinmobiliario.com.mx': { nombre: 'Guillermo', rol: 'gerente', horario: 'junta' },
-  'juridico@emporioinmobiliario.mx':   { nombre: 'Zaye',     rol: 'staff',   horario: 'lv_9_5' },
-  'asistente1@emporioinmobiliario.mx': { nombre: 'Tania',    rol: 'staff',   horario: 'lv_9_5_s_10_2' },
-}
+// Estos roles tienen acceso de Admin dentro de Checador (ven y editan todo,
+// pueden agregar guardias). Antes era una lista de correos sueltos; ahora
+// son roles de la tabla `roles`, así que agregar a alguien nuevo es cambiar
+// su rol en profiles, no tocar este código.
+const ROLES_CON_ACCESO_ADMIN_CHECADOR = ['admin', 'gerente_ventas']
+const ROLES_QUE_PUEDEN_PRESTAR_LLAVES = ['admin', 'gerente_ventas', 'coord_operaciones']
 
-const ADMINS = [
-  'carlos.nachon@emporioinmobiliario.mx',
-  'guillermo@emporioinmobiliario.com.mx',
-]
+// El horario/turno de cada persona sigue siendo un dato manual que tú
+// asignas (no todos los asesores tienen el mismo turno) — esto se mantiene
+// como configuración editable aquí, pero separado del ROL (que ya no se
+// hardcodea). Si agregas a alguien nuevo al equipo, agrégalo aquí también
+// con su horario, y asegúrate de que su cuenta en profiles tenga role_id
+// correcto (admin/gerente_ventas/coord_operaciones/juridico/asesor).
+const HORARIOS_POR_EMAIL = {
+  'carlos.nachon@emporioinmobiliario.mx': null,
+  'ariannet81@gmail.com': 'guardia',
+  'angelicamomox@gmail.com': 'guardia',
+  'rddd298@gmail.com': 'guardia',
+  'ivanmtzco@gmail.com': 'guardia',
+  'nextelmoto2@gmail.com': 'guardia',
+  'islas.amanda111@gmail.com': 'guardia',
+  'guillermo@emporioinmobiliario.com.mx': 'junta',
+  'juridico@emporioinmobiliario.mx': 'lv_9_5',
+  'asistente1@emporioinmobiliario.mx': 'lv_9_5_s_10_2',
+}
 
 const OFICINA_LAT = 19.0135225
 const OFICINA_LNG = -98.268092
@@ -38,14 +46,6 @@ const distanciaMetros = (lat1, lng1, lat2, lng2) => {
     Math.sin(dLng/2) * Math.sin(dLng/2)
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
-
-const PUEDE_PRESTAR = [
-  'carlos.nachon@emporioinmobiliario.mx',
-  'guillermo@emporioinmobiliario.com.mx',
-  'asistente1@emporioinmobiliario.mx',
-]
-
-const TODOS_NOMBRES = Object.values(PERSONAL).map(p => p.nombre)
 
 const fmt12 = (ts) => {
   if (!ts) return '—'
@@ -72,7 +72,7 @@ const diasFuera = (fecha_prestamo) => {
 const MOTIVOS_BAJA = ['Se rentó la propiedad', 'Se vendió la propiedad', 'Se devolvió al propietario', 'Se perdió', 'Se duplicó el registro', 'Otro']
 const MOTIVOS_SIN_RECEPTOR = ['Se perdió', 'Se duplicó el registro']
 
-function ReceptorForm({ form, setForm }) {
+function ReceptorForm({ form, setForm, listaPersonas }) {
   return (
     <div style={{ display: 'grid', gap: 10 }}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -87,8 +87,8 @@ function ReceptorForm({ form, setForm }) {
         <select value={form.para_email} onChange={e => setForm(f => ({ ...f, para_email: e.target.value }))}
           style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
           <option value="">Selecciona persona...</option>
-          {Object.entries(PERSONAL).map(([em, p]) => (
-            <option key={em} value={em}>{p.nombre}</option>
+          {(listaPersonas || []).map(p => (
+            <option key={p.email} value={p.email}>{p.nombre}</option>
           ))}
         </select>
       ) : form.tipo_receptor === 'externo' ? (
@@ -165,11 +165,54 @@ export default function Checador() {
   }, [])
 
   const email = session?.user?.email
-  const persona = PERSONAL[email] || null
-  const esAdmin = ADMINS.includes(email)
-  const esCarlos = email === 'carlos.nachon@emporioinmobiliario.mx'
-  const soloLlaves = esCarlos
-  const puedePrestar = PUEDE_PRESTAR.includes(email)
+
+  // Cargamos el perfil real (con su role_id de la tabla roles) en vez de
+  // sacarlo de una lista hardcodeada. Mientras carga, persona es null.
+  const [perfilDb, setPerfilDb] = useState(null)
+  const [perfilCargado, setPerfilCargado] = useState(false)
+  useEffect(() => {
+    if (!session) { setPerfilCargado(true); return }
+    supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
+      .then(({ data }) => { setPerfilDb(data); setPerfilCargado(true) })
+  }, [session])
+
+  // Traducimos el role_id nuevo al "rol de comportamiento" viejo que usa
+  // el resto de este archivo (staff/gerente/asesor), para no tener que
+  // tocar las ~10 referencias dispersas de persona.rol en todo el código.
+  const ROL_ID_A_COMPORTAMIENTO = {
+    admin: 'admin',
+    gerente_ventas: 'gerente',
+    coord_operaciones: 'staff',
+    juridico: 'staff',
+    asesor: 'asesor',
+  }
+
+  const persona = perfilDb ? {
+    nombre: (perfilDb.full_name || perfilDb.email || '').split('@')[0] || perfilDb.email,
+    rol: ROL_ID_A_COMPORTAMIENTO[perfilDb.role_id] || 'asesor',
+  } : null
+
+  const esAdmin = ROLES_CON_ACCESO_ADMIN_CHECADOR.includes(perfilDb?.role_id)
+  const esCarlos = perfilDb?.role_id === 'admin'
+  const soloLlaves = esCarlos // Carlos (Admin) no necesita "checar" su propia asistencia individualmente:
+                                // ya tiene la pestaña 📊 Admin con la vista completa del equipo.
+  const puedePrestar = ROLES_QUE_PUEDEN_PRESTAR_LLAVES.includes(perfilDb?.role_id)
+
+  // Lista de personas del equipo interno (para el selector de "a quién le presto la llave").
+  // Antes salía de Object.keys(PERSONAL); ahora se carga de profiles, excluyendo
+  // a los roles externos (propietario/inquilino/condómino) que no usan este módulo.
+  const [listaPersonas, setListaPersonas] = useState([])
+  useEffect(() => {
+    supabase.from('profiles').select('email, full_name, role_id, roles:role_id(es_externo)').eq('active', true)
+      .then(({ data }) => {
+        const internos = (data || []).filter(p => !p.roles?.es_externo)
+        setListaPersonas(internos.map(p => ({
+          email: p.email,
+          nombre: (p.full_name || p.email.split('@')[0]),
+          rol: ROL_ID_A_COMPORTAMIENTO[p.role_id] || 'asesor',
+        })))
+      })
+  }, [])
 
   useEffect(() => {
     if (!session) return
@@ -389,7 +432,7 @@ export default function Checador() {
     const paraEmail = formPrestamo.tipo_receptor === 'personal' ? formPrestamo.para_email : null
     const esCandado = formPrestamo.tipo_receptor === 'candado'
     const paraNombre = formPrestamo.tipo_receptor === 'personal'
-      ? (PERSONAL[formPrestamo.para_email]?.nombre || '')
+      ? (listaPersonas.find(p => p.email === formPrestamo.para_email)?.nombre || '')
       : esCandado
         ? `🔒 Candado — ${formPrestamo.nombre_externo}${formPrestamo.codigo_candado ? ` (${formPrestamo.codigo_candado})` : ''}`
         : formPrestamo.nombre_externo
@@ -467,7 +510,7 @@ export default function Checador() {
   const traspasarLlave = async (llave) => {
     const paraEmail = formTraspaso.tipo_receptor === 'personal' ? formTraspaso.para_email : null
     const paraNombre = formTraspaso.tipo_receptor === 'personal'
-      ? (PERSONAL[formTraspaso.para_email]?.nombre || '')
+      ? (listaPersonas.find(p => p.email === formTraspaso.para_email)?.nombre || '')
       : formTraspaso.nombre_externo
     if (!paraNombre) return
     setSavingLlave(true)
@@ -519,7 +562,7 @@ export default function Checador() {
 
   const guardarGuardia = async () => {
     if (!formGuardia.email || !formGuardia.fecha) return
-    const p = PERSONAL[formGuardia.email]
+    const p = listaPersonas.find(per => per.email === formGuardia.email)
     if (!p) return
     const { error } = await supabase.from('guardias').upsert({ email: formGuardia.email, nombre: p.nombre, fecha_guardia: formGuardia.fecha }, { onConflict: 'email,fecha_guardia' })
     if (error) { showToast('Error: ' + error.message, false); return }
@@ -910,10 +953,9 @@ export default function Checador() {
                     <select value={filtroMovPersona} onChange={e => { setFiltroMovPersona(e.target.value); setMovsPagina(1) }}
                       style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, background: '#fff' }}>
                       <option value="todos">Todas las personas</option>
-                      {Object.values(PERSONAL).map(p => (
+                      {listaPersonas.map(p => (
                         <option key={p.nombre} value={p.nombre}>{p.nombre}</option>
                       ))}
-                      <option value="Carlos">Carlos</option>
                     </select>
                   </div>
                 </div>
@@ -1128,7 +1170,7 @@ export default function Checador() {
             <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 }}>
               <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800 }}>🔑 Prestar llave #{showModalPrestamo.numero}</h3>
               <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{showModalPrestamo.propiedad}</p>
-              <ReceptorForm form={formPrestamo} setForm={setFormPrestamo} excluirEmail={email} />
+              <ReceptorForm form={formPrestamo} setForm={setFormPrestamo} excluirEmail={email} listaPersonas={listaPersonas} />
               <div style={{ marginTop: 10 }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Notas</label>
                 <input value={formPrestamo.notas} onChange={e => setFormPrestamo(f => ({ ...f, notas: e.target.value }))}
@@ -1191,7 +1233,7 @@ export default function Checador() {
             <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 }}>
               <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800 }}>↔️ Traspasar llave #{showModalTraspaso.numero}</h3>
               <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{showModalTraspaso.propiedad}</p>
-              <ReceptorForm form={formTraspaso} setForm={setFormTraspaso} />
+              <ReceptorForm form={formTraspaso} setForm={setFormTraspaso} listaPersonas={listaPersonas} />
               <div style={{ marginTop: 10 }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Notas</label>
                 <input value={formTraspaso.notas} onChange={e => setFormTraspaso(f => ({ ...f, notas: e.target.value }))}
@@ -1306,8 +1348,8 @@ export default function Checador() {
                   <select value={formGuardia.email} onChange={e => setFormGuardia(f => ({ ...f, email: e.target.value }))}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
                     <option value="">Selecciona...</option>
-                    {Object.entries(PERSONAL).filter(([, p]) => p.rol === 'asesor').map(([em, p]) => (
-                      <option key={em} value={em}>{p.nombre}</option>
+                    {listaPersonas.filter(p => p.rol === 'asesor').map(p => (
+                      <option key={p.email} value={p.email}>{p.nombre}</option>
                     ))}
                   </select>
                 </div>
