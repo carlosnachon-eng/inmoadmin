@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
+import { usePermiso, SinAcceso } from "../lib/permisos";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -26,6 +27,7 @@ const Btn = ({ children, onClick, color = "#1a1a2e", disabled, small }) => (
 
 export default function Reportes() {
   const router = useRouter();
+  const { cargando: permisoCargando, puedeVer } = usePermiso("reportes");
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [payments, setPayments] = useState([]);
@@ -77,6 +79,9 @@ export default function Reportes() {
     if (typeof window !== "undefined") window.location.href = "/";
     return null;
   }
+
+  if (permisoCargando) return null;
+  if (!puedeVer) return <SinAcceso />;
 
   // ── CÁLCULOS ──────────────────────────────────────────────────────────────
   const meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
