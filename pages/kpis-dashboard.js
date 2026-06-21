@@ -7,22 +7,22 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-const ADMINS = [
-  'carlos.nachon@emporioinmobiliario.mx',
-  'guillermo@emporioinmobiliario.com.mx',
-]
+// Roles con acceso a este dashboard (antes era una lista de correos sueltos)
+const ROLES_ADMIN_DASHBOARD = ['admin', 'gerente_ventas']
 
-const ASESORES_EMAILS = {
-  'Ariannet':  'ariannet81@gmail.com',
-  'Angélica':  'angelicamomox@gmail.com',
-  'Rosario':   'rddd298@gmail.com',
-  'Iván':      'ivanmtzco@gmail.com',
-  'Andrea':    'nextelmoto2@gmail.com',
-  'Guillermo': 'guillermo@emporioinmobiliario.com.mx',
-  'Amanda':    'islas.amanda111@gmail.com',
+// Roles que aparecen en el ranking/listado del dashboard (los que registran KPIs)
+const ROLES_EN_RANKING = ['asesor', 'gerente_ventas']
+
+// Nombres reales como respaldo mientras profiles.full_name esté vacío para alguien
+const NOMBRES_CONOCIDOS = {
+  'ariannet81@gmail.com': 'Ariannet',
+  'angelicamomox@gmail.com': 'Angélica',
+  'rddd298@gmail.com': 'Rosario',
+  'ivanmtzco@gmail.com': 'Iván',
+  'nextelmoto2@gmail.com': 'Andrea',
+  'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
+  'islas.amanda111@gmail.com': 'Amanda',
 }
-
-const ASESORES = ['Ariannet', 'Angélica', 'Rosario', 'Iván', 'Andrea', 'Guillermo', 'Amanda']
 
 const VENDEDOR_MAP = {
   'Ariannet': 'ari', 'Angélica': 'angelica', 'Iván': 'ivan',
@@ -63,9 +63,39 @@ export default function KPIsDashboard() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Perfil real (con su role_id), cargado de profiles en vez de ADMINS hardcodeado.
+  const [perfilDb, setPerfilDb] = useState(null)
+  const [perfilCargado, setPerfilCargado] = useState(false)
   useEffect(() => {
-    if (session && ADMINS.includes(session.user.email)) cargarDatos()
-  }, [session, mesSeleccionado])
+    if (!session) { setPerfilCargado(true); return }
+    supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
+      .then(({ data }) => { setPerfilDb(data); setPerfilCargado(true) })
+  }, [session])
+
+  const esAdmin = ROLES_ADMIN_DASHBOARD.includes(perfilDb?.role_id)
+
+  // Lista de asesores (para el ranking) + su mapa nombre->correo,
+  // cargados de profiles en vez de ASESORES/ASESORES_EMAILS hardcodeados.
+  const [ASESORES, setASESORES] = useState([])
+  const [ASESORES_EMAILS, setASESORES_EMAILS] = useState({})
+  useEffect(() => {
+    supabase.from('profiles').select('email, full_name, role_id').eq('active', true)
+      .then(({ data }) => {
+        const enRanking = (data || []).filter(p => ROLES_EN_RANKING.includes(p.role_id))
+        const mapa = {}
+        const nombres = enRanking.map(p => {
+          const n = p.full_name || NOMBRES_CONOCIDOS[p.email] || p.email
+          mapa[n] = p.email
+          return n
+        })
+        setASESORES(nombres)
+        setASESORES_EMAILS(mapa)
+      })
+  }, [])
+
+  useEffect(() => {
+    if (session && esAdmin) cargarDatos()
+  }, [session, esAdmin, mesSeleccionado])
 
   useEffect(() => {
     setAnimado(false)
@@ -144,13 +174,13 @@ export default function KPIsDashboard() {
     </span>
   )
 
-  if (loading) return (
+  if (loading || (session && !perfilCargado)) return (
     <div style={{ minHeight: '100vh', background: '#f8f8f8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" style={{ height: 48, opacity: 0.4 }} />
     </div>
   )
 
-  if (!session || !ADMINS.includes(session.user.email)) return (
+  if (!session || !esAdmin) return (
     <div style={{ minHeight: '100vh', background: '#f8f8f8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ textAlign: 'center', background: '#fff', padding: 40, borderRadius: 16, border: '1px solid #e5e7eb' }}>
         <img src="https://www.emporioinmobiliario.com.mx/logo.png" style={{ height: 48, marginBottom: 16 }} />
