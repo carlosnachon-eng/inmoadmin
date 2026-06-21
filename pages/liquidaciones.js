@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
+import { usePermiso, SinAcceso } from "../lib/permisos";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -126,6 +127,7 @@ const FirmaCanvas = ({ canvasRef, onFirma }) => {
 
 export default function Liquidaciones() {
   const router = useRouter();
+  const { cargando: permisoCargando, puedeVer, puedeEditar } = usePermiso("liquidaciones");
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -275,7 +277,7 @@ export default function Liquidaciones() {
 
   const today = new Date().toISOString().split("T")[0];
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
-  const isAdmin = profile?.role === "admin";
+  const isAdmin = puedeEditar; // antes: profile?.role === "admin". Ahora cubre Admin y Tania (coord_operaciones).
 
   const emptyForm = {
     owner_name: "", owner_email: "", period_description: "",
@@ -1244,12 +1246,13 @@ export default function Liquidaciones() {
     savePDF(doc, `Liquidacion_${ownerName.replace(/\s+/g, "_")}_${today}.pdf`);
   };
 
-  if (authLoading) return (
+  if (authLoading || permisoCargando) return (
     <div style={{ minHeight: "100vh", background: "#f8f8f8", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
   );
   if (!session) { if (typeof window !== "undefined") window.location.href = "/"; return null; }
+  if (!puedeVer) return <SinAcceso />;
 
   const propietariosUnicos = [...new Map(
     properties.filter(p => p.owner_email).map(p => [
