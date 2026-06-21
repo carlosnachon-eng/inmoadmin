@@ -7,20 +7,26 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-const ASESORES = {
-  'ariannet81@gmail.com':              'Ariannet',
-  'angelicamomox@gmail.com':           'Angélica',
-  'rddd298@gmail.com':                 'Rosario',
-  'ivanmtzco@gmail.com':               'Iván',
-  'nextelmoto2@gmail.com':             'Andrea',
-  'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
-  'islas.amanda111@gmail.com':         'Amanda',
-}
+// Roles que registran sus propias citas en KPIs (incluye a Guillermo,
+// que aunque es Gerente, también captura sus propias citas como
+// cualquier asesor — así era el comportamiento original).
+const ROLES_QUE_REGISTRAN_KPIS = ['asesor', 'gerente_ventas']
 
-const ADMINS = [
-  'carlos.nachon@emporioinmobiliario.mx',
-  'guillermo@emporioinmobiliario.com.mx',
-]
+// Roles con acceso de administrador dentro de KPIs (ven el botón de
+// "Ver Dashboard"). Antes era una lista de correos sueltos.
+const ROLES_ADMIN_KPIS = ['admin', 'gerente_ventas']
+
+// Nombres reales como respaldo mientras profiles.full_name esté vacío
+// para alguien (lo ideal es llenarlo en la base de datos directamente).
+const NOMBRES_CONOCIDOS = {
+  'ariannet81@gmail.com': 'Ariannet',
+  'angelicamomox@gmail.com': 'Angélica',
+  'rddd298@gmail.com': 'Rosario',
+  'ivanmtzco@gmail.com': 'Iván',
+  'nextelmoto2@gmail.com': 'Andrea',
+  'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
+  'islas.amanda111@gmail.com': 'Amanda',
+}
 
 const VENDEDOR_MAP = {
   'Ariannet': 'ari', 'Angélica': 'angelica', 'Iván': 'ivan',
@@ -28,7 +34,6 @@ const VENDEDOR_MAP = {
 }
 
 const MEDALLAS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣']
-const NOMBRES_LISTA = ['Ariannet', 'Angélica', 'Rosario', 'Iván', 'Andrea', 'Guillermo', 'Amanda']
 const META_INGRESOS = 90000
 
 const calcularMetaCitas = (anio, mes) => {
@@ -64,9 +69,33 @@ export default function KPIs() {
   }, [])
 
   const email = session?.user?.email
-  const nombre = ASESORES[email] || null
-  const esAdmin = ADMINS.includes(email)
+
+  // Perfil real, cargado de profiles en vez de la lista hardcodeada ASESORES.
+  const [perfilDb, setPerfilDb] = useState(null)
+  const [perfilCargado, setPerfilCargado] = useState(false)
+  useEffect(() => {
+    if (!session) { setPerfilCargado(true); return }
+    supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
+      .then(({ data }) => { setPerfilDb(data); setPerfilCargado(true) })
+  }, [session])
+
+  const nombre = perfilDb && ROLES_QUE_REGISTRAN_KPIS.includes(perfilDb.role_id)
+    ? (perfilDb.full_name || NOMBRES_CONOCIDOS[perfilDb.email] || perfilDb.email)
+    : null
+  const esAdmin = ROLES_ADMIN_KPIS.includes(perfilDb?.role_id)
   const esAsesor = !!nombre
+
+  // Lista de nombres de todos los que registran KPIs (para el ranking),
+  // cargada de profiles en vez de NOMBRES_LISTA hardcodeada.
+  const [listaAsesores, setListaAsesores] = useState([])
+  useEffect(() => {
+    supabase.from('profiles').select('email, full_name, role_id').eq('active', true)
+      .then(({ data }) => {
+        const asesores = (data || []).filter(p => ROLES_QUE_REGISTRAN_KPIS.includes(p.role_id))
+        setListaAsesores(asesores.map(p => p.full_name || NOMBRES_CONOCIDOS[p.email] || p.email))
+      })
+  }, [])
+  const NOMBRES_LISTA = listaAsesores
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000) }
 
@@ -164,7 +193,7 @@ export default function KPIs() {
     </div>
   )
 
-  if (authLoading) return (
+  if (authLoading || (session && !perfilCargado)) return (
     <div style={{ minHeight: '100vh', background: '#f8f8f8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
