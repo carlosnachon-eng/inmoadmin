@@ -98,7 +98,7 @@ export default function Contratos() {
   const [filterStatus, setFilterStatus] = useState("activo");
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
-  const isAdmin = esAdmin;
+  const isAdmin = esAdmin; // antes: profile?.role === "admin". Ahora cubre Admin y Tania (coord_operaciones).
 
   const emptyForm = {
     tenant_name: "", tenant_email: "", tenant_phone: "",
