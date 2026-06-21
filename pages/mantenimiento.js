@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
+import { usePermiso, SinAcceso } from "../lib/permisos";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -120,6 +121,7 @@ const DiagramaFlujo = ({ statusActual }) => {
 
 export default function Mantenimiento() {
   const router = useRouter();
+  const { cargando: permisoCargando, puedeVer, puedeEditar } = usePermiso("mantenimiento");
   const [session, setSession]   = useState(null);
   const [profile, setProfile]   = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -175,7 +177,7 @@ export default function Mantenimiento() {
   const [form, setForm] = useState(emptyTicket);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
-  const isAdmin = profile?.role === "admin";
+  const isAdmin = puedeEditar; // antes: profile?.role === "admin". Ahora cubre Admin y Tania (coord_operaciones) según la matriz de permisos.
   const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
@@ -423,12 +425,13 @@ export default function Mantenimiento() {
     return d.getMonth() === h.getMonth() && d.getFullYear() === h.getFullYear();
   }).length;
 
-  if (authLoading) return (
+  if (authLoading || permisoCargando) return (
     <div style={{ minHeight: "100vh", background: "#f4f5f7", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
   );
   if (!session) { if (typeof window !== "undefined") window.location.href = "/"; return null; }
+  if (!puedeVer) return <SinAcceso />;
 
   return (
     <div style={{ minHeight: "100vh", background: brand.bg, fontFamily: "system-ui, sans-serif" }}>
