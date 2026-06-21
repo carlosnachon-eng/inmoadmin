@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { usePermiso, SinAcceso } from "../lib/permisos";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -15,11 +16,11 @@ const META_GERENTE = 380000;
 const PCT_ALTO = 0.05;
 const PCT_BAJO = 0.03;
 const PCT_VENDEDOR_DEFAULT = 20;
-const CARLOS = "carlos.nachon@emporioinmobiliario.mx";
 
 const esRenovacion = (propiedad) => (propiedad || "").toLowerCase().startsWith("renov");
 
 export default function Cierres() {
+  const { cargando: permisoCargando, puedeVer } = usePermiso("cierres");
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cierres, setCierres] = useState([]);
@@ -69,10 +70,13 @@ export default function Cierres() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session && session.user.email === CARLOS) loadCierres();
-      else setLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    if (session && puedeVer) loadCierres();
+    else if (session && !permisoCargando) setLoading(false);
+  }, [session, puedeVer, permisoCargando]);
 
   const loadCierres = async () => {
     setLoading(true);
@@ -358,7 +362,13 @@ export default function Cierres() {
   });
   const vendedoresRanking = Object.entries(porVendedor).sort((a, b) => b[1].cierres - a[1].cierres).slice(0, 8);
 
-  if (!session || session.user.email !== CARLOS) {
+  if (permisoCargando) return (
+    <div style={{ minHeight: "100vh", background: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 40, opacity: 0.4 }} />
+    </div>
+  );
+
+  if (!session || !puedeVer) {
     return (
       <div style={{ minHeight: "100vh", background: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 40, textAlign: "center", boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
