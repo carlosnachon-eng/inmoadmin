@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
+import { usePermiso, SinAcceso } from "../lib/permisos";
 
 const inp = {
   width: "100%", padding: "10px 14px", borderRadius: 8,
@@ -479,6 +480,7 @@ async function generarPDF(data, sb) {
 }
 export default function Dictamen() {
   const router = useRouter();
+  const { cargando: permisoCargando, puedeVer } = usePermiso("dictamen");
   const [generando, setGenerando] = useState(false);
   const [guardado, setGuardado] = useState(false);
   const [cargando, setCargando] = useState(false);
@@ -597,6 +599,9 @@ export default function Dictamen() {
     { value: "APROBADO CON CONDICIONES", color: "#eab308", bg: "#fef9c3", tc: "#854d0e", icon: "!", label: "CON CONDICIONES" },
     { value: "NO APROBADO", color: "#ef4444", bg: "#fee2e2", tc: "#991b1b", icon: "✗", label: "NO APROBADO" },
   ];
+
+  if (permisoCargando) return null;
+  if (!puedeVer) return <SinAcceso />;
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8f8f8", fontFamily: "'Montserrat',system-ui,sans-serif" }}>
