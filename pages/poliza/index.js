@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
-import { C, st, CORREOS_PERMITIDOS } from '../../lib/polizaUtils'
+import { C, st } from '../../lib/polizaUtils'
+import { usePermiso, SinAcceso } from '../../lib/permisos'
 
 import TabExpedientes from '../../components/poliza/TabExpedientes'
 import TabPropietarios from '../../components/poliza/TabPropietarios'
@@ -21,6 +22,7 @@ const PROPIETARIOS_SELECT = 'id, nombre_propietario, telefono_propietario, corre
 
 export default function PolizaPanel() {
   const router = useRouter()
+  const { cargando: permisoCargando, puedeVer, puedeEditar } = usePermiso('poliza')
   const [tab, setTab] = useState('expedientes')
   const [expedientes, setExpedientes] = useState([])
   const [propietarios, setPropietarios] = useState([])
@@ -28,25 +30,15 @@ export default function PolizaPanel() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null)
   const [selected, setSelected] = useState(null)
-  const [acceso, setAcceso] = useState(null)
   const [caja, setCaja] = useState([])
   const [compradores, setCompradores] = useState([])
   const [subTabCV, setSubTabCV] = useState('vendedores')
 
   useEffect(() => {
-    const verificarAcceso = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      const email = session.user.email
-      if (CORREOS_PERMITIDOS.includes(email)) {
-        setAcceso(true)
-        loadTab('expedientes')
-      } else {
-        setAcceso(false)
-      }
+    if (!permisoCargando && puedeVer) {
+      loadTab('expedientes')
     }
-    verificarAcceso()
-  }, [])
+  }, [permisoCargando, puedeVer])
 
   const loadTab = async (tabId) => {
     setLoading(true)
@@ -125,6 +117,9 @@ export default function PolizaPanel() {
     loadTab(tabId)
   }
 
+  if (permisoCargando) return null
+  if (!puedeVer) return <SinAcceso />
+
   return (
     <div style={st.page}>
       <header style={st.header}>
@@ -141,12 +136,14 @@ export default function PolizaPanel() {
             </button>
           ))}
         </nav>
-        <div style={{ marginLeft: 'auto' }}>
-          <button onClick={() => { setSelected(null); setModal('nuevo') }}
-            style={{ ...st.btn, ...st.btnGold }}>
-            + Nuevo expediente
-          </button>
-        </div>
+        {puedeEditar && (
+          <div style={{ marginLeft: 'auto' }}>
+            <button onClick={() => { setSelected(null); setModal('nuevo') }}
+              style={{ ...st.btn, ...st.btnGold }}>
+              + Nuevo expediente
+            </button>
+          </div>
+        )}
       </header>
 
       {/* ── DASHBOARD DE RESUMEN ── */}
