@@ -43,7 +43,7 @@ const TenantLogin = ({ onLogin }) => {
   const [error, setError] = useState("");
   const sendMagicLink = async () => {
     setLoading(true); setError("");
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: "https://app.emporioinmobiliario.com.mx/inquilino" } });
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { data: { rol_pretendido: "inquilino" }, emailRedirectTo: "https://app.emporioinmobiliario.com.mx/inquilino" } });
     setLoading(false);
     if (error) { setError("Error al enviar el enlace: " + error.message); return; }
     setSent(true);
