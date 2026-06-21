@@ -45,7 +45,7 @@ const OwnerLogin = ({ onLogin }) => {
   const [error, setError] = useState("");
   const sendMagicLink = async () => {
     setLoading(true); setError("");
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: "https://app.emporioinmobiliario.com.mx/propietario" } });
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true, data: { rol_pretendido: "propietario" }, emailRedirectTo: "https://app.emporioinmobiliario.com.mx/propietario" } });
     setLoading(false);
     if (error) { setError("Error: " + error.message); return; }
     setSent(true);
