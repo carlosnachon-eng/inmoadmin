@@ -22,7 +22,7 @@ const PROPIETARIOS_SELECT = 'id, nombre_propietario, telefono_propietario, corre
 
 export default function PolizaPanel() {
   const router = useRouter()
-  const { cargando: permisoCargando, puedeVer, puedeEditar } = usePermiso('poliza')
+  const { cargando: permisoCargando, puedeVer, puedeEditar, esAdmin } = usePermiso('poliza')
   const [tab, setTab] = useState('expedientes')
   const [expedientes, setExpedientes] = useState([])
   const [propietarios, setPropietarios] = useState([])
@@ -173,7 +173,7 @@ export default function PolizaPanel() {
             {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={e => { setSelected(e); setModal('expediente') }} onReload={loadAll} onRenovar={e => { setSelected(e); setModal('renovar') }} />}
             {tab === 'propietarios' && <TabPropietarios propietarios={propietariosFiltrados} onSelect={p => { setSelected(p); setModal('propietario') }} />}
             {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected({ _solicitud: sol }); setModal('nuevo') }} />}
-            {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} />}
+            {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} esAdmin={esAdmin} />}
             {tab === 'compraventa' && (
               <TabCompraventa
                 vendedores={vendedoresFiltrados}
