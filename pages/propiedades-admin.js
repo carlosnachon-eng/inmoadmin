@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
+import { usePermiso, SinAcceso } from "../lib/permisos";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -161,6 +162,7 @@ const inputStyle = { width: "100%", padding: "9px 12px", borderRadius: 8, border
 
 export default function PropiedadesAdmin() {
   const router = useRouter();
+  const { cargando: permisoCargando, puedeVer, puedeEditar } = usePermiso("propiedades-admin");
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -419,8 +421,9 @@ export default function PropiedadesAdmin() {
     setMigrando(false);
   };
 
-  if (authLoading) return null;
+  if (authLoading || permisoCargando) return null;
   if (!session) { if (typeof window !== "undefined") window.location.href = "/"; return null; }
+  if (!puedeVer) return <SinAcceso />;
 
   return (
     <div style={{ minHeight: "100vh", background: brand.bg, fontFamily: "system-ui, sans-serif" }}>
@@ -434,17 +437,21 @@ export default function PropiedadesAdmin() {
         title="Propiedades"
         icon="🏠"
         actions={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => correrMigracion(false)} disabled={migrando} style={{ background: "#fff", color: brand.red, border: `1.5px solid ${brand.red}`, borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: migrando ? "not-allowed" : "pointer", fontSize: 13, opacity: migrando ? 0.6 : 1 }}>
-              {migrando ? "Importando…" : "⬇️ Importar de EasyBroker"}
-            </button>
-            <button onClick={() => correrMigracion(true)} disabled={migrando} title="Úsalo si sospechas que el conteo se quedó corto o desactualizado" style={{ background: "#fff", color: "#6b7280", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: migrando ? "not-allowed" : "pointer", fontSize: 13, opacity: migrando ? 0.6 : 1 }}>
-              🔄 Recontar desde cero
-            </button>
-            <button onClick={abrirNueva} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
-              + Nueva propiedad
-            </button>
-          </div>
+          puedeEditar ? (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={() => correrMigracion(false)} disabled={migrando} style={{ background: "#fff", color: brand.red, border: `1.5px solid ${brand.red}`, borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: migrando ? "not-allowed" : "pointer", fontSize: 13, opacity: migrando ? 0.6 : 1 }}>
+                {migrando ? "Importando…" : "⬇️ Importar de EasyBroker"}
+              </button>
+              <button onClick={() => correrMigracion(true)} disabled={migrando} title="Úsalo si sospechas que el conteo se quedó corto o desactualizado" style={{ background: "#fff", color: "#6b7280", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: migrando ? "not-allowed" : "pointer", fontSize: 13, opacity: migrando ? 0.6 : 1 }}>
+                🔄 Recontar desde cero
+              </button>
+              <button onClick={abrirNueva} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
+                + Nueva propiedad
+              </button>
+            </div>
+          ) : (
+            <span style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic" }}>Modo solo lectura</span>
+          )
         }
       />
 
@@ -544,9 +551,9 @@ export default function PropiedadesAdmin() {
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => abrirEditar(p)} style={{ flex: 1, background: "#f3f4f6", border: "none", borderRadius: 8, padding: "8px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#374151" }}>
-                        ✏️ Editar
+                        {puedeEditar ? "✏️ Editar" : "👁️ Ver detalle"}
                       </button>
-                      {p.status !== "draft" ? (
+                      {puedeEditar && (p.status !== "draft" ? (
                         <button onClick={() => setModalEliminar(p)} style={{ background: "#fee2e2", border: "none", borderRadius: 8, padding: "8px 10px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#991b1b" }}>
                           🗄️
                         </button>
@@ -554,7 +561,7 @@ export default function PropiedadesAdmin() {
                         <button onClick={() => cambiarStatus(p, "published")} style={{ background: "#d1fae5", border: "none", borderRadius: 8, padding: "8px 10px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#065f46" }}>
                           ↩️ Reactivar
                         </button>
-                      )}
+                      ))}
                     </div>
                     <p style={{ margin: "8px 0 0", fontSize: 10, color: "#9ca3af" }}>ID: {p.public_id}</p>
                   </div>
@@ -580,7 +587,8 @@ export default function PropiedadesAdmin() {
       )}
 
       {modalForm && (
-        <Modal title={modalForm === "nueva" ? "Nueva propiedad" : "Editar propiedad"} onClose={() => setModalForm(null)} wide>
+        <Modal title={puedeEditar ? (modalForm === "nueva" ? "Nueva propiedad" : "Editar propiedad") : "Detalle de la propiedad (solo lectura)"} onClose={() => setModalForm(null)} wide>
+          <fieldset disabled={!puedeEditar} style={{ border: "none", margin: 0, padding: 0 }}>
 
           <Campo label="Título *">
             <input style={inputStyle} value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Casa en privada, Lomas de Angelópolis" />
@@ -844,11 +852,17 @@ export default function PropiedadesAdmin() {
             <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={form.notas_internas || ""} onChange={e => setForm(f => ({ ...f, notas_internas: e.target.value }))} placeholder="Ej. propietario pide discreción, llaves con el portero, etc." />
           </Campo>
 
+          </fieldset>
+
           <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-            <button onClick={() => setModalForm(null)} style={{ flex: 1, background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
-            <button onClick={guardarPropiedad} disabled={saving} style={{ flex: 1, background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>
-              {saving ? "Guardando…" : "Guardar propiedad"}
+            <button onClick={() => setModalForm(null)} style={{ flex: 1, background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>
+              {puedeEditar ? "Cancelar" : "Cerrar"}
             </button>
+            {puedeEditar && (
+              <button onClick={guardarPropiedad} disabled={saving} style={{ flex: 1, background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>
+                {saving ? "Guardando…" : "Guardar propiedad"}
+              </button>
+            )}
           </div>
         </Modal>
       )}
