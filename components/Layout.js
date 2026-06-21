@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
+import { useModulosPermitidos } from "../lib/permisos";
 
 export const brand = {
   red:       "#b91c3c",
@@ -14,24 +15,29 @@ export const brand = {
 };
 
 export const nav = [
-  { id: "dashboard",     label: "Panel",          icon: "📊" },
-  { id: "caja",          label: "Caja",            icon: "💵",  link: "/caja" },
-  { id: "contracts",     label: "Contratos",       icon: "📋",  link: "/contratos" },
-  { id: "properties",    label: "Propiedades",     icon: "🏠" },
-  { id: "catalogo_venta",label: "Catálogo Web",    icon: "🌐",  link: "/propiedades-admin" },
-  { id: "payments",      label: "Cobranza",        icon: "💰",  link: "/cobranza" },
-  { id: "owner_payments",label: "Liquidaciones",   icon: "🏦",  link: "/liquidaciones" },
-  { id: "tickets",       label: "Mantenimiento",   icon: "🔧",  link: "/mantenimiento" },
-  { id: "reports",       label: "Reportes",        icon: "📈",  link: "/reportes" },
-  { id: "commissions",   label: "Comisiones",      icon: "💼",  link: "/comisiones" },
-  { id: "cierres",       label: "Cierres",         icon: "📊",  link: "/cierres" },
-  { id: "ejecutivo",   label: "Resumen Ejecutivo", icon: "👑", link: "/ejecutivo" },
-  { id: "firmas",        label: "Firmas",          icon: "📝",  link: "/firmas" },
-  { id: "poliza",        label: "Póliza",          icon: "⚖️",  link: "/poliza" },
-  { id: "kpis_mtto",     label: "KPIs Mtto/Admon", icon: "📊", link: "/kpis-mtto-admon" },
-  { id: "condominios",   label: "Condominios",     icon: "🏢",  link: "/condominios" },
-  { id: "recibos",       label: "Recibos",         icon: "🧾",  link: "/recibos" },
-  { id: "cartas",        label: "Cartas de Oferta", icon: "📄",  link: "/cartas" },
+  { id: "bienvenida",    label: "Inicio",             icon: "🏡",  link: "/",                  modulo: null, siempreVisible: true },
+  { id: "caja",          label: "Caja",              icon: "💵",  link: "/caja",              modulo: "caja" },
+  { id: "checador",      label: "Checador",          icon: "🕒",  link: "/checador",           modulo: "checador" },
+  { id: "guias",         label: "Guías",              icon: "📍",  link: "/guias",              modulo: "guias" },
+  { id: "kpis",          label: "KPIs",               icon: "🎯",  link: "/kpis",               modulo: "kpis" },
+  { id: "kpis_dashboard",label: "KPIs Dashboard",     icon: "📊",  link: "/kpis-dashboard",     modulo: "kpis-dashboard" },
+  { id: "propiedades",   label: "Propiedades",        icon: "🏠",  link: "/propiedades",        modulo: "propiedades" },
+  { id: "catalogo_venta",label: "Catálogo Web",       icon: "🌐",  link: "/propiedades-admin",  modulo: "propiedades-admin" },
+  { id: "payments",      label: "Cobranza",           icon: "💰",  link: "/cobranza",           modulo: "cobranza" },
+  { id: "owner_payments",label: "Liquidaciones",      icon: "🏦",  link: "/liquidaciones",      modulo: "liquidaciones" },
+  { id: "tickets",       label: "Mantenimiento",      icon: "🔧",  link: "/mantenimiento",      modulo: "mantenimiento" },
+  { id: "reports",       label: "Reportes",           icon: "📈",  link: "/reportes",           modulo: "reportes" },
+  { id: "commissions",   label: "Comisiones",         icon: "💼",  link: "/comisiones",         modulo: "comisiones" },
+  { id: "cierres",       label: "Cierres",            icon: "📊",  link: "/cierres",            modulo: "cierres" },
+  { id: "ejecutivo",     label: "Resumen Ejecutivo",  icon: "👑",  link: "/ejecutivo",          modulo: "ejecutivo" },
+  { id: "firmas",        label: "Firmas",             icon: "📝",  link: "/firmas",             modulo: "firmas" },
+  { id: "poliza",        label: "Póliza",             icon: "⚖️",  link: "/poliza",             modulo: "poliza" },
+  { id: "dictamen",      label: "Dictamen",           icon: "📋",  link: "/dictamen",           modulo: "dictamen" },
+  { id: "contracts",     label: "Contratos",          icon: "📋",  link: "/contratos",          modulo: "contratos" },
+  { id: "kpis_mtto",     label: "KPIs Mtto/Admon",    icon: "📊",  link: "/kpis-mtto-admon",    modulo: "kpis-mtto-admon" },
+  { id: "condominios",   label: "Condominios",        icon: "🏢",  link: "/condominios",        modulo: "condominios" },
+  { id: "recibos",       label: "Recibos",            icon: "🧾",  link: "/recibos",            modulo: "recibos" },
+  { id: "cartas",        label: "Cartas de Oferta",   icon: "📄",  link: "/cartas",             modulo: "cartas" },
 ];
 
 export const EmporioLogo = ({ size = 36 }) => (
@@ -42,10 +48,20 @@ export const EmporioLogo = ({ size = 36 }) => (
   />
 );
 
-export default function Layout({ children, view = "dashboard", profile, onNavClick, onLogout }) {
+export default function Layout({ children, view = "dashboard", profile, onNavClick, onLogout, modulosPermitidos: modulosProp, esAdmin: esAdminProp, permisosCargando: permisosCargandoProp }) {
   const router = useRouter();
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Si el padre ya consultó los permisos (p. ej. pages/index.js), los reutilizamos
+  // en vez de volver a consultar Supabase. Si no, Layout consulta por su cuenta.
+  const yaTienePermisos = modulosProp !== undefined && esAdminProp !== undefined;
+  const permisosHook = useModulosPermitidos(!yaTienePermisos);
+
+  const permisosCargando = yaTienePermisos ? !!permisosCargandoProp : permisosHook.cargando;
+  const modulosPermitidos = yaTienePermisos ? modulosProp : permisosHook.modulosPermitidos;
+  const esAdmin = yaTienePermisos ? esAdminProp : permisosHook.esAdmin;
+  const perfilPermisos = yaTienePermisos ? profile : permisosHook.perfil;
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -59,7 +75,12 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
     else { onNavClick?.(n.id); setSidebarOpen(false); }
   };
 
-  const currentLabel = nav.find(n => n.id === view)?.label || "Panel";
+  const navFiltrado = permisosCargando
+    ? []
+    : nav.filter(n => n.siempreVisible || esAdmin || modulosPermitidos.includes(n.modulo));
+
+  const currentLabel = navFiltrado.find(n => n.id === view)?.label || "Inicio";
+  const nombreRol = perfilPermisos?.roles?.nombre || (esAdmin ? "Administrador" : "Staff");
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif", background: brand.bg }}>
@@ -86,7 +107,7 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
           )}
         </div>
         <nav style={{ padding: "10px 10px", flex: 1, overflowY: "auto" }}>
-          {nav.map(n => {
+          {navFiltrado.map(n => {
             const isActive = view === n.id;
             return (
               <button key={n.id} onClick={() => handleNav(n)} style={{
@@ -115,7 +136,7 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
                 {profile?.email?.split("@")[0]}
               </p>
               <p style={{ margin: 0, fontSize: 10, color: brand.grayLight, textTransform: "uppercase" }}>
-                {profile?.role === "admin" ? "Administrador" : "Staff"}
+                {nombreRol}
               </p>
             </div>
           </div>
