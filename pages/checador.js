@@ -198,17 +198,41 @@ export default function Checador() {
                                 // ya tiene la pestaña 📊 Admin con la vista completa del equipo.
   const puedePrestar = ROLES_QUE_PUEDEN_PRESTAR_LLAVES.includes(perfilDb?.role_id)
 
+  // Mapa de nombres reales conocidos, como respaldo mientras full_name
+  // en profiles siga vacío (hoy no se está llenando esa columna). Si
+  // full_name sí tiene algo, eso tiene prioridad; si no, usamos esto;
+  // y si tampoco está aquí, como último recurso usamos lo de antes del @.
+  const NOMBRES_CONOCIDOS = {
+    'carlos.nachon@emporioinmobiliario.mx': 'Carlos',
+    'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
+    'juridico@emporioinmobiliario.mx': 'Zaye',
+    'asistente1@emporioinmobiliario.mx': 'Tania',
+    'ariannet81@gmail.com': 'Ariannet',
+    'angelicamomox@gmail.com': 'Angélica',
+    'rddd298@gmail.com': 'Rosario',
+    'ivanmtzco@gmail.com': 'Iván',
+    'nextelmoto2@gmail.com': 'Andrea',
+    'islas.amanda111@gmail.com': 'Amanda',
+  }
+
+  // Roles que SÍ son parte del equipo interno (los únicos que deben
+  // aparecer en "a quién le presto la llave"). Los externos (propietario,
+  // inquilino, condómino) nunca deben salir en esta lista, sin importar
+  // si el join con `roles` funciona o no — por eso filtramos por una
+  // lista explícita en vez de depender de roles.es_externo.
+  const ROLES_EQUIPO_INTERNO = ['admin', 'gerente_ventas', 'coord_operaciones', 'juridico', 'asesor']
+
   // Lista de personas del equipo interno (para el selector de "a quién le presto la llave").
   // Antes salía de Object.keys(PERSONAL); ahora se carga de profiles, excluyendo
   // a los roles externos (propietario/inquilino/condómino) que no usan este módulo.
   const [listaPersonas, setListaPersonas] = useState([])
   useEffect(() => {
-    supabase.from('profiles').select('email, full_name, role_id, roles:role_id(es_externo)').eq('active', true)
+    supabase.from('profiles').select('email, full_name, role_id').eq('active', true)
       .then(({ data }) => {
-        const internos = (data || []).filter(p => !p.roles?.es_externo)
+        const internos = (data || []).filter(p => ROLES_EQUIPO_INTERNO.includes(p.role_id))
         setListaPersonas(internos.map(p => ({
           email: p.email,
-          nombre: (p.full_name || p.email.split('@')[0]),
+          nombre: p.full_name || NOMBRES_CONOCIDOS[p.email] || p.email.split('@')[0],
           rol: ROL_ID_A_COMPORTAMIENTO[p.role_id] || 'asesor',
         })))
       })
