@@ -26,6 +26,12 @@ const OPCIONES_PROTECCION_JURIDICA = [
   { value: "otra_poliza", label: "Otra póliza jurídica" },
 ];
 
+const OPCIONES_GRAVAMEN = [
+  { value: "", label: "Sin definir" },
+  { value: "libre", label: "Libre de gravamen" },
+  { value: "hipoteca", label: "Con hipoteca" },
+];
+
 const PROPIEDAD_VACIA = {
   titulo: "", descripcion: "",
   operacion: "sale", precio: "", moneda: "MXN",
@@ -37,6 +43,7 @@ const PROPIEDAD_VACIA = {
   fotos: [], amenidades: [],
   video_url: "",
   status: "published",
+  es_exclusiva: false,
 
   // Servicios y operación (uso interno del equipo, principalmente)
   mantenimiento_aplica: false, mantenimiento_monto: "",
@@ -45,6 +52,9 @@ const PROPIEDAD_VACIA = {
 
   // Crédito (venta)
   creditos_aceptados: [],
+
+  // Gravamen / hipoteca
+  status_gravamen: "", gravamen_institucion: "",
 
   // Otros
   fecha_disponibilidad: "", mascotas_permitidas: null,
@@ -679,6 +689,15 @@ export default function PropiedadesAdmin() {
             </select>
           </Campo>
 
+          <div style={{ marginBottom: 14 }}>
+            <SwitchToggle
+              checked={form.es_exclusiva}
+              onChange={v => setForm(f => ({ ...f, es_exclusiva: v }))}
+              label="Propiedad exclusiva"
+              sublabel="Marca esta opción si Emporio tiene la exclusiva de venta/renta de este inmueble."
+            />
+          </div>
+
           <div style={{ height: 1, background: "#e5e7eb", margin: "20px 0" }} />
           <p style={{ fontSize: 13, fontWeight: 800, color: "#1a1a2e", margin: "0 0 12px" }}>🔧 Servicios y datos de operación</p>
 
@@ -729,6 +748,18 @@ export default function PropiedadesAdmin() {
 
           <div style={{ height: 1, background: "#e5e7eb", margin: "20px 0" }} />
           <p style={{ fontSize: 13, fontWeight: 800, color: "#1a1a2e", margin: "0 0 12px" }}>🏷️ Otros datos</p>
+
+          <Campo label="Status de gravamen / hipoteca">
+            <select style={inputStyle} value={form.status_gravamen} onChange={e => setForm(f => ({ ...f, status_gravamen: e.target.value }))}>
+              {OPCIONES_GRAVAMEN.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </Campo>
+
+          {form.status_gravamen === "hipoteca" && (
+            <Campo label="¿Con qué institución o persona?">
+              <input style={inputStyle} value={form.gravamen_institucion} onChange={e => setForm(f => ({ ...f, gravamen_institucion: e.target.value }))} placeholder="Ej. BBVA, Infonavit, persona física…" />
+            </Campo>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
             <Campo label="Amueblado">
