@@ -6,8 +6,8 @@ import Link from 'next/link'
 const RESPONSABLE_LABELS = {
   ventas: 'Ventas',
   juridico: 'Juridico',
-  administracion: 'Administracion (Majo)',
-  coordinacion: 'Administracion (Majo)',
+  administracion: 'Administracion (Tania)',
+  coordinacion: 'Administracion (Tania)',
   direccion: 'Direccion',
 }
 
