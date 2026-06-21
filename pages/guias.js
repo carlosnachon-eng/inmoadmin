@@ -8,16 +8,21 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-const USUARIOS_PERMITIDOS = [
-  'carlos.nachon@emporioinmobiliario.mx',
-  'guillermo@emporioinmobiliario.com.mx',
-  'ariannet81@gmail.com',
-  'angelicamomox@gmail.com',
-  'rddd298@gmail.com',
-  'ivanmtzco@gmail.com',
-  'nextelmoto2@gmail.com',
-  'islas.amanda111@gmail.com',
-]
+// Roles con acceso a Guías (antes era una lista de correos sueltos).
+// Según la matriz de permisos: Admin, Gerente de Ventas y Asesores.
+const ROLES_CON_ACCESO_GUIAS = ['admin', 'gerente_ventas', 'asesor']
+
+// Nombres reales como respaldo mientras profiles.full_name esté vacío
+const NOMBRES_CONOCIDOS = {
+  'ariannet81@gmail.com': 'Ariannet',
+  'angelicamomox@gmail.com': 'Angélica',
+  'rddd298@gmail.com': 'Rosario',
+  'ivanmtzco@gmail.com': 'Iván',
+  'nextelmoto2@gmail.com': 'Andrea',
+  'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
+  'carlos.nachon@emporioinmobiliario.mx': 'Carlos',
+  'islas.amanda111@gmail.com': 'Amanda',
+}
 
 const SECCIONES = [
   { id: 'descargas', label: ' Descargas', color: '#C8102E' },
@@ -340,23 +345,24 @@ export default function Guias() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Perfil real (con su role_id), cargado de profiles en vez de USUARIOS_PERMITIDOS hardcodeado.
+  const [perfilDb, setPerfilDb] = useState(null)
+  const [perfilCargado, setPerfilCargado] = useState(false)
+  useEffect(() => {
+    if (!session) { setPerfilCargado(true); return }
+    supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
+      .then(({ data }) => { setPerfilDb(data); setPerfilCargado(true) })
+  }, [session])
+
+  const tieneAcceso = ROLES_CON_ACCESO_GUIAS.includes(perfilDb?.role_id)
+
   // Prellenar nombre del asesor desde perfil
   useEffect(() => {
     if (session?.user?.email) {
-      const emailMap = {
-        'ariannet81@gmail.com': 'Ariannet',
-        'angelicamomox@gmail.com': 'Angélica',
-        'rddd298@gmail.com': 'Rosario',
-        'ivanmtzco@gmail.com': 'Iván',
-        'nextelmoto2@gmail.com': 'Andrea',
-        'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
-        'carlos.nachon@emporioinmobiliario.mx': 'Carlos',
-        'islas.amanda111@gmail.com': 'Amanda',
-      }
-      const nombre = emailMap[session.user.email] || ''
+      const nombre = perfilDb?.full_name || NOMBRES_CONOCIDOS[session.user.email] || ''
       if (nombre) setFicha('asesor_nombre', nombre)
     }
-  }, [session])
+  }, [session, perfilDb])
 
   // Cuando cambia tipo, ajustar monto_apartado
   useEffect(() => {
@@ -390,13 +396,13 @@ export default function Guias() {
 
   const toggleCheck = (key) => setChecklistMarcado(prev => ({ ...prev, [key]: !prev[key] }))
 
-  if (loading) return (
+  if (loading || (session && !perfilCargado)) return (
     <div style={{ minHeight: '100vh', background: '#f8f8f8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
   )
 
-  if (!session || !USUARIOS_PERMITIDOS.includes(session.user.email)) return (
+  if (!session || !tieneAcceso) return (
     <div style={{ minHeight: '100vh', background: '#f8f8f8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif', padding: 20 }}>
       <div style={{ textAlign: 'center', background: '#fff', padding: 40, borderRadius: 16, border: '1px solid #e5e7eb' }}>
         <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, marginBottom: 16 }} />
