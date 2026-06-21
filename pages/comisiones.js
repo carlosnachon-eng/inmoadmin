@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
+import { usePermiso, SinAcceso } from "../lib/permisos";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -43,6 +44,7 @@ const StatusBadge = ({ status, tipo }) => {
 };
 
 export default function Comisiones() {
+  const { cargando: permisoCargando, puedeVer, puedeEditar } = usePermiso("comisiones");
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -165,12 +167,13 @@ export default function Comisiones() {
     loadData();
   };
 
-  if (authLoading) return (
+  if (authLoading || permisoCargando) return (
     <div style={{ minHeight: "100vh", background: brand.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
   );
   if (!session) { if (typeof window !== "undefined") window.location.href = "/"; return null; }
+  if (!puedeVer) return <SinAcceso />;
 
   // ── Cálculos del periodo seleccionado ─────────────────────────────────────
   const comisionesPeriodo = comisiones.filter(c => c.periodo === periodo);
