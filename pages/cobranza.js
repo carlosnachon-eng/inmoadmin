@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
+import { usePermiso, SinAcceso } from "../lib/permisos";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -66,6 +67,7 @@ const Btn = ({ children, onClick, color = "#1a1a2e", disabled, small }) => (
 
 export default function Cobranza() {
   const router = useRouter();
+  const { cargando: permisoCargando, puedeVer, puedeEditar } = usePermiso("cobranza");
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -83,7 +85,7 @@ export default function Cobranza() {
 
   const today = new Date().toISOString().split("T")[0];
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
-  const isAdmin = profile?.role === "admin";
+  const isAdmin = puedeEditar; // antes: profile?.role === "admin". Ahora cubre Admin y Tania (coord_operaciones).
 
   const emptyForm = { tenant_name: "", tenant_email: "", property_name: "", amount: "", due_date: "", status: "pendiente", payment_method: "transferencia", notes: "" };
   const [form, setForm] = useState(emptyForm);
@@ -212,7 +214,7 @@ export default function Cobranza() {
     } catch (e) { showToast("Error: " + e.message, false); }
   };
 
-  if (authLoading) return (
+  if (authLoading || permisoCargando) return (
     <div style={{ minHeight: "100vh", background: "#f8f8f8", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
     </div>
@@ -222,6 +224,7 @@ export default function Cobranza() {
     if (typeof window !== "undefined") window.location.href = "/";
     return null;
   }
+  if (!puedeVer) return <SinAcceso />;
 
   // ── STATS ──
   const hoy = new Date();
