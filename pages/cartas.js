@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
+import { usePermiso, SinAcceso } from "../lib/permisos";
 
 const fmt = (n) => "$" + Number(n).toLocaleString("es-MX", { minimumFractionDigits: 0 });
 
@@ -14,6 +15,7 @@ const ESTATUS = {
 
 export default function CartasOferta() {
   const router = useRouter();
+  const { cargando: permisoCargando, puedeVer } = usePermiso("cartas");
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [cartas, setCartas] = useState([]);
@@ -61,6 +63,9 @@ export default function CartasOferta() {
 
   if (authLoading) return <div style={{ minHeight: "100vh", background: brand.bg, display: "flex", alignItems: "center", justifyContent: "center" }}><img src="https://www.emporioinmobiliario.com.mx/logo.png" style={{ height: 48, opacity: 0.4 }} /></div>;
   if (!session) { if (typeof window !== "undefined") window.location.href = "/"; return null; }
+
+  if (permisoCargando) return null;
+  if (!puedeVer) return <SinAcceso />;
 
   return (
     <div style={{ minHeight: "100vh", background: brand.bg, fontFamily: "system-ui, sans-serif" }}>
