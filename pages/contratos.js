@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
+import { usePermiso, SinAcceso } from "../lib/permisos";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -81,6 +82,7 @@ const Btn = ({ children, onClick, color = "#1a1a2e", disabled, small }) => (
 
 export default function Contratos() {
   const router = useRouter();
+  const { cargando: permisoCargando, puedeVer, esAdmin } = usePermiso("contratos");
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -96,7 +98,7 @@ export default function Contratos() {
   const [filterStatus, setFilterStatus] = useState("activo");
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
-  const isAdmin = profile?.role === "admin";
+  const isAdmin = esAdmin;
 
   const emptyForm = {
     tenant_name: "", tenant_email: "", tenant_phone: "",
@@ -222,6 +224,9 @@ export default function Contratos() {
     if (typeof window !== "undefined") window.location.href = "/";
     return null;
   }
+
+  if (permisoCargando) return null;
+  if (!puedeVer) return <SinAcceso />;
 
   const contratosFiltrados = contracts.filter(c => {
     if (filterStatus && c.status !== filterStatus) return false;
