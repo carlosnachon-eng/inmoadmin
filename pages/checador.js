@@ -1068,7 +1068,7 @@ export default function Checador() {
                   <p style={{ margin: '0 0 12px', fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 600 }}>
                     {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Mexico_City' })}
                   </p>
-                  {listaPersonas.map(({ nombre }) => {
+                  {listaPersonas.filter(p => p.rol !== 'admin').map(({ nombre }) => {
                     const hoy = getFechaMexico()
                     const checadasPersona = checadasAdmin.filter(c => c.nombre === nombre && c.fecha === hoy)
                     const entrada = checadasPersona.find(c => c.tipo === 'entrada')
