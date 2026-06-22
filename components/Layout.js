@@ -17,6 +17,7 @@ export const brand = {
 export const nav = [
   { id: "bienvenida",    label: "Inicio",             icon: "🏡",  link: "/",                  modulo: null, siempreVisible: true },
   { id: "caja",          label: "Caja",              icon: "💵",  link: "/caja",              modulo: "caja" },
+  { id: "reporte-propietario", label: "Reporte Propietarios", icon: "📊", link: "/reporte-propietario", modulo: "reporte-propietario" },
   { id: "checador",      label: "Checador",          icon: "🕒",  link: "/checador",           modulo: "checador" },
   { id: "guias",         label: "Guías",              icon: "📍",  link: "/guias",              modulo: "guias" },
   { id: "kpis",          label: "KPIs",               icon: "🎯",  link: "/kpis",               modulo: "kpis" },
