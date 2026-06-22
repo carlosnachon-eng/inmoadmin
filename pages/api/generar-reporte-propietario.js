@@ -1,11 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { generarReportePropietarioPdf } from "../../lib/generarReportePropietarioPdf";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -17,14 +12,14 @@ export default async function handler(req, res) {
   const { propiedad_id, desde, hasta } = req.body;
   if (!propiedad_id) return res.status(400).json({ error: "Falta propiedad_id" });
 
-  const { data: propiedad, error: errorPropiedad } = await supabase
+  const { data: propiedad, error: errorPropiedad } = await supabaseAdmin
     .from("propiedades")
     .select("*")
     .eq("id", propiedad_id)
     .single();
   if (errorPropiedad || !propiedad) return res.status(404).json({ error: "Propiedad no encontrada" });
 
-  const { data: propietario } = await supabase
+  const { data: propietario } = await supabaseAdmin
     .from("propietarios_inmuebles")
     .select("*")
     .eq("propiedad_id", propiedad_id)
@@ -39,9 +34,9 @@ export default async function handler(req, res) {
     };
 
     const [visitasRes, solicitudesRes, enviosPropRes] = await Promise.all([
-      filtroFecha(supabase.from("visitas_propiedad").select("*").eq("propiedad_id", propiedad_id)),
-      filtroFecha(supabase.from("solicitudes_contacto_propiedad").select("*").eq("propiedad_id", propiedad_id)),
-      supabase.from("envios_propiedades").select("envio_id, envios(medio, destinatario_nombre, created_at)").eq("propiedad_id", propiedad_id),
+      filtroFecha(supabaseAdmin.from("visitas_propiedad").select("*").eq("propiedad_id", propiedad_id)),
+      filtroFecha(supabaseAdmin.from("solicitudes_contacto_propiedad").select("*").eq("propiedad_id", propiedad_id)),
+      supabaseAdmin.from("envios_propiedades").select("envio_id, envios(medio, destinatario_nombre, created_at)").eq("propiedad_id", propiedad_id),
     ]);
 
     const visitas = visitasRes.data || [];
