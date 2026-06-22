@@ -27,6 +27,10 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
   const [showPromesaForm, setShowPromesaForm] = React.useState(false)
   const [detalle, setDetalle] = useState(null)
   const [cargandoDocs, setCargandoDocs] = useState(true)
+  const [buscarPropiedad, setBuscarPropiedad] = useState('')
+  const [resultadosPropiedad, setResultadosPropiedad] = useState([])
+  const [propiedadVinculada, setPropiedadVinculada] = useState(null)
+  const [vinculando, setVinculando] = useState(false)
 
   useEffect(() => {
     const cargarDetalle = async () => {
@@ -38,9 +42,43 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
         .single()
       setDetalle(data)
       setCargandoDocs(false)
+      if (data?.propiedad_id) {
+        const { data: prop } = await supabase.from('propiedades').select('id, titulo, direccion, public_id').eq('id', data.propiedad_id).maybeSingle()
+        setPropiedadVinculada(prop)
+      }
     }
     cargarDetalle()
   }, [v.id])
+
+  useEffect(() => {
+    const buscar = async () => {
+      if (!buscarPropiedad || buscarPropiedad.length < 3) { setResultadosPropiedad([]); return }
+      const { data } = await supabase
+        .from('propiedades')
+        .select('id, titulo, direccion, colonia, ciudad, public_id')
+        .or(`titulo.ilike.%${buscarPropiedad}%,direccion.ilike.%${buscarPropiedad}%`)
+        .limit(8)
+      setResultadosPropiedad(data || [])
+    }
+    const timeout = setTimeout(buscar, 350)
+    return () => clearTimeout(timeout)
+  }, [buscarPropiedad])
+
+  const vincularPropiedad = async (propiedad) => {
+    setVinculando(true)
+    await supabase.from('propietarios_inmuebles').update({ propiedad_id: propiedad.id }).eq('id', v.id)
+    setPropiedadVinculada(propiedad)
+    setBuscarPropiedad('')
+    setResultadosPropiedad([])
+    setVinculando(false)
+  }
+
+  const desvincularPropiedad = async () => {
+    setVinculando(true)
+    await supabase.from('propietarios_inmuebles').update({ propiedad_id: null }).eq('id', v.id)
+    setPropiedadVinculada(null)
+    setVinculando(false)
+  }
 
   const vend = detalle || v
 
@@ -109,6 +147,43 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
         </div>
         <InfoRow label="Dirección del inmueble" value={vend.direccion_inmueble} />
         <InfoRow label="Domicilio del propietario" value={vend.domicilio_propietario} />
+
+        {/* Vinculación con propiedad del catálogo (para el reporte mensual) */}
+        <div style={{ ...st.divider, margin: '16px 0' }} />
+        <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+          Propiedad vinculada en catálogo (para reporte mensual)
+        </p>
+        {propiedadVinculada ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 14px' }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.text }}>{propiedadVinculada.titulo}</p>
+              <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{propiedadVinculada.direccion} · ID: {propiedadVinculada.public_id}</p>
+            </div>
+            <button onClick={desvincularPropiedad} disabled={vinculando} style={{ ...st.btn, ...st.btnGhost, fontSize: 11, padding: '6px 10px' }}>
+              Quitar
+            </button>
+          </div>
+        ) : (
+          <div>
+            <input
+              value={buscarPropiedad}
+              onChange={e => setBuscarPropiedad(e.target.value)}
+              placeholder="Buscar propiedad por título o dirección…"
+              style={st.input}
+            />
+            {resultadosPropiedad.length > 0 && (
+              <div style={{ marginTop: 8, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
+                {resultadosPropiedad.map(rp => (
+                  <button key={rp.id} onClick={() => vincularPropiedad(rp)} disabled={vinculando}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', background: '#fff', border: 'none', borderBottom: `1px solid ${C.border}`, cursor: 'pointer', fontSize: 12 }}>
+                    <strong>{rp.titulo}</strong><br />
+                    <span style={{ color: C.muted }}>{[rp.direccion, rp.colonia, rp.ciudad].filter(Boolean).join(', ')} · {rp.public_id}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {vend.descripcion_inmueble && <InfoRow label="Descripción del inmueble" value={vend.descripcion_inmueble} />}
 
