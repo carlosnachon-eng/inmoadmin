@@ -259,8 +259,8 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
       {/* Fotos */}
       {fotos.length > 0 && (
         <div style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 18, paddingBottom: 4 }}>
-          {fotos.map((url, i) => (
-            <img key={i} src={url} alt="" style={{ height: 110, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
+          {fotos.map((foto, i) => (
+            <img key={i} src={foto.url || foto} alt="" style={{ height: 110, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
           ))}
         </div>
       )}
