@@ -208,6 +208,29 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
     }
   };
 
+  const copiarLigaDetalle = async () => {
+    if (!urlPublica) { showToast("Esta propiedad no tiene ID público, no se puede copiar la liga", false); return; }
+    try {
+      await navigator.clipboard.writeText(urlPublica);
+      showToast("Liga copiada, pégala en Respond.io");
+    } catch (e) {
+      showToast("No se pudo copiar automáticamente: " + urlPublica, false);
+    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data: envio } = await supabase
+        .from("envios")
+        .insert({ asesor_id: session?.user?.id || null, medio: "liga_copiada" })
+        .select()
+        .single();
+      if (envio) {
+        await supabase.from("envios_propiedades").insert({ envio_id: envio.id, propiedad_id: p.id });
+      }
+    } catch (e) {
+      console.error("No se pudo registrar la liga copiada:", e.message);
+    }
+  };
+
   const descargarPdf = async () => {
     setGenerando(true);
     try {
@@ -235,6 +258,9 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
         </button>
         <button onClick={enviarPorWhatsApp} style={{ background: "#22c55e", color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
           💬 Enviar liga por WhatsApp
+        </button>
+        <button onClick={copiarLigaDetalle} style={{ background: "#f0fdf4", color: "#065f46", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+          🔗 Copiar liga
         </button>
         {puedeEditar && (
           <button onClick={() => { onClose(); onEditar(p); }} style={{ background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
@@ -424,6 +450,32 @@ export default function PropiedadesAdmin() {
   const [isMobile, setIsMobile] = useState(false);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
+
+  const copiarLiga = async (p) => {
+    const url = p.public_id ? `https://www.emporioinmobiliario.com.mx/propiedades/${p.public_id}` : "";
+    if (!url) { showToast("Esta propiedad no tiene ID público, no se puede copiar la liga", false); return; }
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Liga copiada, pégala en Respond.io");
+    } catch (e) {
+      showToast("No se pudo copiar automáticamente: " + url, false);
+    }
+
+    // Registro en segundo plano para el futuro reporte a propietarios.
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data: envio } = await supabase
+        .from("envios")
+        .insert({ asesor_id: session?.user?.id || null, medio: "liga_copiada" })
+        .select()
+        .single();
+      if (envio) {
+        await supabase.from("envios_propiedades").insert({ envio_id: envio.id, propiedad_id: p.id });
+      }
+    } catch (e) {
+      console.error("No se pudo registrar la liga copiada:", e.message);
+    }
+  };
 
   const enviarSeleccionadasPorWhatsApp = async () => {
     const props = propiedades.filter((p) => seleccionadas.includes(p.id));
@@ -734,6 +786,9 @@ export default function PropiedadesAdmin() {
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => abrirDetalle(p)} style={{ flex: 1, background: "#eff6ff", border: "none", borderRadius: 8, padding: "8px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#1e40af" }}>
                         👁️ Ver detalle
+                      </button>
+                      <button onClick={() => copiarLiga(p)} title="Copiar liga para pegar en Respond.io" style={{ background: "#f0fdf4", border: "none", borderRadius: 8, padding: "8px 10px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#065f46" }}>
+                        🔗
                       </button>
                       {puedeEditar && (
                         <button onClick={() => abrirEditar(p)} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#374151" }}>
