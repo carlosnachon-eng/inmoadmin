@@ -163,6 +163,13 @@ export default function FichaCliente() {
   const [nuevaNota, setNuevaNota] = useState("");
   const [guardandoNota, setGuardandoNota] = useState(false);
   const [modalEnviar, setModalEnviar] = useState(false);
+  const [citaEditando, setCitaEditando] = useState(null);
+  const [edFechaHora, setEdFechaHora] = useState("");
+  const [edPropiedadBusqueda, setEdPropiedadBusqueda] = useState("");
+  const [edPropiedadesResultado, setEdPropiedadesResultado] = useState([]);
+  const [edPropiedadElegida, setEdPropiedadElegida] = useState(null);
+  const [guardandoCita, setGuardandoCita] = useState(false);
+  const [confirmarBorrarCita, setConfirmarBorrarCita] = useState(null);
   const [toast, setToast] = useState(null);
   const [editando, setEditando] = useState(false);
   const [edNombre, setEdNombre] = useState("");
@@ -238,6 +245,58 @@ export default function FichaCliente() {
   const cambiarEstadoCita = async (citaId, estado) => {
     await supabase.from("citas").update({ estado }).eq("id", citaId);
     setCitas((prev) => prev.map((c) => c.id === citaId ? { ...c, estado } : c));
+  };
+
+  // Convierte un timestamp ISO a formato datetime-local (sin zona) para
+  // precargar el input de edición con la fecha/hora actual de la cita.
+  const aDatetimeLocal = (iso) => {
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const abrirEdicionCita = (cita) => {
+    setCitaEditando(cita);
+    setEdFechaHora(aDatetimeLocal(cita.fecha_hora));
+    setEdPropiedadElegida(cita.propiedades ? { id: cita.propiedad_id, titulo: cita.propiedades.titulo } : null);
+    setEdPropiedadBusqueda("");
+    setEdPropiedadesResultado([]);
+  };
+
+  useEffect(() => {
+    const buscar = async () => {
+      if (!edPropiedadBusqueda || edPropiedadBusqueda.length < 3) { setEdPropiedadesResultado([]); return; }
+      const { data } = await supabase
+        .from("propiedades")
+        .select("id, titulo")
+        .or(`titulo.ilike.%${edPropiedadBusqueda}%,direccion.ilike.%${edPropiedadBusqueda}%`)
+        .limit(6);
+      setEdPropiedadesResultado(data || []);
+    };
+    const t = setTimeout(buscar, 350);
+    return () => clearTimeout(t);
+  }, [edPropiedadBusqueda]);
+
+  const guardarEdicionCita = async () => {
+    if (!edFechaHora) { showToast("Captura la fecha y hora", false); return; }
+    setGuardandoCita(true);
+    const { error } = await supabase
+      .from("citas")
+      .update({ fecha_hora: new Date(edFechaHora).toISOString(), propiedad_id: edPropiedadElegida?.id || null })
+      .eq("id", citaEditando.id);
+    setGuardandoCita(false);
+    if (error) { showToast("Error al guardar: " + error.message, false); return; }
+    setCitaEditando(null);
+    showToast("Cita actualizada");
+    cargarDatos();
+  };
+
+  const borrarCita = async (citaId) => {
+    const { error } = await supabase.from("citas").delete().eq("id", citaId);
+    setConfirmarBorrarCita(null);
+    if (error) { showToast("Error al borrar la cita: " + error.message, false); return; }
+    setCitas((prev) => prev.filter((c) => c.id !== citaId));
+    showToast("Cita borrada");
   };
 
   const agregarSeguimiento = async () => {
@@ -355,7 +414,7 @@ export default function FichaCliente() {
                   <span style={{ background: info.bg, color: info.color, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{info.label}</span>
                 </div>
                 {c.propiedades?.titulo && <p style={{ margin: "0 0 8px", fontSize: 12, color: "#6b7280" }}>{c.propiedades.titulo}</p>}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
                   {["agendada", "efectiva", "calificada", "no_show", "cancelada"].map((estado) => (
                     <button key={estado} onClick={() => cambiarEstadoCita(c.id, estado)} disabled={c.estado === estado} style={{
                       background: c.estado === estado ? "#e5e7eb" : "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 600,
@@ -364,6 +423,14 @@ export default function FichaCliente() {
                       {ESTADOS_CITA[estado].label}
                     </button>
                   ))}
+                </div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <button onClick={() => abrirEdicionCita(c)} style={{ background: "none", border: "none", color: "#1e40af", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}>
+                    ✏️ Editar fecha/propiedad
+                  </button>
+                  <button onClick={() => setConfirmarBorrarCita(c.id)} style={{ background: "none", border: "none", color: "#991b1b", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}>
+                    🗑️ Borrar
+                  </button>
                 </div>
               </div>
             );
@@ -407,6 +474,69 @@ export default function FichaCliente() {
           showToast={showToast}
           asesorId={perfil?.id}
         />
+      )}
+
+      {citaEditando && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 2500 }}>
+          <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", padding: 20, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: brand.gray }}>Editar cita</h2>
+              <button onClick={() => setCitaEditando(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, width: 32, height: 32, fontSize: 16, cursor: "pointer" }}>✕</button>
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Fecha y hora</label>
+              <input type="datetime-local" value={edFechaHora} onChange={(e) => setEdFechaHora(e.target.value)}
+                style={{ width: "100%", padding: "14px 14px", borderRadius: 12, border: "1.5px solid #e5e7eb", fontSize: 16, boxSizing: "border-box" }} />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Propiedad (opcional)</label>
+              {edPropiedadElegida ? (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 12 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{edPropiedadElegida.titulo}</p>
+                  <button onClick={() => setEdPropiedadElegida(null)} style={{ background: "none", border: "none", color: "#991b1b", fontWeight: 700, cursor: "pointer" }}>Quitar</button>
+                </div>
+              ) : (
+                <div>
+                  <input value={edPropiedadBusqueda} onChange={(e) => setEdPropiedadBusqueda(e.target.value)} placeholder="Buscar propiedad…"
+                    style={{ width: "100%", padding: "14px 14px", borderRadius: 12, border: "1.5px solid #e5e7eb", fontSize: 16, boxSizing: "border-box" }} />
+                  {edPropiedadesResultado.length > 0 && (
+                    <div style={{ marginTop: 8, border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
+                      {edPropiedadesResultado.map((p) => (
+                        <button key={p.id} onClick={() => { setEdPropiedadElegida(p); setEdPropiedadBusqueda(""); setEdPropiedadesResultado([]); }}
+                          style={{ display: "block", width: "100%", textAlign: "left", padding: 12, background: "#fff", border: "none", borderBottom: "1px solid #f3f4f6", fontSize: 13, cursor: "pointer" }}>
+                          {p.titulo}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button onClick={guardarEdicionCita} disabled={guardandoCita} style={{ width: "100%", background: brand.red, color: "#fff", border: "none", borderRadius: 14, padding: "16px", fontWeight: 800, fontSize: 16, cursor: guardandoCita ? "not-allowed" : "pointer", opacity: guardandoCita ? 0.6 : 1 }}>
+              {guardandoCita ? "Guardando…" : "Guardar cambios"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmarBorrarCita && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2600, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 380 }}>
+            <p style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700, color: brand.gray }}>¿Borrar esta cita?</p>
+            <p style={{ margin: "0 0 20px", fontSize: 13, color: "#6b7280" }}>Esta acción no se puede deshacer.</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setConfirmarBorrarCita(null)} style={{ flex: 1, background: "#f3f4f6", border: "none", borderRadius: 10, padding: "12px", fontWeight: 700, cursor: "pointer" }}>
+                Cancelar
+              </button>
+              <button onClick={() => borrarCita(confirmarBorrarCita)} style={{ flex: 1, background: "#991b1b", color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontWeight: 700, cursor: "pointer" }}>
+                Sí, borrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {confirmarBorrar && (
