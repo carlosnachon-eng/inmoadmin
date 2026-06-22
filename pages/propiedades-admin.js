@@ -185,26 +185,12 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
   const amenidades = Array.isArray(p.amenidades) ? p.amenidades : [];
   const creditos = Array.isArray(p.creditos_aceptados) ? p.creditos_aceptados : [];
 
-  const mensajeWhatsApp = (urlPdf) =>
-    `¡Hola! Te comparto la información de *${p.titulo || "esta propiedad"}*${p.precio ? ` — ${fmt(p.precio)}` : ""}.\n\n${urlPdf}\n\nEstoy a tus órdenes para cualquier duda. 🏠`;
+  const urlPublica = p.public_id ? `https://www.emporioinmobiliario.com.mx/propiedades/${p.public_id}` : "";
 
-  const enviarPorWhatsApp = async () => {
-    setGenerando(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch("/api/generar-pdf-propiedad", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ propiedad_id: p.id, usuario_id: session?.user?.id }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(data.error || "No se pudo generar el PDF");
-      const texto = encodeURIComponent(mensajeWhatsApp(data.url));
-      window.open(`https://wa.me/?text=${texto}`, "_blank");
-    } catch (e) {
-      showToast("Error al generar el PDF: " + e.message, false);
-    }
-    setGenerando(false);
+  const enviarPorWhatsApp = () => {
+    if (!urlPublica) { showToast("Esta propiedad no tiene ID público, no se puede compartir la liga", false); return; }
+    const mensaje = `¡Hola! Te comparto la información de *${p.titulo || "esta propiedad"}*${p.precio ? ` — ${fmt(p.precio)}` : ""}.\n\n${urlPublica}\n\nEstoy a tus órdenes para cualquier duda. 🏠`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, "_blank");
   };
 
   const descargarPdf = async () => {
@@ -232,8 +218,8 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
         <button onClick={descargarPdf} disabled={generando} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: generando ? "not-allowed" : "pointer", opacity: generando ? 0.6 : 1 }}>
           {generando ? "Generando…" : "📄 Generar PDF"}
         </button>
-        <button onClick={enviarPorWhatsApp} disabled={generando} style={{ background: "#22c55e", color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: generando ? "not-allowed" : "pointer", opacity: generando ? 0.6 : 1 }}>
-          💬 Enviar por WhatsApp
+        <button onClick={enviarPorWhatsApp} style={{ background: "#22c55e", color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+          💬 Enviar liga por WhatsApp
         </button>
         {puedeEditar && (
           <button onClick={() => { onClose(); onEditar(p); }} style={{ background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
