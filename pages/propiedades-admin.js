@@ -325,6 +325,67 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
 
 const inputStyle = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", fontFamily: "system-ui, sans-serif" };
 
+function ModalEnvioCorreo({ propiedades, onClose, showToast }) {
+  const [destinatarioNombre, setDestinatarioNombre] = useState("");
+  const [destinatarioCorreo, setDestinatarioCorreo] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  const enviar = async () => {
+    if (!destinatarioCorreo || !destinatarioCorreo.includes("@")) {
+      showToast("Captura un correo válido del destinatario", false);
+      return;
+    }
+    setEnviando(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/enviar-catalogo-propiedades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propiedad_ids: propiedades.map((p) => p.id),
+          usuario_id: session?.user?.id,
+          destinatario_nombre: destinatarioNombre,
+          destinatario_correo: destinatarioCorreo,
+          mensaje,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "No se pudo enviar el correo");
+      showToast(`Correo enviado a ${destinatarioCorreo}`);
+      onClose();
+    } catch (e) {
+      showToast("Error al enviar: " + e.message, false);
+    }
+    setEnviando(false);
+  };
+
+  return (
+    <Modal title={`Enviar ${propiedades.length} propiedad${propiedades.length > 1 ? "es" : ""} por correo`} onClose={onClose}>
+      <div style={{ marginBottom: 14, maxHeight: 140, overflowY: "auto", background: "#f9fafb", borderRadius: 8, padding: 10 }}>
+        {propiedades.map((p) => (
+          <p key={p.id} style={{ margin: "0 0 4px", fontSize: 12, color: "#374151" }}>• {p.titulo}</p>
+        ))}
+      </div>
+      <Campo label="Nombre del prospecto">
+        <input style={inputStyle} value={destinatarioNombre} onChange={(e) => setDestinatarioNombre(e.target.value)} placeholder="Ej. Juan Pérez" />
+      </Campo>
+      <Campo label="Correo del prospecto">
+        <input style={inputStyle} type="email" value={destinatarioCorreo} onChange={(e) => setDestinatarioCorreo(e.target.value)} placeholder="juan@correo.com" />
+      </Campo>
+      <Campo label="Mensaje (opcional)">
+        <textarea style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} value={mensaje} onChange={(e) => setMensaje(e.target.value)} placeholder="Hola Juan, te comparto estas opciones que pueden interesarte…" />
+      </Campo>
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+        <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
+        <button onClick={enviar} disabled={enviando} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "11px 20px", fontWeight: 700, cursor: enviando ? "not-allowed" : "pointer", opacity: enviando ? 0.6 : 1 }}>
+          {enviando ? "Enviando…" : "Enviar correo"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 export default function PropiedadesAdmin() {
   const router = useRouter();
   const { cargando: permisoCargando, puedeVer, puedeEditar } = usePermiso("propiedades-admin");
@@ -343,6 +404,8 @@ export default function PropiedadesAdmin() {
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [modalEliminar, setModalEliminar] = useState(null);
   const [modalDetalle, setModalDetalle] = useState(null);
+  const [seleccionadas, setSeleccionadas] = useState([]);
+  const [modalEnvioCorreo, setModalEnvioCorreo] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
@@ -395,6 +458,9 @@ export default function PropiedadesAdmin() {
 
   const abrirNueva = () => { setForm(PROPIEDAD_VACIA); setModalForm("nueva"); };
   const abrirDetalle = (p) => setModalDetalle(p);
+  const toggleSeleccion = (id) => {
+    setSeleccionadas((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
   const abrirEditar = (p) => {
     setForm({
       ...PROPIEDAD_VACIA,
@@ -590,14 +656,17 @@ export default function PropiedadesAdmin() {
               const st = STATUS_STYLE[p.status] || STATUS_STYLE.published;
               const foto = Array.isArray(p.fotos) && p.fotos[0]?.url;
               return (
-                <div key={p.id} style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                <div key={p.id} style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", outline: seleccionadas.includes(p.id) ? `2px solid ${brand.red}` : "none" }}>
                   <div style={{ height: 150, background: "#f3f4f6", position: "relative" }}>
+                    <label style={{ position: "absolute", top: 8, left: 8, zIndex: 2, background: "#fff", borderRadius: 6, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.25)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={seleccionadas.includes(p.id)} onChange={() => toggleSeleccion(p.id)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                    </label>
                     {foto ? (
                       <img src={foto} alt={p.titulo} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     ) : (
                       <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>🏠</div>
                     )}
-                    <span style={{ position: "absolute", top: 8, left: 8, background: p.operacion === "sale" ? "#1a1a2e" : brand.red, color: "#fff", padding: "3px 10px", borderRadius: 99, fontSize: 10, fontWeight: 800 }}>
+                    <span style={{ position: "absolute", top: 8, left: 38, background: p.operacion === "sale" ? "#1a1a2e" : brand.red, color: "#fff", padding: "3px 10px", borderRadius: 99, fontSize: 10, fontWeight: 800 }}>
                       {p.operacion === "sale" ? "VENTA" : "RENTA"}
                     </span>
                     <span style={{ position: "absolute", top: 8, right: 8, background: st.bg, color: st.color, padding: "3px 10px", borderRadius: 99, fontSize: 10, fontWeight: 700 }}>
@@ -641,12 +710,32 @@ export default function PropiedadesAdmin() {
         )}
       </div>
 
+      {seleccionadas.length > 0 && (
+        <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 500, display: "flex", gap: 8, alignItems: "center", background: "#1a1a2e", borderRadius: 99, padding: "10px 10px 10px 18px", boxShadow: "0 8px 24px rgba(0,0,0,0.25)" }}>
+          <span style={{ color: "#fff", fontSize: 13, fontWeight: 600 }}>{seleccionadas.length} propiedad{seleccionadas.length > 1 ? "es" : ""} seleccionada{seleccionadas.length > 1 ? "s" : ""}</span>
+          <button onClick={() => setModalEnvioCorreo(true)} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 99, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+            ✉️ Enviar por correo
+          </button>
+          <button onClick={() => setSeleccionadas([])} style={{ background: "transparent", color: "#9ca3af", border: "none", borderRadius: 99, padding: "9px 12px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+            Cancelar
+          </button>
+        </div>
+      )}
+
       {modalDetalle && (
         <FichaDetalle
           p={modalDetalle}
           onClose={() => setModalDetalle(null)}
           onEditar={abrirEditar}
           puedeEditar={puedeEditar}
+          showToast={showToast}
+        />
+      )}
+
+      {modalEnvioCorreo && (
+        <ModalEnvioCorreo
+          propiedades={propiedades.filter((p) => seleccionadas.includes(p.id))}
+          onClose={() => { setModalEnvioCorreo(false); setSeleccionadas([]); }}
           showToast={showToast}
         />
       )}
