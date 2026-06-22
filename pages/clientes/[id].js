@@ -164,6 +164,13 @@ export default function FichaCliente() {
   const [guardandoNota, setGuardandoNota] = useState(false);
   const [modalEnviar, setModalEnviar] = useState(false);
   const [toast, setToast] = useState(null);
+  const [editando, setEditando] = useState(false);
+  const [edNombre, setEdNombre] = useState("");
+  const [edTelefono, setEdTelefono] = useState("");
+  const [edCorreo, setEdCorreo] = useState("");
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  const [confirmarBorrar, setConfirmarBorrar] = useState(false);
+  const [borrando, setBorrando] = useState(false);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
 
@@ -191,6 +198,41 @@ export default function FichaCliente() {
     await supabase.from("clientes").update({ etapa_interes: etapa }).eq("id", id);
     setCliente((c) => ({ ...c, etapa_interes: etapa }));
     showToast("Etapa actualizada");
+  };
+
+  const abrirEdicion = () => {
+    setEdNombre(cliente.nombre || "");
+    setEdTelefono(cliente.telefono || "");
+    setEdCorreo(cliente.correo || "");
+    setEditando(true);
+  };
+
+  const guardarEdicion = async () => {
+    if (!edNombre.trim()) { showToast("El nombre no puede quedar vacío", false); return; }
+    setGuardandoEdicion(true);
+    const { error } = await supabase
+      .from("clientes")
+      .update({ nombre: edNombre.trim(), telefono: edTelefono.trim() || null, correo: edCorreo.trim() || null })
+      .eq("id", id);
+    setGuardandoEdicion(false);
+    if (error) { showToast("Error al guardar: " + error.message, false); return; }
+    setCliente((c) => ({ ...c, nombre: edNombre.trim(), telefono: edTelefono.trim() || null, correo: edCorreo.trim() || null }));
+    setEditando(false);
+    showToast("Datos actualizados");
+  };
+
+  const borrarCliente = async () => {
+    setBorrando(true);
+    // Las citas y seguimientos quedan huérfanos si no se borran primero
+    // (no hay "on delete cascade" en citas hacia clientes, deliberadamente,
+    // para no perder el historial de citas sin querer); las borramos en
+    // orden antes de borrar el cliente.
+    await supabase.from("citas").delete().eq("cliente_id", id);
+    await supabase.from("seguimientos_cliente").delete().eq("cliente_id", id);
+    const { error } = await supabase.from("clientes").delete().eq("id", id);
+    setBorrando(false);
+    if (error) { showToast("Error al borrar: " + error.message, false); return; }
+    router.push("/clientes");
   };
 
   const cambiarEstadoCita = async (citaId, estado) => {
@@ -238,8 +280,46 @@ export default function FichaCliente() {
         <a href="/clientes" style={{ fontSize: 13, color: "#9ca3af", textDecoration: "none" }}>← Volver a clientes</a>
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, marginTop: 12, marginBottom: 16, border: "1px solid #f0f0f0" }}>
-          <h2 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 800, color: brand.gray }}>{cliente.nombre}</h2>
-          <p style={{ margin: "0 0 14px", fontSize: 13, color: "#9ca3af" }}>{cliente.telefono || "Sin teléfono"} {cliente.correo ? `· ${cliente.correo}` : ""}</p>
+          {editando ? (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#6b7280", marginBottom: 4 }}>Nombre</label>
+                <input value={edNombre} onChange={(e) => setEdNombre(e.target.value)}
+                  style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 15, boxSizing: "border-box" }} />
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#6b7280", marginBottom: 4 }}>Teléfono</label>
+                <input value={edTelefono} onChange={(e) => setEdTelefono(e.target.value)} type="tel"
+                  style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 15, boxSizing: "border-box" }} />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#6b7280", marginBottom: 4 }}>Correo</label>
+                <input value={edCorreo} onChange={(e) => setEdCorreo(e.target.value)} type="email"
+                  style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 15, boxSizing: "border-box" }} />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setEditando(false)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "10px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                  Cancelar
+                </button>
+                <button onClick={guardarEdicion} disabled={guardandoEdicion} style={{ flex: 1, background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontWeight: 700, fontSize: 13, cursor: guardandoEdicion ? "not-allowed" : "pointer", opacity: guardandoEdicion ? 0.6 : 1 }}>
+                  {guardandoEdicion ? "Guardando…" : "Guardar"}
+                </button>
+              </div>
+              <button onClick={() => setConfirmarBorrar(true)} style={{ width: "100%", background: "none", border: "none", color: "#991b1b", fontSize: 12, fontWeight: 600, cursor: "pointer", marginTop: 12, textDecoration: "underline" }}>
+                🗑️ Borrar este cliente
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <div>
+                <h2 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 800, color: brand.gray }}>{cliente.nombre}</h2>
+                <p style={{ margin: 0, fontSize: 13, color: "#9ca3af" }}>{cliente.telefono || "Sin teléfono"} {cliente.correo ? `· ${cliente.correo}` : ""}</p>
+              </div>
+              <button onClick={abrirEdicion} title="Editar datos" style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "8px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", color: "#374151", flexShrink: 0 }}>
+                ✏️ Editar
+              </button>
+            </div>
+          )}
 
           <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase" }}>Etapa de interés</p>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -327,6 +407,25 @@ export default function FichaCliente() {
           showToast={showToast}
           asesorId={perfil?.id}
         />
+      )}
+
+      {confirmarBorrar && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2500, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 380 }}>
+            <p style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700, color: brand.gray }}>¿Borrar a {cliente.nombre}?</p>
+            <p style={{ margin: "0 0 20px", fontSize: 13, color: "#6b7280" }}>
+              Esto también borrará todas sus citas y notas de seguimiento. Esta acción no se puede deshacer.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setConfirmarBorrar(false)} style={{ flex: 1, background: "#f3f4f6", border: "none", borderRadius: 10, padding: "12px", fontWeight: 700, cursor: "pointer" }}>
+                Cancelar
+              </button>
+              <button onClick={borrarCliente} disabled={borrando} style={{ flex: 1, background: "#991b1b", color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontWeight: 700, cursor: borrando ? "not-allowed" : "pointer", opacity: borrando ? 0.6 : 1 }}>
+                {borrando ? "Borrando…" : "Sí, borrar"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </Layout>
   );
