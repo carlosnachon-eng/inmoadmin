@@ -95,8 +95,13 @@ def generate_ficha_pdf(data: dict, output_path: str, logo_path: str):
             logo_cell = Image(logo_path, width=1.9 * inch, height=1.05 * inch)
             logo_cell.hAlign = "LEFT"
         except Exception:
-            logo_cell = Paragraph('<font color="#C8102E" size="18"><b>EMPORIO</b></font>', S("lg", alignment=TA_LEFT, leading=22))
+            logo_cell = None
     else:
+        logo_cell = descargar_imagen("https://www.emporioinmobiliario.com.mx/logo.png", max_width=1.9 * inch, max_height=1.05 * inch)
+        if logo_cell:
+            logo_cell.hAlign = "LEFT"
+
+    if not logo_cell:
         logo_cell = Paragraph('<font color="#C8102E" size="18"><b>EMPORIO</b></font>', S("lg", alignment=TA_LEFT, leading=22))
 
     operacion_label = "EN VENTA" if data.get("operacion") == "sale" else "EN RENTA"
