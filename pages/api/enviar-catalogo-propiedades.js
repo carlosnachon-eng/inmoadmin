@@ -19,7 +19,7 @@ const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency:
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { propiedad_ids, usuario_id, destinatario_nombre, destinatario_correo, mensaje } = req.body;
+  const { propiedad_ids, usuario_id, destinatario_nombre, destinatario_correo, mensaje, cliente_id } = req.body;
 
   if (!Array.isArray(propiedad_ids) || propiedad_ids.length === 0) {
     return res.status(400).json({ error: "Falta la lista de propiedades (propiedad_ids)" });
@@ -178,6 +178,18 @@ export default async function handler(req, res) {
     if (!errorEnvio && envio) {
       const filas = propiedades.map((p) => ({ envio_id: envio.id, propiedad_id: p.id }));
       await supabaseAdmin.from("envios_propiedades").insert(filas);
+    }
+
+    // 8) Si el envío fue desde la ficha de un cliente, sumar la entrada a
+    //    su bitácora de seguimientos automáticamente.
+    if (cliente_id) {
+      const listaTitulos = propiedades.map((p) => p.titulo).join(", ");
+      await supabaseAdmin.from("seguimientos_cliente").insert({
+        cliente_id,
+        asesor_id: usuario_id || null,
+        nota: `Se envió por correo: ${listaTitulos}`,
+        tipo: "envio_correo",
+      });
     }
 
     return res.status(200).json({ ok: true, pdf_url: pdfUrl });
