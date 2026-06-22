@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import Layout, { brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import CalendarioCitas from "../components/CalendarioCitas";
 
 const ETAPAS = [
   { value: "nuevo", label: "Nuevo", color: "#6b7280", bg: "#f3f4f6" },
@@ -243,17 +244,29 @@ export default function Clientes() {
   const [busqueda, setBusqueda] = useState("");
   const [filtroEtapa, setFiltroEtapa] = useState("");
   const [modalNuevaCita, setModalNuevaCita] = useState(false);
+  const [modalCalendario, setModalCalendario] = useState(false);
   const [toast, setToast] = useState(null);
   const [proximasCitas, setProximasCitas] = useState([]);
+  const [filtroAsesor, setFiltroAsesor] = useState("");
+  const [orden, setOrden] = useState("reciente"); // 'reciente' | 'antiguo'
+  const [asesoresLista, setAsesoresLista] = useState([]);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
 
   const cargarDatos = async () => {
     setLoading(true);
-    let query = supabase.from("clientes").select("*").order("updated_at", { ascending: false });
+    let query = supabase.from("clientes").select("*, profiles:asesor_id(full_name, email)").order("updated_at", { ascending: false });
     if (alcance === "propio" && perfil?.id) query = query.eq("asesor_id", perfil.id);
     const { data } = await query;
     setClientes(data || []);
+
+    // Lista de asesores para el filtro — solo aplica a quien ve "todos"
+    // (Admin, Guillermo); un asesor normal no necesita este filtro porque
+    // ya solo ve lo propio.
+    if (alcance === "todos") {
+      const { data: perfiles } = await supabase.from("profiles").select("id, full_name, email").eq("active", true);
+      setAsesoresLista(perfiles || []);
+    }
 
     // Próximas citas (siguientes 7 días) para el recordatorio en pantalla.
     const ahora = new Date().toISOString();
@@ -281,14 +294,21 @@ export default function Clientes() {
   if (permisoCargando) return null;
   if (!puedeVer) return <SinAcceso />;
 
-  const clientesFiltrados = clientes.filter((c) => {
-    if (busqueda) {
-      const q = busqueda.toLowerCase();
-      if (!c.nombre?.toLowerCase().includes(q) && !c.telefono?.includes(q) && !c.correo?.toLowerCase().includes(q)) return false;
-    }
-    if (filtroEtapa && c.etapa_interes !== filtroEtapa) return false;
-    return true;
-  });
+  const clientesFiltrados = clientes
+    .filter((c) => {
+      if (busqueda) {
+        const q = busqueda.toLowerCase();
+        if (!c.nombre?.toLowerCase().includes(q) && !c.telefono?.includes(q) && !c.correo?.toLowerCase().includes(q)) return false;
+      }
+      if (filtroEtapa && c.etapa_interes !== filtroEtapa) return false;
+      if (filtroAsesor && c.asesor_id !== filtroAsesor) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const fa = new Date(a.updated_at).getTime();
+      const fb = new Date(b.updated_at).getTime();
+      return orden === "reciente" ? fb - fa : fa - fb;
+    });
 
   return (
     <Layout view="clientes" profile={perfil} onLogout={logout}>
@@ -299,7 +319,12 @@ export default function Clientes() {
       )}
 
       <div style={{ padding: 20, paddingBottom: 100, maxWidth: 760, margin: "0 auto" }}>
-        <h2 style={{ margin: "0 0 16px", fontSize: 20, fontWeight: 800, color: brand.gray }}>Clientes</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: brand.gray }}>Clientes</h2>
+          <button onClick={() => setModalCalendario(true)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", color: "#374151" }}>
+            📅 Calendario
+          </button>
+        </div>
 
         {proximasCitas.length > 0 && (
           <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 14, padding: 14, marginBottom: 16 }}>
@@ -324,6 +349,18 @@ export default function Clientes() {
             <option value="">Todas las etapas</option>
             {ETAPAS.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
           </select>
+          {alcance === "todos" && asesoresLista.length > 0 && (
+            <select value={filtroAsesor} onChange={(e) => setFiltroAsesor(e.target.value)}
+              style={{ padding: "12px 10px", borderRadius: 12, border: "1.5px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+              <option value="">Todos los asesores</option>
+              {asesoresLista.map((a) => <option key={a.id} value={a.id}>{a.full_name || a.email}</option>)}
+            </select>
+          )}
+          <select value={orden} onChange={(e) => setOrden(e.target.value)}
+            style={{ padding: "12px 10px", borderRadius: 12, border: "1.5px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+            <option value="reciente">Más reciente</option>
+            <option value="antiguo">Más antiguo</option>
+          </select>
         </div>
 
         {loading ? (
@@ -342,7 +379,10 @@ export default function Clientes() {
                   <div style={{ background: "#fff", borderRadius: 14, padding: 16, border: "1px solid #f0f0f0", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <p style={{ margin: "0 0 2px", fontSize: 15, fontWeight: 700, color: brand.gray }}>{c.nombre}</p>
-                      <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>{c.telefono || c.correo || "Sin contacto"}</p>
+                      <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>
+                        {c.telefono || c.correo || "Sin contacto"}
+                        {alcance === "todos" && c.profiles && ` · ${c.profiles.full_name || c.profiles.email}`}
+                      </p>
                     </div>
                     <span style={{ background: info.bg, color: info.color, padding: "4px 12px", borderRadius: 99, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
                       {info.label}
@@ -369,6 +409,14 @@ export default function Clientes() {
           onGuardado={cargarDatos}
           asesorId={perfil?.id}
           showToast={showToast}
+        />
+      )}
+
+      {modalCalendario && (
+        <CalendarioCitas
+          onClose={() => setModalCalendario(false)}
+          alcance={alcance}
+          asesorId={perfil?.id}
         />
       )}
     </Layout>
