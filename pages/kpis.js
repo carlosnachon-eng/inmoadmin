@@ -50,7 +50,6 @@ const fmt = n => '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionD
 export default function KPIs() {
   const [session, setSession] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
-  const [guardando, setGuardando] = useState(false)
   const [toast, setToast] = useState(null)
   const [registroHoy, setRegistroHoy] = useState(null)
   const [form, setForm] = useState({ citas_agendadas: 0, citas_efectivas: 0, citas_calificadas: 0 })
@@ -106,17 +105,47 @@ export default function KPIs() {
   }, [])
 
   useEffect(() => {
-    if (session && esAsesor) { cargarRegistroHoy(); cargarRanking() }
-  }, [session])
+    if (session && esAsesor && hoy) { calcularYGuardarKpisDelDia(); cargarRanking() }
+  }, [session, hoy])
 
   useEffect(() => {
     if (vistaRanking) { setAnimado(false); setTimeout(() => setAnimado(true), 100) }
   }, [vistaRanking])
 
-  const cargarRegistroHoy = async () => {
-    const { data } = await supabase.from('kpis_diarios').select('*').eq('email', email).eq('fecha', hoy).single()
-    if (data) { setRegistroHoy(data); setForm({ citas_agendadas: data.citas_agendadas, citas_efectivas: data.citas_efectivas, citas_calificadas: data.citas_calificadas }) }
-  }
+  // Antes: el asesor tecleaba estos 3 números a mano. Ahora se calculan
+  // automáticamente a partir de sus citas reales del día (módulo
+  // Clientes), y se guardan en kpis_diarios de forma transparente — el
+  // ranking, las metas y el dashboard admin siguen leyendo de la misma
+  // tabla de siempre, sin que haya que tocar esa parte del sistema.
+  const calcularYGuardarKpisDelDia = async () => {
+    if (!perfilDb?.id) return;
+    const inicioDia = `${hoy}T00:00:00`;
+    const finDia = `${hoy}T23:59:59`;
+    const { data: citasHoy } = await supabase
+      .from('citas')
+      .select('estado')
+      .eq('asesor_id', perfilDb.id)
+      .gte('fecha_hora', inicioDia)
+      .lte('fecha_hora', finDia);
+
+    const lista = citasHoy || [];
+    const calculado = {
+      citas_agendadas: lista.length,
+      citas_efectivas: lista.filter(c => c.estado === 'efectiva' || c.estado === 'calificada').length,
+      citas_calificadas: lista.filter(c => c.estado === 'calificada').length,
+    };
+
+    setForm(calculado);
+
+    const { data: existente } = await supabase.from('kpis_diarios').select('id').eq('email', email).eq('fecha', hoy).maybeSingle();
+    if (existente) {
+      await supabase.from('kpis_diarios').update(calculado).eq('id', existente.id);
+      setRegistroHoy({ ...existente, ...calculado });
+    } else {
+      const { data: nuevo } = await supabase.from('kpis_diarios').insert({ ...calculado, fecha: hoy, asesor: nombre, email }).select().single();
+      setRegistroHoy(nuevo);
+    }
+  };
 
   const cargarRanking = async () => {
     const anio = new Date().getFullYear()
@@ -133,12 +162,9 @@ export default function KPIs() {
     setChecadas(checadasData || [])
   }
 
-  const guardar = async () => {
-    setGuardando(true)
-    if (registroHoy) { await supabase.from('kpis_diarios').update(form).eq('id', registroHoy.id) }
-    else { await supabase.from('kpis_diarios').insert({ ...form, fecha: hoy, asesor: nombre, email }) }
-    showToast('✓ Guardado'); setGuardando(false); cargarRegistroHoy()
-  }
+  // La función "guardar" manual ya no existe — los contadores se calculan
+  // y guardan automáticamente en calcularYGuardarKpisDelDia(), a partir de
+  // las citas capturadas en el módulo de Clientes.
 
   const anio = new Date().getFullYear()
   const mes = new Date().getMonth() + 1
@@ -180,16 +206,10 @@ export default function KPIs() {
 
   const cumpleParaBono = miStats?.cumpleIngresos && miStats?.cumpleCitas && esPuntual
 
-  const Counter = ({ label, field, color, bg }) => (
-    <div style={{ background: '#fff', borderRadius: 14, padding: 20, border: `1px solid ${color}33` }}>
-      <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14, fontWeight: 600 }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <button onClick={() => setForm(f => ({ ...f, [field]: Math.max(0, f[field] - 1) }))}
-          style={{ width: 48, height: 48, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f8f8f8', color: '#4a4a4a', fontSize: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-        <div style={{ fontSize: 64, fontWeight: 900, color, lineHeight: 1 }}>{form[field]}</div>
-        <button onClick={() => setForm(f => ({ ...f, [field]: f[field] + 1 }))}
-          style={{ width: 48, height: 48, borderRadius: 12, border: `1px solid ${color}`, background: bg, color, fontSize: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-      </div>
+  const ContadorAutomatico = ({ label, field, color, bg }) => (
+    <div style={{ background: '#fff', borderRadius: 14, padding: 20, border: `1px solid ${color}33`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 40, fontWeight: 900, color, lineHeight: 1 }}>{form[field]}</div>
     </div>
   )
 
@@ -247,11 +267,9 @@ export default function KPIs() {
         <div style={{ maxWidth: 480, margin: '0 auto', padding: '24px 20px 40px' }}>
           {!vistaRanking ? (
             <>
-              {registroHoy && (
-                <div style={{ background: '#f0fdf4', border: '1px solid #6ee7b7', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#065f46', fontWeight: 600 }}>
-                  ✓ Ya registraste hoy — puedes actualizar
-                </div>
-              )}
+              {/* El aviso de "ya registraste hoy" ya no aplica — los
+                  contadores siempre reflejan tus citas reales del día,
+                  sin necesitar una acción manual de registro. */}
 
               {/* Estado del bono */}
               {miStats && (
@@ -306,15 +324,20 @@ export default function KPIs() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-                <Counter label="Citas agendadas" field="citas_agendadas" color="#065f46" bg="#f0fdf4" />
-                <Counter label="Citas efectivas" field="citas_efectivas" color="#92400e" bg="#fffbeb" />
-                <Counter label="Citas calificadas" field="citas_calificadas" color="#b91c3c" bg="#fff0f3" />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                <ContadorAutomatico label="Citas agendadas" field="citas_agendadas" color="#065f46" bg="#f0fdf4" />
+                <ContadorAutomatico label="Citas efectivas" field="citas_efectivas" color="#92400e" bg="#fffbeb" />
+                <ContadorAutomatico label="Citas calificadas" field="citas_calificadas" color="#b91c3c" bg="#fff0f3" />
               </div>
 
-              <button onClick={guardar} disabled={guardando}
-                style={{ width: '100%', padding: 18, borderRadius: 14, border: 'none', background: guardando ? '#e5e7eb' : '#b91c3c', color: guardando ? '#9ca3af' : '#fff', fontSize: 16, fontWeight: 800, cursor: guardando ? 'not-allowed' : 'pointer', marginBottom: 10, letterSpacing: 1 }}>
-                {guardando ? 'Guardando...' : registroHoy ? 'Actualizar registro' : 'Registrar día'}
+              <div style={{ background: '#f8f8f8', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 14px', marginBottom: 20, fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
+                Estos números se calculan solo, desde tus citas de hoy en{' '}
+                <a href="/clientes" style={{ color: '#b91c3c', fontWeight: 700, textDecoration: 'none' }}>el módulo de Clientes</a>.
+              </div>
+
+              <button onClick={() => window.location.href = '/clientes'}
+                style={{ width: '100%', padding: 18, borderRadius: 14, border: 'none', background: '#b91c3c', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer', marginBottom: 10, letterSpacing: 1 }}>
+                + Registrar una cita
               </button>
 
               <button onClick={() => setVistaRanking(true)}
