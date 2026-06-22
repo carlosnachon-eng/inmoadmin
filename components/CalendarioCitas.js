@@ -24,6 +24,8 @@ export default function CalendarioCitas({ onClose, alcance, asesorId }) {
   const [citas, setCitas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [diaSeleccionado, setDiaSeleccionado] = useState(null);
+  const [filtroAsesor, setFiltroAsesor] = useState("");
+  const [asesoresLista, setAsesoresLista] = useState([]);
 
   const hoy = hoyDate.toLocaleDateString("en-CA");
 
@@ -33,7 +35,7 @@ export default function CalendarioCitas({ onClose, alcance, asesorId }) {
     const fin = new Date(anioActual, mesActual + 1, 0).toISOString().split("T")[0];
     let query = supabase
       .from("citas")
-      .select("id, fecha_hora, estado, clientes(nombre, telefono), propiedades(titulo)")
+      .select("id, fecha_hora, estado, asesor_id, clientes(nombre, telefono), propiedades(titulo), profiles:asesor_id(full_name, email)")
       .gte("fecha_hora", `${inicio}T00:00:00`)
       .lte("fecha_hora", `${fin}T23:59:59`)
       .order("fecha_hora", { ascending: true });
@@ -43,6 +45,15 @@ export default function CalendarioCitas({ onClose, alcance, asesorId }) {
     setLoading(false);
   };
 
+  // Lista de asesores para el filtro — solo aplica a quien ve "todos"
+  // (Admin, Guillermo); un asesor con alcance "propio" ya solo ve lo suyo.
+  useEffect(() => {
+    if (alcance === "todos") {
+      supabase.from("profiles").select("id, full_name, email").eq("active", true)
+        .then(({ data }) => setAsesoresLista(data || []));
+    }
+  }, [alcance]);
+
   useEffect(() => { cargarMes(); }, [mesActual, anioActual]);
 
   const primerDia = new Date(anioActual, mesActual, 1).getDay();
@@ -50,7 +61,7 @@ export default function CalendarioCitas({ onClose, alcance, asesorId }) {
 
   const citasPorDia = (dia) => {
     const fecha = `${anioActual}-${String(mesActual + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
-    return citas.filter((c) => c.fecha_hora.slice(0, 10) === fecha);
+    return citas.filter((c) => c.fecha_hora.slice(0, 10) === fecha && (!filtroAsesor || c.asesor_id === filtroAsesor));
   };
 
   const irMesAnterior = () => {
@@ -76,6 +87,16 @@ export default function CalendarioCitas({ onClose, alcance, asesorId }) {
           <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: brand.gray, textTransform: "capitalize" }}>{nombreMes}</p>
           <button onClick={irMesSiguiente} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "8px 16px", fontWeight: 700, cursor: "pointer" }}>→</button>
         </div>
+
+        {alcance === "todos" && asesoresLista.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <select value={filtroAsesor} onChange={(e) => setFiltroAsesor(e.target.value)}
+              style={{ padding: "10px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 13, background: "#fff", width: "100%", boxSizing: "border-box" }}>
+              <option value="">Todos los asesores</option>
+              {asesoresLista.map((a) => <option key={a.id} value={a.id}>{a.full_name || a.email}</option>)}
+            </select>
+          </div>
+        )}
 
         {loading ? (
           <p style={{ textAlign: "center", color: "#9ca3af", padding: 30 }}>Cargando…</p>
@@ -104,9 +125,10 @@ export default function CalendarioCitas({ onClose, alcance, asesorId }) {
                     </div>
                     {citasDia.slice(0, 2).map((c, i) => {
                       const info = ESTADOS_CITA[c.estado] || ESTADOS_CITA.agendada;
+                      const asesorNombre = c.profiles?.full_name || c.profiles?.email;
                       return (
                         <div key={i} style={{ background: info.bg, color: info.color, borderRadius: 4, padding: "1px 4px", fontSize: 9, fontWeight: 600, marginBottom: 2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-                          {fmtHora(c.fecha_hora)} {c.clientes?.nombre}
+                          {fmtHora(c.fecha_hora)} {c.clientes?.nombre}{alcance === "todos" && asesorNombre ? ` · ${asesorNombre}` : ""}
                         </div>
                       );
                     })}
@@ -139,7 +161,10 @@ export default function CalendarioCitas({ onClose, alcance, asesorId }) {
                     <span style={{ background: info.bg, color: info.color, padding: "2px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{info.label}</span>
                   </div>
                   {c.clientes?.telefono && <p style={{ margin: "0 0 2px", fontSize: 12, color: "#6b7280" }}>📞 {c.clientes.telefono}</p>}
-                  {c.propiedades?.titulo && <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>🏠 {c.propiedades.titulo}</p>}
+                  {c.propiedades?.titulo && <p style={{ margin: "0 0 2px", fontSize: 12, color: "#6b7280" }}>🏠 {c.propiedades.titulo}</p>}
+                  {alcance === "todos" && (c.profiles?.full_name || c.profiles?.email) && (
+                    <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>👤 {c.profiles.full_name || c.profiles.email}</p>
+                  )}
                 </div>
               );
             })}
