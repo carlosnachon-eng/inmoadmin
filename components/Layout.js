@@ -21,6 +21,7 @@ export const nav = [
   { id: "checador",      label: "Checador",          icon: "🕒",  link: "/checador",           modulo: "checador" },
   { id: "guias",         label: "Guías",              icon: "📍",  link: "/guias",              modulo: "guias" },
   { id: "kpis",          label: "KPIs",               icon: "🎯",  link: "/kpis",               modulo: "kpis" },
+  { id: "clientes",      label: "Clientes",           icon: "👥",  link: "/clientes",           modulo: "clientes" },
   { id: "kpis_dashboard",label: "KPIs Dashboard",     icon: "📊",  link: "/kpis-dashboard",     modulo: "kpis-dashboard" },
   { id: "propiedades",   label: "Propiedades",        icon: "🏠",  link: "/propiedades",        modulo: "propiedades" },
   { id: "catalogo_venta",label: "Catálogo Web",       icon: "🌐",  link: "/propiedades-admin",  modulo: "propiedades-admin" },
