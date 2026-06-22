@@ -586,18 +586,29 @@ export default function PropiedadesAdmin() {
     setModalForm(p);
   };
 
-  const subirFoto = async (file) => {
+  const subirFotos = async (files) => {
     setSubiendoFoto(true);
-    try {
-      const ext = file.name.split(".").pop();
-      const carpeta = form.public_id || `nueva_${Date.now()}`;
-      const fileName = `${carpeta}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
-      const { error } = await supabase.storage.from("propiedades-fotos").upload(fileName, file, { upsert: true });
-      if (error) throw error;
-      const { data } = supabase.storage.from("propiedades-fotos").getPublicUrl(fileName);
-      setForm(f => ({ ...f, fotos: [...f.fotos, { url: data.publicUrl, orden: f.fotos.length }] }));
-      showToast("Foto agregada ✅");
-    } catch (e) { showToast("Error al subir foto: " + e.message, false); }
+    const archivos = Array.from(files);
+    let subidas = 0;
+    let errores = 0;
+
+    for (const file of archivos) {
+      try {
+        const ext = file.name.split(".").pop();
+        const carpeta = form.public_id || `nueva_${Date.now()}`;
+        const fileName = `${carpeta}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+        const { error } = await supabase.storage.from("propiedades-fotos").upload(fileName, file, { upsert: true });
+        if (error) throw error;
+        const { data } = supabase.storage.from("propiedades-fotos").getPublicUrl(fileName);
+        setForm(f => ({ ...f, fotos: [...f.fotos, { url: data.publicUrl, orden: f.fotos.length }] }));
+        subidas++;
+      } catch (e) {
+        errores++;
+      }
+    }
+
+    if (errores === 0) showToast(`${subidas} foto${subidas === 1 ? "" : "s"} agregada${subidas === 1 ? "" : "s"} ✅`);
+    else showToast(`${subidas} foto${subidas === 1 ? "" : "s"} agregada${subidas === 1 ? "" : "s"}, ${errores} con error`, errores === archivos.length ? false : true);
     setSubiendoFoto(false);
   };
 
@@ -1115,10 +1126,10 @@ export default function PropiedadesAdmin() {
               ))}
             </div>
             <label style={{ display: "inline-block", background: subiendoFoto ? "#f3f4f6" : brand.redLight, color: brand.red, padding: "8px 16px", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: subiendoFoto ? "default" : "pointer" }}>
-              {subiendoFoto ? "Subiendo…" : "+ Agregar foto"}
-              <input type="file" accept="image/*" disabled={subiendoFoto} onChange={e => e.target.files[0] && subirFoto(e.target.files[0])} style={{ display: "none" }} />
+              {subiendoFoto ? "Subiendo…" : "+ Agregar fotos"}
+              <input type="file" accept="image/*" multiple disabled={subiendoFoto} onChange={e => e.target.files.length > 0 && subirFotos(e.target.files)} style={{ display: "none" }} />
             </label>
-            <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>La primera foto es la que se usa como portada en el listado.</p>
+            <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>La primera foto es la que se usa como portada en el listado. Puedes seleccionar varias a la vez.</p>
           </Campo>
 
           {/* Amenidades */}
