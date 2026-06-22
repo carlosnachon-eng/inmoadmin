@@ -244,7 +244,7 @@ export default function ReportePropietario() {
                     <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: brand.gray }}>Envíos de la ficha</p>
                     {datos.envios.map((e, i) => (
                       <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid #f3f4f6", fontSize: 12, color: "#374151" }}>
-                        {e.medio === "correo" ? "✉️" : "💬"} {e.medio === "correo" ? `Correo a ${e.destinatario_nombre || "—"}` : "WhatsApp"} — <span style={{ color: "#9ca3af" }}>{fmtFecha(e.created_at)}</span>
+                        {e.medio === "correo" ? "✉️" : e.medio === "whatsapp" ? "💬" : "🔗"} {e.medio === "correo" ? `Correo a ${e.destinatario_nombre || "—"}` : e.medio === "whatsapp" ? "WhatsApp" : "Liga compartida"} — <span style={{ color: "#9ca3af" }}>{fmtFecha(e.created_at)}</span>
                       </div>
                     ))}
                   </div>
