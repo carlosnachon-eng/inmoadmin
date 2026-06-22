@@ -1,9 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
 import { generarFichaPropiedadPdf } from "../../lib/generarFichaPropiedadPdf";
 
+// Cliente normal (anon key): usado para leer los datos de la propiedad.
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
+// Cliente con service role: necesario para subir el PDF a Storage desde el
+// servidor sin depender de la sesión del usuario (las API routes no tienen
+// la sesión del navegador, así que con la anon key choca contra RLS).
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 export default async function handler(req, res) {
@@ -56,8 +65,11 @@ export default async function handler(req, res) {
     const pdfBuffer = await generarFichaPropiedadPdf(datosPublicos);
 
     // 3) Subir a Supabase Storage (bucket "fichas-propiedad", público)
+    //    Usamos supabaseAdmin (service role) porque este endpoint corre en
+    //    el servidor, sin la sesión del usuario, y RLS bloquearía el insert
+    //    con la anon key.
     const nombreArchivo = `${propiedad.public_id || propiedad_id}_${Date.now()}.pdf`;
-    const { error: errorUpload } = await supabase.storage
+    const { error: errorUpload } = await supabaseAdmin.storage
       .from("fichas-propiedad")
       .upload(nombreArchivo, pdfBuffer, { contentType: "application/pdf", upsert: true });
 
@@ -65,7 +77,7 @@ export default async function handler(req, res) {
       throw new Error("Error al subir el PDF: " + errorUpload.message);
     }
 
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = supabaseAdmin.storage
       .from("fichas-propiedad")
       .getPublicUrl(nombreArchivo);
 
