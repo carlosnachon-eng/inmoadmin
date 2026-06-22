@@ -267,14 +267,14 @@ export default function FirmasDashboard() {
               {/* Header días */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
                 {DIAS.map(d => (
-                  <div key={d} style={{ padding: '10px 4px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#9ca3af' }}>{d}</div>
+                  <div key={d} style={{ padding: '10px 4px', minWidth: 0, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#9ca3af' }}>{d}</div>
                 ))}
               </div>
               {/* Días */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
                 {/* Espacios vacíos antes del día 1 */}
                 {Array.from({ length: primerDia }).map((_, i) => (
-                  <div key={`empty-${i}`} style={{ minHeight: 80, borderRight: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6', background: '#fafafa' }} />
+                  <div key={`empty-${i}`} style={{ minHeight: 80, minWidth: 0, borderRight: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6', background: '#fafafa' }} />
                 ))}
                 {/* Días del mes */}
                 {Array.from({ length: diasEnMes }, (_, i) => i + 1).map(dia => {
@@ -283,7 +283,7 @@ export default function FirmasDashboard() {
                   const citasDia = citasPorDia(dia)
                   return (
                     <div key={dia} onClick={() => abrirDia(dia)}
-                      style={{ minHeight: 80, borderRight: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6', padding: '6px', cursor: 'pointer', background: esHoy ? '#eff6ff' : '#fff', transition: 'background 0.1s' }}
+                      style={{ minHeight: 80, minWidth: 0, overflow: 'hidden', borderRight: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6', padding: '6px', cursor: 'pointer', background: esHoy ? '#eff6ff' : '#fff', transition: 'background 0.1s' }}
                       onMouseEnter={e => e.currentTarget.style.background = esHoy ? '#dbeafe' : '#f9fafb'}
                       onMouseLeave={e => e.currentTarget.style.background = esHoy ? '#eff6ff' : '#fff'}>
                       <div style={{ fontSize: 13, fontWeight: esHoy ? 800 : 400, color: esHoy ? '#1e40af' : '#374151', marginBottom: 4,
