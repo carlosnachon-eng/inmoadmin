@@ -191,10 +191,11 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
   const enviarPorWhatsApp = async () => {
     setGenerando(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch("/api/generar-pdf-propiedad", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ propiedad_id: p.id }),
+        body: JSON.stringify({ propiedad_id: p.id, usuario_id: session?.user?.id }),
       });
       const data = await res.json();
       if (!res.ok || !data.url) throw new Error(data.error || "No se pudo generar el PDF");
@@ -209,10 +210,11 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
   const descargarPdf = async () => {
     setGenerando(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch("/api/generar-pdf-propiedad", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ propiedad_id: p.id }),
+        body: JSON.stringify({ propiedad_id: p.id, usuario_id: session?.user?.id }),
       });
       const data = await res.json();
       if (!res.ok || !data.url) throw new Error(data.error || "No se pudo generar el PDF");
