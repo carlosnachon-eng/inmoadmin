@@ -168,6 +168,173 @@ const Campo = ({ label, children }) => (
   </div>
 );
 
+const Dato = ({ label, value }) => {
+  if (value === undefined || value === null || value === "" || value === false) return null;
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.03em" }}>{label}</p>
+      <p style={{ margin: 0, fontSize: 14, color: "#1a1a2e", fontWeight: 500 }}>{value === true ? "Sí" : value}</p>
+    </div>
+  );
+};
+
+function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
+  const [generando, setGenerando] = useState(false);
+  const s = STATUS_STYLE[p.status] || STATUS_STYLE.published;
+  const fotos = Array.isArray(p.fotos) ? p.fotos : [];
+  const amenidades = Array.isArray(p.amenidades) ? p.amenidades : [];
+  const creditos = Array.isArray(p.creditos_aceptados) ? p.creditos_aceptados : [];
+
+  const mensajeWhatsApp = (urlPdf) =>
+    `¡Hola! Te comparto la información de *${p.titulo || "esta propiedad"}*${p.precio ? ` — ${fmt(p.precio)}` : ""}.\n\n${urlPdf}\n\nEstoy a tus órdenes para cualquier duda. 🏠`;
+
+  const enviarPorWhatsApp = async () => {
+    setGenerando(true);
+    try {
+      const res = await fetch("/api/generar-pdf-propiedad", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propiedad_id: p.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || "No se pudo generar el PDF");
+      const texto = encodeURIComponent(mensajeWhatsApp(data.url));
+      window.open(`https://wa.me/?text=${texto}`, "_blank");
+    } catch (e) {
+      showToast("Error al generar el PDF: " + e.message, false);
+    }
+    setGenerando(false);
+  };
+
+  const descargarPdf = async () => {
+    setGenerando(true);
+    try {
+      const res = await fetch("/api/generar-pdf-propiedad", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propiedad_id: p.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || "No se pudo generar el PDF");
+      window.open(data.url, "_blank");
+    } catch (e) {
+      showToast("Error al generar el PDF: " + e.message, false);
+    }
+    setGenerando(false);
+  };
+
+  return (
+    <Modal title="Detalle de la propiedad" onClose={onClose} wide>
+      {/* Botones de acción */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20, paddingBottom: 16, borderBottom: "1.5px solid #f3f4f6" }}>
+        <button onClick={descargarPdf} disabled={generando} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: generando ? "not-allowed" : "pointer", opacity: generando ? 0.6 : 1 }}>
+          {generando ? "Generando…" : "📄 Generar PDF"}
+        </button>
+        <button onClick={enviarPorWhatsApp} disabled={generando} style={{ background: "#22c55e", color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: generando ? "not-allowed" : "pointer", opacity: generando ? 0.6 : 1 }}>
+          💬 Enviar por WhatsApp
+        </button>
+        {puedeEditar && (
+          <button onClick={() => { onClose(); onEditar(p); }} style={{ background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+            ✏️ Editar
+          </button>
+        )}
+      </div>
+
+      {/* Encabezado */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 16 }}>
+        <div>
+          <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800, color: "#1a1a2e" }}>{p.titulo}</h3>
+          <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>📍 {[p.direccion, p.colonia, p.ciudad, p.estado].filter(Boolean).join(", ")}</p>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <span style={{ background: s.bg, color: s.color, padding: "4px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{s.label}</span>
+          {p.es_exclusiva && <span style={{ background: "#1a1a2e", color: "#fff", padding: "4px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>⭐ Exclusiva</span>}
+        </div>
+      </div>
+
+      <p style={{ margin: "0 0 16px", fontSize: 24, fontWeight: 900, color: brand.red }}>
+        {fmt(p.precio)} <span style={{ fontSize: 13, fontWeight: 600, color: "#9ca3af" }}>{p.operacion === "sale" ? "Venta" : "Renta"}</span>
+      </p>
+
+      {/* Fotos */}
+      {fotos.length > 0 && (
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 18, paddingBottom: 4 }}>
+          {fotos.map((url, i) => (
+            <img key={i} src={url} alt="" style={{ height: 110, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
+          ))}
+        </div>
+      )}
+
+      {/* Datos generales */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 18 }}>
+        <Dato label="Tipo" value={p.tipo} />
+        <Dato label="Recámaras" value={p.recamaras} />
+        <Dato label="Baños" value={p.banos} />
+        <Dato label="Estacionamientos" value={p.estacionamientos} />
+        <Dato label="m² construcción" value={p.m2_construccion} />
+        <Dato label="m² terreno" value={p.m2_terreno} />
+        <Dato label="Antigüedad" value={p.antiguedad_anios ? `${p.antiguedad_anios} años` : ""} />
+        <Dato label="Amueblado" value={p.amueblado} />
+        <Dato label="Orientación" value={p.orientacion} />
+      </div>
+
+      {p.descripcion && (
+        <div style={{ marginBottom: 18 }}>
+          <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase" }}>Descripción</p>
+          <p style={{ margin: 0, fontSize: 13, color: "#374151", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{p.descripcion}</p>
+        </div>
+      )}
+
+      {amenidades.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase" }}>Amenidades</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {amenidades.map((a, i) => <span key={i} style={{ background: "#f0fdf4", color: "#065f46", padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>✓ {a}</span>)}
+          </div>
+        </div>
+      )}
+
+      {creditos.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase" }}>Créditos aceptados</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {creditos.map((c, i) => <span key={i} style={{ background: "#eff6ff", color: "#1e40af", padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{c}</span>)}
+          </div>
+        </div>
+      )}
+
+      <div style={{ height: 1, background: "#f3f4f6", margin: "16px 0" }} />
+      <p style={{ fontSize: 12, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 10px" }}>Información operativa (interna)</p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 12 }}>
+        <Dato label="¿Administrada por Emporio?" value={p.es_administrada} />
+        <Dato label="Mantenimiento aplica" value={p.mantenimiento_aplica ? fmt(p.mantenimiento_monto) : ""} />
+        <Dato label="Servicio de gas" value={p.servicio_gas} />
+        <Dato label="Servicio de agua" value={p.servicio_agua} />
+        <Dato label="Servicio de luz" value={p.servicio_luz} />
+        <Dato label="Internet disponible" value={p.internet_disponible} />
+        <Dato label="Ubicación de la llave" value={p.ubicacion_llave} />
+        <Dato label="Capacidad de cisterna" value={p.cisterna_capacidad} />
+        <Dato label="Comisión" value={p.comision_detalle} />
+        <Dato label="Protección jurídica" value={OPCIONES_PROTECCION_JURIDICA.find(o => o.value === p.proteccion_juridica)?.label} />
+        <Dato label="Status de gravamen" value={OPCIONES_GRAVAMEN.find(o => o.value === p.status_gravamen)?.label} />
+        <Dato label="Institución del gravamen" value={p.gravamen_institucion} />
+        <Dato label="Fecha de disponibilidad" value={p.fecha_disponibilidad} />
+        <Dato label="Mascotas permitidas" value={p.mascotas_permitidas} />
+      </div>
+
+      {p.notas_internas && (
+        <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: 12, marginTop: 8 }}>
+          <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>Notas internas</p>
+          <p style={{ margin: 0, fontSize: 13, color: "#78350f", whiteSpace: "pre-wrap" }}>{p.notas_internas}</p>
+        </div>
+      )}
+
+      <p style={{ margin: "20px 0 0", fontSize: 10, color: "#9ca3af", textAlign: "right" }}>ID: {p.public_id}</p>
+    </Modal>
+  );
+}
+
 const inputStyle = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", fontFamily: "system-ui, sans-serif" };
 
 export default function PropiedadesAdmin() {
@@ -187,8 +354,7 @@ export default function PropiedadesAdmin() {
   const [saving, setSaving] = useState(false);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [modalEliminar, setModalEliminar] = useState(null);
-  const [migrando, setMigrando] = useState(false);
-  const [resultadoMigracion, setResultadoMigracion] = useState(null);
+  const [modalDetalle, setModalDetalle] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
@@ -240,6 +406,7 @@ export default function PropiedadesAdmin() {
   });
 
   const abrirNueva = () => { setForm(PROPIEDAD_VACIA); setModalForm("nueva"); };
+  const abrirDetalle = (p) => setModalDetalle(p);
   const abrirEditar = (p) => {
     setForm({
       ...PROPIEDAD_VACIA,
@@ -368,69 +535,6 @@ export default function PropiedadesAdmin() {
     loadPropiedades();
   };
 
-  const correrMigracion = async (forzarRecarga = false) => {
-    const mensaje = forzarRecarga
-      ? "Esto va a volver a preguntarle a EasyBroker cuántas propiedades activas tienes (ignorando cualquier conteo guardado anteriormente) y va a completar las que falten. ¿Continuar?"
-      : "Esto va a traer todas tus propiedades activas de EasyBroker y guardarlas aquí, en lotes pequeños (puede tardar varios minutos porque tu plan de Vercel limita cada llamada a 10s). Si una propiedad ya existe, se actualiza, no se duplica. ¿Continuar?";
-    if (!confirm(mensaje)) return;
-    setMigrando(true);
-    setResultadoMigracion(null);
-
-    let totalCreadas = 0, totalActualizadas = 0, totalErrores = [];
-    let vueltas = 0;
-
-    try {
-      while (true) {
-        vueltas++;
-        if (vueltas > 200) { // límite de seguridad por si algo se atora
-          setResultadoMigracion({ error: "Se alcanzó el límite de intentos (200 llamadas). Revisa con Claude qué está pasando." });
-          break;
-        }
-
-        const res = await fetch("/api/migrar-propiedades", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ forzarRecarga: vueltas === 1 ? forzarRecarga : false }),
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-          setResultadoMigracion({ error: data.error || "Error desconocido durante la migración", parcial: { totalCreadas, totalActualizadas, totalErrores } });
-          showToast("Error en la migración: " + (data.error || "desconocido"), false);
-          break;
-        }
-
-        totalCreadas += data.creadas || 0;
-        totalActualizadas += data.actualizadas || 0;
-        totalErrores = [...totalErrores, ...(data.errores || [])];
-
-        // Mostramos progreso en vivo mientras sigue corriendo
-        setResultadoMigracion({
-          enProgreso: !data.listo,
-          procesados: data.total_procesados_hasta_ahora || 0,
-          total: data.total || 0,
-          creadas: totalCreadas,
-          actualizadas: totalActualizadas,
-          errores: totalErrores,
-          vinoDeCache: data.vino_de_cache,
-        });
-
-        if (data.listo) {
-          showToast(`Migración completa: ${totalCreadas} creadas, ${totalActualizadas} actualizadas`);
-          loadPropiedades();
-          break;
-        }
-
-        // pequeña pausa entre lotes para no saturar
-        await new Promise(r => setTimeout(r, 300));
-      }
-    } catch (e) {
-      setResultadoMigracion({ error: "Error de red: " + e.message, parcial: { totalCreadas, totalActualizadas } });
-      showToast("Error de red al migrar: " + e.message, false);
-    }
-    setMigrando(false);
-  };
-
   if (authLoading || permisoCargando) return null;
   if (!session) { if (typeof window !== "undefined") window.location.href = "/"; return null; }
   if (!puedeVer) return <SinAcceso />;
@@ -448,17 +552,9 @@ export default function PropiedadesAdmin() {
         icon="🏠"
         actions={
           puedeEditar ? (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={() => correrMigracion(false)} disabled={migrando} style={{ background: "#fff", color: brand.red, border: `1.5px solid ${brand.red}`, borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: migrando ? "not-allowed" : "pointer", fontSize: 13, opacity: migrando ? 0.6 : 1 }}>
-                {migrando ? "Importando…" : "⬇️ Importar de EasyBroker"}
-              </button>
-              <button onClick={() => correrMigracion(true)} disabled={migrando} title="Úsalo si sospechas que el conteo se quedó corto o desactualizado" style={{ background: "#fff", color: "#6b7280", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: migrando ? "not-allowed" : "pointer", fontSize: 13, opacity: migrando ? 0.6 : 1 }}>
-                🔄 Recontar desde cero
-              </button>
-              <button onClick={abrirNueva} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
-                + Nueva propiedad
-              </button>
-            </div>
+            <button onClick={abrirNueva} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
+              + Nueva propiedad
+            </button>
           ) : (
             <span style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic" }}>Modo solo lectura</span>
           )
@@ -466,36 +562,6 @@ export default function PropiedadesAdmin() {
       />
 
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 20px" }}>
-
-        {resultadoMigracion && (
-          <div style={{ background: resultadoMigracion.error ? "#fee2e2" : resultadoMigracion.enProgreso ? "#eff6ff" : "#f0fdf4", border: `1px solid ${resultadoMigracion.error ? "#fca5a5" : resultadoMigracion.enProgreso ? "#93c5fd" : "#86efac"}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
-            {resultadoMigracion.error ? (
-              <p style={{ margin: 0, fontSize: 13, color: "#991b1b" }}>❌ {resultadoMigracion.error}</p>
-            ) : resultadoMigracion.enProgreso ? (
-              <>
-                <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: "#1e40af" }}>
-                  ⏳ Importando… {resultadoMigracion.procesados} de {resultadoMigracion.total} propiedades ({resultadoMigracion.creadas} nuevas, {resultadoMigracion.actualizadas} actualizadas hasta ahora)
-                </p>
-                <div style={{ background: "#dbeafe", borderRadius: 99, height: 8, overflow: "hidden" }}>
-                  <div style={{ background: "#1e40af", height: "100%", width: `${resultadoMigracion.total ? Math.min(100, (resultadoMigracion.procesados / resultadoMigracion.total) * 100) : 0}%`, transition: "width .3s" }} />
-                </div>
-                <p style={{ margin: "8px 0 0", fontSize: 11, color: "#6b7280" }}>No cierres ni recargues esta pestaña, se está guardando en lotes pequeños.</p>
-              </>
-            ) : (
-              <>
-                <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700, color: "#065f46" }}>
-                  ✅ Migración completa: {resultadoMigracion.creadas} nuevas, {resultadoMigracion.actualizadas} actualizadas
-                </p>
-                {resultadoMigracion.errores?.length > 0 && (
-                  <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>⚠️ {resultadoMigracion.errores.length} propiedades tuvieron error y no se importaron. IDs: {resultadoMigracion.errores.slice(0, 10).map(e => e.public_id).join(", ")}{resultadoMigracion.errores.length > 10 ? "…" : ""}</p>
-                )}
-              </>
-            )}
-            {!resultadoMigracion.enProgreso && (
-              <button onClick={() => setResultadoMigracion(null)} style={{ marginTop: 8, background: "none", border: "none", color: "#6b7280", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>Cerrar aviso</button>
-            )}
-          </div>
-        )}
 
         {/* Filtros */}
         <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 14, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
@@ -525,7 +591,7 @@ export default function PropiedadesAdmin() {
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: 48, color: "#9ca3af" }}>
             {propiedades.length === 0 ? (
-              <>No tienes propiedades todavía. Usa "Importar de EasyBroker" para traer tu catálogo actual, o agrega una nueva.</>
+              <>No tienes propiedades todavía. Agrega tu primera propiedad con el botón "+ Nueva propiedad".</>
             ) : (
               <>No se encontraron propiedades con esos filtros.</>
             )}
@@ -560,9 +626,14 @@ export default function PropiedadesAdmin() {
                       {p.m2_construccion > 0 && <span>📐 {p.m2_construccion} m²</span>}
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => abrirEditar(p)} style={{ flex: 1, background: "#f3f4f6", border: "none", borderRadius: 8, padding: "8px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#374151" }}>
-                        {puedeEditar ? "✏️ Editar" : "👁️ Ver detalle"}
+                      <button onClick={() => abrirDetalle(p)} style={{ flex: 1, background: "#eff6ff", border: "none", borderRadius: 8, padding: "8px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#1e40af" }}>
+                        👁️ Ver detalle
                       </button>
+                      {puedeEditar && (
+                        <button onClick={() => abrirEditar(p)} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#374151" }}>
+                          ✏️ Editar
+                        </button>
+                      )}
                       {puedeEditar && (p.status !== "draft" ? (
                         <button onClick={() => setModalEliminar(p)} style={{ background: "#fee2e2", border: "none", borderRadius: 8, padding: "8px 10px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#991b1b" }}>
                           🗄️
@@ -581,6 +652,16 @@ export default function PropiedadesAdmin() {
           </div>
         )}
       </div>
+
+      {modalDetalle && (
+        <FichaDetalle
+          p={modalDetalle}
+          onClose={() => setModalDetalle(null)}
+          onEditar={abrirEditar}
+          puedeEditar={puedeEditar}
+          showToast={showToast}
+        />
+      )}
 
       {modalEliminar && (
         <Modal title="Archivar propiedad" onClose={() => setModalEliminar(null)}>
