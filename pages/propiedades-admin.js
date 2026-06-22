@@ -187,10 +187,25 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
 
   const urlPublica = p.public_id ? `https://www.emporioinmobiliario.com.mx/propiedades/${p.public_id}` : "";
 
-  const enviarPorWhatsApp = () => {
+  const enviarPorWhatsApp = async () => {
     if (!urlPublica) { showToast("Esta propiedad no tiene ID público, no se puede compartir la liga", false); return; }
     const mensaje = `¡Hola! Te comparto la información de *${p.titulo || "esta propiedad"}*${p.precio ? ` — ${fmt(p.precio)}` : ""}.\n\n${urlPublica}\n\nEstoy a tus órdenes para cualquier duda. 🏠`;
     window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, "_blank");
+
+    // Registro en segundo plano para el futuro reporte a propietarios.
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data: envio } = await supabase
+        .from("envios")
+        .insert({ asesor_id: session?.user?.id || null, medio: "whatsapp" })
+        .select()
+        .single();
+      if (envio) {
+        await supabase.from("envios_propiedades").insert({ envio_id: envio.id, propiedad_id: p.id });
+      }
+    } catch (e) {
+      console.error("No se pudo registrar el envío por WhatsApp:", e.message);
+    }
   };
 
   const descargarPdf = async () => {
@@ -409,6 +424,40 @@ export default function PropiedadesAdmin() {
   const [isMobile, setIsMobile] = useState(false);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
+
+  const enviarSeleccionadasPorWhatsApp = async () => {
+    const props = propiedades.filter((p) => seleccionadas.includes(p.id));
+    if (props.length === 0) return;
+
+    const lineas = props.map((p) => {
+      const url = p.public_id ? `https://www.emporioinmobiliario.com.mx/propiedades/${p.public_id}` : "";
+      return `*${p.titulo}* — ${fmt(p.precio)}\n${url}`;
+    });
+    const mensaje = `¡Hola! Te comparto estas ${props.length} opciones:\n\n${lineas.join("\n\n")}\n\nEstoy a tus órdenes para cualquier duda. 🏠`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, "_blank");
+
+    // Registro en segundo plano, sin bloquear ni avisar al asesor — el
+    // envío real ya ocurrió al abrir WhatsApp; esto solo alimenta el futuro
+    // reporte a propietarios.
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data: envio } = await supabase
+        .from("envios")
+        .insert({
+          asesor_id: session?.user?.id || null,
+          medio: "whatsapp",
+        })
+        .select()
+        .single();
+      if (envio) {
+        await supabase.from("envios_propiedades").insert(props.map((p) => ({ envio_id: envio.id, propiedad_id: p.id })));
+      }
+    } catch (e) {
+      console.error("No se pudo registrar el envío por WhatsApp:", e.message);
+    }
+
+    setSeleccionadas([]);
+  };
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 640);
@@ -715,6 +764,9 @@ export default function PropiedadesAdmin() {
           <span style={{ color: "#fff", fontSize: 13, fontWeight: 600 }}>{seleccionadas.length} propiedad{seleccionadas.length > 1 ? "es" : ""} seleccionada{seleccionadas.length > 1 ? "s" : ""}</span>
           <button onClick={() => setModalEnvioCorreo(true)} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 99, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
             ✉️ Enviar por correo
+          </button>
+          <button onClick={enviarSeleccionadasPorWhatsApp} style={{ background: "#22c55e", color: "#fff", border: "none", borderRadius: 99, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+            💬 Enviar ligas por WhatsApp
           </button>
           <button onClick={() => setSeleccionadas([])} style={{ background: "transparent", color: "#9ca3af", border: "none", borderRadius: 99, padding: "9px 12px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
             Cancelar
