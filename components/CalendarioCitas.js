@@ -49,8 +49,11 @@ export default function CalendarioCitas({ onClose, alcance, asesorId }) {
   // (Admin, Guillermo); un asesor con alcance "propio" ya solo ve lo suyo.
   useEffect(() => {
     if (alcance === "todos") {
-      supabase.from("profiles").select("id, full_name, email").eq("active", true)
-        .then(({ data }) => setAsesoresLista(data || []));
+      supabase.from("profiles").select("id, full_name, email, role_id").eq("active", true)
+        .then(({ data }) => {
+          const roles = ["asesor", "gerente_ventas", "admin"];
+          setAsesoresLista((data || []).filter((p) => roles.includes(p.role_id)));
+        });
     }
   }, [alcance]);
 
