@@ -64,7 +64,7 @@ export default function ReportePropietario() {
       if (!busqueda || busqueda.length < 3) { setPropiedades([]); return; }
       const { data } = await supabase
         .from("propiedades")
-        .select("id, titulo, direccion, colonia, ciudad, public_id, operacion, precio, status")
+        .select("id, titulo, direccion, colonia, ciudad, public_id, operacion, precio, status, en_marketplace, vistas_tiktok, vistas_instagram, vistas_facebook")
         .or(`titulo.ilike.%${busqueda}%,direccion.ilike.%${busqueda}%`)
         .limit(8);
       setPropiedades(data || []);
@@ -124,7 +124,29 @@ export default function ReportePropietario() {
       if (hasta) envios = envios.filter((e) => e.created_at <= `${hasta}T23:59:59`);
       const citas = citasRes.data || [];
 
-      setDatos({ visitas, solicitudes, envios, citas });
+      // Periodo anterior (mismo número de días, justo antes del rango
+      // seleccionado) — solo para comparar totales, no se necesita el
+      // detalle completo.
+      let comparativaAnterior = null;
+      if (desde && hasta) {
+        const diffMs = new Date(hasta) - new Date(desde);
+        const desdeAnterior = new Date(new Date(desde).getTime() - diffMs - 86400000);
+        const hastaAnterior = new Date(new Date(desde).getTime() - 86400000);
+        const desdeAnteriorStr = desdeAnterior.toISOString().split("T")[0];
+        const hastaAnteriorStr = hastaAnterior.toISOString().split("T")[0];
+
+        const [visitasAntRes, citasAntRes] = await Promise.all([
+          supabase.from("visitas_propiedad").select("id", { count: "exact", head: true }).eq("propiedad_id", propiedadSel.id).gte("created_at", `${desdeAnteriorStr}T00:00:00`).lte("created_at", `${hastaAnteriorStr}T23:59:59`),
+          supabase.from("citas").select("id", { count: "exact", head: true }).eq("propiedad_id", propiedadSel.id).gte("fecha_hora", `${desdeAnteriorStr}T00:00:00`).lte("fecha_hora", `${hastaAnteriorStr}T23:59:59`),
+        ]);
+        comparativaAnterior = {
+          visitas: visitasAntRes.count || 0,
+          citas: citasAntRes.count || 0,
+          periodo: { desde: desdeAnteriorStr, hasta: hastaAnteriorStr },
+        };
+      }
+
+      setDatos({ visitas, solicitudes, envios, citas, comparativaAnterior });
     } catch (e) {
       showToast("Error al generar el reporte: " + e.message, false);
     }
@@ -237,6 +259,28 @@ export default function ReportePropietario() {
                   <Tarjeta icon="📅" label="Citas agendadas" valor={datos.citas.length} color={datos.citas.length > 0 ? "#1e40af" : brand.gray} />
                 </div>
 
+                {datos.comparativaAnterior && (
+                  <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, border: "1px solid #f0f0f0" }}>
+                    <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: brand.gray }}>Comparado con el periodo anterior</p>
+                    {[
+                      ["Visitas", datos.visitas.length, datos.comparativaAnterior.visitas],
+                      ["Citas", datos.citas.length, datos.comparativaAnterior.citas],
+                    ].map(([label, actual, anterior]) => {
+                      const diferencia = actual - anterior;
+                      const subio = diferencia > 0;
+                      const igual = diferencia === 0;
+                      return (
+                        <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", fontSize: 13 }}>
+                          <span style={{ color: "#374151" }}>{label}: {actual} (antes {anterior})</span>
+                          <span style={{ fontWeight: 700, color: igual ? "#9ca3af" : subio ? "#065f46" : "#991b1b" }}>
+                            {igual ? "Sin cambio" : `${subio ? "▲" : "▼"} ${Math.abs(diferencia)}`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {datos.citas.length > 0 && (
                   <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, border: "1px solid #f0f0f0" }}>
                     <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: brand.gray }}>Citas para esta propiedad</p>
@@ -273,6 +317,19 @@ export default function ReportePropietario() {
                     ))}
                   </div>
                 )}
+
+                <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, border: "1px solid #f0f0f0" }}>
+                  <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: brand.gray }}>Canales de promoción</p>
+                  <p style={{ margin: "0 0 8px", fontSize: 12, color: "#374151" }}>🌐 Publicada en el sitio web de Emporio Inmobiliario</p>
+                  {propiedadSel.en_marketplace && <p style={{ margin: "0 0 8px", fontSize: 12, color: "#374151" }}>🛒 Publicada en Facebook Marketplace</p>}
+                  {(propiedadSel.vistas_tiktok > 0 || propiedadSel.vistas_instagram > 0 || propiedadSel.vistas_facebook > 0) && (
+                    <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
+                      {propiedadSel.vistas_tiktok > 0 && <span style={{ fontSize: 12, color: "#374151" }}>🎵 TikTok: <strong>{propiedadSel.vistas_tiktok}</strong> vistas</span>}
+                      {propiedadSel.vistas_instagram > 0 && <span style={{ fontSize: 12, color: "#374151" }}>📷 Instagram: <strong>{propiedadSel.vistas_instagram}</strong> vistas</span>}
+                      {propiedadSel.vistas_facebook > 0 && <span style={{ fontSize: 12, color: "#374151" }}>👍 Facebook: <strong>{propiedadSel.vistas_facebook}</strong> vistas</span>}
+                    </div>
+                  )}
+                </div>
 
                 {propietario && (
                   <button onClick={generarPdf} disabled={generandoPdf} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "12px 24px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
