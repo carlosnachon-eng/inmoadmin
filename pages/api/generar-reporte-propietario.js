@@ -33,10 +33,18 @@ export default async function handler(req, res) {
       return q;
     };
 
-    const [visitasRes, solicitudesRes, enviosPropRes] = await Promise.all([
+    const filtroFechaHora = (query) => {
+      let q = query;
+      if (desde) q = q.gte("fecha_hora", `${desde}T00:00:00`);
+      if (hasta) q = q.lte("fecha_hora", `${hasta}T23:59:59`);
+      return q;
+    };
+
+    const [visitasRes, solicitudesRes, enviosPropRes, citasRes] = await Promise.all([
       filtroFecha(supabaseAdmin.from("visitas_propiedad").select("*").eq("propiedad_id", propiedad_id)),
       filtroFecha(supabaseAdmin.from("solicitudes_contacto_propiedad").select("*").eq("propiedad_id", propiedad_id)),
       supabaseAdmin.from("envios_propiedades").select("envio_id, envios(medio, destinatario_nombre, created_at)").eq("propiedad_id", propiedad_id),
+      filtroFechaHora(supabaseAdmin.from("citas").select("*, clientes(nombre)").eq("propiedad_id", propiedad_id)),
     ]);
 
     const visitas = visitasRes.data || [];
@@ -44,12 +52,13 @@ export default async function handler(req, res) {
     let envios = (enviosPropRes.data || []).map((e) => e.envios).filter(Boolean);
     if (desde) envios = envios.filter((e) => e.created_at >= `${desde}T00:00:00`);
     if (hasta) envios = envios.filter((e) => e.created_at <= `${hasta}T23:59:59`);
+    const citas = citasRes.data || [];
 
     const pdfBuffer = await generarReportePropietarioPdf({
       propiedad,
       propietario,
       periodo: { desde, hasta },
-      datos: { visitas, solicitudes, envios },
+      datos: { visitas, solicitudes, envios, citas },
     });
 
     const nombreArchivo = `reporte_${propiedad.public_id || propiedad_id}_${Date.now()}.pdf`;
