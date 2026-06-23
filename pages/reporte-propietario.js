@@ -103,10 +103,18 @@ export default function ReportePropietario() {
         return q;
       };
 
-      const [visitasRes, solicitudesRes, enviosPropRes] = await Promise.all([
+      const filtroFechaHora = (query) => {
+        let q = query;
+        if (desde) q = q.gte("fecha_hora", `${desde}T00:00:00`);
+        if (hasta) q = q.lte("fecha_hora", `${hasta}T23:59:59`);
+        return q;
+      };
+
+      const [visitasRes, solicitudesRes, enviosPropRes, citasRes] = await Promise.all([
         filtroFecha(supabase.from("visitas_propiedad").select("*").eq("propiedad_id", propiedadSel.id)),
         filtroFecha(supabase.from("solicitudes_contacto_propiedad").select("*").eq("propiedad_id", propiedadSel.id)),
         supabase.from("envios_propiedades").select("envio_id, envios(medio, destinatario_nombre, asesor_nombre, created_at)").eq("propiedad_id", propiedadSel.id),
+        filtroFechaHora(supabase.from("citas").select("*, clientes(nombre)").eq("propiedad_id", propiedadSel.id)),
       ]);
 
       const visitas = visitasRes.data || [];
@@ -114,8 +122,9 @@ export default function ReportePropietario() {
       let envios = (enviosPropRes.data || []).map((e) => e.envios).filter(Boolean);
       if (desde) envios = envios.filter((e) => e.created_at >= `${desde}T00:00:00`);
       if (hasta) envios = envios.filter((e) => e.created_at <= `${hasta}T23:59:59`);
+      const citas = citasRes.data || [];
 
-      setDatos({ visitas, solicitudes, envios });
+      setDatos({ visitas, solicitudes, envios, citas });
     } catch (e) {
       showToast("Error al generar el reporte: " + e.message, false);
     }
@@ -225,7 +234,22 @@ export default function ReportePropietario() {
                   <Tarjeta icon="👀" label="Visitas a la ficha" valor={datos.visitas.length} />
                   <Tarjeta icon="📨" label="Envíos realizados" valor={datos.envios.length} />
                   <Tarjeta icon="💬" label="Solicitudes de contacto" valor={datos.solicitudes.length} color={datos.solicitudes.length > 0 ? "#065f46" : brand.gray} />
+                  <Tarjeta icon="📅" label="Citas agendadas" valor={datos.citas.length} color={datos.citas.length > 0 ? "#1e40af" : brand.gray} />
                 </div>
+
+                {datos.citas.length > 0 && (
+                  <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, border: "1px solid #f0f0f0" }}>
+                    <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: brand.gray }}>Citas para esta propiedad</p>
+                    {datos.citas.map((c) => (
+                      <div key={c.id} style={{ padding: "8px 0", borderBottom: "1px solid #f3f4f6", fontSize: 12 }}>
+                        <strong>{c.clientes?.nombre || "Cliente"}</strong> — {fmtFecha(c.fecha_hora)} ·{" "}
+                        <span style={{ color: c.estado === "calificada" ? "#065f46" : c.estado === "efectiva" ? "#1e40af" : c.estado === "cancelada" || c.estado === "no_show" ? "#991b1b" : "#92400e" }}>
+                          {{ agendada: "Agendada", efectiva: "Efectiva", calificada: "Calificada", cancelada: "Cancelada", no_show: "No se presentó" }[c.estado] || c.estado}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {datos.solicitudes.length > 0 && (
                   <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, border: "1px solid #f0f0f0" }}>
