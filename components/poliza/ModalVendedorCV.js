@@ -92,6 +92,11 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
         direccion_inmueble: vend.direccion_inmueble,
         renta_mensual: vend.precio_venta
       })
+      // Registra cuándo se generó el contrato — el sistema lo toma como
+      // fecha de inicio de la promoción de esta propiedad. Se actualiza
+      // cada vez que se vuelva a generar el contrato (ej. al corregir un
+      // error), no se conserva la primera fecha.
+      await supabase.from('propietarios_inmuebles').update({ fecha_inicio_promocion: new Date().toISOString() }).eq('id', v.id)
     } catch(e) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
