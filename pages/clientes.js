@@ -264,8 +264,9 @@ export default function Clientes() {
     // (Admin, Guillermo); un asesor normal no necesita este filtro porque
     // ya solo ve lo propio.
     if (alcance === "todos") {
-      const { data: perfiles } = await supabase.from("profiles").select("id, full_name, email").eq("active", true);
-      setAsesoresLista(perfiles || []);
+      const { data: perfiles } = await supabase.from("profiles").select("id, full_name, email, role_id").eq("active", true);
+      const roles = ["asesor", "gerente_ventas", "admin"];
+      setAsesoresLista((perfiles || []).filter((p) => roles.includes(p.role_id)));
     }
 
     // Próximas citas (siguientes 7 días) para el recordatorio en pantalla.
