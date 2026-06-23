@@ -170,6 +170,7 @@ export default function FichaCliente() {
   const [edPropiedadElegida, setEdPropiedadElegida] = useState(null);
   const [guardandoCita, setGuardandoCita] = useState(false);
   const [confirmarBorrarCita, setConfirmarBorrarCita] = useState(null);
+  const [duplicadoEdicion, setDuplicadoEdicion] = useState(null);
   const [toast, setToast] = useState(null);
   const [editando, setEditando] = useState(false);
   const [edNombre, setEdNombre] = useState("");
@@ -216,12 +217,43 @@ export default function FichaCliente() {
 
   const guardarEdicion = async () => {
     if (!edNombre.trim()) { showToast("El nombre no puede quedar vacío", false); return; }
+
+    // Solo validamos duplicados si el teléfono o correo realmente
+    // cambiaron respecto a lo que ya tenía guardado — si no cambiaron,
+    // no tiene sentido buscar coincidencias contra sí mismo.
+    const telefonoCambio = (edTelefono.trim() || null) !== (cliente.telefono || null);
+    const correoCambio = (edCorreo.trim() || null) !== (cliente.correo || null);
+
+    if (telefonoCambio || correoCambio) {
+      const filtros = [];
+      if (edTelefono.trim()) filtros.push(`telefono.eq.${edTelefono.trim()}`);
+      if (edCorreo.trim()) filtros.push(`correo.eq.${edCorreo.trim()}`);
+      if (filtros.length > 0) {
+        const { data: coincidencias } = await supabase
+          .from("clientes")
+          .select("id, nombre, telefono, correo, profiles:asesor_id(full_name, email)")
+          .or(filtros.join(","))
+          .neq("id", id);
+        if (coincidencias && coincidencias.length > 0) {
+          setDuplicadoEdicion(coincidencias[0]);
+          return;
+        }
+      }
+    }
+
+    await guardarEdicionConfirmada();
+  };
+
+  // Separado de guardarEdicion para poder llamarlo directo cuando el
+  // asesor confirma "sí, guardar aunque haya coincidencia" desde el aviso.
+  const guardarEdicionConfirmada = async () => {
     setGuardandoEdicion(true);
     const { error } = await supabase
       .from("clientes")
       .update({ nombre: edNombre.trim(), telefono: edTelefono.trim() || null, correo: edCorreo.trim() || null })
       .eq("id", id);
     setGuardandoEdicion(false);
+    setDuplicadoEdicion(null);
     if (error) { showToast("Error al guardar: " + error.message, false); return; }
     setCliente((c) => ({ ...c, nombre: edNombre.trim(), telefono: edTelefono.trim() || null, correo: edCorreo.trim() || null }));
     setEditando(false);
@@ -533,6 +565,31 @@ export default function FichaCliente() {
               </button>
               <button onClick={() => borrarCita(confirmarBorrarCita)} style={{ flex: 1, background: "#991b1b", color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontWeight: 700, cursor: "pointer" }}>
                 Sí, borrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {duplicadoEdicion && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2700, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 400 }}>
+            <p style={{ margin: "0 0 10px", fontSize: 16, fontWeight: 700, color: brand.gray }}>⚠️ Ese teléfono o correo ya pertenece a otro cliente</p>
+            <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: 12, marginBottom: 16 }}>
+              <p style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 700 }}>{duplicadoEdicion.nombre}</p>
+              <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>
+                Atendido por {duplicadoEdicion.profiles?.full_name || duplicadoEdicion.profiles?.email || "otro asesor"}
+              </p>
+            </div>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6b7280" }}>
+              ¿Seguro que quieres guardar este dato de todas formas? Esto podría significar que estás duplicando un cliente ya existente.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setDuplicadoEdicion(null)} style={{ flex: 1, background: "#f3f4f6", border: "none", borderRadius: 10, padding: "12px", fontWeight: 700, cursor: "pointer" }}>
+                Cancelar
+              </button>
+              <button onClick={guardarEdicionConfirmada} disabled={guardandoEdicion} style={{ flex: 1, background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontWeight: 700, cursor: guardandoEdicion ? "not-allowed" : "pointer", opacity: guardandoEdicion ? 0.6 : 1 }}>
+                {guardandoEdicion ? "Guardando…" : "Guardar de todas formas"}
               </button>
             </div>
           </div>
