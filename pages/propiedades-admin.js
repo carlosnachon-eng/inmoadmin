@@ -63,6 +63,10 @@ const PROPIEDAD_VACIA = {
   comision_detalle: "", veridada_url: "",
   proteccion_juridica: "", proteccion_juridica_detalle: "",
 
+  // Redes sociales (para el reporte mensual a propietarios)
+  en_marketplace: false, fecha_marketplace: null,
+  vistas_tiktok: "", vistas_instagram: "", vistas_facebook: "",
+
   notas_internas: "",
 };
 
@@ -1017,6 +1021,31 @@ export default function PropiedadesAdmin() {
               sublabel="Marca esta opción si Emporio tiene la exclusiva de venta/renta de este inmueble."
             />
           </div>
+
+          <div style={{ height: 1, background: "#e5e7eb", margin: "20px 0" }} />
+          <p style={{ fontSize: 13, fontWeight: 800, color: "#1a1a2e", margin: "0 0 12px" }}>📱 Redes sociales (para el reporte a propietarios)</p>
+
+          <div style={{ marginBottom: 14 }}>
+            <SwitchToggle
+              checked={form.en_marketplace}
+              onChange={v => setForm(f => ({ ...f, en_marketplace: v, fecha_marketplace: v ? (f.fecha_marketplace || new Date().toISOString()) : f.fecha_marketplace }))}
+              label="Publicada en Facebook Marketplace"
+              sublabel="Se registra la fecha automáticamente la primera vez que se marca."
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <Campo label="Vistas en TikTok">
+              <input style={inputStyle} type="number" min="0" value={form.vistas_tiktok} onChange={e => setForm(f => ({ ...f, vistas_tiktok: e.target.value }))} placeholder="0" />
+            </Campo>
+            <Campo label="Vistas en Instagram">
+              <input style={inputStyle} type="number" min="0" value={form.vistas_instagram} onChange={e => setForm(f => ({ ...f, vistas_instagram: e.target.value }))} placeholder="0" />
+            </Campo>
+            <Campo label="Vistas en Facebook">
+              <input style={inputStyle} type="number" min="0" value={form.vistas_facebook} onChange={e => setForm(f => ({ ...f, vistas_facebook: e.target.value }))} placeholder="0" />
+            </Campo>
+          </div>
+          <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Actualiza estos números cuando quieras — no es necesario capturarlos a diario.</p>
 
           <div style={{ height: 1, background: "#e5e7eb", margin: "20px 0" }} />
           <p style={{ fontSize: 13, fontWeight: 800, color: "#1a1a2e", margin: "0 0 12px" }}>🔧 Servicios y datos de operación</p>
