@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import JSZip from "jszip";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -231,6 +232,46 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
     }
   };
 
+  const [descargandoFotos, setDescargandoFotos] = useState(false);
+
+  const descargarTodasLasFotos = async () => {
+    const fotos = Array.isArray(p.fotos) ? p.fotos : [];
+    if (fotos.length === 0) { showToast("Esta propiedad no tiene fotos", false); return; }
+    setDescargandoFotos(true);
+    try {
+      const zip = new JSZip();
+      let descargadas = 0;
+      for (let i = 0; i < fotos.length; i++) {
+        const url = fotos[i]?.url || fotos[i];
+        if (!url) continue;
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) continue;
+          const blob = await resp.blob();
+          const ext = (url.split(".").pop() || "jpg").split("?")[0].slice(0, 4);
+          zip.file(`foto_${String(i + 1).padStart(2, "0")}.${ext}`, blob);
+          descargadas++;
+        } catch {
+          // Si una foto individual falla, seguimos con las demás — mejor
+          // entregar un ZIP con la mayoría que fallar todo por una sola.
+        }
+      }
+      if (descargadas === 0) throw new Error("No se pudo descargar ninguna foto");
+
+      const contenido = await zip.generateAsync({ type: "blob" });
+      const nombreZip = `${p.public_id || "propiedad"}_fotos.zip`;
+      const enlace = document.createElement("a");
+      enlace.href = URL.createObjectURL(contenido);
+      enlace.download = nombreZip;
+      enlace.click();
+      URL.revokeObjectURL(enlace.href);
+      showToast(`${descargadas} foto${descargadas === 1 ? "" : "s"} descargada${descargadas === 1 ? "" : "s"}`);
+    } catch (e) {
+      showToast("Error al descargar fotos: " + e.message, false);
+    }
+    setDescargandoFotos(false);
+  };
+
   const descargarPdf = async () => {
     setGenerando(true);
     try {
@@ -261,6 +302,9 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
         </button>
         <button onClick={copiarLigaDetalle} style={{ background: "#f0fdf4", color: "#065f46", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
           🔗 Copiar liga
+        </button>
+        <button onClick={descargarTodasLasFotos} disabled={descargandoFotos} style={{ background: "#eff6ff", color: "#1e40af", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: descargandoFotos ? "not-allowed" : "pointer", opacity: descargandoFotos ? 0.6 : 1 }}>
+          {descargandoFotos ? "Descargando…" : "📸 Descargar fotos"}
         </button>
         {puedeEditar && (
           <button onClick={() => { onClose(); onEditar(p); }} style={{ background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
