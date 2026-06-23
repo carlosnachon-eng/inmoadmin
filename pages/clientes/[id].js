@@ -170,6 +170,12 @@ export default function FichaCliente() {
   const [edPropiedadElegida, setEdPropiedadElegida] = useState(null);
   const [guardandoCita, setGuardandoCita] = useState(false);
   const [confirmarBorrarCita, setConfirmarBorrarCita] = useState(null);
+  const [modalNuevaCita, setModalNuevaCita] = useState(false);
+  const [nuevaFechaHora, setNuevaFechaHora] = useState("");
+  const [nuevaPropiedadBusqueda, setNuevaPropiedadBusqueda] = useState("");
+  const [nuevasPropiedadesResultado, setNuevasPropiedadesResultado] = useState([]);
+  const [nuevaPropiedadElegida, setNuevaPropiedadElegida] = useState(null);
+  const [guardandoNuevaCita, setGuardandoNuevaCita] = useState(false);
   const [duplicadoEdicion, setDuplicadoEdicion] = useState(null);
   const [toast, setToast] = useState(null);
   const [editando, setEditando] = useState(false);
@@ -309,6 +315,57 @@ export default function FichaCliente() {
     return () => clearTimeout(t);
   }, [edPropiedadBusqueda]);
 
+  useEffect(() => {
+    const buscar = async () => {
+      if (!nuevaPropiedadBusqueda || nuevaPropiedadBusqueda.length < 3) {
+        setNuevasPropiedadesResultado([]);
+        return;
+      }
+      const { data } = await supabase
+        .from("propiedades")
+        .select("id, titulo")
+        .or(`titulo.ilike.%${nuevaPropiedadBusqueda}%,direccion.ilike.%${nuevaPropiedadBusqueda}%`)
+        .limit(6);
+      setNuevasPropiedadesResultado(data || []);
+    };
+    const t = setTimeout(buscar, 350);
+    return () => clearTimeout(t);
+  }, [nuevaPropiedadBusqueda]);
+
+  const cerrarModalNuevaCita = () => {
+    setModalNuevaCita(false);
+    setNuevaFechaHora("");
+    setNuevaPropiedadBusqueda("");
+    setNuevasPropiedadesResultado([]);
+    setNuevaPropiedadElegida(null);
+  };
+
+  const guardarNuevaCita = async () => {
+    if (!nuevaFechaHora) {
+      showToast("Captura la fecha y hora de la cita", false);
+      return;
+    }
+
+    setGuardandoNuevaCita(true);
+    const { error } = await supabase.from("citas").insert({
+      cliente_id: id,
+      propiedad_id: nuevaPropiedadElegida?.id || null,
+      asesor_id: perfil?.id,
+      fecha_hora: new Date(nuevaFechaHora).toISOString(),
+      estado: "agendada",
+    });
+    setGuardandoNuevaCita(false);
+
+    if (error) {
+      showToast("Error al guardar la cita: " + error.message, false);
+      return;
+    }
+
+    cerrarModalNuevaCita();
+    showToast("Nueva cita agendada");
+    cargarDatos();
+  };
+
   const guardarEdicionCita = async () => {
     if (!edFechaHora) { showToast("Captura la fecha y hora", false); return; }
     setGuardandoCita(true);
@@ -434,7 +491,12 @@ export default function FichaCliente() {
 
         {/* Citas */}
         <div style={{ background: "#fff", borderRadius: 16, padding: 18, marginBottom: 16, border: "1px solid #f0f0f0" }}>
-          <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 800, color: brand.gray }}>Citas</p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: brand.gray }}>Citas</p>
+            <button onClick={() => setModalNuevaCita(true)} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+              ➕ Agendar nueva cita
+            </button>
+          </div>
           {citas.length === 0 ? (
             <p style={{ color: "#9ca3af", fontSize: 13 }}>Sin citas registradas.</p>
           ) : citas.map((c) => {
@@ -506,6 +568,57 @@ export default function FichaCliente() {
           showToast={showToast}
           asesorId={perfil?.id}
         />
+      )}
+
+      {modalNuevaCita && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 2500 }}>
+          <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", padding: 20, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: brand.gray }}>Agendar nueva cita</h2>
+              <button onClick={cerrarModalNuevaCita} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, width: 32, height: 32, fontSize: 16, cursor: "pointer" }}>✕</button>
+            </div>
+
+            <div style={{ background: "#f9fafb", borderRadius: 10, padding: 12, marginBottom: 16 }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{cliente.nombre}</p>
+              {cliente.telefono && <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>{cliente.telefono}</p>}
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Fecha y hora</label>
+              <input type="datetime-local" value={nuevaFechaHora} onChange={(e) => setNuevaFechaHora(e.target.value)}
+                style={{ width: "100%", padding: "14px 14px", borderRadius: 12, border: "1.5px solid #e5e7eb", fontSize: 16, boxSizing: "border-box" }} />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Propiedad (opcional)</label>
+              {nuevaPropiedadElegida ? (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 12 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{nuevaPropiedadElegida.titulo}</p>
+                  <button onClick={() => setNuevaPropiedadElegida(null)} style={{ background: "none", border: "none", color: "#991b1b", fontWeight: 700, cursor: "pointer" }}>Quitar</button>
+                </div>
+              ) : (
+                <div>
+                  <input value={nuevaPropiedadBusqueda} onChange={(e) => setNuevaPropiedadBusqueda(e.target.value)} placeholder="Buscar propiedad…"
+                    style={{ width: "100%", padding: "14px 14px", borderRadius: 12, border: "1.5px solid #e5e7eb", fontSize: 16, boxSizing: "border-box" }} />
+                  {nuevasPropiedadesResultado.length > 0 && (
+                    <div style={{ marginTop: 8, border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
+                      {nuevasPropiedadesResultado.map((p) => (
+                        <button key={p.id} onClick={() => { setNuevaPropiedadElegida(p); setNuevaPropiedadBusqueda(""); setNuevasPropiedadesResultado([]); }}
+                          style={{ display: "block", width: "100%", textAlign: "left", padding: 12, background: "#fff", border: "none", borderBottom: "1px solid #f3f4f6", fontSize: 13, cursor: "pointer" }}>
+                          {p.titulo}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button onClick={guardarNuevaCita} disabled={guardandoNuevaCita} style={{ width: "100%", background: brand.red, color: "#fff", border: "none", borderRadius: 14, padding: "16px", fontWeight: 800, fontSize: 16, cursor: guardandoNuevaCita ? "not-allowed" : "pointer", opacity: guardandoNuevaCita ? 0.6 : 1 }}>
+              {guardandoNuevaCita ? "Guardando…" : "Agendar cita"}
+            </button>
+          </div>
+        </div>
       )}
 
       {citaEditando && (
