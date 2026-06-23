@@ -247,6 +247,7 @@ export default function Clientes() {
   const [modalCalendario, setModalCalendario] = useState(false);
   const [toast, setToast] = useState(null);
   const [proximasCitas, setProximasCitas] = useState([]);
+  const [citasVencidas, setCitasVencidas] = useState([]);
   const [filtroAsesor, setFiltroAsesor] = useState("");
   const [orden, setOrden] = useState("reciente"); // 'reciente' | 'antiguo'
   const [asesoresLista, setAsesoresLista] = useState([]);
@@ -282,6 +283,19 @@ export default function Clientes() {
     if (alcance === "propio" && perfil?.id) queryCitas = queryCitas.eq("asesor_id", perfil.id);
     const { data: citasData } = await queryCitas;
     setProximasCitas(citasData || []);
+
+    // Citas vencidas: ya pasó su fecha/hora pero nadie actualizó su estado
+    // (sigue en "agendada"). Sin esto, las citas que no se realizaron ni
+    // se marcaron quedan "fantasma" para siempre, ensuciando los KPIs.
+    let queryVencidas = supabase
+      .from("citas")
+      .select("id, cliente_id, fecha_hora, clientes(nombre, telefono), profiles:asesor_id(full_name, email)")
+      .lt("fecha_hora", ahora)
+      .eq("estado", "agendada")
+      .order("fecha_hora", { ascending: false });
+    if (alcance === "propio" && perfil?.id) queryVencidas = queryVencidas.eq("asesor_id", perfil.id);
+    const { data: vencidasData } = await queryVencidas;
+    setCitasVencidas(vencidasData || []);
 
     setLoading(false);
   };
@@ -326,6 +340,23 @@ export default function Clientes() {
             📅 Calendario
           </button>
         </div>
+
+        {citasVencidas.length > 0 && (
+          <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 14, padding: 14, marginBottom: 16 }}>
+            <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#991b1b" }}>
+              ⚠️ {citasVencidas.length} cita{citasVencidas.length > 1 ? "s" : ""} vencida{citasVencidas.length > 1 ? "s" : ""} sin actualizar
+            </p>
+            {citasVencidas.slice(0, 5).map((c) => (
+              <a key={c.id} href={`/clientes/${c.cliente_id}`} style={{ textDecoration: "none", display: "block" }}>
+                <p style={{ margin: "0 0 4px", fontSize: 13, color: "#7f1d1d" }}>
+                  {fmtFechaHora(c.fecha_hora)} — <strong>{c.clientes?.nombre}</strong>
+                  {alcance === "todos" && (c.profiles?.full_name || c.profiles?.email) ? ` · ${c.profiles.full_name || c.profiles.email}` : ""}
+                </p>
+              </a>
+            ))}
+            <p style={{ margin: "8px 0 0", fontSize: 11, color: "#991b1b" }}>Actualiza su estado desde la ficha de cada cliente.</p>
+          </div>
+        )}
 
         {proximasCitas.length > 0 && (
           <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 14, padding: 14, marginBottom: 16 }}>
