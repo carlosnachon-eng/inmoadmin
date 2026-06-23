@@ -99,6 +99,11 @@ export default function ModalPropietario({ propietario: p, onClose, onSaved, onN
         renta_mensual: prop.monto_renta,
         renta_mensual_letra: prop.monto_renta_letra
       })
+      // Registra cuándo se generó el contrato — el sistema lo toma como
+      // fecha de inicio de la promoción de esta propiedad. Se actualiza
+      // cada vez que se vuelva a generar el contrato (ej. al corregir un
+      // error), no se conserva la primera fecha.
+      await supabase.from('propietarios_inmuebles').update({ fecha_inicio_promocion: new Date().toISOString() }).eq('id', p.id)
     } catch(e) { alert('Error: ' + e.message) }
     setGenerando(false)
   }
