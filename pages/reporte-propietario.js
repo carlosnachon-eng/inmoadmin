@@ -48,6 +48,7 @@ export default function ReportePropietario() {
   const [datos, setDatos] = useState(null);
   const [generandoPdf, setGenerandoPdf] = useState(false);
   const [toast, setToast] = useState(null);
+  const [asesorNombre, setAsesorNombre] = useState("");
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
 
@@ -165,6 +166,7 @@ export default function ReportePropietario() {
           propiedad_id: propiedadSel.id,
           desde, hasta,
           usuario_id: session?.user?.id,
+          asesor_nombre: asesorNombre,
         }),
       });
       const data = await res.json();
@@ -330,6 +332,23 @@ export default function ReportePropietario() {
                     </div>
                   )}
                 </div>
+
+                {propietario && (
+                  <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, border: "1px solid #f0f0f0" }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 6 }}>
+                      Asesor a cargo de esta propiedad (aparece en el cierre del reporte)
+                    </label>
+                    <input
+                      value={asesorNombre}
+                      onChange={(e) => setAsesorNombre(e.target.value)}
+                      placeholder="Ej. Iván Ramírez"
+                      style={{ width: "100%", maxWidth: 320, padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, boxSizing: "border-box" }}
+                    />
+                    <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                      Déjalo en blanco si no quieres mostrar un asesor específico en este reporte.
+                    </p>
+                  </div>
+                )}
 
                 {propietario && (
                   <button onClick={generarPdf} disabled={generandoPdf} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "12px 24px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
