@@ -20,6 +20,17 @@ const fmtFechaHora = (d) =>
 
 // ── Modal: Nuevo cliente + nueva cita en un solo flujo ──────────────────────
 // Diseñado para celular: pocos campos, pasos claros, botones grandes.
+// Normaliza un teléfono mexicano a solo sus 10 dígitos finales, sin
+// importar espacios, guiones, paréntesis, o si el asesor incluyó +52/52 al
+// inicio. Esto evita que el mismo número capturado con formato distinto
+// (ej. "222 123 4567" vs "+522221234567") se trate como dos clientes
+// diferentes.
+function normalizarTelefono(telefono) {
+  if (!telefono) return "";
+  const soloDigitos = String(telefono).replace(/\D/g, "");
+  return soloDigitos.length > 10 ? soloDigitos.slice(-10) : soloDigitos;
+}
+
 function ModalNuevaCita({ onClose, onGuardado, asesorId, propiedadPrellenada, showToast }) {
   const [paso, setPaso] = useState(1); // 1: buscar/capturar cliente, 2: datos de la cita
   const [busqueda, setBusqueda] = useState("");
@@ -37,13 +48,22 @@ function ModalNuevaCita({ onClose, onGuardado, asesorId, propiedadPrellenada, sh
   const [guardando, setGuardando] = useState(false);
 
   // Buscar coincidencias por teléfono o correo mientras el asesor teclea,
-  // para avisar de duplicados antes de crear un cliente nuevo.
+  // para avisar de duplicados antes de crear un cliente nuevo. El teléfono
+  // se normaliza (solo dígitos, últimos 10) para que no importe si se
+  // escribió con espacios, guiones, o +52 al inicio.
   useEffect(() => {
     const buscar = async () => {
-      if (!telefonoNuevo && !correoNuevo) { setCoincidencias([]); return; }
+      const telNormalizado = normalizarTelefono(telefonoNuevo);
+      if (!telNormalizado && !correoNuevo) { setCoincidencias([]); return; }
       setBuscando(true);
+
+      // Para el teléfono no podemos hacer un "eq" directo, porque
+      // registros antiguos pueden tener formatos distintos guardados. En
+      // vez de eso, comparamos con "termina en estos 10 dígitos" usando
+      // ilike con los últimos dígitos, que cubre la mayoría de variantes
+      // reales (con/sin +52, con/sin espacios).
       const filtros = [];
-      if (telefonoNuevo) filtros.push(`telefono.eq.${telefonoNuevo}`);
+      if (telNormalizado) filtros.push(`telefono.ilike.%${telNormalizado}`);
       if (correoNuevo) filtros.push(`correo.eq.${correoNuevo}`);
       const { data } = await supabase
         .from("clientes")
@@ -97,7 +117,7 @@ function ModalNuevaCita({ onClose, onGuardado, asesorId, propiedadPrellenada, sh
           .from("clientes")
           .insert({
             nombre: nombreNuevo.trim(),
-            telefono: telefonoNuevo || null,
+            telefono: normalizarTelefono(telefonoNuevo) || null,
             correo: correoNuevo || null,
             asesor_id: asesorId,
           })
@@ -107,11 +127,20 @@ function ModalNuevaCita({ onClose, onGuardado, asesorId, propiedadPrellenada, sh
         clienteId = nuevoCliente.id;
       }
 
+      // El input datetime-local entrega un string sin zona horaria
+      // (ej. "2026-06-23T12:00"). El constructor Date de JavaScript SÍ lo
+      // interpreta correctamente como hora local del dispositivo (la del
+      // asesor, en México) — el bug ocurría porque antes se mandaba ese
+      // string crudo a Supabase, que lo tomaba como UTC directamente,
+      // recorriendo la hora 6 horas hacia atrás al verla de vuelta en
+      // hora local.
+      const fechaHoraIso = new Date(fechaHora).toISOString();
+
       const { error: errorCita } = await supabase.from("citas").insert({
         cliente_id: clienteId,
         propiedad_id: propiedadElegida?.id || null,
         asesor_id: asesorId,
-        fecha_hora: fechaHora,
+        fecha_hora: fechaHoraIso,
         estado: "agendada",
       });
       if (errorCita) throw errorCita;
