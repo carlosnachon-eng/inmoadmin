@@ -54,11 +54,28 @@ export default async function handler(req, res) {
     if (hasta) envios = envios.filter((e) => e.created_at <= `${hasta}T23:59:59`);
     const citas = citasRes.data || [];
 
+    // Periodo anterior (mismo número de días, justo antes del rango
+    // seleccionado) — para la comparación mes contra mes en el PDF.
+    let comparativaAnterior = null;
+    if (desde && hasta) {
+      const diffMs = new Date(hasta) - new Date(desde);
+      const desdeAnterior = new Date(new Date(desde).getTime() - diffMs - 86400000);
+      const hastaAnterior = new Date(new Date(desde).getTime() - 86400000);
+      const desdeAnteriorStr = desdeAnterior.toISOString().split("T")[0];
+      const hastaAnteriorStr = hastaAnterior.toISOString().split("T")[0];
+
+      const [visitasAntRes, citasAntRes] = await Promise.all([
+        supabaseAdmin.from("visitas_propiedad").select("id", { count: "exact", head: true }).eq("propiedad_id", propiedad_id).gte("created_at", `${desdeAnteriorStr}T00:00:00`).lte("created_at", `${hastaAnteriorStr}T23:59:59`),
+        supabaseAdmin.from("citas").select("id", { count: "exact", head: true }).eq("propiedad_id", propiedad_id).gte("fecha_hora", `${desdeAnteriorStr}T00:00:00`).lte("fecha_hora", `${hastaAnteriorStr}T23:59:59`),
+      ]);
+      comparativaAnterior = { visitas: visitasAntRes.count || 0, citas: citasAntRes.count || 0 };
+    }
+
     const pdfBuffer = await generarReportePropietarioPdf({
       propiedad,
       propietario,
       periodo: { desde, hasta },
-      datos: { visitas, solicitudes, envios, citas },
+      datos: { visitas, solicitudes, envios, citas, comparativaAnterior },
     });
 
     const nombreArchivo = `reporte_${propiedad.public_id || propiedad_id}_${Date.now()}.pdf`;
