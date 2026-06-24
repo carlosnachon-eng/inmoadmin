@@ -53,13 +53,17 @@ const primerMonto = (...valores) => {
 const promptBase = (nombre) => `Actúa exclusivamente como analista documental. Extrae y describe información visible; no apruebes, no rechaces y no emitas dictamen final.
 Solicitante declarado: "${nombre}".
 Fecha actual: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}.
-Responde SOLO con JSON válido, sin texto adicional. Si un dato no es legible o no existe, usa null y agrégalo a "informacion_faltante".`;
+Responde SOLO con JSON válido, sin texto adicional. Si un dato no es legible o no existe, usa null y agrégalo a "informacion_faltante".
+Incluye siempre "documento_legible": true|false y "motivo_fallo": string|null.
+Si el PDF está cifrado, protegido con contraseña, dañado o no permite leer su contenido, devuelve documento_legible=false y explica la causa en motivo_fallo.`;
 
 const prompts = {
   ine: (nombre) => `${promptBase(nombre)}
 Este documento debe ser una identificación oficial (INE o equivalente).
 {
   "tipo_documento": "ine",
+  "documento_legible": true|false,
+  "motivo_fallo": "causa o null",
   "nombre_en_documentos": "nombre completo o null",
   "nombre_coincide": true|false,
   "curp_detectada": "CURP o null",
@@ -81,6 +85,8 @@ No declares que el documento es auténtico o falso; solo describe señales visib
 Este documento debe ser un comprobante de ingresos, nómina, estado de cuenta o declaración fiscal.
 {
   "tipo_documento": "nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|otro",
+  "documento_legible": true|false,
+  "motivo_fallo": "causa o null",
   "nombre_en_documentos": "nombre completo o null",
   "nombre_coincide": true|false,
   "institucion_o_empleador": "institución financiera o empleador o null",
@@ -89,13 +95,24 @@ Este documento debe ser un comprobante de ingresos, nómina, estado de cuenta o 
   "ingreso_neto": número o null,
   "ingreso_mensual_total": número o null,
   "ingreso_mensual_verificable": número o null,
+  "ingreso_mensual_estimado": número o null,
+  "metodo_calculo_ingreso": "explicación breve del cálculo o motivo por el que no pudo calcularse",
   "periodo": "periodo cubierto o null",
+  "meses_cubiertos": número o null,
   "empleador_o_actividad": "empleador o actividad o null",
   "origen_ingresos": "descripción objetiva de depósitos",
   "depositos_recurrentes": número o null,
   "depositos_recurrentes_mensuales": número o null,
   "depositos_extraordinarios": número o null,
   "posibles_transferencias_propias": número o null,
+  "montos_detectados": [
+    {
+      "concepto": "concepto visible",
+      "monto": número,
+      "fecha": "fecha visible o null",
+      "clasificacion": "nomina|deposito_recurrente|deposito_extraordinario|transferencia_propia|saldo|otro"
+    }
+  ],
   "inconsistencias": ["diferencias observadas"],
   "riesgos_observados": ["patrones que requieren revisión humana"],
   "informacion_faltante": ["datos ausentes o ilegibles"],
@@ -105,16 +122,20 @@ Este documento debe ser un comprobante de ingresos, nómina, estado de cuenta o 
   "alertas": ["observaciones con montos y periodos"]
 }
 REGLAS:
-1. Calcula ingreso_mensual_total cuando sea posible.
-2. No uses saldo promedio como ingreso.
-3. Separa depósitos recurrentes de extraordinarios.
-4. Si tiene más de 4 meses, agrega "Documento vencido" a alertas.
-5. No determines licitud, aprobación ni capacidad final de pago.`,
+1. Registra en montos_detectados todos los importes relevantes visibles, aunque no sea posible calcular un ingreso mensual.
+2. En nómina, mensualiza el ingreso neto según el periodo: semanal x 4.33, catorcenal x 2.17, quincenal x 2 y mensual x 1.
+3. En estados de cuenta, calcula ingreso_mensual_estimado únicamente con depósitos identificables como ingresos recurrentes y divídelos entre los meses cubiertos.
+4. No uses saldos, préstamos, transferencias propias ni depósitos extraordinarios como ingreso recurrente.
+5. Si no puedes calcularlo, devuelve null y explica la causa en metodo_calculo_ingreso.
+6. Si tiene más de 4 meses, agrega "Documento vencido" a alertas.
+7. No determines licitud, aprobación ni capacidad final de pago.`,
 
   carta_laboral: (nombre) => `${promptBase(nombre)}
 Este documento debe ser una carta laboral.
 {
   "tipo_documento": "carta_laboral",
+  "documento_legible": true|false,
+  "motivo_fallo": "causa o null",
   "nombre_en_documentos": "nombre del trabajador o null",
   "nombre_coincide": true|false,
   "empleador_o_actividad": "empresa o empleador o null",
@@ -138,6 +159,8 @@ No confirmes autenticidad, relación laboral vigente ni aprobación.`,
 Este documento debe ser una constancia de situación fiscal.
 {
   "tipo_documento": "constancia_fiscal",
+  "documento_legible": true|false,
+  "motivo_fallo": "causa o null",
   "nombre_en_documentos": "nombre o razón social o null",
   "nombre_coincide": true|false,
   "rfc_detectado": "RFC o null",
@@ -226,11 +249,23 @@ async function analizarDocumento(documento, nombre) {
   const jsonMatch = texto.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('Claude no devolvió JSON válido');
 
+  let resultado;
   try {
-    return JSON.parse(jsonMatch[0]);
+    resultado = JSON.parse(jsonMatch[0]);
   } catch {
     throw new Error('No se pudo interpretar el JSON de Claude');
   }
+
+  const textoFallo = [
+    resultado.motivo_fallo,
+    ...(Array.isArray(resultado.informacion_faltante) ? resultado.informacion_faltante : []),
+    ...(Array.isArray(resultado.alertas) ? resultado.alertas : []),
+  ].filter(Boolean).join(' ');
+  const pareceProtegido = /contraseñ|password|cifrad|encript|protegido|no se puede abrir/i.test(textoFallo);
+  if (resultado.documento_legible === false || pareceProtegido) {
+    throw new Error(resultado.motivo_fallo || (pareceProtegido ? 'PDF protegido con contraseña o cifrado' : 'Documento ilegible'));
+  }
+  return resultado;
 }
 
 export default async function handler(req, res) {
@@ -295,8 +330,12 @@ export default async function handler(req, res) {
 
   const curpFallo = validacionCurp && validacionCurp.valido !== true;
 
-  const guardarAuditoria = async (revisionManual) => {
-    const audit = { ia_revision_manual: revisionManual };
+  const guardarAuditoria = async (revisionManual, detalles = {}) => {
+    const audit = {
+      ia_revision_manual: revisionManual,
+      ia_ultimo_analisis_en: new Date().toISOString(),
+      ...detalles,
+    };
     if (tipo_ejecucion === 'reanalisis') {
       audit.ia_reanalizado_por = reanalisisPor;
       audit.ia_reanalizado_en = new Date().toISOString();
@@ -310,7 +349,17 @@ export default async function handler(req, res) {
     const alertas = ['No se encontraron documentos de ingresos adjuntos'];
     if (faltantesRequeridos.length) alertas.push(`Documentos requeridos faltantes: ${faltantesRequeridos.join(', ')}`);
     if (curpFallo) alertas.push(`CURP no válida en RENAPO: ${validacionCurp?.curp_status || 'error de verificación'}`);
-    await guardarAuditoria(true);
+    await guardarAuditoria(true, {
+      ia_analisis_documental: {
+        identidad_detectada: null,
+        ingresos_detectados: null,
+        documentos_analizados: [],
+        documentos_fallidos: [],
+        informacion_faltante: alertas,
+        revision_manual: true,
+      },
+      ia_resumen_juridico: alertas.join('. '),
+    });
     return res.status(200).json({
       resultado: 'pendiente',
       icono: '⏳',
@@ -346,6 +395,7 @@ export default async function handler(req, res) {
   const ingresosVerificables = docsIngresos
     .map(r => primerMonto(
       r.ingreso_mensual_verificable,
+      r.ingreso_mensual_estimado,
       r.ingreso_neto,
       r.ingreso_mensual_total,
       r.depositos_recurrentes_mensuales,
@@ -355,14 +405,23 @@ export default async function handler(req, res) {
   const ingresosTotales = docsIngresos
     .map(r => primerMonto(
       r.ingreso_mensual_total,
+      r.ingreso_mensual_estimado,
       r.ingreso_bruto,
       r.ingreso_neto,
       r.depositos_recurrentes_mensuales,
       r.depositos_recurrentes
     ))
     .filter(Boolean);
-  const promedioIngreso = ingresosVerificables.length ? ingresosVerificables.reduce((a, b) => a + b, 0) / ingresosVerificables.length : null;
-  const promedioTotal = ingresosTotales.length ? ingresosTotales.reduce((a, b) => a + b, 0) / ingresosTotales.length : null;
+  const ingresoCartaLaboral = primerMonto(
+    cartaLaboral?.ingreso_mensual_total,
+    cartaLaboral?.ingreso_neto,
+    cartaLaboral?.ingreso_bruto
+  );
+  const promedioIngresoDocumentos = ingresosVerificables.length ? ingresosVerificables.reduce((a, b) => a + b, 0) / ingresosVerificables.length : null;
+  const promedioTotalDocumentos = ingresosTotales.length ? ingresosTotales.reduce((a, b) => a + b, 0) / ingresosTotales.length : null;
+  const promedioIngreso = promedioIngresoDocumentos || ingresoCartaLaboral;
+  const promedioTotal = promedioTotalDocumentos || ingresoCartaLaboral;
+  const fuenteIngreso = promedioIngresoDocumentos ? 'comprobantes_ingresos' : ingresoCartaLaboral ? 'carta_laboral' : null;
 
   const resultadosDocumentales = exitosos.map(r => ({ tipo: r.documento.tipo, etiqueta: r.documento.etiqueta, ...r.data }));
   const inconsistenciasNombre = [];
@@ -399,6 +458,8 @@ export default async function handler(req, res) {
     ingresos_detectados: {
       ingreso_mensual_verificable: promedioIngreso,
       ingreso_mensual_total: promedioTotal,
+      fuente_ingreso: fuenteIngreso,
+      ingreso_carta_laboral: ingresoCartaLaboral,
       documentos: docsIngresos.map(d => ({
         tipo_documento: d.tipo_documento,
         titular: d.nombre_en_documentos || null,
@@ -407,9 +468,12 @@ export default async function handler(req, res) {
         institucion_o_empleador: d.institucion_o_empleador || d.empleador_o_actividad || null,
         ingreso_bruto: normalizarMonto(d.ingreso_bruto),
         ingreso_neto: normalizarMonto(d.ingreso_neto),
+        ingreso_mensual_estimado: normalizarMonto(d.ingreso_mensual_estimado),
+        metodo_calculo_ingreso: d.metodo_calculo_ingreso || null,
         depositos_recurrentes: normalizarMonto(d.depositos_recurrentes),
         depositos_recurrentes_mensuales: normalizarMonto(d.depositos_recurrentes_mensuales),
         depositos_extraordinarios: normalizarMonto(d.depositos_extraordinarios),
+        montos_detectados: Array.isArray(d.montos_detectados) ? d.montos_detectados : [],
       })),
     },
     nombre_coincide: !nombresNoCoinciden,
@@ -438,6 +502,26 @@ export default async function handler(req, res) {
     analisisIA.curp_status = validacionCurp.curp_status;
   }
 
+  const resumenJuridico = [
+    docINE
+      ? `Identidad detectada: ${docINE.nombre_en_documentos || 'nombre no legible'}${docINE.curp_detectada ? `; CURP ${docINE.curp_detectada}` : ''}${docINE.clave_elector ? `; clave de elector ${docINE.clave_elector}` : ''}${docINE.vigencia ? `; vigencia ${docINE.vigencia}` : ''}`
+      : 'Identidad: INE no analizada',
+    `Documentos analizados: ${exitosos.map(r => r.documento.etiqueta).join(', ') || 'ninguno'}`,
+    fallidos.length
+      ? `Documentos con fallo: ${fallidos.map(r => `${r.documento.etiqueta} (${r.error})`).join(', ')}`
+      : null,
+    promedioIngreso
+      ? `Ingreso mensual detectado: $${promedioIngreso.toLocaleString('es-MX')}; fuente: ${fuenteIngreso === 'carta_laboral' ? 'carta laboral' : 'comprobantes de ingresos'}`
+      : 'Ingreso mensual detectado: no calculable',
+    cartaLaboral
+      ? `Carta laboral: ${cartaLaboral.empleador_o_actividad || 'empresa no legible'}${cartaLaboral.puesto ? `; puesto ${cartaLaboral.puesto}` : ''}${cartaLaboral.antiguedad ? `; antigüedad ${cartaLaboral.antiguedad}` : ''}${ingresoCartaLaboral ? `; sueldo $${ingresoCartaLaboral.toLocaleString('es-MX')}` : ''}`
+      : null,
+    analisisIA.inconsistencias.length ? `Inconsistencias: ${analisisIA.inconsistencias.join('; ')}` : null,
+    analisisIA.informacion_faltante.length ? `Información faltante: ${analisisIA.informacion_faltante.join('; ')}` : null,
+    analisisIA.riesgos_observados.length ? `Riesgos observados: ${analisisIA.riesgos_observados.join('; ')}` : null,
+    analisisIA.preguntas_revision_humana.length ? `Preguntas para revisión: ${analisisIA.preguntas_revision_humana.join('; ')}` : null,
+  ].filter(Boolean).join(' | ');
+
   const ingresoDetectado = promedioIngreso;
   const ingresoEvaluar = ingresoDetectado || 0;
   const razonIngreso = ingresoEvaluar > 0 && renta > 0 ? (ingresoEvaluar / renta).toFixed(2) : null;
@@ -450,25 +534,34 @@ export default async function handler(req, res) {
     color = '#92400e';
     icono = '⏳';
     mensaje = 'Los documentos requieren revisión manual por nuestro equipo jurídico. Te contactaremos en breve.';
-    mensajeInterno = `Revisión manual requerida. ${analisisIA.alertas.join('. ')}`.trim();
+    mensajeInterno = `Revisión manual requerida. ${resumenJuridico}${analisisIA.alertas.length ? ` | Observaciones: ${analisisIA.alertas.join('. ')}` : ''}`.trim();
   } else if (curpFallo) {
     resultado = 'revisar';
     color = '#92400e';
     icono = '⚠️';
     mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico revisará tus documentos y te contactará en breve.';
-    mensajeInterno = `CURP inválida en RENAPO: ${validacionCurp?.curp_status || 'no verificada'}. ${analisisIA.alertas.join('. ')}`.trim();
+    mensajeInterno = `CURP inválida en RENAPO: ${validacionCurp?.curp_status || 'no verificada'}. ${resumenJuridico}${analisisIA.alertas.length ? ` | Observaciones: ${analisisIA.alertas.join('. ')}` : ''}`.trim();
   } else if (!ingresoEvaluar) {
     resultado = 'revisar';
     color = '#92400e';
     icono = '⚠️';
     mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico la revisará y te contactará en breve.';
-    mensajeInterno = `No se pudo calcular el ingreso desde los documentos.${analisisIA.alertas.length ? ` Alertas: ${analisisIA.alertas.join('. ')}` : ''}`;
+    const diagnosticoIngresos = docsIngresos
+      .map((d, index) => {
+        const metodo = d.metodo_calculo_ingreso || d.resumen_analista || 'sin explicación del documento';
+        const montos = Array.isArray(d.montos_detectados)
+          ? d.montos_detectados.map(m => `${m.concepto || m.clasificacion || 'monto'}: $${normalizarMonto(m.monto)?.toLocaleString('es-MX') || m.monto}`).join(', ')
+          : '';
+        return `Documento ${index + 1}: ${metodo}${montos ? `; montos visibles: ${montos}` : ''}`;
+      })
+      .join(' | ');
+    mensajeInterno = `No se pudo calcular un ingreso mensual verificable desde los documentos.${diagnosticoIngresos ? ` ${diagnosticoIngresos}.` : ''} | ${resumenJuridico}${analisisIA.alertas.length ? ` | Observaciones: ${analisisIA.alertas.join('. ')}` : ''}`;
   } else if (!nombreCoincide) {
     resultado = 'revisar';
     color = '#92400e';
     icono = '⚠️';
     mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico revisará tus documentos y te contactará en breve.';
-    mensajeInterno = `Se detectaron inconsistencias de identidad: ${inconsistenciasNombre.join('. ') || 'el nombre no coincide con el solicitante'}.`;
+    mensajeInterno = `Se detectaron inconsistencias de identidad: ${inconsistenciasNombre.join('. ') || 'el nombre no coincide con el solicitante'}. | ${resumenJuridico}`;
   } else if (ingresoEvaluar >= ingresoRequerido) {
     resultado = analisisIA.alertas.length ? 'revisar' : 'viable';
     color = analisisIA.alertas.length ? '#92400e' : '#065f46';
@@ -476,18 +569,25 @@ export default async function handler(req, res) {
     mensaje = analisisIA.alertas.length
       ? 'Tus documentos han sido recibidos. Nuestro equipo los revisará y te contactará en breve.'
       : '¡Buenas noticias! Tus ingresos califican preliminarmente para esta renta. Nuestro equipo confirmará los detalles contigo.';
-    mensajeInterno = analisisIA.alertas.length ? `Ingresos suficientes pero con observaciones documentales: ${analisisIA.alertas.join('. ')}` : null;
+    mensajeInterno = analisisIA.alertas.length
+      ? `${resumenJuridico} | Observaciones documentales: ${analisisIA.alertas.join('. ')}`
+      : fuenteIngreso === 'carta_laboral'
+        ? `${resumenJuridico} | Los comprobantes no permitieron calcular un promedio verificable.`
+        : resumenJuridico;
   } else {
     resultado = 'revisar';
     color = '#92400e';
     icono = '⚠️';
     mensaje = 'Hemos recibido tu solicitud. Nuestro equipo jurídico la revisará y te contactará en breve.';
     mensajeInterno = ingresoEvaluar >= ingresoRequerido * 0.85
-      ? `Ingresos cerca del límite: relación ${razonIngreso}x (mínimo ${multiplicador}x).`
-      : `Ingresos por debajo del criterio preliminar: relación ${razonIngreso}x (mínimo ${multiplicador}x).`;
+      ? `Ingresos cerca del límite: relación ${razonIngreso}x (mínimo ${multiplicador}x). | ${resumenJuridico}`
+      : `Ingresos por debajo del criterio preliminar: relación ${razonIngreso}x (mínimo ${multiplicador}x). | ${resumenJuridico}`;
   }
 
-  await guardarAuditoria(revisionManual);
+  await guardarAuditoria(revisionManual, {
+    ia_analisis_documental: analisisIA,
+    ia_resumen_juridico: resumenJuridico,
+  });
 
   return res.status(200).json({
     resultado, icono, color, mensaje, mensajeInterno,

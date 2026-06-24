@@ -232,6 +232,10 @@ export default function FichaSolicitud() {
 
   const nombre = sol.nombre_completo || sol.razon_social || '—'
   const sc = STATUS_CONFIG[status] || STATUS_CONFIG.pendiente
+  let analisisDocumental = sol.ia_analisis_documental || null
+  if (typeof analisisDocumental === 'string') {
+    try { analisisDocumental = JSON.parse(analisisDocumental) } catch { analisisDocumental = null }
+  }
 
   // Helper para botón de subida manual de un documento
   const BotonSubirManual = ({ campo, label }) => (
@@ -499,6 +503,59 @@ export default function FichaSolicitud() {
                   <div style={{ background: '#fff', borderRadius: 8, padding: '12px 14px' }}>
                     <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Notas internas</p>
                     <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>{sol.pre_viabilidad_detalle_interno}</p>
+                  </div>
+                )}
+                {analisisDocumental && (
+                  <div style={{ marginTop: 12, background: '#fff', borderRadius: 8, padding: '14px' }}>
+                    <p style={{ margin: '0 0 12px', fontSize: 11, fontWeight: 800, color: '#6b7280', textTransform: 'uppercase' }}>Resumen documental para jurídico</p>
+                    <Grid cols={2}>
+                      <Campo
+                        label="Identidad detectada"
+                        value={analisisDocumental.identidad_detectada?.nombre}
+                      />
+                      <Campo
+                        label="CURP visible en INE"
+                        value={analisisDocumental.identidad_detectada?.curp}
+                      />
+                      <Campo
+                        label="Clave de elector"
+                        value={analisisDocumental.identidad_detectada?.clave_elector}
+                      />
+                      <Campo
+                        label="Vigencia INE"
+                        value={analisisDocumental.identidad_detectada?.vigencia}
+                      />
+                      <Campo
+                        label="Ingreso y fuente"
+                        value={analisisDocumental.ingresos_detectados?.ingreso_mensual_verificable
+                          ? `${fmt(analisisDocumental.ingresos_detectados.ingreso_mensual_verificable)}/mes — ${analisisDocumental.ingresos_detectados.fuente_ingreso === 'carta_laboral' ? 'carta laboral' : 'comprobantes'}`
+                          : 'No calculable'}
+                      />
+                      <Campo
+                        label="Revisión manual"
+                        value={analisisDocumental.revision_manual ? 'Sí' : 'No'}
+                      />
+                    </Grid>
+
+                    {!!analisisDocumental.documentos_analizados?.length && (
+                      <div style={{ marginTop: 12 }}>
+                        <Campo label="Documentos analizados" value={analisisDocumental.documentos_analizados.map(d => d.etiqueta).join(', ')} />
+                      </div>
+                    )}
+                    {!!analisisDocumental.documentos_fallidos?.length && (
+                      <div style={{ marginTop: 10, padding: '10px 12px', background: '#fef2f2', borderRadius: 6 }}>
+                        <Campo label="Documentos con fallo" value={analisisDocumental.documentos_fallidos.map(d => `${d.etiqueta}: ${d.error}`).join(' | ')} />
+                      </div>
+                    )}
+                    {!!analisisDocumental.inconsistencias?.length && <div style={{ marginTop: 10 }}><Campo label="Inconsistencias" value={analisisDocumental.inconsistencias.join(' | ')} /></div>}
+                    {!!analisisDocumental.informacion_faltante?.length && <div style={{ marginTop: 10 }}><Campo label="Información faltante" value={analisisDocumental.informacion_faltante.join(' | ')} /></div>}
+                    {!!analisisDocumental.riesgos_observados?.length && <div style={{ marginTop: 10 }}><Campo label="Riesgos observados" value={analisisDocumental.riesgos_observados.join(' | ')} /></div>}
+                    {!!analisisDocumental.preguntas_revision_humana?.length && <div style={{ marginTop: 10 }}><Campo label="Preguntas para revisión humana" value={analisisDocumental.preguntas_revision_humana.join(' | ')} /></div>}
+                    {sol.ia_ultimo_analisis_en && (
+                      <p style={{ margin: '12px 0 0', fontSize: 10, color: '#9ca3af' }}>
+                        Último análisis: {new Date(sol.ia_ultimo_analisis_en).toLocaleString('es-MX')}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
