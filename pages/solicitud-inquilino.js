@@ -316,7 +316,7 @@ export default function SolicitudInquilino() {
         const analisisRes = await fetch('/api/analizar-solicitud', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ solicitud_id: data.id }),
+          body: JSON.stringify({ solicitud_id: data.id, tipo_ejecucion: 'inicial' }),
         });
         if (analisisRes.ok) {
           const resultado = await analisisRes.json();

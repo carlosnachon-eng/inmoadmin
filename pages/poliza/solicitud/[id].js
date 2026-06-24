@@ -149,12 +149,19 @@ export default function FichaSolicitud() {
 
   // ── Re-correr análisis de IA ──
   const handleReanalizar = async () => {
+    const motivo = window.prompt('Motivo del reanálisis (obligatorio):')
+    if (!motivo?.trim()) return
     setReanalizing(true)
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Sesión no disponible')
       const res = await fetch('/api/analizar-solicitud', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ solicitud_id: id }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ solicitud_id: id, tipo_ejecucion: 'reanalisis', motivo: motivo.trim() }),
       })
       if (res.ok) {
         const resultado = await res.json()
@@ -173,8 +180,14 @@ export default function FichaSolicitud() {
         if (data) { setSol(data) }
         setReanalizadoOk(true)
         setTimeout(() => setReanalizadoOk(false), 4000)
+      } else {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(errorData.error || 'No se pudo reanalizar')
       }
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+      alert('Error al reanalizar: ' + e.message)
+    }
     setReanalizing(false)
   }
 
