@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabase";
 import Layout, { brand } from "../../components/Layout";
 import { usePermiso, SinAcceso } from "../../lib/permisos";
+import { sincronizarKpisCitas } from "../../lib/sincronizarKpisCitas";
 
 const ETAPAS = [
   { value: "nuevo", label: "Nuevo", color: "#6b7280", bg: "#f3f4f6" },
@@ -281,8 +282,20 @@ export default function FichaCliente() {
   };
 
   const cambiarEstadoCita = async (citaId, estado) => {
-    await supabase.from("citas").update({ estado }).eq("id", citaId);
+    const { data: citaActualizada, error } = await supabase
+      .from("citas")
+      .update({ estado })
+      .eq("id", citaId)
+      .select("asesor_id, fecha_hora")
+      .single();
+    if (error) { showToast("Error al actualizar la cita: " + error.message, false); return; }
     setCitas((prev) => prev.map((c) => c.id === citaId ? { ...c, estado } : c));
+    try {
+      await sincronizarKpisCitas(citaActualizada.asesor_id, citaActualizada.fecha_hora);
+      showToast("Cita y KPIs actualizados");
+    } catch (e) {
+      showToast("La cita se actualizó, pero KPIs no pudo sincronizarse: " + e.message, false);
+    }
   };
 
   // Convierte un timestamp ISO a formato datetime-local (sin zona) para
@@ -347,13 +360,13 @@ export default function FichaCliente() {
     }
 
     setGuardandoNuevaCita(true);
-    const { error } = await supabase.from("citas").insert({
+    const { data: nuevaCita, error } = await supabase.from("citas").insert({
       cliente_id: id,
       propiedad_id: nuevaPropiedadElegida?.id || null,
       asesor_id: perfil?.id,
       fecha_hora: new Date(nuevaFechaHora).toISOString(),
       estado: "agendada",
-    });
+    }).select("asesor_id, fecha_hora").single();
     setGuardandoNuevaCita(false);
 
     if (error) {
@@ -363,29 +376,51 @@ export default function FichaCliente() {
 
     cerrarModalNuevaCita();
     showToast("Nueva cita agendada");
+    try {
+      await sincronizarKpisCitas(nuevaCita.asesor_id, nuevaCita.fecha_hora);
+    } catch (e) {
+      showToast("La cita se guardó, pero KPIs no pudo sincronizarse: " + e.message, false);
+    }
     cargarDatos();
   };
 
   const guardarEdicionCita = async () => {
     if (!edFechaHora) { showToast("Captura la fecha y hora", false); return; }
     setGuardandoCita(true);
+    const fechaAnterior = citaEditando.fecha_hora;
+    const asesorId = citaEditando.asesor_id;
+    const nuevaFechaIso = new Date(edFechaHora).toISOString();
     const { error } = await supabase
       .from("citas")
-      .update({ fecha_hora: new Date(edFechaHora).toISOString(), propiedad_id: edPropiedadElegida?.id || null })
+      .update({ fecha_hora: nuevaFechaIso, propiedad_id: edPropiedadElegida?.id || null })
       .eq("id", citaEditando.id);
     setGuardandoCita(false);
     if (error) { showToast("Error al guardar: " + error.message, false); return; }
     setCitaEditando(null);
     showToast("Cita actualizada");
+    try {
+      await sincronizarKpisCitas(asesorId, fechaAnterior);
+      if (fechaAnterior !== nuevaFechaIso) await sincronizarKpisCitas(asesorId, nuevaFechaIso);
+    } catch (e) {
+      showToast("La cita se actualizó, pero KPIs no pudo sincronizarse: " + e.message, false);
+    }
     cargarDatos();
   };
 
   const borrarCita = async (citaId) => {
+    const cita = citas.find(c => c.id === citaId);
     const { error } = await supabase.from("citas").delete().eq("id", citaId);
     setConfirmarBorrarCita(null);
     if (error) { showToast("Error al borrar la cita: " + error.message, false); return; }
     setCitas((prev) => prev.filter((c) => c.id !== citaId));
     showToast("Cita borrada");
+    if (cita) {
+      try {
+        await sincronizarKpisCitas(cita.asesor_id, cita.fecha_hora);
+      } catch (e) {
+        showToast("La cita se borró, pero KPIs no pudo sincronizarse: " + e.message, false);
+      }
+    }
   };
 
   const agregarSeguimiento = async () => {

@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import Layout, { brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
 import CalendarioCitas from "../components/CalendarioCitas";
+import { sincronizarKpisCitas } from "../lib/sincronizarKpisCitas";
 
 const ETAPAS = [
   { value: "nuevo", label: "Nuevo", color: "#6b7280", bg: "#f3f4f6" },
@@ -136,14 +137,15 @@ function ModalNuevaCita({ onClose, onGuardado, asesorId, propiedadPrellenada, sh
       // hora local.
       const fechaHoraIso = new Date(fechaHora).toISOString();
 
-      const { error: errorCita } = await supabase.from("citas").insert({
+      const { data: nuevaCita, error: errorCita } = await supabase.from("citas").insert({
         cliente_id: clienteId,
         propiedad_id: propiedadElegida?.id || null,
         asesor_id: asesorId,
         fecha_hora: fechaHoraIso,
         estado: "agendada",
-      });
+      }).select("asesor_id, fecha_hora").single();
       if (errorCita) throw errorCita;
+      await sincronizarKpisCitas(nuevaCita.asesor_id, nuevaCita.fecha_hora);
 
       showToast("Cita agendada");
       onGuardado();

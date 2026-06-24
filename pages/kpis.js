@@ -106,7 +106,7 @@ export default function KPIs() {
 
   useEffect(() => {
     if (session && esAsesor && hoy) { calcularYGuardarKpisDelDia(); cargarRanking() }
-  }, [session, hoy])
+  }, [session, hoy, esAsesor, perfilDb?.id])
 
   useEffect(() => {
     if (vistaRanking) { setAnimado(false); setTimeout(() => setAnimado(true), 100) }
