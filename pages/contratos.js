@@ -194,9 +194,33 @@ export default function Contratos() {
       if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
       const pagos = generarPagos(newContract);
       const { error: ep } = await supabase.from("payments").insert(pagos);
+      if (ep) { setSaving(false); showToast("Contrato creado pero error en pagos: " + ep.message, false); return; }
+
+      // Una renovación conserva el contrato y los cobros anteriores, pero
+      // deja de tratarlos como operación activa. Solo finalizamos contratos
+      // previos de la misma propiedad cuya vigencia terminó antes de iniciar
+      // el nuevo; los vencidos aún no renovados permanecen visibles.
+      const anteriores = contracts.filter(c =>
+        c.id !== newContract.id &&
+        c.status === "activo" &&
+        c.property_name === newContract.property_name &&
+        c.end_date &&
+        c.end_date <= newContract.start_date
+      );
+      if (anteriores.length > 0) {
+        const { error: errorFinalizar } = await supabase
+          .from("contracts")
+          .update({ status: "vencido" })
+          .in("id", anteriores.map(c => c.id));
+        if (errorFinalizar) {
+          setSaving(false);
+          showToast(`Contrato creado, pero no se pudo finalizar el anterior: ${errorFinalizar.message}`, false);
+          return;
+        }
+      }
+
       setSaving(false);
-      if (ep) { showToast("Contrato creado pero error en pagos: " + ep.message, false); return; }
-      showToast(`Contrato creado con ${pagos.length} cobros generados`);
+      showToast(`Contrato creado con ${pagos.length} cobros${anteriores.length ? " · contrato anterior finalizado" : ""}`);
     }
 
     setShowModal(false);
@@ -207,10 +231,22 @@ export default function Contratos() {
 
   const eliminar = async (id, nombre) => {
     if (!isAdmin) { showToast("Solo el admin puede eliminar", false); return; }
-    if (!confirm(`¿Eliminar contrato de ${nombre}? También se eliminarán sus cobros.`)) return;
+    if (!confirm(`¿Eliminar definitivamente el contrato de ${nombre}?\n\nEsta opción es solo para errores de captura y también eliminará todos sus cobros. Esta acción no se puede deshacer.`)) return;
     await supabase.from("payments").delete().eq("contract_id", id);
     await supabase.from("contracts").delete().eq("id", id);
     showToast("Contrato eliminado");
+    loadData();
+  };
+
+  const finalizar = async (contrato) => {
+    if (!isAdmin) { showToast("Solo el admin puede finalizar contratos", false); return; }
+    if (!confirm(`¿Finalizar el contrato de ${contrato.tenant_name}?\n\nSe conservarán el contrato, sus cobros y todo el historial. Dejará de aparecer como operación activa.`)) return;
+    const { error } = await supabase
+      .from("contracts")
+      .update({ status: "vencido" })
+      .eq("id", contrato.id);
+    if (error) { showToast("No se pudo finalizar: " + error.message, false); return; }
+    showToast("Contrato finalizado; historial conservado");
     loadData();
   };
 
@@ -229,7 +265,9 @@ export default function Contratos() {
   if (!puedeVer) return <SinAcceso />;
 
   const contratosFiltrados = contracts.filter(c => {
-    if (filterStatus && c.status !== filterStatus) return false;
+    const vencidoPorFecha = c.end_date && new Date(`${c.end_date}T23:59:59`) < new Date();
+    if (filterStatus === "activo" && c.status !== "activo") return false;
+    if (filterStatus === "vencido" && c.status !== "vencido" && !vencidoPorFecha) return false;
     if (search) {
       const q = search.toLowerCase();
       if (!(c.tenant_name || "").toLowerCase().includes(q) &&
@@ -258,7 +296,7 @@ export default function Contratos() {
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
             <option value="">Todos</option>
             <option value="activo">Activos</option>
-            <option value="vencido">Vencidos</option>
+            <option value="vencido">Vencidos / finalizados</option>
           </select>
           {(search || filterStatus !== "activo") && (
             <button onClick={() => { setSearch(""); setFilterStatus("activo"); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Limpiar</button>
@@ -268,14 +306,28 @@ export default function Contratos() {
 
         {/* ALERTA VENCIMIENTOS */}
         {(() => {
+          const vencidosSinResolver = contracts.filter(c => {
+            if (c.status !== "activo" || !c.end_date) return false;
+            return new Date(`${c.end_date}T23:59:59`) < new Date();
+          });
           const vencen = contracts.filter(c => {
             const dias = Math.ceil((new Date(c.end_date) - new Date()) / (1000 * 60 * 60 * 24));
             return dias >= 0 && dias <= 30 && c.status === "activo";
           });
-          if (vencen.length === 0) return null;
+          if (vencen.length === 0 && vencidosSinResolver.length === 0) return null;
           return (
             <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 12, padding: "12px 16px", marginBottom: 16 }}>
-              <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 800, color: "#c2410c" }}>⚠️ {vencen.length} contrato{vencen.length > 1 ? "s" : ""} vence{vencen.length === 1 ? "" : "n"} en los próximos 30 días</p>
+              {vencidosSinResolver.length > 0 && (
+                <>
+                  <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 800, color: "#b91c1c" }}>🔴 {vencidosSinResolver.length} contrato{vencidosSinResolver.length > 1 ? "s" : ""} vencido{vencidosSinResolver.length > 1 ? "s" : ""} requiere{vencidosSinResolver.length === 1 ? "" : "n"} renovar o finalizar</p>
+                  {vencidosSinResolver.map(c => (
+                    <p key={c.id} style={{ margin: "2px 0", fontSize: 12, color: "#991b1b" }}>· {c.tenant_name} — {c.property_name} — venció el {c.end_date}</p>
+                  ))}
+                </>
+              )}
+              {vencen.length > 0 && (
+                <p style={{ margin: vencidosSinResolver.length ? "10px 0 6px" : "0 0 6px", fontSize: 13, fontWeight: 800, color: "#c2410c" }}>⚠️ {vencen.length} contrato{vencen.length > 1 ? "s" : ""} vence{vencen.length === 1 ? "" : "n"} en los próximos 30 días</p>
+              )}
               {vencen.map(c => {
                 const dias = Math.ceil((new Date(c.end_date) - new Date()) / (1000 * 60 * 60 * 24));
                 return <p key={c.id} style={{ margin: "2px 0", fontSize: 12, color: "#92400e" }}>· {c.tenant_name} — {c.property_name} — vence en {dias} día{dias !== 1 ? "s" : ""} ({c.end_date})</p>;
@@ -329,15 +381,16 @@ export default function Contratos() {
                       <td style={{ padding: "11px 14px", fontSize: 12, color: "#6b7280" }}>
                         {c.start_date} — {c.end_date}
                         <span style={{ display: "block", fontSize: 11, fontWeight: 700, color: dias <= 0 ? "#dc2626" : dias <= 30 ? "#d97706" : "#9ca3af" }}>
-                          {dias <= 0 ? "Vencido" : `${dias}d restantes`}
+                          {c.status === "vencido" ? "Finalizado · historial" : dias <= 0 ? "Vencido · renovar o finalizar" : `${dias}d restantes`}
                         </span>
                       </td>
                       <td style={{ padding: "11px 14px", fontSize: 14, fontWeight: 700 }}>Día {c.payment_day}</td>
                       <td style={{ padding: "11px 14px", fontSize: 13, color: "#6b7280" }}>{cobradoContrato}/{cobrosContrato.length}</td>
                       <td style={{ padding: "11px 14px" }}>
-                        <div style={{ display: "flex", gap: 6 }}>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <Btn small color="#6b7280" onClick={() => openEdit(c)}>Editar</Btn>
-                          {isAdmin && <Btn small color="#dc2626" onClick={() => eliminar(c.id, c.tenant_name)}>X</Btn>}
+                          {isAdmin && c.status === "activo" && <Btn small color="#b45309" onClick={() => finalizar(c)}>Finalizar</Btn>}
+                          {isAdmin && <Btn small color="#dc2626" onClick={() => eliminar(c.id, c.tenant_name)}>Eliminar</Btn>}
                         </div>
                       </td>
                     </tr>
