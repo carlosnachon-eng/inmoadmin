@@ -12,7 +12,20 @@ const ESTADOS_CITA = {
   no_show: { label: "No se presentó", color: "#78716c", bg: "#f5f5f4" },
 };
 
-const fmtHora = (d) => new Date(d).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+const ZONA_HORARIA = "America/Mexico_City";
+
+const fechaMexico = (d) => new Intl.DateTimeFormat("en-CA", {
+  timeZone: ZONA_HORARIA,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(new Date(d));
+
+const fmtHora = (d) => new Date(d).toLocaleTimeString("es-MX", {
+  timeZone: ZONA_HORARIA,
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 // Modal de calendario mensual de citas. Reutilizable: recibe `alcance` y
 // `asesorId` para filtrar solo las citas propias (asesor) o todas
@@ -27,17 +40,19 @@ export default function CalendarioCitas({ onClose, alcance, asesorId }) {
   const [filtroAsesor, setFiltroAsesor] = useState("");
   const [asesoresLista, setAsesoresLista] = useState([]);
 
-  const hoy = hoyDate.toLocaleDateString("en-CA");
+  const hoy = fechaMexico(hoyDate);
 
   const cargarMes = async () => {
     setLoading(true);
     const inicio = `${anioActual}-${String(mesActual + 1).padStart(2, "0")}-01`;
-    const fin = new Date(anioActual, mesActual + 1, 0).toISOString().split("T")[0];
+    const siguienteMes = mesActual === 11
+      ? `${anioActual + 1}-01-01`
+      : `${anioActual}-${String(mesActual + 2).padStart(2, "0")}-01`;
     let query = supabase
       .from("citas")
       .select("id, fecha_hora, estado, asesor_id, clientes(nombre, telefono), propiedades(titulo), profiles:asesor_id(full_name, email)")
-      .gte("fecha_hora", `${inicio}T00:00:00`)
-      .lte("fecha_hora", `${fin}T23:59:59`)
+      .gte("fecha_hora", `${inicio}T00:00:00-06:00`)
+      .lt("fecha_hora", `${siguienteMes}T00:00:00-06:00`)
       .order("fecha_hora", { ascending: true });
     if (alcance === "propio" && asesorId) query = query.eq("asesor_id", asesorId);
     const { data } = await query;
@@ -64,7 +79,7 @@ export default function CalendarioCitas({ onClose, alcance, asesorId }) {
 
   const citasPorDia = (dia) => {
     const fecha = `${anioActual}-${String(mesActual + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
-    return citas.filter((c) => c.fecha_hora.slice(0, 10) === fecha && (!filtroAsesor || c.asesor_id === filtroAsesor));
+    return citas.filter((c) => fechaMexico(c.fecha_hora) === fecha && (!filtroAsesor || c.asesor_id === filtroAsesor));
   };
 
   const irMesAnterior = () => {
