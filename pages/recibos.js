@@ -312,10 +312,10 @@ export default function Recibos() {
                       )}
                       {/* Botones de acción según estatus */}
                       {r.estatus === "activo" && (<>
-                        {r.tipo === "arrendamiento" && (
+                        {r.tipo === "arrendamiento" && !r.firma_id && (
                           <button onClick={() => { setModalSolicitud(r); setFechaLimiteFirma(""); }} style={{ background: "#dbeafe", color: "#1e40af", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Solicitud recibida</button>
                         )}
-                        {esCarlos && <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>}
+                        {esCarlos && !r.firma_id && <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>}
                         <button onClick={() => cambiarEstatus(r, "cancelado")} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✕ Cancelar</button>
                       </>)}
                       {r.estatus === "vencido" && esCarlos && (
@@ -379,10 +379,10 @@ export default function Recibos() {
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           {/* Activo → botones de acción */}
                           {r.estatus === "activo" && (<>
-                            {r.tipo === "arrendamiento" && (
+                            {r.tipo === "arrendamiento" && !r.firma_id && (
                               <button onClick={() => { setModalSolicitud(r); setFechaLimiteFirma(""); }} style={{ background: "#dbeafe", color: "#1e40af", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>✓ Solicitud recibida</button>
                             )}
-                            {esCarlos && <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>}
+                            {esCarlos && !r.firma_id && <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>}
                             <button onClick={() => cambiarEstatus(r, "cancelado")} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✕ Cancelar</button>
                           </>)}
                           {/* Vencido → Reactivar (solo Carlos) */}

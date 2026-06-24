@@ -50,7 +50,7 @@ export default async function handler(req, res) {
 
   const { data: firma } = await supabase
     .from('firmas')
-    .select('titulo, tipo, propiedad_id')
+    .select('titulo, tipo, propiedad_id, recibo_id')
     .eq('id', firma_id)
     .single()
 
@@ -62,6 +62,19 @@ export default async function handler(req, res) {
         : null
     : null
 
+  if (etapa?.clave === 'solicitud_poliza' && firma?.tipo === 'arrendamiento' && firma?.recibo_id) {
+    await supabase.from('recibos_apartado').update({
+      estatus: 'solicitud_recibida',
+      solicitud_recibida_en: new Date().toISOString(),
+      solicitud_recibida_por: usuario_nombre || null,
+    }).eq('id', firma.recibo_id)
+    await supabase.from('recibos_log').insert({
+      recibo_id: firma.recibo_id,
+      accion: 'solicitud_recibida_desde_firmas',
+      usuario_id: usuario_id || null,
+    })
+  }
+
   if (statusFinal && firma?.propiedad_id) {
     await supabase.from('propiedades').update({
       status: statusFinal,
@@ -71,6 +84,25 @@ export default async function handler(req, res) {
       status_actualizado_en: new Date().toISOString(),
       status_actualizado_por: usuario_id || null,
     }).eq('id', firma.propiedad_id)
+  }
+
+  const reciboConcretado = firma?.tipo === 'arrendamiento'
+    ? etapa?.clave === 'firma_pagos'
+    : firma?.tipo === 'compraventa'
+      ? etapa?.clave === 'promesa_enganche'
+      : false
+
+  if (reciboConcretado && firma?.recibo_id) {
+    await supabase.from('recibos_apartado')
+      .update({ estatus: 'concretado' })
+      .eq('id', firma.recibo_id)
+    await supabase.from('recibos_log').insert({
+      recibo_id: firma.recibo_id,
+      accion: firma.tipo === 'arrendamiento'
+        ? 'arrendamiento_firmado_en_firmas'
+        : 'promesa_compraventa_firmada',
+      usuario_id: usuario_id || null,
+    })
   }
 
   const destinatarios = CORREOS_NOTIFICACION

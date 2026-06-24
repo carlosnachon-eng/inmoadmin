@@ -169,7 +169,6 @@ export default function Cierres() {
       }).eq("id", form.propiedad_id);
     }
     if (!editando && form.recibo_id) {
-      await supabase.from("recibos_apartado").update({ estatus: "concretado" }).eq("id", form.recibo_id);
       await supabase.from("recibos_log").insert({
         recibo_id: form.recibo_id,
         accion: "cierre_financiero_confirmado",
