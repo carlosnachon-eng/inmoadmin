@@ -263,7 +263,10 @@ export default function NuevoRecibo() {
       setInmuebleActivo(null);
       return;
     }
-    const inmueble = [propiedad.titulo, propiedad.direccion, propiedad.colonia, propiedad.ciudad].filter(Boolean).join(", ");
+    const inmueble = propiedad.direccion?.trim()
+      || [propiedad.colonia, propiedad.ciudad].filter(Boolean).join(", ")
+      || propiedad.titulo?.trim()
+      || "";
     setForm(f => ({ ...f, propiedad_id: propiedad.id, inmueble }));
     setTipo(propiedad.operacion === "sale" ? "compraventa" : "arrendamiento");
     verificarDuplicado(inmueble);
@@ -466,8 +469,9 @@ export default function NuevoRecibo() {
           <div style={{ marginBottom: 4 }}>
             <label style={labelSt}>Dirección completa *</label>
             <textarea style={{ ...inputSt, resize: "vertical" }} rows={2} value={form.inmueble}
-              readOnly
-              placeholder="Se completa al elegir la propiedad" />
+              onChange={e => set("inmueble", e.target.value)}
+              onBlur={e => verificarDuplicado(e.target.value)}
+              placeholder="Escribe la dirección completa del inmueble" />
           </div>
           {inmuebleActivo && (
             <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13, color: "#92400e" }}>
