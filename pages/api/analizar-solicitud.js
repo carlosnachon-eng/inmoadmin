@@ -55,7 +55,8 @@ Solicitante declarado: "${nombre}".
 Fecha actual: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}.
 Responde SOLO con JSON válido, sin texto adicional. Si un dato no es legible o no existe, usa null y agrégalo a "informacion_faltante".
 Incluye siempre "documento_legible": true|false y "motivo_fallo": string|null.
-Si el PDF está cifrado, protegido con contraseña, dañado o no permite leer su contenido, devuelve documento_legible=false y explica la causa en motivo_fallo.`;
+Si el PDF está cifrado, protegido con contraseña, dañado o no permite leer su contenido, devuelve documento_legible=false y explica la causa en motivo_fallo.
+Los textos "true|false", "número o null" y similares describen el tipo esperado: reemplázalos por un valor JSON real. No los copies literalmente.`;
 
 const prompts = {
   ine: (nombre) => `${promptBase(nombre)}
@@ -222,39 +223,61 @@ async function cargarArchivo(input) {
 
 async function analizarDocumento(documento, nombre) {
   const { mediaType, base64 } = await cargarArchivo(documento.input);
-  const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-beta': 'pdfs-2024-09-25',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 900,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-          { type: 'text', text: prompts[documento.tipo](nombre) },
-        ],
-      }],
-    }),
-  });
+  const llamarClaude = async (esReintento = false) => {
+    const prompt = `${prompts[documento.tipo](nombre)}
+${esReintento ? '\nSEGUNDO INTENTO: La respuesta anterior no fue JSON válido. Sé conciso, completa todas las llaves y devuelve únicamente un objeto JSON parseable.' : ''}`;
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: esReintento ? 1400 : 1800,
+        temperature: 0,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            { type: 'text', text: prompt },
+          ],
+        }],
+      }),
+    });
 
-  if (!claudeRes.ok) throw new Error('Error Claude API: ' + await claudeRes.text());
-  const data = await claudeRes.json();
-  const texto = data.content?.[0]?.text || '';
-  const jsonMatch = texto.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Claude no devolvió JSON válido');
+    if (!claudeRes.ok) {
+      const errorTexto = await claudeRes.text();
+      if (/password protected|contraseñ|cifrad|encrypted/i.test(errorTexto)) {
+        throw new Error('PDF protegido con contraseña; solicita una copia sin protección');
+      }
+      throw new Error(`Claude no pudo procesar el documento (${claudeRes.status})`);
+    }
+    return claudeRes.json();
+  };
 
-  let resultado;
-  try {
-    resultado = JSON.parse(jsonMatch[0]);
-  } catch {
-    throw new Error('No se pudo interpretar el JSON de Claude');
+  const interpretarJSON = (data) => {
+    const texto = (data.content || []).map(bloque => bloque?.text || '').join('').trim();
+    const sinBloques = texto.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const inicio = sinBloques.indexOf('{');
+    const fin = sinBloques.lastIndexOf('}');
+    if (inicio < 0 || fin <= inicio) return null;
+    try {
+      return JSON.parse(sinBloques.slice(inicio, fin + 1));
+    } catch {
+      return null;
+    }
+  };
+
+  let data = await llamarClaude(false);
+  let resultado = interpretarJSON(data);
+  if (!resultado) {
+    data = await llamarClaude(true);
+    resultado = interpretarJSON(data);
   }
+  if (!resultado) throw new Error('Claude no devolvió JSON válido después de un reintento');
 
   const textoFallo = [
     resultado.motivo_fallo,
