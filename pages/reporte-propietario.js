@@ -65,7 +65,7 @@ export default function ReportePropietario() {
       if (!busqueda || busqueda.length < 3) { setPropiedades([]); return; }
       const { data } = await supabase
         .from("propiedades")
-        .select("id, titulo, direccion, colonia, ciudad, public_id, operacion, precio, status, en_marketplace, vistas_tiktok, vistas_instagram, vistas_facebook")
+        .select("id, titulo, direccion, colonia, ciudad, public_id, operacion, precio, status, apartado_fecha, apartado_vigencia_hasta, en_marketplace, vistas_tiktok, vistas_instagram, vistas_facebook")
         .or(`titulo.ilike.%${busqueda}%,direccion.ilike.%${busqueda}%`)
         .limit(8);
       setPropiedades(data || []);
@@ -254,6 +254,13 @@ export default function ReportePropietario() {
 
             {datos && (
               <>
+                {propiedadSel.status === "reserved" && (
+                  <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                    <p style={{ margin: 0, fontSize: 13, color: "#78350f", lineHeight: 1.55 }}>
+                      La propiedad se encuentra reservada por un prospecto calificado desde {propiedadSel.apartado_fecha ? fmtFecha(propiedadSel.apartado_fecha) : "fecha no registrada"}. El apartado está vigente hasta {propiedadSel.apartado_vigencia_hasta ? fmtFecha(`${propiedadSel.apartado_vigencia_hasta}T12:00:00`) : "fecha no registrada"}, sujeto a firma de contrato/promesa.
+                    </p>
+                  </div>
+                )}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 }}>
                   <Tarjeta icon="👀" label="Visitas a la ficha" valor={datos.visitas.length} />
                   <Tarjeta icon="📨" label="Envíos realizados" valor={datos.envios.length} />
@@ -322,7 +329,9 @@ export default function ReportePropietario() {
 
                 <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, border: "1px solid #f0f0f0" }}>
                   <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: brand.gray }}>Canales de promoción</p>
-                  <p style={{ margin: "0 0 8px", fontSize: 12, color: "#374151" }}>🌐 Publicada en el sitio web de Emporio Inmobiliario</p>
+                  {propiedadSel.status === "published"
+                    ? <p style={{ margin: "0 0 8px", fontSize: 12, color: "#374151" }}>🌐 Publicada en el sitio web de Emporio Inmobiliario</p>
+                    : <p style={{ margin: "0 0 8px", fontSize: 12, color: "#92400e" }}>⏸ Promoción pública pausada por estatus: {propiedadSel.status}</p>}
                   {propiedadSel.en_marketplace && <p style={{ margin: "0 0 8px", fontSize: 12, color: "#374151" }}>🛒 Publicada en Facebook Marketplace</p>}
                   {(propiedadSel.vistas_tiktok > 0 || propiedadSel.vistas_instagram > 0 || propiedadSel.vistas_facebook > 0) && (
                     <div style={{ display: "flex", gap: 16, marginTop: 8 }}>

@@ -85,6 +85,7 @@ function ModalNuevaCita({ onClose, onGuardado, asesorId, propiedadPrellenada, sh
         .from("propiedades")
         .select("id, titulo, direccion, public_id")
         .or(`titulo.ilike.%${propiedadBusqueda}%,direccion.ilike.%${propiedadBusqueda}%`)
+        .eq("status", "published")
         .limit(6);
       setPropiedadesResultado(data || []);
     };

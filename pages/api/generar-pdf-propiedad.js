@@ -33,6 +33,9 @@ export default async function handler(req, res) {
   if (errorPropiedad || !propiedad) {
     return res.status(404).json({ error: "Propiedad no encontrada" });
   }
+  if (propiedad.status !== "published") {
+    return res.status(409).json({ error: "Solo las propiedades publicadas pueden generar una ficha para prospectos" });
+  }
 
   // 2) Traer los datos de contacto del asesor que está generando la ficha
   //    (si no se manda usuario_id, o no se encuentra, se usa el contacto

@@ -37,6 +37,12 @@ export default async function handler(req, res) {
   if (errorPropiedades || !propiedadesRaw || propiedadesRaw.length === 0) {
     return res.status(404).json({ error: "No se encontraron las propiedades" });
   }
+  const noDisponibles = propiedadesRaw.filter((p) => p.status !== "published");
+  if (noDisponibles.length > 0) {
+    return res.status(409).json({
+      error: `Hay ${noDisponibles.length} propiedad${noDisponibles.length === 1 ? "" : "es"} no disponible${noDisponibles.length === 1 ? "" : "s"} para envío`,
+    });
+  }
 
   // Mantener el mismo orden en el que el asesor las seleccionó
   const propiedades = propiedad_ids

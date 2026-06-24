@@ -13,7 +13,19 @@ const STATUS_STYLE = {
   sold:      { bg: "#fee2e2", color: "#991b1b", label: "Vendida" },
   leased:    { bg: "#fee2e2", color: "#991b1b", label: "Rentada" },
   draft:     { bg: "#f3f4f6", color: "#6b7280", label: "Borrador" },
+  archived:  { bg: "#e5e7eb", color: "#4b5563", label: "Archivada" },
 };
+
+const MOTIVOS_ARCHIVO = [
+  "Propietario retiró",
+  "Duplicada",
+  "Datos incorrectos",
+  "Pausada",
+  "Fuera de mercado",
+  "Otro",
+];
+
+const STATUS_COMPARTIBLE = "published";
 
 const TIPOS = ["Casa", "Departamento", "Terreno", "Local comercial", "Oficina", "Edificio", "Bodega"];
 
@@ -183,7 +195,7 @@ const Dato = ({ label, value }) => {
   );
 };
 
-function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
+function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast, asesores }) {
   const [generando, setGenerando] = useState(false);
   const s = STATUS_STYLE[p.status] || STATUS_STYLE.published;
   const fotos = Array.isArray(p.fotos) ? p.fotos : [];
@@ -191,8 +203,10 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
   const creditos = Array.isArray(p.creditos_aceptados) ? p.creditos_aceptados : [];
 
   const urlPublica = p.public_id ? `https://www.emporioinmobiliario.com.mx/propiedades/${p.public_id}` : "";
+  const puedeCompartir = p.status === STATUS_COMPARTIBLE;
 
   const enviarPorWhatsApp = async () => {
+    if (!puedeCompartir) { showToast("Solo las propiedades publicadas pueden enviarse", false); return; }
     if (!urlPublica) { showToast("Esta propiedad no tiene ID público, no se puede compartir la liga", false); return; }
     const mensaje = `¡Hola! Te comparto la información de *${p.titulo || "esta propiedad"}*${p.precio ? ` — ${fmt(p.precio)}` : ""}.\n\n${urlPublica}\n\nEstoy a tus órdenes para cualquier duda. 🏠`;
     window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, "_blank");
@@ -214,6 +228,7 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
   };
 
   const copiarLigaDetalle = async () => {
+    if (!puedeCompartir) { showToast("Solo las propiedades publicadas pueden compartir liga", false); return; }
     if (!urlPublica) { showToast("Esta propiedad no tiene ID público, no se puede copiar la liga", false); return; }
     try {
       await navigator.clipboard.writeText(urlPublica);
@@ -277,6 +292,7 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
   };
 
   const descargarPdf = async () => {
+    if (!puedeCompartir) { showToast("Solo las propiedades publicadas pueden generar una ficha para prospectos", false); return; }
     setGenerando(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -298,13 +314,13 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
     <Modal title="Detalle de la propiedad" onClose={onClose} wide>
       {/* Botones de acción */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20, paddingBottom: 16, borderBottom: "1.5px solid #f3f4f6" }}>
-        <button onClick={descargarPdf} disabled={generando} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: generando ? "not-allowed" : "pointer", opacity: generando ? 0.6 : 1 }}>
+        <button onClick={descargarPdf} disabled={generando || !puedeCompartir} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: generando || !puedeCompartir ? "not-allowed" : "pointer", opacity: generando || !puedeCompartir ? 0.5 : 1 }}>
           {generando ? "Generando…" : "📄 Generar PDF"}
         </button>
-        <button onClick={enviarPorWhatsApp} style={{ background: "#22c55e", color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+        <button onClick={enviarPorWhatsApp} disabled={!puedeCompartir} style={{ background: "#22c55e", color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: puedeCompartir ? "pointer" : "not-allowed", opacity: puedeCompartir ? 1 : 0.5 }}>
           💬 Enviar liga por WhatsApp
         </button>
-        <button onClick={copiarLigaDetalle} style={{ background: "#f0fdf4", color: "#065f46", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+        <button onClick={copiarLigaDetalle} disabled={!puedeCompartir} style={{ background: "#f0fdf4", color: "#065f46", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: puedeCompartir ? "pointer" : "not-allowed", opacity: puedeCompartir ? 1 : 0.5 }}>
           🔗 Copiar liga
         </button>
         <button onClick={descargarTodasLasFotos} disabled={descargandoFotos} style={{ background: "#eff6ff", color: "#1e40af", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: descargandoFotos ? "not-allowed" : "pointer", opacity: descargandoFotos ? 0.6 : 1 }}>
@@ -398,7 +414,23 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast }) {
         <Dato label="Institución del gravamen" value={p.gravamen_institucion} />
         <Dato label="Fecha de disponibilidad" value={p.fecha_disponibilidad} />
         <Dato label="Mascotas permitidas" value={p.mascotas_permitidas} />
+        <Dato label="Motivo del estatus" value={p.status_motivo} />
+        <Dato label="Estatus actualizado" value={p.status_actualizado_en ? new Date(p.status_actualizado_en).toLocaleString("es-MX") : ""} />
       </div>
+
+      {p.status === "reserved" && (
+        <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: 12, marginTop: 8 }}>
+          <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 800, color: "#92400e", textTransform: "uppercase" }}>Datos internos del apartado</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+            <Dato label="Apartado por" value={p.apartado_por_nombre} />
+            <Dato label="Asesor responsable" value={asesores.find(a => a.id === p.apartado_asesor_id)?.full_name || asesores.find(a => a.id === p.apartado_asesor_id)?.email || ""} />
+            <Dato label="Fecha" value={p.apartado_fecha ? new Date(p.apartado_fecha).toLocaleDateString("es-MX") : ""} />
+            <Dato label="Monto" value={p.apartado_monto ? fmt(p.apartado_monto) : ""} />
+            <Dato label="Vigente hasta" value={p.apartado_vigencia_hasta} />
+          </div>
+          {p.apartado_notas && <p style={{ margin: "8px 0 0", fontSize: 12, color: "#78350f", whiteSpace: "pre-wrap" }}>{p.apartado_notas}</p>}
+        </div>
+      )}
 
       {p.notas_internas && (
         <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: 12, marginTop: 8 }}>
@@ -480,18 +512,31 @@ export default function PropiedadesAdmin() {
   const { cargando: permisoCargando, puedeVer, puedeEditar } = usePermiso("propiedades-admin");
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [asesores, setAsesores] = useState([]);
   const [authLoading, setAuthLoading] = useState(true);
   const [propiedades, setPropiedades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState("");
   const [filtroOperacion, setFiltroOperacion] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState("operativas");
   const [modalForm, setModalForm] = useState(null); // null | "nueva" | objeto propiedad a editar
   const [form, setForm] = useState(PROPIEDAD_VACIA);
   const [saving, setSaving] = useState(false);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [modalEliminar, setModalEliminar] = useState(null);
+  const [modalApartado, setModalApartado] = useState(null);
+  const [modalArchivar, setModalArchivar] = useState(null);
+  const [motivoArchivo, setMotivoArchivo] = useState("");
+  const [motivoArchivoOtro, setMotivoArchivoOtro] = useState("");
+  const [apartado, setApartado] = useState({
+    apartado_por_nombre: "",
+    apartado_asesor_id: "",
+    apartado_fecha: "",
+    apartado_monto: "",
+    apartado_vigencia_hasta: "",
+    apartado_notas: "",
+  });
   const [modalDetalle, setModalDetalle] = useState(null);
   const [seleccionadas, setSeleccionadas] = useState([]);
   const [modalEnvioCorreo, setModalEnvioCorreo] = useState(false);
@@ -500,6 +545,7 @@ export default function PropiedadesAdmin() {
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
 
   const copiarLiga = async (p) => {
+    if (p.status !== STATUS_COMPARTIBLE) { showToast("Solo las propiedades publicadas pueden compartir liga", false); return; }
     const url = p.public_id ? `https://www.emporioinmobiliario.com.mx/propiedades/${p.public_id}` : "";
     if (!url) { showToast("Esta propiedad no tiene ID público, no se puede copiar la liga", false); return; }
     try {
@@ -528,6 +574,10 @@ export default function PropiedadesAdmin() {
   const enviarSeleccionadasPorWhatsApp = async () => {
     const props = propiedades.filter((p) => seleccionadas.includes(p.id));
     if (props.length === 0) return;
+    if (props.some((p) => p.status !== STATUS_COMPARTIBLE)) {
+      showToast("La selección contiene propiedades no disponibles", false);
+      return;
+    }
 
     const lineas = props.map((p) => {
       const url = p.public_id ? `https://www.emporioinmobiliario.com.mx/propiedades/${p.public_id}` : "";
@@ -581,8 +631,13 @@ export default function PropiedadesAdmin() {
   }, []);
 
   const loadProfile = async (uid) => {
-    const { data } = await supabase.from("profiles").select("*").eq("id", uid).single();
-    setProfile(data); setAuthLoading(false);
+    const [{ data }, { data: perfiles }] = await Promise.all([
+      supabase.from("profiles").select("*").eq("id", uid).single(),
+      supabase.from("profiles").select("id, full_name, email, role_id").eq("active", true),
+    ]);
+    setProfile(data);
+    setAsesores((perfiles || []).filter(p => ["asesor", "gerente_ventas", "admin"].includes(p.role_id)));
+    setAuthLoading(false);
   };
 
   const loadPropiedades = async () => {
@@ -601,7 +656,9 @@ export default function PropiedadesAdmin() {
       p.colonia?.toLowerCase().includes(search.toLowerCase()) ||
       p.public_id?.toLowerCase().includes(search.toLowerCase());
     const matchOp = !filtroOperacion || p.operacion === filtroOperacion;
-    const matchStatus = !filtroStatus || p.status === filtroStatus;
+    const matchStatus = filtroStatus === "operativas"
+      ? p.status !== "archived"
+      : !filtroStatus || p.status === filtroStatus;
     return matchSearch && matchOp && matchStatus;
   });
 
@@ -720,6 +777,9 @@ export default function PropiedadesAdmin() {
     if (modalForm === "nueva") {
       payload.public_id = payload.public_id || `EMP-${Date.now().toString(36).toUpperCase()}`;
       payload.origen = "manual";
+      payload.status_motivo = payload.status === "draft" ? "Propiedad creada como borrador" : "Propiedad creada y publicada";
+      payload.status_actualizado_en = new Date().toISOString();
+      payload.status_actualizado_por = profile?.id || null;
       ({ error } = await supabase.from("propiedades").insert(payload));
     } else {
       ({ error } = await supabase.from("propiedades").update(payload).eq("id", modalForm.id));
@@ -731,21 +791,108 @@ export default function PropiedadesAdmin() {
     loadPropiedades();
   };
 
+  const auditoriaStatus = (motivo) => ({
+    status_motivo: motivo || null,
+    status_actualizado_en: new Date().toISOString(),
+    status_actualizado_por: profile?.id || null,
+  });
+
   const confirmarEliminar = async () => {
     setSaving(true);
-    // Borrado lógico: la quitamos del catálogo público pero no se destruye el historial
-    const { error } = await supabase.from("propiedades").update({ status: "draft" }).eq("id", modalEliminar.id);
+    if (profile?.role_id !== "admin") {
+      setSaving(false);
+      setModalEliminar(null);
+      showToast("Solo Admin puede eliminar propiedades", false);
+      return;
+    }
+    const id = modalEliminar.id;
+    const [citas, visitas, contactos, envios] = await Promise.all([
+      supabase.from("citas").select("id", { count: "exact", head: true }).eq("propiedad_id", id),
+      supabase.from("visitas_propiedad").select("id", { count: "exact", head: true }).eq("propiedad_id", id),
+      supabase.from("solicitudes_contacto_propiedad").select("id", { count: "exact", head: true }).eq("propiedad_id", id),
+      supabase.from("envios_propiedades").select("propiedad_id", { count: "exact", head: true }).eq("propiedad_id", id),
+    ]);
+    const historial = (citas.count || 0) + (visitas.count || 0) + (contactos.count || 0) + (envios.count || 0);
+    if (historial > 0) {
+      setSaving(false);
+      setModalEliminar(null);
+      showToast(`No se puede eliminar: tiene ${historial} registro${historial === 1 ? "" : "s"} de historial. Archívala.`, false);
+      return;
+    }
+    const { error } = await supabase.from("propiedades").delete().eq("id", id);
     setSaving(false);
     setModalEliminar(null);
-    if (error) { showToast("Error al archivar", false); return; }
-    showToast("Propiedad archivada (ya no se muestra en el sitio)");
+    if (error) { showToast("Error al eliminar: " + error.message, false); return; }
+    showToast("Propiedad eliminada definitivamente");
     loadPropiedades();
   };
 
-  const cambiarStatus = async (p, nuevoStatus) => {
-    const { error } = await supabase.from("propiedades").update({ status: nuevoStatus }).eq("id", p.id);
+  const cambiarStatus = async (p, nuevoStatus, motivo) => {
+    const payload = {
+      status: nuevoStatus,
+      ...auditoriaStatus(motivo || `Cambio a ${STATUS_STYLE[nuevoStatus]?.label || nuevoStatus}`),
+    };
+    const { error } = await supabase.from("propiedades").update(payload).eq("id", p.id);
     if (error) { showToast("Error al actualizar estatus", false); return; }
     showToast("Estatus actualizado");
+    loadPropiedades();
+  };
+
+  const abrirApartado = (p) => {
+    const ahora = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    setApartado({
+      apartado_por_nombre: p.apartado_por_nombre || "",
+      apartado_asesor_id: p.apartado_asesor_id || profile?.id || "",
+      apartado_fecha: p.apartado_fecha
+        ? new Date(p.apartado_fecha).toISOString().slice(0, 16)
+        : `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-${pad(ahora.getDate())}T${pad(ahora.getHours())}:${pad(ahora.getMinutes())}`,
+      apartado_monto: p.apartado_monto || "",
+      apartado_vigencia_hasta: p.apartado_vigencia_hasta || "",
+      apartado_notas: p.apartado_notas || "",
+    });
+    setModalApartado(p);
+  };
+
+  const guardarApartado = async () => {
+    if (!apartado.apartado_por_nombre.trim() || !apartado.apartado_fecha || !apartado.apartado_vigencia_hasta) {
+      showToast("Captura prospecto, fecha y vigencia del apartado", false);
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase.from("propiedades").update({
+      status: "reserved",
+      apartado_por_nombre: apartado.apartado_por_nombre.trim(),
+      apartado_asesor_id: apartado.apartado_asesor_id || profile?.id || null,
+      apartado_fecha: new Date(apartado.apartado_fecha).toISOString(),
+      apartado_monto: Number(apartado.apartado_monto) || null,
+      apartado_vigencia_hasta: apartado.apartado_vigencia_hasta,
+      apartado_notas: apartado.apartado_notas || null,
+      ...auditoriaStatus("Propiedad apartada / reservada"),
+    }).eq("id", modalApartado.id);
+    setSaving(false);
+    if (error) { showToast("Error al apartar: " + error.message, false); return; }
+    setModalApartado(null);
+    showToast("Propiedad reservada");
+    setSeleccionadas(prev => prev.filter(id => id !== modalApartado.id));
+    loadPropiedades();
+  };
+
+  const confirmarArchivo = async () => {
+    const motivo = motivoArchivo === "Otro" ? motivoArchivoOtro.trim() : motivoArchivo;
+    if (!motivo) { showToast("Selecciona o captura el motivo", false); return; }
+    setSaving(true);
+    const { error } = await supabase.from("propiedades").update({
+      status: "archived",
+      ...auditoriaStatus(motivo),
+    }).eq("id", modalArchivar.id);
+    setSaving(false);
+    if (error) { showToast("Error al archivar: " + error.message, false); return; }
+    setSeleccionadas(prev => prev.filter(id => id !== modalArchivar.id));
+    setModalArchivar(null);
+    setMotivoArchivo("");
+    setMotivoArchivoOtro("");
+    showToast("Propiedad archivada; historial conservado");
     loadPropiedades();
   };
 
@@ -790,12 +937,14 @@ export default function PropiedadesAdmin() {
             <option value="rental">Solo renta</option>
           </select>
           <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+            <option value="operativas">Operativas (sin archivadas)</option>
             <option value="">Todos los estatus</option>
             <option value="published">Publicada</option>
             <option value="reserved">Reservada</option>
             <option value="sold">Vendida</option>
             <option value="leased">Rentada</option>
-            <option value="draft">Borrador / Archivada</option>
+            <option value="draft">Borrador</option>
+            <option value="archived">Archivadas</option>
           </select>
           <span style={{ fontSize: 12, color: "#9ca3af", marginLeft: "auto" }}>{filtered.length} propiedades</span>
         </div>
@@ -818,8 +967,8 @@ export default function PropiedadesAdmin() {
               return (
                 <div key={p.id} style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", outline: seleccionadas.includes(p.id) ? `2px solid ${brand.red}` : "none" }}>
                   <div style={{ height: 150, background: "#f3f4f6", position: "relative" }}>
-                    <label style={{ position: "absolute", top: 8, left: 8, zIndex: 2, background: "#fff", borderRadius: 6, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.25)", cursor: "pointer" }}>
-                      <input type="checkbox" checked={seleccionadas.includes(p.id)} onChange={() => toggleSeleccion(p.id)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                    <label title={p.status === STATUS_COMPARTIBLE ? "Seleccionar para enviar" : "No disponible para envío"} style={{ position: "absolute", top: 8, left: 8, zIndex: 2, background: "#fff", borderRadius: 6, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.25)", cursor: p.status === STATUS_COMPARTIBLE ? "pointer" : "not-allowed", opacity: p.status === STATUS_COMPARTIBLE ? 1 : 0.55 }}>
+                      <input type="checkbox" disabled={p.status !== STATUS_COMPARTIBLE} checked={seleccionadas.includes(p.id)} onChange={() => toggleSeleccion(p.id)} style={{ width: 16, height: 16, cursor: p.status === STATUS_COMPARTIBLE ? "pointer" : "not-allowed" }} />
                     </label>
                     {foto ? (
                       <img src={foto} alt={p.titulo} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -846,7 +995,7 @@ export default function PropiedadesAdmin() {
                       <button onClick={() => abrirDetalle(p)} style={{ flex: 1, background: "#eff6ff", border: "none", borderRadius: 8, padding: "8px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#1e40af" }}>
                         👁️ Ver detalle
                       </button>
-                      <button onClick={() => copiarLiga(p)} title="Copiar liga para pegar en Respond.io" style={{ background: "#f0fdf4", border: "none", borderRadius: 8, padding: "8px 10px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#065f46" }}>
+                      <button onClick={() => copiarLiga(p)} disabled={p.status !== STATUS_COMPARTIBLE} title={p.status === STATUS_COMPARTIBLE ? "Copiar liga para pegar en Respond.io" : "Solo las publicadas se pueden compartir"} style={{ background: "#f0fdf4", border: "none", borderRadius: 8, padding: "8px 10px", fontWeight: 700, fontSize: 12, cursor: p.status === STATUS_COMPARTIBLE ? "pointer" : "not-allowed", color: "#065f46", opacity: p.status === STATUS_COMPARTIBLE ? 1 : 0.45 }}>
                         🔗
                       </button>
                       {puedeEditar && (
@@ -854,16 +1003,17 @@ export default function PropiedadesAdmin() {
                           ✏️ Editar
                         </button>
                       )}
-                      {puedeEditar && (p.status !== "draft" ? (
-                        <button onClick={() => setModalEliminar(p)} style={{ background: "#fee2e2", border: "none", borderRadius: 8, padding: "8px 10px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#991b1b" }}>
-                          🗄️
-                        </button>
-                      ) : (
-                        <button onClick={() => cambiarStatus(p, "published")} style={{ background: "#d1fae5", border: "none", borderRadius: 8, padding: "8px 10px", fontWeight: 700, fontSize: 12, cursor: "pointer", color: "#065f46" }}>
-                          ↩️ Reactivar
-                        </button>
-                      ))}
                     </div>
+                    {puedeEditar && (
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", paddingTop: 9, marginTop: 9, borderTop: "1px solid #f3f4f6" }}>
+                        {p.status !== "published" && <button onClick={() => cambiarStatus(p, "published", "Propiedad publicada")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 7, padding: "6px 8px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>Publicar</button>}
+                        {p.status !== "reserved" && <button onClick={() => abrirApartado(p)} style={{ background: "#fef3c7", color: "#92400e", border: "none", borderRadius: 7, padding: "6px 8px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>Apartar</button>}
+                        {p.status !== "leased" && <button onClick={() => cambiarStatus(p, "leased", "Operación cerrada: propiedad rentada")} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 7, padding: "6px 8px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>Rentada</button>}
+                        {p.status !== "sold" && <button onClick={() => cambiarStatus(p, "sold", "Operación cerrada: propiedad vendida")} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 7, padding: "6px 8px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>Vendida</button>}
+                        {p.status !== "archived" && <button onClick={() => { setModalArchivar(p); setMotivoArchivo(""); setMotivoArchivoOtro(""); }} style={{ background: "#e5e7eb", color: "#4b5563", border: "none", borderRadius: 7, padding: "6px 8px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>Archivar</button>}
+                        {profile?.role_id === "admin" && <button onClick={() => setModalEliminar(p)} style={{ background: "#fff", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 7, padding: "5px 8px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>Eliminar</button>}
+                      </div>
+                    )}
                     <p style={{ margin: "8px 0 0", fontSize: 10, color: "#9ca3af" }}>ID: {p.public_id}</p>
                   </div>
                 </div>
@@ -895,6 +1045,7 @@ export default function PropiedadesAdmin() {
           onEditar={abrirEditar}
           puedeEditar={puedeEditar}
           showToast={showToast}
+          asesores={asesores}
         />
       )}
 
@@ -906,16 +1057,57 @@ export default function PropiedadesAdmin() {
         />
       )}
 
-      {modalEliminar && (
-        <Modal title="Archivar propiedad" onClose={() => setModalEliminar(null)}>
+      {modalArchivar && (
+        <Modal title="Archivar propiedad" onClose={() => setModalArchivar(null)}>
           <p style={{ fontSize: 14, color: "#374151", lineHeight: 1.6 }}>
-            "{modalEliminar.titulo}" dejará de mostrarse en tu sitio público. No se borra del sistema — puedes reactivarla cuando quieras.
+            “{modalArchivar.titulo}” dejará de tratarse como disponible. Se conservarán la propiedad y todo su historial.
           </p>
+          <Campo label="Motivo">
+            <select style={inputStyle} value={motivoArchivo} onChange={e => setMotivoArchivo(e.target.value)}>
+              <option value="">Selecciona un motivo</option>
+              {MOTIVOS_ARCHIVO.map(motivo => <option key={motivo} value={motivo}>{motivo}</option>)}
+            </select>
+          </Campo>
+          {motivoArchivo === "Otro" && <Campo label="Especifica el motivo"><input style={inputStyle} value={motivoArchivoOtro} onChange={e => setMotivoArchivoOtro(e.target.value)} /></Campo>}
           <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-            <button onClick={() => setModalEliminar(null)} style={{ flex: 1, background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
-            <button onClick={confirmarEliminar} disabled={saving} style={{ flex: 1, background: "#991b1b", color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>
+            <button onClick={() => setModalArchivar(null)} style={{ flex: 1, background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
+            <button onClick={confirmarArchivo} disabled={saving} style={{ flex: 1, background: "#4b5563", color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>
               {saving ? "Archivando…" : "Sí, archivar"}
             </button>
+          </div>
+        </Modal>
+      )}
+
+      {modalApartado && (
+        <Modal title="Apartar / reservar propiedad" onClose={() => setModalApartado(null)}>
+          <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6b7280" }}>Estos datos son internos y no se mostrarán en reportes al propietario.</p>
+          <Campo label="Prospecto *"><input style={inputStyle} value={apartado.apartado_por_nombre} onChange={e => setApartado(a => ({ ...a, apartado_por_nombre: e.target.value }))} /></Campo>
+          <Campo label="Asesor responsable">
+            <select style={inputStyle} value={apartado.apartado_asesor_id} onChange={e => setApartado(a => ({ ...a, apartado_asesor_id: e.target.value }))}>
+              <option value="">Sin asignar</option>
+              {asesores.map(asesor => <option key={asesor.id} value={asesor.id}>{asesor.full_name || asesor.email}</option>)}
+            </select>
+          </Campo>
+          <Campo label="Fecha del apartado *"><input type="datetime-local" style={inputStyle} value={apartado.apartado_fecha} onChange={e => setApartado(a => ({ ...a, apartado_fecha: e.target.value }))} /></Campo>
+          <Campo label="Monto"><input type="number" min="0" style={inputStyle} value={apartado.apartado_monto} onChange={e => setApartado(a => ({ ...a, apartado_monto: e.target.value }))} /></Campo>
+          <Campo label="Vigencia hasta *"><input type="date" style={inputStyle} value={apartado.apartado_vigencia_hasta} onChange={e => setApartado(a => ({ ...a, apartado_vigencia_hasta: e.target.value }))} /></Campo>
+          <Campo label="Notas internas"><textarea style={{ ...inputStyle, minHeight: 80 }} value={apartado.apartado_notas} onChange={e => setApartado(a => ({ ...a, apartado_notas: e.target.value }))} /></Campo>
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <button onClick={() => setModalApartado(null)} style={{ flex: 1, background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
+            <button onClick={guardarApartado} disabled={saving} style={{ flex: 1, background: "#92400e", color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>{saving ? "Guardando…" : "Confirmar apartado"}</button>
+          </div>
+        </Modal>
+      )}
+
+      {modalEliminar && (
+        <Modal title="Eliminar propiedad definitivamente" onClose={() => setModalEliminar(null)}>
+          <p style={{ fontSize: 14, color: "#991b1b", lineHeight: 1.6 }}>
+            Esta acción es únicamente para errores de captura. Se bloqueará si “{modalEliminar.titulo}” tiene citas, visitas, contactos o envíos registrados.
+          </p>
+          <p style={{ fontSize: 13, color: "#6b7280" }}>Si tiene historial, usa <strong>Archivar</strong> para conservarlo.</p>
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <button onClick={() => setModalEliminar(null)} style={{ flex: 1, background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
+            <button onClick={confirmarEliminar} disabled={saving} style={{ flex: 1, background: "#b91c1c", color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>{saving ? "Validando…" : "Eliminar definitivamente"}</button>
           </div>
         </Modal>
       )}
@@ -1003,15 +1195,19 @@ export default function PropiedadesAdmin() {
             <input style={inputStyle} value={form.video_url} onChange={e => setForm(f => ({ ...f, video_url: e.target.value }))} placeholder="https://www.tiktok.com/@emporioinmobiliario/video/..." />
           </Campo>
 
-          <Campo label="Estatus">
-            <select style={inputStyle} value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-              <option value="published">Publicada</option>
-              <option value="reserved">Reservada</option>
-              <option value="sold">Vendida</option>
-              <option value="leased">Rentada</option>
-              <option value="draft">Borrador (no se muestra en el sitio)</option>
-            </select>
-          </Campo>
+          {modalForm === "nueva" ? (
+            <Campo label="Estatus inicial">
+              <select style={inputStyle} value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                <option value="published">Publicada</option>
+                <option value="draft">Borrador (todavía incompleta)</option>
+              </select>
+            </Campo>
+          ) : (
+            <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 9, padding: 12, marginBottom: 14 }}>
+              <p style={{ margin: "0 0 3px", fontSize: 12, fontWeight: 800, color: "#374151" }}>Estatus: {STATUS_STYLE[form.status]?.label || form.status}</p>
+              <p style={{ margin: 0, fontSize: 11, color: "#6b7280" }}>Para cambiarlo usa las acciones de la tarjeta: Publicar, Apartar, Rentada, Vendida o Archivar.</p>
+            </div>
+          )}
 
           <div style={{ marginBottom: 14 }}>
             <SwitchToggle

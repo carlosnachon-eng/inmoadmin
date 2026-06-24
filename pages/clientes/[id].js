@@ -41,6 +41,7 @@ function ModalEnviarPropiedades({ cliente, onClose, showToast, asesorId }) {
         .from("propiedades")
         .select("id, titulo, precio, public_id, operacion")
         .or(`titulo.ilike.%${busqueda}%,direccion.ilike.%${busqueda}%`)
+        .eq("status", "published")
         .limit(8);
       setResultados(data || []);
     };
@@ -321,6 +322,7 @@ export default function FichaCliente() {
         .from("propiedades")
         .select("id, titulo")
         .or(`titulo.ilike.%${edPropiedadBusqueda}%,direccion.ilike.%${edPropiedadBusqueda}%`)
+        .eq("status", "published")
         .limit(6);
       setEdPropiedadesResultado(data || []);
     };
@@ -338,6 +340,7 @@ export default function FichaCliente() {
         .from("propiedades")
         .select("id, titulo")
         .or(`titulo.ilike.%${nuevaPropiedadBusqueda}%,direccion.ilike.%${nuevaPropiedadBusqueda}%`)
+        .eq("status", "published")
         .limit(6);
       setNuevasPropiedadesResultado(data || []);
     };
