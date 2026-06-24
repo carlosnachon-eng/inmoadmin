@@ -50,9 +50,28 @@ export default async function handler(req, res) {
 
   const { data: firma } = await supabase
     .from('firmas')
-    .select('titulo, tipo')
+    .select('titulo, tipo, propiedad_id')
     .eq('id', firma_id)
     .single()
+
+  const statusFinal = !siguiente
+    ? firma?.tipo === 'arrendamiento'
+      ? 'leased'
+      : firma?.tipo === 'compraventa'
+        ? 'sold'
+        : null
+    : null
+
+  if (statusFinal && firma?.propiedad_id) {
+    await supabase.from('propiedades').update({
+      status: statusFinal,
+      status_motivo: statusFinal === 'leased'
+        ? 'Expediente de arrendamiento completado en Firmas'
+        : 'Expediente de compraventa completado en Firmas',
+      status_actualizado_en: new Date().toISOString(),
+      status_actualizado_por: usuario_id || null,
+    }).eq('id', firma.propiedad_id)
+  }
 
   const destinatarios = CORREOS_NOTIFICACION
   try {

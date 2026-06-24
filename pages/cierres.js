@@ -162,8 +162,8 @@ export default function Cierres() {
     if (error) { showToast("Error: " + error.message, false); return; }
     if (!editando && form.propiedad_id) {
       await supabase.from("propiedades").update({
-        status: form.operacion === "VENTA" ? "sold" : "leased",
-        status_motivo: `Operación confirmada en Cierres${form.recibo_id ? ` · recibo vinculado` : ""}`,
+        status: "reserved",
+        status_motivo: `Cierre financiero registrado; operación pendiente de firma${form.recibo_id ? " · recibo vinculado" : ""}`,
         status_actualizado_en: new Date().toISOString(),
         status_actualizado_por: session?.user?.id || null,
       }).eq("id", form.propiedad_id);
