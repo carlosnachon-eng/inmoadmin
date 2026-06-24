@@ -215,6 +215,29 @@ export default function Recibos() {
     loadRecibos();
   };
 
+  const handleCorregirConcretado = async (recibo) => {
+    if (!esCarlos) return;
+    if (!confirm(`¿Regresar ${recibo.folio} a Activo para corregir o cancelar la operación? El historial se conservará.`)) return;
+    setSaving(true);
+    const { error } = await supabase.from("recibos_apartado").update({
+      estatus: "activo",
+      reactivado_en: new Date().toISOString(),
+      reactivado_por: profile?.email || session.user.email,
+    }).eq("id", recibo.id);
+    if (!error) {
+      await supabase.from("recibos_log").insert({
+        recibo_id: recibo.id,
+        accion: "correccion_estado_concretado",
+        usuario_id: session.user.id,
+        notas: "Recibo regresado a Activo por Admin para corrección",
+      });
+    }
+    setSaving(false);
+    if (error) { showToast("No se pudo corregir el estado", false); return; }
+    showToast("Recibo regresado a Activo");
+    loadRecibos();
+  };
+
   if (authLoading) return (
     <div style={{ minHeight: "100vh", background: brand.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
@@ -321,6 +344,9 @@ export default function Recibos() {
                       {r.estatus === "vencido" && esCarlos && (
                         <button onClick={() => handleReactivar(r)} disabled={saving} style={{ background: "#fef3c7", color: "#92400e", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↺ Reactivar</button>
                       )}
+                      {r.estatus === "concretado" && esCarlos && (
+                        <button onClick={() => handleCorregirConcretado(r)} disabled={saving} style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fdba74", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↺ Corregir estado</button>
+                      )}
                     </div>
                   </div>
                 );
@@ -388,6 +414,9 @@ export default function Recibos() {
                           {/* Vencido → Reactivar (solo Carlos) */}
                           {r.estatus === "vencido" && esCarlos && (
                             <button onClick={() => handleReactivar(r)} disabled={saving} style={{ background: "#fef3c7", color: "#92400e", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer" }}>↺ Reactivar</button>
+                          )}
+                          {r.estatus === "concretado" && esCarlos && (
+                            <button onClick={() => handleCorregirConcretado(r)} disabled={saving} style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fdba74", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer" }}>↺ Corregir</button>
                           )}
                           {r.flujo_estado === "requiere_revision" && puedeIniciarFlujo && (
                             <button onClick={() => reintentarFlujo(r)} disabled={saving} style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fdba74", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>↻ Flujo</button>

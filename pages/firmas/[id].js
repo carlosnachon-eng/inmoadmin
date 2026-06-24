@@ -158,7 +158,17 @@ export default function DetalleFirma() {
               {firma.status === 'activo' && (
                 <button onClick={async () => {
                   if (!confirm('Cancelar este expediente?')) return
+                  const { data: { user } } = await supabase.auth.getUser()
                   await supabase.from('firmas').update({ status: 'cancelado' }).eq('id', id)
+                  if (firma.recibo_id) {
+                    await supabase.from('recibos_apartado').update({ estatus: 'cancelado' }).eq('id', firma.recibo_id)
+                    await supabase.from('recibos_log').insert({
+                      recibo_id: firma.recibo_id,
+                      accion: 'cancelado_desde_firmas',
+                      usuario_id: user?.id || null,
+                      notas: 'Expediente de Firmas cancelado',
+                    })
+                  }
                   cargarTodo()
                 }} style={{ background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
                   Cancelar

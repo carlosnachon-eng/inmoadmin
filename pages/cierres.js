@@ -92,14 +92,18 @@ export default function Cierres() {
       supabase.from("cierres").select("*").order("fecha_cierre", { ascending: false }),
       supabase.from("cierre_pagos").select("*").order("fecha", { ascending: true }),
       supabase.from("recibos_apartado")
-        .select("id, folio, tipo, cliente_nombre, inmueble, monto, created_at, propiedad_id, asesor_id, firma_id, flujo_estado, propiedades:propiedad_id(id, titulo, operacion, precio), profiles:asesor_id(full_name, email)")
+        .select("id, folio, tipo, cliente_nombre, inmueble, monto, created_at, estatus, propiedad_id, asesor_id, firma_id, flujo_estado, propiedades:propiedad_id(id, titulo, operacion, precio), profiles:asesor_id(full_name, email), firmas:firma_id(status)")
         .eq("flujo_estado", "completo")
         .order("created_at", { ascending: false }),
     ]);
     setCierres(cierresData || []);
     setCierrePagos(pagosData || []);
     const recibosConCierre = new Set((cierresData || []).map(c => c.recibo_id).filter(Boolean));
-    setApartadosPendientes((recibosData || []).filter(r => !recibosConCierre.has(r.id)));
+    setApartadosPendientes((recibosData || []).filter(r =>
+      !recibosConCierre.has(r.id)
+      && r.estatus !== "cancelado"
+      && r.firmas?.status !== "cancelado"
+    ));
     setLoading(false);
   };
 
