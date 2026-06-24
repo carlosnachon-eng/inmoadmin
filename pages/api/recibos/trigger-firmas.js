@@ -95,6 +95,12 @@ export default async function handler(req, res) {
       const clienteCorto = (recibo.cliente_nombre || "Cliente").split(" ").slice(0, 2).join(" ");
       const titulo = `${inmuebleCorto} - ${clienteCorto}`;
       const formaPago = String(recibo.forma_pago || "").toLowerCase().includes("transferencia") ? "transferencia" : "efectivo";
+      const { data: propietarios } = await supabase
+        .from("propietarios_inmuebles")
+        .select("nombre_propietario")
+        .eq("propiedad_id", propiedad.id)
+        .limit(1);
+      const nombrePropietario = propietarios?.[0]?.nombre_propietario || "";
 
       const { data: nuevaFirma, error: firmaError } = await supabase
         .from("firmas")
@@ -103,7 +109,7 @@ export default async function handler(req, res) {
           titulo,
           direccion: recibo.inmueble,
           nombre_comprador: recibo.cliente_nombre,
-          nombre_vendedor: "",
+          nombre_vendedor: nombrePropietario,
           monto_apartado: recibo.monto,
           forma_pago: formaPago,
           propietario_asiste: true,

@@ -31,6 +31,9 @@ export default function DetalleFirma() {
   const [etapaActiva, setEtapaActiva] = useState(null)
   const [loading, setLoading] = useState(true)
   const [avanzando, setAvanzando] = useState(false)
+  const [editandoDatos, setEditandoDatos] = useState(false)
+  const [guardandoDatos, setGuardandoDatos] = useState(false)
+  const [datosForm, setDatosForm] = useState({ nombre_comprador: '', nombre_vendedor: '' })
 
   useEffect(() => { if (!id) return; cargarTodo() }, [id])
 
@@ -41,6 +44,10 @@ export default function DetalleFirma() {
       supabase.from('firma_comentarios').select('*').eq('firma_id', id).order('created_at', { ascending: false })
     ])
     setFirma(f)
+    setDatosForm({
+      nombre_comprador: f?.nombre_comprador || '',
+      nombre_vendedor: f?.nombre_vendedor || '',
+    })
     setEtapas(e || [])
     setComentarios(c || [])
     setLoading(false)
@@ -80,6 +87,30 @@ export default function DetalleFirma() {
     cargarTodo()
   }
 
+  async function guardarDatosGenerales() {
+    setGuardandoDatos(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    const cambios = {
+      nombre_comprador: datosForm.nombre_comprador.trim(),
+      nombre_vendedor: datosForm.nombre_vendedor.trim(),
+    }
+    const { error } = await supabase.from('firmas').update(cambios).eq('id', id)
+    if (!error) {
+      await supabase.from('firma_comentarios').insert({
+        firma_id: id,
+        usuario_id: user?.id,
+        usuario_nombre: user?.email,
+        mensaje: 'Datos de comprador/inquilino y propietario actualizados.',
+        tipo: 'comentario'
+      })
+      setEditandoDatos(false)
+      await cargarTodo()
+    } else {
+      alert(`No se pudieron guardar los datos: ${error.message}`)
+    }
+    setGuardandoDatos(false)
+  }
+
   if (loading) return <div style={{ padding: '2rem', fontFamily: 'system-ui' }}>Cargando expediente...</div>
   if (!firma) return <div style={{ padding: '2rem', fontFamily: 'system-ui' }}>Expediente no encontrado</div>
 
@@ -114,6 +145,10 @@ export default function DetalleFirma() {
               {firma.direccion && <p style={{ color: '#aac4de', fontSize: '0.85rem', margin: '4px 0 0' }}>{firma.direccion}</p>}
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button onClick={() => setEditandoDatos(v => !v)}
+                style={{ background: '#fff', color: '#1a3c5e', border: 'none', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+                {editandoDatos ? 'Cerrar edición' : 'Editar datos'}
+              </button>
               <span style={{
                 background: firma.status === 'completado' ? '#22c55e' : firma.status === 'cancelado' ? '#ef4444' : firma.urgente ? '#f59e0b' : '#c8a45a',
                 color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600
@@ -155,6 +190,29 @@ export default function DetalleFirma() {
               </div>
             ))}
           </div>
+          {editandoDatos && (
+            <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.1)', borderRadius: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', color: '#aac4de', fontSize: '0.75rem', marginBottom: 4 }}>Comprador / Inquilino</label>
+                  <input value={datosForm.nombre_comprador}
+                    onChange={e => setDatosForm(f => ({ ...f, nombre_comprador: e.target.value }))}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#aac4de', fontSize: '0.75rem', marginBottom: 4 }}>Nombre del propietario</label>
+                  <input value={datosForm.nombre_vendedor}
+                    onChange={e => setDatosForm(f => ({ ...f, nombre_vendedor: e.target.value }))}
+                    placeholder="Escribe el nombre del dueño"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem' }} />
+                </div>
+              </div>
+              <button onClick={guardarDatosGenerales} disabled={guardandoDatos}
+                style={{ marginTop: '0.75rem', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: '0.85rem', fontWeight: 700, cursor: guardandoDatos ? 'not-allowed' : 'pointer' }}>
+                {guardandoDatos ? 'Guardando...' : 'Guardar datos'}
+              </button>
+            </div>
+          )}
         </div>
 
 
