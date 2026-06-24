@@ -55,6 +55,8 @@ const filtrarHallazgos = (valores = []) => {
   return valores.filter(valor => {
     const texto = String(valor || '');
     if (/identidad de g[eé]nero|cambio de g[eé]nero|discrepancia.*g[eé]nero|g[eé]nero declarado/i.test(texto)) return false;
+    if (/\bICAO\b|\bMRZ\b|biometr[ií]a|zona de lectura mec[aá]nica/i.test(texto)) return false;
+    if (/c[oó]digo(?:s)? QR|c[oó]digo(?:s)? de barras/i.test(texto) && !/ilegible|alterad|inconsisten|dañad|anomal/i.test(texto)) return false;
     if (/documento vencido/i.test(texto)) {
       const rango = texto.match(/\b(20\d{2})\s*[-–]\s*(20\d{2})\b/);
       if (rango && anioActual >= Number(rango[1]) && anioActual <= Number(rango[2])) return false;
@@ -71,8 +73,16 @@ Incluye siempre "documento_legible": true|false y "motivo_fallo": string|null.
 Si el PDF está cifrado, protegido con contraseña, dañado o no permite leer su contenido, devuelve documento_legible=false y explica la causa en motivo_fallo.
 Los textos "true|false", "número o null" y similares describen el tipo esperado: reemplázalos por un valor JSON real. No los copies literalmente.`;
 
+const instruccionesJuridico = `
+El resultado está dirigido al área jurídica de Emporio, no a un perito documental.
+Prioriza únicamente hallazgos que cambien o faciliten la revisión del expediente.
+Devuelve como máximo 5 riesgos observados, 5 preguntas para revisión humana y 5 elementos de información faltante, ordenados de mayor a menor importancia.
+No incluyas validaciones técnicas de ICAO, MRZ, biometría, códigos QR o códigos de barras salvo que exista una anomalía evidente y visible.
+Evita preguntas especulativas o verificaciones rutinarias que no surjan de una inconsistencia concreta.`;
+
 const prompts = {
   ine: (nombre) => `${promptBase(nombre)}
+${instruccionesJuridico}
 Este documento debe ser una identificación oficial (INE o equivalente).
 {
   "tipo_documento": "ine",
@@ -98,6 +108,7 @@ En documentos mexicanos, el marcador de sexo "M" significa Mujer y "H" significa
 Una vigencia expresada como rango es válida mientras el año actual esté dentro del rango; no la marques como vencida en ese caso.`,
 
   ingresos: (nombre) => `${promptBase(nombre)}
+${instruccionesJuridico}
 Este documento debe ser un comprobante de ingresos, nómina, estado de cuenta o declaración fiscal.
 {
   "tipo_documento": "nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|otro",
@@ -147,6 +158,7 @@ REGLAS:
 7. No determines licitud, aprobación ni capacidad final de pago.`,
 
   carta_laboral: (nombre) => `${promptBase(nombre)}
+${instruccionesJuridico}
 Este documento debe ser una carta laboral.
 {
   "tipo_documento": "carta_laboral",
@@ -172,6 +184,7 @@ Este documento debe ser una carta laboral.
 No confirmes autenticidad, relación laboral vigente ni aprobación.`,
 
   constancia_fiscal: (nombre) => `${promptBase(nombre)}
+${instruccionesJuridico}
 Este documento debe ser una constancia de situación fiscal.
 {
   "tipo_documento": "constancia_fiscal",
@@ -197,6 +210,7 @@ No determines licitud, autenticidad ni aprobación.`,
 
 const promptIngresosCompacto = (nombre) => `Actúa exclusivamente como extractor documental.
 Solicitante declarado: "${nombre}".
+${instruccionesJuridico}
 Devuelve SOLO este objeto JSON válido y conciso, sin markdown ni comentarios:
 {
   "tipo_documento": "nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|otro",
@@ -612,11 +626,11 @@ export default async function handler(req, res) {
     ...fallidos.map(r => `No se pudo analizar ${r.documento.etiqueta}: ${r.error}`),
   ])].filter(Boolean));
 
-  const riesgosObservados = filtrarHallazgos([...new Set(resultadosDocumentales.flatMap(r => r.riesgos_observados || []))]);
+  const riesgosObservados = filtrarHallazgos([...new Set(resultadosDocumentales.flatMap(r => r.riesgos_observados || []))]).slice(0, 5);
   const nombresNoCoinciden = resultadosDocumentales.some(r => r.nombre_coincide === false) || inconsistenciasNombre.length > 0;
   const resumenAnalista = resultadosDocumentales.map(r => r.resumen_analista).filter(Boolean).join(' | ');
-  const preguntasRevision = filtrarHallazgos([...new Set(resultadosDocumentales.flatMap(r => r.preguntas_revision_humana || []))]);
-  const informacionFaltante = [...new Set(resultadosDocumentales.flatMap(r => r.informacion_faltante || []))];
+  const preguntasRevision = filtrarHallazgos([...new Set(resultadosDocumentales.flatMap(r => r.preguntas_revision_humana || []))]).slice(0, 5);
+  const informacionFaltante = filtrarHallazgos([...new Set(resultadosDocumentales.flatMap(r => r.informacion_faltante || []))]).slice(0, 5);
 
   const analisisIA = {
     nombre_en_documentos: docINE?.nombre_en_documentos || docsIngresos[0]?.nombre_en_documentos || null,
