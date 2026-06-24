@@ -36,6 +36,12 @@ const META_INGRESOS = 90000
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 0 })
 const pct = (a, b) => b > 0 ? Math.round((a / b) * 100) : 0
+const fechaMexico = fechaHora => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Mexico_City',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date(fechaHora))
 
 const calcularMetaCitas = (anio, mes) => {
   const diasEnMes = new Date(anio, mes, 0).getDate()
@@ -108,12 +114,57 @@ export default function KPIsDashboard() {
     const mes = mesSeleccionado
     const inicio = `${anio}-${String(mes).padStart(2, '0')}-01`
     const fin = new Date(anio, mes, 0).toISOString().split('T')[0]
-    const [{ data: kpisData }, { data: cierresData }, { data: checadasData }] = await Promise.all([
+    const inicioCitas = `${inicio}T00:00:00-06:00`
+    const finCitas = new Date(`${fin}T12:00:00-06:00`)
+    finCitas.setDate(finCitas.getDate() + 1)
+
+    const [{ data: kpisData }, { data: cierresData }, { data: checadasData }, { data: citasData }] = await Promise.all([
       supabase.from('kpis_diarios').select('*').gte('fecha', inicio).lte('fecha', fin).order('fecha', { ascending: false }),
       supabase.from('cierres').select('*').gte('fecha_cierre', inicio).lte('fecha_cierre', fin),
       supabase.from('checadas').select('*').gte('fecha', inicio).lte('fecha', fin),
+      supabase
+        .from('citas')
+        .select('estado, fecha_hora, profiles:asesor_id(email, full_name)')
+        .gte('fecha_hora', inicioCitas)
+        .lt('fecha_hora', finCitas.toISOString()),
     ])
-    setKpis(kpisData || [])
+
+    // El dashboard reconcilia en vivo los días que ya tienen citas en el
+    // módulo Clientes. Así no depende de que kpis_diarios haya sido
+    // actualizado previamente y también corrige registros históricos
+    // que quedaron con estados viejos.
+    const citasPorAsesorDia = new Map()
+    ;(citasData || []).forEach(cita => {
+      const email = cita.profiles?.email
+      if (!email || !cita.fecha_hora) return
+      const fecha = fechaMexico(cita.fecha_hora)
+      const key = `${email}|${fecha}`
+      const actual = citasPorAsesorDia.get(key) || {
+        email,
+        asesor: cita.profiles?.full_name || NOMBRES_CONOCIDOS[email] || email,
+        fecha,
+        citas_agendadas: 0,
+        citas_efectivas: 0,
+        citas_calificadas: 0,
+      }
+      actual.citas_agendadas += 1
+      if (cita.estado === 'efectiva' || cita.estado === 'calificada') actual.citas_efectivas += 1
+      if (cita.estado === 'calificada') actual.citas_calificadas += 1
+      citasPorAsesorDia.set(key, actual)
+    })
+
+    const kpisReconciliados = (kpisData || []).map(registro => {
+      const calculado = citasPorAsesorDia.get(`${registro.email}|${registro.fecha}`)
+      if (!calculado) return registro
+      citasPorAsesorDia.delete(`${registro.email}|${registro.fecha}`)
+      return { ...registro, ...calculado }
+    })
+    citasPorAsesorDia.forEach((calculado, key) => {
+      kpisReconciliados.push({ id: `citas-${key}`, ...calculado })
+    })
+    kpisReconciliados.sort((a, b) => b.fecha.localeCompare(a.fecha))
+
+    setKpis(kpisReconciliados)
     setCierres(cierresData || [])
     setChecadas(checadasData || [])
     setAnimado(false)
