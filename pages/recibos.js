@@ -353,7 +353,12 @@ export default function Recibos() {
                       <td style={{ padding: "11px 14px", fontSize: 12, color: "#6b7280" }}>{r.recibido_por || "—"}</td>
                       <td style={{ padding: "11px 14px" }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: est.color, background: est.bg, padding: "3px 8px", borderRadius: 99 }}>{est.label}</span>
-                        {r.flujo_estado === "requiere_revision" && <div title={r.flujo_error || ""} style={{ fontSize: 10, color: "#b45309", marginTop: 3 }}>⚠ Flujo por revisar</div>}
+                        {r.flujo_estado === "requiere_revision" && (
+                          <div style={{ fontSize: 10, color: "#b45309", marginTop: 3, maxWidth: 220, whiteSpace: "normal" }}>
+                            ⚠ Flujo por revisar
+                            {r.flujo_error && <div style={{ marginTop: 2 }}>{r.flujo_error}</div>}
+                          </div>
+                        )}
                         {r.estatus === "solicitud_recibida" && r.fecha_limite_firma && (
                           <div style={{ fontSize: 10, color: "#1e40af", marginTop: 3 }}>📅 Firma: {r.fecha_limite_firma}</div>
                         )}

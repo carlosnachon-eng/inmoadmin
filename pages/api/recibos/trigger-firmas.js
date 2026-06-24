@@ -106,6 +106,7 @@ export default async function handler(req, res) {
           nombre_vendedor: "",
           monto_apartado: recibo.monto,
           forma_pago: formaPago,
+          propietario_asiste: true,
           modalidad_firma: "presencial",
           fecha_apartado: recibo.fecha || String(recibo.created_at || new Date().toISOString()).slice(0, 10),
           urgente: recibo.es_urgente || false,
@@ -136,7 +137,8 @@ export default async function handler(req, res) {
         nombre: etapa.nombre,
         responsable: etapa.responsable,
         status: etapa.orden === 1 ? "completada" : etapa.status,
-        fecha_completada: etapa.orden === 1 ? new Date().toISOString() : null,
+        completada_por: etapa.orden === 1 ? auth.user.id : null,
+        completada_at: etapa.orden === 1 ? new Date().toISOString() : null,
       }));
       const { error: etapasError } = await supabase.from("firma_etapas").insert(etapas);
       if (etapasError) throw new Error(`Firmas se creó sin etapas: ${etapasError.message}`);
