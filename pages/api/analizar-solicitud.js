@@ -50,6 +50,19 @@ const primerMonto = (...valores) => {
   return null;
 };
 
+const filtrarHallazgos = (valores = []) => {
+  const anioActual = new Date().getFullYear();
+  return valores.filter(valor => {
+    const texto = String(valor || '');
+    if (/identidad de g[eé]nero|cambio de g[eé]nero|discrepancia.*g[eé]nero|g[eé]nero declarado/i.test(texto)) return false;
+    if (/documento vencido/i.test(texto)) {
+      const rango = texto.match(/\b(20\d{2})\s*[-–]\s*(20\d{2})\b/);
+      if (rango && anioActual >= Number(rango[1]) && anioActual <= Number(rango[2])) return false;
+    }
+    return true;
+  });
+};
+
 const promptBase = (nombre) => `Actúa exclusivamente como analista documental. Extrae y describe información visible; no apruebes, no rechaces y no emitas dictamen final.
 Solicitante declarado: "${nombre}".
 Fecha actual: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}.
@@ -80,7 +93,9 @@ Este documento debe ser una identificación oficial (INE o equivalente).
   "confianza": "alta|media|baja",
   "alertas": ["observaciones relevantes"]
 }
-No declares que el documento es auténtico o falso; solo describe señales visibles.`,
+No declares que el documento es auténtico o falso; solo describe señales visibles.
+En documentos mexicanos, el marcador de sexo "M" significa Mujer y "H" significa Hombre. No infieras identidad de género ni cambios de identidad.
+Una vigencia expresada como rango es válida mientras el año actual esté dentro del rango; no la marques como vencida en ese caso.`,
 
   ingresos: (nombre) => `${promptBase(nombre)}
 Este documento debe ser un comprobante de ingresos, nómina, estado de cuenta o declaración fiscal.
@@ -212,6 +227,52 @@ Devuelve SOLO este objeto JSON válido y conciso, sin markdown ni comentarios:
 }
 Usa números JSON sin símbolos ni comas. Para nómina mensualiza el neto según el periodo. Para estado de cuenta usa solo depósitos recurrentes identificables; nunca uses el saldo. No apruebes, rechaces ni emitas dictamen.`;
 
+const herramientaIngresos = {
+  name: 'registrar_analisis_ingresos',
+  description: 'Registra únicamente los datos visibles de un comprobante de ingresos mexicano. Debe usarse una vez por documento. No aprueba, rechaza ni determina licitud.',
+  strict: true,
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      tipo_documento: { type: 'string', enum: ['nomina_quincenal', 'nomina_mensual', 'estado_cuenta', 'declaracion_fiscal', 'otro'] },
+      documento_legible: { type: 'boolean' },
+      motivo_fallo: { type: ['string', 'null'] },
+      nombre_en_documentos: { type: ['string', 'null'] },
+      nombre_coincide: { type: 'boolean' },
+      institucion_o_empleador: { type: ['string', 'null'] },
+      fecha_documento: { type: ['string', 'null'] },
+      periodo: { type: ['string', 'null'] },
+      ingreso_bruto: { type: ['number', 'null'] },
+      ingreso_neto: { type: ['number', 'null'] },
+      ingreso_mensual_total: { type: ['number', 'null'] },
+      ingreso_mensual_verificable: { type: ['number', 'null'] },
+      ingreso_mensual_estimado: { type: ['number', 'null'] },
+      depositos_recurrentes: { type: ['number', 'null'] },
+      depositos_recurrentes_mensuales: { type: ['number', 'null'] },
+      depositos_extraordinarios: { type: ['number', 'null'] },
+      metodo_calculo_ingreso: { type: ['string', 'null'] },
+      inconsistencias: { type: 'array', items: { type: 'string' } },
+      riesgos_observados: { type: 'array', items: { type: 'string' } },
+      informacion_faltante: { type: 'array', items: { type: 'string' } },
+      preguntas_revision_humana: { type: 'array', items: { type: 'string' } },
+      resumen_analista: { type: 'string' },
+      confianza: { type: 'string', enum: ['alta', 'media', 'baja'] },
+      alertas: { type: 'array', items: { type: 'string' } },
+    },
+    required: [
+      'tipo_documento', 'documento_legible', 'motivo_fallo', 'nombre_en_documentos',
+      'nombre_coincide', 'institucion_o_empleador', 'fecha_documento', 'periodo',
+      'ingreso_bruto', 'ingreso_neto', 'ingreso_mensual_total',
+      'ingreso_mensual_verificable', 'ingreso_mensual_estimado',
+      'depositos_recurrentes', 'depositos_recurrentes_mensuales',
+      'depositos_extraordinarios', 'metodo_calculo_ingreso', 'inconsistencias',
+      'riesgos_observados', 'informacion_faltante', 'preguntas_revision_humana',
+      'resumen_analista', 'confianza', 'alertas'
+    ],
+  },
+};
+
 async function autorizarReanalisis(req) {
   const authHeader = req.headers.authorization || '';
   const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -255,6 +316,60 @@ async function cargarArchivo(input) {
 
 async function analizarDocumento(documento, nombre) {
   const { mediaType, base64 } = await cargarArchivo(documento.input);
+  const contenidoDocumento = {
+    type: mediaType === 'application/pdf' ? 'document' : 'image',
+    source: { type: 'base64', media_type: mediaType, data: base64 },
+  };
+
+  const analizarIngresosEstructurado = async () => {
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1600,
+        temperature: 0,
+        tools: [herramientaIngresos],
+        tool_choice: { type: 'tool', name: 'registrar_analisis_ingresos' },
+        messages: [{
+          role: 'user',
+          content: [
+            contenidoDocumento,
+            { type: 'text', text: promptIngresosCompacto(nombre) },
+          ],
+        }],
+      }),
+    });
+
+    if (!claudeRes.ok) {
+      const errorTexto = await claudeRes.text();
+      if (/password protected|contraseñ|cifrad|encrypted/i.test(errorTexto)) {
+        throw new Error('PDF protegido con contraseña; solicita una copia sin protección');
+      }
+      throw new Error(`Claude no pudo procesar el comprobante (${claudeRes.status})`);
+    }
+
+    const data = await claudeRes.json();
+    const usoHerramienta = (data.content || []).find(bloque =>
+      bloque?.type === 'tool_use' && bloque?.name === 'registrar_analisis_ingresos'
+    );
+    if (!usoHerramienta?.input) throw new Error('Claude no devolvió la extracción estructurada del comprobante');
+    return usoHerramienta.input;
+  };
+
+  if (documento.tipo === 'ingresos') {
+    const resultado = await analizarIngresosEstructurado();
+    if (resultado.documento_legible === false) {
+      throw new Error(resultado.motivo_fallo || 'Documento de ingresos ilegible');
+    }
+    return resultado;
+  }
+
   const llamarClaude = async ({ esReintento = false, promptAlterno = null } = {}) => {
     const prompt = promptAlterno || `${prompts[documento.tipo](nombre)}
 ${esReintento ? '\nSEGUNDO INTENTO: La respuesta anterior no fue JSON válido. Sé conciso, completa todas las llaves y devuelve únicamente un objeto JSON parseable.' : ''}`;
@@ -273,7 +388,7 @@ ${esReintento ? '\nSEGUNDO INTENTO: La respuesta anterior no fue JSON válido. S
         messages: [{
           role: 'user',
           content: [
-            { type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            contenidoDocumento,
             { type: 'text', text: prompt },
           ],
         }],
@@ -306,15 +421,11 @@ ${esReintento ? '\nSEGUNDO INTENTO: La respuesta anterior no fue JSON válido. S
   let data = await llamarClaude();
   let resultado = interpretarJSON(data);
   if (!resultado) {
-    data = documento.tipo === 'ingresos'
-      ? await llamarClaude({ promptAlterno: promptIngresosCompacto(nombre) })
-      : await llamarClaude({ esReintento: true });
+    data = await llamarClaude({ esReintento: true });
     resultado = interpretarJSON(data);
   }
   if (!resultado) {
-    throw new Error(documento.tipo === 'ingresos'
-      ? 'No se pudo estructurar la información del comprobante'
-      : 'Claude no devolvió JSON válido después de un reintento');
+    throw new Error('Claude no devolvió JSON válido después de un reintento');
   }
 
   const textoFallo = [
@@ -492,19 +603,19 @@ export default async function handler(req, res) {
       .forEach(d => inconsistenciasNombre.push(`Nombre en INE (${docINE.nombre_en_documentos}) no coincide con ${d.etiqueta} (${d.nombre_en_documentos})`));
   }
 
-  const alertas = [...new Set([
+  const alertas = filtrarHallazgos([...new Set([
     ...resultadosDocumentales.flatMap(r => r.alertas || []),
     ...resultadosDocumentales.flatMap(r => r.inconsistencias || []),
     ...resultadosDocumentales.flatMap(r => r.riesgos_observados || []),
     ...inconsistenciasNombre,
     ...faltantesRequeridos.map(d => `Documento requerido faltante: ${d}`),
     ...fallidos.map(r => `No se pudo analizar ${r.documento.etiqueta}: ${r.error}`),
-  ])].filter(Boolean);
+  ])].filter(Boolean));
 
-  const riesgosObservados = [...new Set(resultadosDocumentales.flatMap(r => r.riesgos_observados || []))];
+  const riesgosObservados = filtrarHallazgos([...new Set(resultadosDocumentales.flatMap(r => r.riesgos_observados || []))]);
   const nombresNoCoinciden = resultadosDocumentales.some(r => r.nombre_coincide === false) || inconsistenciasNombre.length > 0;
   const resumenAnalista = resultadosDocumentales.map(r => r.resumen_analista).filter(Boolean).join(' | ');
-  const preguntasRevision = [...new Set(resultadosDocumentales.flatMap(r => r.preguntas_revision_humana || []))];
+  const preguntasRevision = filtrarHallazgos([...new Set(resultadosDocumentales.flatMap(r => r.preguntas_revision_humana || []))]);
   const informacionFaltante = [...new Set(resultadosDocumentales.flatMap(r => r.informacion_faltante || []))];
 
   const analisisIA = {
