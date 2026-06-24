@@ -152,11 +152,78 @@ const LoadingDashboard = () => (
   </div>
 );
 
+const PrioridadesHoy = ({ data, loading, error, onRefresh }) => {
+  const pendientes = data?.pendientes || [];
+  const puedeActualizar = data?.puedeForzar !== false;
+  const colores = {
+    P0: { bg: "#fef2f2", border: "#fecaca", color: "#b91c1c" },
+    P1: { bg: "#fffbeb", border: "#fde68a", color: "#92400e" },
+  };
+
+  return (
+    <section style={{ marginBottom: 34 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
+        <div>
+          <p style={{ margin: "0 0 3px", fontSize: 11, fontWeight: 900, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 1 }}>Prioridades operativas</p>
+          <h3 style={{ margin: 0, fontSize: 20, color: brand.gray }}>🧠 ¿Qué debo atender hoy?</h3>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading || !puedeActualizar}
+          style={{ border: "1px solid #ddd6fe", background: "#fff", color: "#6d28d9", borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 800, cursor: loading ? "wait" : puedeActualizar ? "pointer" : "not-allowed", opacity: loading || !puedeActualizar ? 0.6 : 1 }}
+        >
+          {loading ? "Actualizando..." : puedeActualizar ? "↻ Actualizar prioridades" : "Actualización diaria completada"}
+        </button>
+      </div>
+
+      <div style={{ background: "linear-gradient(135deg, #faf5ff 0%, #fff 60%)", border: "1px solid #e9d5ff", borderRadius: 16, padding: 18, boxShadow: "0 1px 4px rgba(76,29,149,0.05)" }}>
+        {loading && !data ? (
+          <p style={{ margin: 0, color: "#8b5cf6", fontSize: 13 }}>Revisando pendientes prioritarios...</p>
+        ) : (
+          <>
+            <div style={{ background: "#fff", border: "1px solid #f3e8ff", borderRadius: 11, padding: "12px 14px", marginBottom: pendientes.length ? 13 : 0 }}>
+              <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 900, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 0.7 }}>Resumen</p>
+              <p style={{ margin: 0, color: "#4b5563", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-line" }}>
+                {data?.resumen || (error ? "No fue posible actualizar las prioridades. Intenta nuevamente." : "Todo en orden por ahora")}
+              </p>
+            </div>
+
+            {pendientes.map((pendiente) => {
+              const tono = colores[pendiente.nivel] || colores.P1;
+              return (
+                <div key={pendiente.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", borderTop: "1px solid #f3f4f6", padding: "13px 4px", flexWrap: "wrap" }}>
+                  <span style={{ background: tono.bg, border: `1px solid ${tono.border}`, color: tono.color, borderRadius: 7, padding: "4px 7px", fontSize: 10, fontWeight: 900 }}>
+                    {pendiente.nivel}
+                  </span>
+                  <div style={{ flex: "1 1 360px", minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#374151" }}>{pendiente.titulo}</p>
+                    <p style={{ margin: "3px 0 0", fontSize: 11, color: "#6b7280", lineHeight: 1.35 }}>{pendiente.motivo}</p>
+                    <p style={{ margin: "5px 0 0", fontSize: 10, color: "#9ca3af" }}>
+                      {pendiente.modulo} · Responsable: {pendiente.responsable}
+                    </p>
+                  </div>
+                  <a href={pendiente.href} style={{ textDecoration: "none", color: "#6d28d9", border: "1px solid #ddd6fe", borderRadius: 8, padding: "7px 10px", fontSize: 11, fontWeight: 800, whiteSpace: "nowrap" }}>
+                    Abrir caso →
+                  </a>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+    </section>
+  );
+};
+
 export default function Home() {
   const [session, setSession] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
+  const [prioridadesLoading, setPrioridadesLoading] = useState(false);
+  const [prioridades, setPrioridades] = useState(null);
+  const [prioridadesError, setPrioridadesError] = useState("");
   const { cargando: permisosCargando, modulosPermitidos, esAdmin, perfil } = useModulosPermitidos();
 
   useEffect(() => {
@@ -167,6 +234,62 @@ export default function Home() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => subscription.unsubscribe();
   }, []);
+
+  const cargarPrioridades = async (forzar = false) => {
+    if (!session?.access_token || !perfil?.id) return;
+    const cacheKey = `prioridades-hoy:${perfil.id}`;
+    const esPerfilAdmin = perfil.role_id === "admin";
+    const almacenamiento = esPerfilAdmin ? window.sessionStorage : window.localStorage;
+    const ttl = esPerfilAdmin ? 30 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    setPrioridadesError("");
+
+    if (!forzar && typeof window !== "undefined") {
+      try {
+        const cacheado = JSON.parse(almacenamiento.getItem(cacheKey) || "null");
+        if (cacheado?.expira > Date.now() && cacheado?.data) {
+          setPrioridades(cacheado.data);
+          return;
+        }
+      } catch {
+        almacenamiento.removeItem(cacheKey);
+      }
+    }
+
+    setPrioridadesLoading(true);
+    try {
+      const response = await fetch(`/api/prioridades-hoy${forzar ? "?force=1" : ""}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ force: forzar }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No fue posible consultar las prioridades");
+      setPrioridades(data);
+      if (typeof window !== "undefined") {
+        almacenamiento.setItem(cacheKey, JSON.stringify({
+          data,
+          expira: Date.now() + ttl,
+        }));
+      }
+    } catch (error) {
+      setPrioridadesError(error.message);
+      if (!prioridades) {
+        setPrioridades({ pendientes: [], resumen: "No fue posible actualizar las prioridades. Intenta nuevamente." });
+      }
+    } finally {
+      setPrioridadesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!session || permisosCargando || !perfil?.id) return;
+    cargarPrioridades(false);
+    // La sesión y el perfil son las únicas dependencias que deben iniciar la carga.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token, permisosCargando, perfil?.id]);
 
   useEffect(() => {
     if (!session || permisosCargando || !perfil?.id || !esAdmin) {
@@ -434,6 +557,13 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        <PrioridadesHoy
+          data={prioridades}
+          loading={prioridadesLoading}
+          error={prioridadesError}
+          onRefresh={() => cargarPrioridades(true)}
+        />
 
         {esAdmin && <section style={{ marginBottom: 34 }}>
           <div style={{ marginBottom: 14 }}>
