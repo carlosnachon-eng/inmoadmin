@@ -120,6 +120,32 @@ const Ranking = ({ title, icon, rows, empty, pending }) => (
   </div>
 );
 
+const ModuleSummary = ({ href, icon, title, stats, pending }) => (
+  <a href={href} style={{ textDecoration: "none", color: "inherit" }}>
+    <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", height: "100%", boxSizing: "border-box" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <span style={{ fontSize: 22 }}>{icon}</span>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: brand.gray }}>{title}</h3>
+        </div>
+        <span style={{ color: brand.red, fontSize: 12, fontWeight: 800 }}>Ver módulo →</span>
+      </div>
+      {pending ? (
+        <p style={{ padding: "24px 0", textAlign: "center", fontSize: 13, color: "#9ca3af" }}>Pendiente de conectar</p>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${stats.length}, minmax(0, 1fr))`, gap: 8 }}>
+          {stats.map(stat => (
+            <div key={stat.label} style={{ background: stat.bg || "#f9fafb", borderRadius: 10, padding: "11px 9px", minWidth: 0 }}>
+              <p style={{ margin: "0 0 4px", fontSize: 9, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", lineHeight: 1.25 }}>{stat.label}</p>
+              <p style={{ margin: 0, fontSize: stat.compact ? 16 : 20, fontWeight: 900, color: stat.color || "#374151", overflow: "hidden", textOverflow: "ellipsis" }}>{stat.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </a>
+);
+
 const LoadingDashboard = () => (
   <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 32, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
     Cargando indicadores de Emporio...
@@ -179,7 +205,7 @@ export default function Home() {
 
       const consultas = [
         safe("comisiones", supabase.from("comisiones_admin").select("monto, fecha_cobro").eq("status", "cobrada").gte("fecha_cobro", mesInicio.slice(0, 10)).lt("fecha_cobro", mesFin.slice(0, 10))),
-        safe("payments", supabase.from("payments").select("amount, status, due_date").in("status", ["pendiente", "atrasado"]).lte("due_date", ahoraIso.slice(0, 10))),
+        safe("payments", supabase.from("payments").select("amount, status, due_date")),
         safe("maintenance", supabase.from("maintenance_tickets").select("id, status").not("status", "in", '("cerrado","cancelado","resuelto")')),
         safe("renewals", supabase.from("contracts").select("id, end_date").eq("status", "activo").gte("end_date", ahoraIso.slice(0, 10)).lte("end_date", en30Dias.slice(0, 10))),
         safe("upcoming", (() => {
@@ -194,6 +220,13 @@ export default function Home() {
         safe("properties", supabase.from("propiedades").select("id, titulo, direccion")),
         safe("visits", supabase.from("visitas_propiedad").select("id, propiedad_id, created_at").gte("created_at", mesInicio).lt("created_at", mesFin)),
         safe("contacts", supabase.from("solicitudes_contacto_propiedad").select("id, propiedad_id, created_at").gte("created_at", mesInicio).lt("created_at", mesFin)),
+        safe("closings", supabase.from("cierres").select("id, anio, mes, comision, pendiente")),
+        safe("closingPayments", supabase.from("cierre_pagos").select("id, monto, fecha").gte("fecha", mesInicio.slice(0, 10)).lt("fecha", mesFin.slice(0, 10))),
+        safe("policies", supabase.from("poliza_expedientes").select("id, status, fecha_vigencia")),
+        safe("policyRequests", supabase.from("solicitudes_inquilino").select("id, status")),
+        safe("policyCash", supabase.from("poliza_caja").select("id, fecha, monto, tipo").eq("tipo", "ingreso").gte("fecha", mesInicio.slice(0, 10)).lt("fecha", mesFin.slice(0, 10))),
+        safe("signatures", supabase.from("firmas").select("id, status, updated_at, firma_etapas(status)")),
+        safe("signatureAppointments", supabase.from("firmas_citas").select("id, fecha").gte("fecha", ahoraIso.slice(0, 10)).lte("fecha", en7Dias.slice(0, 10))),
       ];
 
       const [
@@ -209,7 +242,48 @@ export default function Home() {
         properties,
         visits,
         contacts,
+        closings,
+        closingPayments,
+        policies,
+        policyRequests,
+        policyCash,
+        signatures,
+        signatureAppointments,
       ] = await Promise.all(consultas);
+
+      // Las cifras de cobranza replican exactamente las reglas de pages/cobranza.js.
+      const hoyLocal = new Date();
+      const paymentsMonth = payments.filter(p => {
+        if (!p.due_date) return false;
+        const d = new Date(p.due_date + "T12:00:00");
+        return d.getMonth() === hoyLocal.getMonth() && d.getFullYear() === hoyLocal.getFullYear();
+      });
+      const pendingMonth = paymentsMonth.filter(p => p.status === "pendiente");
+      const overdueAll = payments.filter(p => p.status === "atrasado");
+
+      const currentYear = hoyLocal.getFullYear();
+      const currentMonth = hoyLocal.getMonth() + 1;
+      const closingsMonth = closings.filter(c => c.anio === currentYear && c.mes === currentMonth);
+      const closingGenerated = closingsMonth.reduce((sum, c) => sum + (Number(c.comision) || 0), 0);
+      const closingCollected = closingPayments.reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
+      const closingPending = closings.reduce((sum, c) => sum + (Number(c.pendiente) || 0), 0);
+
+      const policiesActive = policies.filter(p => p.status === "activo").length;
+      const policiesExpired = policies.filter(p => p.status === "vencido").length;
+      const policiesExpiring = policies.filter(p => {
+        if (!p.fecha_vigencia) return false;
+        const days = Math.ceil((new Date(p.fecha_vigencia + "T12:00:00") - hoyLocal) / 86400000);
+        return days >= 0 && days <= 60;
+      }).length;
+      const policyPendingRequests = policyRequests.filter(r => r.status === "pendiente").length;
+      const policyIncome = policyCash.reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
+
+      const signaturesActive = signatures.filter(f => f.status === "activo");
+      const signaturesStalled = signaturesActive.filter(f => {
+        const currentStage = (f.firma_etapas || []).find(e => e.status === "pendiente" || e.status === "en_proceso");
+        if (!currentStage || !f.updated_at) return false;
+        return (Date.now() - new Date(f.updated_at).getTime()) / 3600000 > 24;
+      }).length;
 
       const sendIds = new Set(monthSends.map(e => e.id));
       const relevantSendProperties = sendProperties.filter(ep => sendIds.has(ep.envio_id));
@@ -276,12 +350,32 @@ export default function Home() {
       if (!activo) return;
       setDashboard({
         comision: comisiones.reduce((sum, c) => sum + (Number(c.monto) || 0), 0),
-        cobranzaMonto: payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
-        cobranzaCantidad: payments.length,
+        pendienteMesMonto: pendingMonth.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+        pendienteMesCantidad: pendingMonth.length,
+        atrasadoMonto: overdueAll.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+        atrasadoCantidad: overdueAll.length,
         mantenimientos: maintenance.length,
         renovaciones: renewals.length,
         citasProximas: upcoming.length,
         citasVencidas: overdue.length,
+        cierres: {
+          generados: closingGenerated,
+          cobrados: closingCollected,
+          pendientes: closingPending,
+          cantidad: closingsMonth.length,
+        },
+        polizas: {
+          activas: policiesActive,
+          porVencer: policiesExpiring,
+          vencidas: policiesExpired,
+          solicitudesPendientes: policyPendingRequests,
+          ingresoMes: policyIncome,
+        },
+        firmas: {
+          activas: signaturesActive.length,
+          detenidas: signaturesStalled,
+          citasProximas: signatureAppointments.length,
+        },
         propiedadesRanking,
         asesoresRanking,
         errores,
@@ -349,9 +443,55 @@ export default function Home() {
 
           {dashboardLoading || !dashboard ? <LoadingDashboard /> : (
             <>
+              <div style={{ marginBottom: 18 }}>
+                <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 900, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>Prioridades del negocio</p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 12 }}>
+                  <ModuleSummary
+                    href="/cierres"
+                    icon="🏠"
+                    title="Cierres"
+                    pending={errores.closings || errores.closingPayments}
+                    stats={[
+                      { label: "Generado mes", value: fmt(dashboard.cierres.generados), compact: true },
+                      { label: "Cobrado mes", value: fmt(dashboard.cierres.cobrados), color: "#065f46", bg: "#f0fdf4", compact: true },
+                      { label: "Por cobrar global", value: fmt(dashboard.cierres.pendientes), color: dashboard.cierres.pendientes ? "#dc2626" : "#065f46", bg: dashboard.cierres.pendientes ? "#fff5f5" : "#f0fdf4", compact: true },
+                    ]}
+                  />
+                  <ModuleSummary
+                    href="/poliza"
+                    icon="⚖️"
+                    title="Pólizas"
+                    pending={errores.policies || errores.policyRequests || errores.policyCash}
+                    stats={[
+                      { label: "Activas", value: dashboard.polizas.activas, color: "#065f46", bg: "#f0fdf4" },
+                      { label: "Por vencer 60 días", value: dashboard.polizas.porVencer, color: dashboard.polizas.porVencer ? "#92400e" : "#065f46", bg: dashboard.polizas.porVencer ? "#fffbeb" : "#f0fdf4" },
+                      { label: "Ingreso del mes", value: fmt(dashboard.polizas.ingresoMes), color: "#7c3aed", bg: "#faf5ff", compact: true },
+                    ]}
+                  />
+                  <ModuleSummary
+                    href="/firmas"
+                    icon="📝"
+                    title="Firmas"
+                    pending={errores.signatures || errores.signatureAppointments}
+                    stats={[
+                      { label: "En proceso", value: dashboard.firmas.activas, color: "#1e40af", bg: "#eff6ff" },
+                      { label: "Sin movimiento +24 h", value: dashboard.firmas.detenidas, color: dashboard.firmas.detenidas ? "#dc2626" : "#065f46", bg: dashboard.firmas.detenidas ? "#fff5f5" : "#f0fdf4" },
+                      { label: "Citas próximos 7 días", value: dashboard.firmas.citasProximas, color: "#7c3aed", bg: "#faf5ff" },
+                    ]}
+                  />
+                </div>
+                {(dashboard.polizas.vencidas > 0 || dashboard.polizas.solicitudesPendientes > 0) && (
+                  <p style={{ margin: "9px 0 0", fontSize: 11, color: "#92400e" }}>
+                    Atención jurídica: {dashboard.polizas.vencidas} póliza{dashboard.polizas.vencidas === 1 ? "" : "s"} vencida{dashboard.polizas.vencidas === 1 ? "" : "s"} · {dashboard.polizas.solicitudesPendientes} solicitud{dashboard.polizas.solicitudesPendientes === 1 ? "" : "es"} pendiente{dashboard.polizas.solicitudesPendientes === 1 ? "" : "s"}.
+                  </p>
+                )}
+              </div>
+
+              <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 900, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>Operación y cobranza</p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(215px, 1fr))", gap: 12, marginBottom: 12 }}>
                 <MetricCard icon="💼" label="Comisión cobrada del mes" value={fmt(dashboard.comision)} detail="Comisiones administrativas cobradas este mes." tone="green" pending={errores.comisiones} />
-                <MetricCard icon="💰" label="Cobranza vencida o pendiente" value={fmt(dashboard.cobranzaMonto)} detail={`${dashboard.cobranzaCantidad} renta${dashboard.cobranzaCantidad === 1 ? "" : "s"} pendiente${dashboard.cobranzaCantidad === 1 ? "" : "s"} o atrasada${dashboard.cobranzaCantidad === 1 ? "" : "s"}.`} tone={dashboard.cobranzaCantidad ? "red" : "green"} pending={errores.payments} />
+                <MetricCard icon="⏳" label="Pendiente este mes" value={fmt(dashboard.pendienteMesMonto)} detail={`${dashboard.pendienteMesCantidad} renta${dashboard.pendienteMesCantidad === 1 ? "" : "s"} con estado pendiente en el mes actual.`} tone={dashboard.pendienteMesCantidad ? "amber" : "green"} pending={errores.payments} />
+                <MetricCard icon="💰" label="Total atrasado" value={fmt(dashboard.atrasadoMonto)} detail={`${dashboard.atrasadoCantidad} renta${dashboard.atrasadoCantidad === 1 ? "" : "s"} marcada${dashboard.atrasadoCantidad === 1 ? "" : "s"} como atrasada${dashboard.atrasadoCantidad === 1 ? "" : "s"}, igual que en Cobranza.`} tone={dashboard.atrasadoCantidad ? "red" : "green"} pending={errores.payments} />
                 <MetricCard icon="🔧" label="Mantenimientos abiertos" value={dashboard.mantenimientos} detail="Tickets sin cerrar, cancelar o resolver." tone={dashboard.mantenimientos ? "amber" : "green"} pending={errores.maintenance} />
                 <MetricCard icon="📋" label="Renovaciones en 30 días" value={dashboard.renovaciones} detail="Contratos activos próximos a vencer." tone={dashboard.renovaciones ? "purple" : "green"} pending={errores.renewals} />
                 <MetricCard icon="📅" label="Citas próximas" value={dashboard.citasProximas} detail="Agendadas en los próximos 7 días." tone="blue" pending={errores.upcoming} />
