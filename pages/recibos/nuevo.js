@@ -218,9 +218,11 @@ export default function NuevoRecibo() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [inmuebleActivo, setInmuebleActivo] = useState(null);
+  const [propiedades, setPropiedades] = useState([]);
+  const [asesores, setAsesores] = useState([]);
   const [form, setForm] = useState({
     cliente_nombre: "", cliente_tel: "", cliente_email: "",
-    inmueble: "", monto: "", monto_previo: "",
+    propiedad_id: "", asesor_id: "", inmueble: "", monto: "", monto_previo: "",
     fecha: new Date().toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" }),
     vigencia_dias: 7, fecha_limite_firma: "",
     forma_pago: "Transferencia",
@@ -242,8 +244,29 @@ export default function NuevoRecibo() {
   }, []);
 
   const loadProfile = async (uid) => {
-    const { data } = await supabase.from("profiles").select("*").eq("id", uid).single();
-    setProfile(data); setAuthLoading(false);
+    const [{ data }, { data: propiedadesData }, { data: perfiles }] = await Promise.all([
+      supabase.from("profiles").select("*").eq("id", uid).single(),
+      supabase.from("propiedades").select("id, titulo, direccion, colonia, ciudad, operacion, precio, status").eq("status", "published").order("titulo"),
+      supabase.from("profiles").select("id, full_name, email, role_id").eq("active", true),
+    ]);
+    setProfile(data);
+    setPropiedades(propiedadesData || []);
+    setAsesores((perfiles || []).filter(p => ["asesor", "gerente_ventas", "admin"].includes(p.role_id)));
+    setForm(f => ({ ...f, asesor_id: f.asesor_id || data?.id || "" }));
+    setAuthLoading(false);
+  };
+
+  const seleccionarPropiedad = (propiedadId) => {
+    const propiedad = propiedades.find(p => p.id === propiedadId);
+    if (!propiedad) {
+      setForm(f => ({ ...f, propiedad_id: "", inmueble: "" }));
+      setInmuebleActivo(null);
+      return;
+    }
+    const inmueble = [propiedad.titulo, propiedad.direccion, propiedad.colonia, propiedad.ciudad].filter(Boolean).join(", ");
+    setForm(f => ({ ...f, propiedad_id: propiedad.id, inmueble }));
+    setTipo(propiedad.operacion === "sale" ? "compraventa" : "arrendamiento");
+    verificarDuplicado(inmueble);
   };
 
   // Verificar duplicado
@@ -254,7 +277,7 @@ export default function NuevoRecibo() {
   };
 
   const handleSubmit = async () => {
-    if (!form.cliente_nombre || !form.inmueble || !form.monto) { showToast("Completa los campos obligatorios", false); return; }
+    if (!form.cliente_nombre || !form.propiedad_id || !form.inmueble || !form.monto) { showToast("Completa cliente, propiedad y monto", false); return; }
     setLoading(true);
     try {
       // Folio
@@ -286,8 +309,19 @@ export default function NuevoRecibo() {
       }
 
       // Insertar en BD
+      const fechaBase = new Date();
+      const vigenciaHasta = form.fecha_limite_firma || (() => {
+        const d = new Date(fechaBase);
+        d.setDate(d.getDate() + (parseInt(form.vigencia_dias) || 7));
+        return d.toISOString().split("T")[0];
+      })();
       const { data: recibo, error: insertErr } = await supabase.from("recibos_apartado").insert({
         folio, tipo,
+        propiedad_id: form.propiedad_id,
+        asesor_id: form.asesor_id || null,
+        apartado_vigencia_hasta: vigenciaHasta,
+        flujo_estado: "pendiente",
+        flujo_actualizado_en: new Date().toISOString(),
         cliente_nombre: form.cliente_nombre,
         cliente_tel: form.cliente_tel || null,
         cliente_email: form.cliente_email || null,
@@ -324,23 +358,24 @@ export default function NuevoRecibo() {
         }),
       });
 
-      // Trigger módulo de firmas (compraventa y arrendamiento)
-      fetch("/api/recibos/trigger-firmas", {
+      // Completar flujo operativo: reservar propiedad y abrir Firmas.
+      const flujoRes = await fetch("/api/recibos/trigger-firmas", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
           body: JSON.stringify({
             recibo_id: recibo.id,
-            folio, tipo,
-            cliente_nombre: form.cliente_nombre,
-            inmueble: form.inmueble,
-            monto: parseFloat(form.monto),
-            forma_pago: form.forma_pago,
-            es_contado: form.es_contado,
-            es_urgente: form.es_urgente,
-            creado_por: session.user.id,
-            creado_por_nombre: profile?.email,
           }),
-        }).catch(e => console.error("Trigger firmas:", e));
+        });
+      const flujoData = await flujoRes.json();
+      if (!flujoRes.ok || !flujoData.ok) {
+        showToast(`Recibo ${folio} creado, pero el flujo requiere revisión: ${flujoData.error || "error operativo"}`, false);
+        doc.save(`${folio}.pdf`);
+        setTimeout(() => router.push("/recibos"), 2500);
+        return;
+      }
 
       // Descargar PDF
       doc.save(`${folio}.pdf`);
@@ -414,11 +449,25 @@ export default function NuevoRecibo() {
 
           {/* Inmueble */}
           <p style={sectionLabel}>Inmueble</p>
+          <div style={{ marginBottom: 12 }}>
+            <label style={labelSt}>Propiedad del catálogo *</label>
+            <select style={selSt} value={form.propiedad_id} onChange={e => seleccionarPropiedad(e.target.value)}>
+              <option value="">Selecciona una propiedad publicada</option>
+              {propiedades.map(p => <option key={p.id} value={p.id}>{p.titulo} · {[p.colonia, p.ciudad].filter(Boolean).join(", ")}</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={labelSt}>Asesor responsable</label>
+            <select style={selSt} value={form.asesor_id} onChange={e => set("asesor_id", e.target.value)}>
+              <option value="">Sin asignar</option>
+              {asesores.map(a => <option key={a.id} value={a.id}>{a.full_name || a.email}</option>)}
+            </select>
+          </div>
           <div style={{ marginBottom: 4 }}>
             <label style={labelSt}>Dirección completa *</label>
             <textarea style={{ ...inputSt, resize: "vertical" }} rows={2} value={form.inmueble}
-              onChange={e => { set("inmueble", e.target.value); verificarDuplicado(e.target.value); }}
-              placeholder="Calle, número, colonia, ciudad, CP" />
+              readOnly
+              placeholder="Se completa al elegir la propiedad" />
           </div>
           {inmuebleActivo && (
             <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13, color: "#92400e" }}>
@@ -537,4 +586,3 @@ export default function NuevoRecibo() {
     </div>
   );
 }
-

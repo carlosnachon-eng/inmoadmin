@@ -82,7 +82,8 @@ export default function Recibos() {
   useEffect(() => { if (session) loadRecibos(); }, [session]);
 
   // Carlos es el único que puede reactivar vencidos
-  const esCarlos = profile?.role === "admin" || profile?.email === "carlos.nachon@emporioinmobiliario.mx";
+  const esCarlos = profile?.role_id === "admin" || profile?.email === "carlos.nachon@emporioinmobiliario.mx";
+  const puedeIniciarFlujo = ["admin", "gerente_ventas"].includes(profile?.role_id);
 
   const filtered = recibos.filter(r => {
     const matchSearch = !search ||
@@ -96,6 +97,10 @@ export default function Recibos() {
 
   // ── Cancelar ──────────────────────────────────────────────
   const cambiarEstatus = async (recibo, nuevoEstatus) => {
+    if (nuevoEstatus === "concretado" && !esCarlos) {
+      showToast("Solo Admin puede confirmar que la operación se concretó", false);
+      return;
+    }
     if (nuevoEstatus === "cancelado") {
       setModalCancelar(recibo);
       return;
@@ -139,6 +144,27 @@ export default function Recibos() {
     if (error) { showToast("Error al cancelar", false); return; }
     showToast("Recibo cancelado");
     loadRecibos();
+  };
+
+  const reintentarFlujo = async (recibo) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/recibos/trigger-firmas", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ recibo_id: recibo.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo completar el flujo");
+      showToast("Propiedad reservada y expediente de Firmas confirmado");
+      loadRecibos();
+    } catch (error) {
+      showToast(error.message, false);
+    }
+    setSaving(false);
   };
 
   // ── Solicitud recibida ────────────────────────────────────
@@ -281,12 +307,15 @@ export default function Recibos() {
                       {r.comprobante_url && (
                         <a href={r.comprobante_url} target="_blank" rel="noreferrer" style={{ background: "#dbeafe", color: "#1e40af", fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 8, textDecoration: "none" }}>🧾 Comprobante</a>
                       )}
+                      {r.flujo_estado === "requiere_revision" && puedeIniciarFlujo && (
+                        <button onClick={() => reintentarFlujo(r)} disabled={saving} style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fdba74", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↻ Reintentar flujo</button>
+                      )}
                       {/* Botones de acción según estatus */}
                       {r.estatus === "activo" && (<>
                         {r.tipo === "arrendamiento" && (
                           <button onClick={() => { setModalSolicitud(r); setFechaLimiteFirma(""); }} style={{ background: "#dbeafe", color: "#1e40af", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Solicitud recibida</button>
                         )}
-                        <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>
+                        {esCarlos && <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>}
                         <button onClick={() => cambiarEstatus(r, "cancelado")} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✕ Cancelar</button>
                       </>)}
                       {r.estatus === "vencido" && esCarlos && (
@@ -324,6 +353,7 @@ export default function Recibos() {
                       <td style={{ padding: "11px 14px", fontSize: 12, color: "#6b7280" }}>{r.recibido_por || "—"}</td>
                       <td style={{ padding: "11px 14px" }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: est.color, background: est.bg, padding: "3px 8px", borderRadius: 99 }}>{est.label}</span>
+                        {r.flujo_estado === "requiere_revision" && <div title={r.flujo_error || ""} style={{ fontSize: 10, color: "#b45309", marginTop: 3 }}>⚠ Flujo por revisar</div>}
                         {r.estatus === "solicitud_recibida" && r.fecha_limite_firma && (
                           <div style={{ fontSize: 10, color: "#1e40af", marginTop: 3 }}>📅 Firma: {r.fecha_limite_firma}</div>
                         )}
@@ -347,12 +377,15 @@ export default function Recibos() {
                             {r.tipo === "arrendamiento" && (
                               <button onClick={() => { setModalSolicitud(r); setFechaLimiteFirma(""); }} style={{ background: "#dbeafe", color: "#1e40af", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>✓ Solicitud recibida</button>
                             )}
-                            <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>
+                            {esCarlos && <button onClick={() => cambiarEstatus(r, "concretado")} style={{ background: "#d1fae5", color: "#065f46", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✓ Concretado</button>}
                             <button onClick={() => cambiarEstatus(r, "cancelado")} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✕ Cancelar</button>
                           </>)}
                           {/* Vencido → Reactivar (solo Carlos) */}
                           {r.estatus === "vencido" && esCarlos && (
                             <button onClick={() => handleReactivar(r)} disabled={saving} style={{ background: "#fef3c7", color: "#92400e", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer" }}>↺ Reactivar</button>
+                          )}
+                          {r.flujo_estado === "requiere_revision" && puedeIniciarFlujo && (
+                            <button onClick={() => reintentarFlujo(r)} disabled={saving} style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fdba74", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>↻ Flujo</button>
                           )}
                         </div>
                       </td>

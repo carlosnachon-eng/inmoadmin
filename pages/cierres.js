@@ -22,6 +22,7 @@ const esRenovacion = (propiedad) => (propiedad || "").toLowerCase().startsWith("
 export default function Cierres() {
   const { cargando: permisoCargando, puedeVer } = usePermiso("cierres");
   const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cierres, setCierres] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -37,6 +38,7 @@ export default function Cierres() {
   const [filtroPendiente, setFiltroPendiente] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [cierre_pagos, setCierrePagos] = useState([]);
+  const [apartadosPendientes, setApartadosPendientes] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [showModalPago, setShowModalPago] = useState(false);
   const [cierreActivoPago, setCierreActivoPago] = useState(null);
@@ -59,6 +61,8 @@ export default function Cierres() {
     notas: "", anio: new Date().getFullYear(),
     mes: new Date().getMonth() + 1,
     mes_nombre: MESES[new Date().getMonth() + 1],
+    propiedad_id: null, recibo_id: null, firma_id: null,
+    prospecto_nombre: "", origen: "manual",
   };
   const [form, setForm] = useState(emptyForm);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -70,6 +74,10 @@ export default function Cierres() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      if (session) {
+        supabase.from("profiles").select("id, full_name, email, role_id").eq("id", session.user.id).maybeSingle()
+          .then(({ data }) => setProfile(data));
+      }
     });
   }, []);
 
@@ -80,12 +88,18 @@ export default function Cierres() {
 
   const loadCierres = async () => {
     setLoading(true);
-    const [{ data: cierresData }, { data: pagosData }] = await Promise.all([
+    const [{ data: cierresData }, { data: pagosData }, { data: recibosData }] = await Promise.all([
       supabase.from("cierres").select("*").order("fecha_cierre", { ascending: false }),
       supabase.from("cierre_pagos").select("*").order("fecha", { ascending: true }),
+      supabase.from("recibos_apartado")
+        .select("id, folio, tipo, cliente_nombre, inmueble, monto, created_at, propiedad_id, asesor_id, firma_id, flujo_estado, propiedades:propiedad_id(id, titulo, operacion, precio), profiles:asesor_id(full_name, email)")
+        .eq("flujo_estado", "completo")
+        .order("created_at", { ascending: false }),
     ]);
     setCierres(cierresData || []);
     setCierrePagos(pagosData || []);
+    const recibosConCierre = new Set((cierresData || []).map(c => c.recibo_id).filter(Boolean));
+    setApartadosPendientes((recibosData || []).filter(r => !recibosConCierre.has(r.id)));
     setLoading(false);
   };
 
@@ -104,6 +118,7 @@ export default function Cierres() {
   };
 
   const saveCierre = async () => {
+    if (profile?.role_id !== "admin") { showToast("Solo Admin puede confirmar cierres financieros", false); return; }
     setSaving(true);
     const comision = parseFloat(form.comision) || 0;
     const cobrado = parseFloat(form.cobrado) || 0;
@@ -127,6 +142,13 @@ export default function Cierres() {
       gerente_pagado: gerPagado >= montoGer && montoGer > 0,
       notas: form.notas, anio: parseInt(form.anio),
       mes: parseInt(form.mes), mes_nombre: MESES[parseInt(form.mes)],
+      propiedad_id: form.propiedad_id || null,
+      recibo_id: form.recibo_id || null,
+      firma_id: form.firma_id || null,
+      prospecto_nombre: form.prospecto_nombre || null,
+      origen: form.origen || "manual",
+      confirmado_por: session?.user?.id || null,
+      confirmado_en: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
@@ -138,11 +160,28 @@ export default function Cierres() {
     }
     setSaving(false);
     if (error) { showToast("Error: " + error.message, false); return; }
-    showToast(editando ? "Cierre actualizado" : "Cierre registrado");
+    if (!editando && form.propiedad_id) {
+      await supabase.from("propiedades").update({
+        status: form.operacion === "VENTA" ? "sold" : "leased",
+        status_motivo: `Operación confirmada en Cierres${form.recibo_id ? ` · recibo vinculado` : ""}`,
+        status_actualizado_en: new Date().toISOString(),
+        status_actualizado_por: session?.user?.id || null,
+      }).eq("id", form.propiedad_id);
+    }
+    if (!editando && form.recibo_id) {
+      await supabase.from("recibos_apartado").update({ estatus: "concretado" }).eq("id", form.recibo_id);
+      await supabase.from("recibos_log").insert({
+        recibo_id: form.recibo_id,
+        accion: "cierre_financiero_confirmado",
+        usuario_id: session?.user?.id || null,
+      });
+    }
+    showToast(editando ? "Cierre actualizado" : "Cierre financiero confirmado");
     setShowModal(false); setEditando(null); setForm(emptyForm); loadCierres();
   };
 
   const deleteCierre = async (id, nombre) => {
+    if (profile?.role_id !== "admin") { showToast("Solo Admin puede eliminar cierres", false); return; }
     if (!confirm(`Eliminar cierre de "${nombre}"?`)) return;
     await supabase.from("cierres").delete().eq("id", id);
     showToast("Eliminado"); loadCierres();
@@ -173,6 +212,38 @@ export default function Cierres() {
       gerente_pagado_monto: c.gerente_pagado_monto || "0",
       notas: c.notas || "", anio: c.anio || new Date().getFullYear(),
       mes: c.mes || new Date().getMonth() + 1, mes_nombre: c.mes_nombre || "",
+      propiedad_id: c.propiedad_id || null, recibo_id: c.recibo_id || null,
+      firma_id: c.firma_id || null, prospecto_nombre: c.prospecto_nombre || "",
+      origen: c.origen || "manual",
+    });
+    setShowModal(true);
+  };
+
+  const abrirDesdeApartado = (recibo) => {
+    if (profile?.role_id !== "admin") return;
+    const fecha = String(recibo.created_at || new Date().toISOString()).slice(0, 10);
+    const d = new Date(`${fecha}T12:00:00`);
+    const vendedor = recibo.profiles?.full_name?.split(" ")[0] || "Otro";
+    const vendedorValido = VENDEDORES.find(v => v.toLowerCase() === vendedor.toLowerCase()) || "Otro";
+    const propiedad = recibo.propiedades?.titulo || recibo.inmueble || "";
+    setEditando(null);
+    setForm({
+      ...emptyForm,
+      propiedad,
+      fecha_cierre: fecha,
+      operacion: recibo.tipo === "compraventa" ? "VENTA" : "RENTA",
+      precio: recibo.propiedades?.precio || "",
+      vendedor: vendedorValido,
+      cobrado: "0",
+      notas: `Prospecto: ${recibo.cliente_nombre}. Apartado registrado: ${fmt(recibo.monto)}. Folio: ${recibo.folio}.`,
+      anio: d.getFullYear(),
+      mes: d.getMonth() + 1,
+      mes_nombre: MESES[d.getMonth() + 1],
+      propiedad_id: recibo.propiedad_id,
+      recibo_id: recibo.id,
+      firma_id: recibo.firma_id || null,
+      prospecto_nombre: recibo.cliente_nombre,
+      origen: "recibo_apartado",
     });
     setShowModal(true);
   };
@@ -268,6 +339,7 @@ export default function Cierres() {
   };
 
   const savePago = async () => {
+    if (profile?.role_id !== "admin") { showToast("Solo Admin puede registrar pagos de cierres", false); return; }
     if (!cierreActivoPago || !formPago.monto) return;
     setSavingPago(true);
     const { error } = await supabase.from("cierre_pagos").insert([{
@@ -296,6 +368,7 @@ export default function Cierres() {
   };
 
   const deletePago = async (pagoId, cierreId, monto) => {
+    if (profile?.role_id !== "admin") { showToast("Solo Admin puede modificar pagos", false); return; }
     if (!confirm("¿Eliminar este pago?")) return;
     await supabase.from("cierre_pagos").delete().eq("id", pagoId);
     const pagosRestantes = cierre_pagos.filter(p => p.cierre_id === cierreId && p.id !== pagoId);
@@ -311,6 +384,7 @@ export default function Cierres() {
   };
 
   const saveFechaCobro = async (cierreId, campo, fecha) => {
+    if (profile?.role_id !== "admin") { showToast("Solo Admin puede modificar cierres", false); return; }
     await supabase.from("cierres").update({ [campo]: fecha || null }).eq("id", cierreId);
     loadCierres();
   };
@@ -386,6 +460,7 @@ export default function Cierres() {
   const gerentePagadoForm = parseFloat(form.gerente_pagado_monto) || 0;
   const emporioPuroForm = comInmobForm - montoGerenteForm;
   const esRenov = esRenovacion(form.propiedad);
+  const esAdmin = profile?.role_id === "admin";
 
   const inp = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" };
   const inpGreen = { ...inp, border: "1.5px solid #86efac" };
@@ -407,11 +482,27 @@ export default function Cierres() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           {!isMobile && <a href="/" style={{ color: "#9ca3af", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>← Panel</a>}
-          <button onClick={() => { setEditando(null); setForm(emptyForm); setShowModal(true); }} style={{ background: "#C8102E", color: "#fff", border: "none", borderRadius: 10, padding: isMobile ? "8px 14px" : "10px 20px", fontWeight: 700, fontSize: isMobile ? 13 : 14, cursor: "pointer" }}>+ Nuevo</button>
+          {esAdmin && <button onClick={() => { setEditando(null); setForm(emptyForm); setShowModal(true); }} style={{ background: "#C8102E", color: "#fff", border: "none", borderRadius: 10, padding: isMobile ? "8px 14px" : "10px 20px", fontWeight: 700, fontSize: isMobile ? 13 : 14, cursor: "pointer" }}>+ Nuevo</button>}
         </div>
       </div>
 
       <div style={{ maxWidth: 1500, margin: "0 auto", padding: isMobile ? "12px" : "20px" }}>
+
+        {esAdmin && apartadosPendientes.length > 0 && (
+          <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 14, padding: 16, marginBottom: 12 }}>
+            <p style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 900, color: "#9a3412" }}>🧾 Operaciones pendientes de cierre financiero</p>
+            <p style={{ margin: "0 0 12px", fontSize: 12, color: "#7c2d12" }}>Ya tienen recibo, propiedad reservada y expediente en Firmas. Aún no cuentan en KPIs ni comisiones.</p>
+            {apartadosPendientes.map(recibo => (
+              <div key={recibo.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderTop: "1px solid #fed7aa", flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 360px" }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#374151" }}>{recibo.propiedades?.titulo || recibo.inmueble}</p>
+                  <p style={{ margin: "3px 0 0", fontSize: 11, color: "#6b7280" }}>{recibo.cliente_nombre} · {recibo.folio} · apartado {fmt(recibo.monto)}</p>
+                </div>
+                <button onClick={() => abrirDesdeApartado(recibo)} style={{ background: "#C8102E", color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>Completar cierre →</button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Filtros */}
         <div style={{ background: "#fff", borderRadius: 14, padding: isMobile ? "12px" : "14px 18px", marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -519,10 +610,10 @@ export default function Cierres() {
                           <span style={{ fontSize: 11, color: "#9ca3af" }}>{c.fecha_cierre || ""}</span>
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: 6 }}>
+                      {esAdmin && <div style={{ display: "flex", gap: 6 }}>
                         <button onClick={() => openEdit(c)} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Editar</button>
                         <button onClick={() => deleteCierre(c.id, c.propiedad)} style={{ background: "#fee2e2", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#991b1b" }}>X</button>
-                      </div>
+                      </div>}
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 8 }}>
@@ -582,7 +673,7 @@ export default function Cierres() {
                                   </div>
                                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                     <span style={{ fontSize: 12, fontWeight: 800, color: "#065f46" }}>{fmt(p.monto)}</span>
-                                    <button onClick={() => deletePago(p.id, c.id, p.monto)} style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 12, padding: 0 }}>✕</button>
+                                    {esAdmin && <button onClick={() => deletePago(p.id, c.id, p.monto)} style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 12, padding: 0 }}>✕</button>}
                                   </div>
                                 </div>
                               ))}
@@ -591,18 +682,18 @@ export default function Cierres() {
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
                             <div>
                               <p style={{ margin: "0 0 2px", fontSize: 10, color: "#7c3aed", fontWeight: 700 }}>Cobro asesor</p>
-                              <input type="date" value={c.fecha_cobro_asesor || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_asesor", e.target.value)}
+                              <input type="date" disabled={!esAdmin} value={c.fecha_cobro_asesor || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_asesor", e.target.value)}
                                 style={{ width: "100%", padding: "4px 6px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 11, boxSizing: "border-box" }} />
                             </div>
                             <div>
                               <p style={{ margin: "0 0 2px", fontSize: 10, color: "#0369a1", fontWeight: 700 }}>Cobro gerente</p>
-                              <input type="date" value={c.fecha_cobro_gerente || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_gerente", e.target.value)}
+                              <input type="date" disabled={!esAdmin} value={c.fecha_cobro_gerente || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_gerente", e.target.value)}
                                 style={{ width: "100%", padding: "4px 6px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 11, boxSizing: "border-box" }} />
                             </div>
                           </div>
-                          <button onClick={() => openPago(c)} style={{ width: "100%", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#065f46" }}>
+                          {esAdmin && <button onClick={() => openPago(c)} style={{ width: "100%", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#065f46" }}>
                             + Registrar pago
-                          </button>
+                          </button>}
                         </div>
                       );
                     })()}
@@ -668,9 +759,9 @@ export default function Cierres() {
                             <td style={{ padding: "9px 10px", fontSize: 12, fontWeight: 800, color: "#065f46" }}>{fmt(empNeto)}</td>
                             <td style={{ padding: "9px 10px" }}>
                               <div style={{ display: "flex", gap: 4 }}>
-                                <button onClick={() => openPago(c)} style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#065f46" }}>+ Pago</button>
+                                {esAdmin && <button onClick={() => openPago(c)} style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#065f46" }}>+ Pago</button>}
                                 <button onClick={() => setExpandedId(expandedId === c.id ? null : c.id)} style={{ background: "#f3f4f6", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>···</button>
-                                <button onClick={() => deleteCierre(c.id, c.propiedad)} style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#991b1b" }}>X</button>
+                                {esAdmin && <button onClick={() => deleteCierre(c.id, c.propiedad)} style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#991b1b" }}>X</button>}
                               </div>
                             </td>
                           </tr>
@@ -693,23 +784,23 @@ export default function Cierres() {
                                         </div>
                                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                           <span style={{ fontSize: 13, fontWeight: 800, color: "#065f46" }}>{fmt(p.monto)}</span>
-                                          <button onClick={() => deletePago(p.id, c.id, p.monto)} style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 13 }}>✕</button>
+                                          {esAdmin && <button onClick={() => deletePago(p.id, c.id, p.monto)} style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 13 }}>✕</button>}
                                         </div>
                                       </div>
                                     ))}
-                                    <button onClick={() => openPago(c)} style={{ marginTop: 4, background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#065f46" }}>+ Registrar pago</button>
+                                    {esAdmin && <button onClick={() => openPago(c)} style={{ marginTop: 4, background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#065f46" }}>+ Registrar pago</button>}
                                   </div>
                                   <div style={{ minWidth: 240 }}>
                                     <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>Fechas cobro comisiones</p>
                                     <div style={{ marginBottom: 8 }}>
                                       <p style={{ margin: "0 0 3px", fontSize: 11, color: "#7c3aed", fontWeight: 700 }}>Asesor — {c.vendedor}</p>
-                                      <input type="date" value={c.fecha_cobro_asesor || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_asesor", e.target.value)} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12 }} />
+                                      <input type="date" disabled={!esAdmin} value={c.fecha_cobro_asesor || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_asesor", e.target.value)} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12 }} />
                                     </div>
                                     <div style={{ marginBottom: 8 }}>
                                       <p style={{ margin: "0 0 3px", fontSize: 11, color: "#0369a1", fontWeight: 700 }}>Gerente — Guillermo</p>
-                                      <input type="date" value={c.fecha_cobro_gerente || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_gerente", e.target.value)} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12 }} />
+                                      <input type="date" disabled={!esAdmin} value={c.fecha_cobro_gerente || ""} onChange={e => saveFechaCobro(c.id, "fecha_cobro_gerente", e.target.value)} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12 }} />
                                     </div>
-                                    <button onClick={() => { openEdit(c); setExpandedId(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✏️ Editar cierre</button>
+                                    {esAdmin && <button onClick={() => { openEdit(c); setExpandedId(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✏️ Editar cierre</button>}
                                   </div>
                                 </div>
                               </td>
