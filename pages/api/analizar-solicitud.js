@@ -18,6 +18,38 @@ const nombresCoinciden = (a, b) => {
   return palabrasA.length > 0 && palabrasA.filter(p => textoB.includes(p)).length >= Math.min(2, palabrasA.length);
 };
 
+const normalizarMonto = (valor) => {
+  if (typeof valor === 'number') return Number.isFinite(valor) ? valor : null;
+  if (typeof valor !== 'string') return null;
+
+  let limpio = valor.trim().replace(/[^\d,.-]/g, '');
+  if (!limpio) return null;
+
+  const ultimaComa = limpio.lastIndexOf(',');
+  const ultimoPunto = limpio.lastIndexOf('.');
+  if (ultimaComa > -1 && ultimoPunto > -1) {
+    if (ultimaComa > ultimoPunto) {
+      limpio = limpio.replace(/\./g, '').replace(',', '.');
+    } else {
+      limpio = limpio.replace(/,/g, '');
+    }
+  } else if (ultimaComa > -1) {
+    const decimales = limpio.length - ultimaComa - 1;
+    limpio = decimales > 0 && decimales <= 2 ? limpio.replace(',', '.') : limpio.replace(/,/g, '');
+  }
+
+  const numero = Number(limpio);
+  return Number.isFinite(numero) && numero > 0 ? numero : null;
+};
+
+const primerMonto = (...valores) => {
+  for (const valor of valores) {
+    const monto = normalizarMonto(valor);
+    if (monto) return monto;
+  }
+  return null;
+};
+
 const promptBase = (nombre) => `Actúa exclusivamente como analista documental. Extrae y describe información visible; no apruebes, no rechaces y no emitas dictamen final.
 Solicitante declarado: "${nombre}".
 Fecha actual: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}.
@@ -61,6 +93,7 @@ Este documento debe ser un comprobante de ingresos, nómina, estado de cuenta o 
   "empleador_o_actividad": "empleador o actividad o null",
   "origen_ingresos": "descripción objetiva de depósitos",
   "depositos_recurrentes": número o null,
+  "depositos_recurrentes_mensuales": número o null,
   "depositos_extraordinarios": número o null,
   "posibles_transferencias_propias": número o null,
   "inconsistencias": ["diferencias observadas"],
@@ -310,8 +343,24 @@ export default async function handler(req, res) {
   const cartaLaboral = exitosos.find(r => r.documento.tipo === 'carta_laboral')?.data;
   const constanciaFiscal = exitosos.find(r => r.documento.tipo === 'constancia_fiscal')?.data;
 
-  const ingresosVerificables = docsIngresos.map(r => r.ingreso_mensual_verificable || r.ingreso_neto || r.ingreso_mensual_total).filter(v => v && v > 0);
-  const ingresosTotales = docsIngresos.map(r => r.ingreso_mensual_total || r.ingreso_bruto || r.ingreso_neto).filter(v => v && v > 0);
+  const ingresosVerificables = docsIngresos
+    .map(r => primerMonto(
+      r.ingreso_mensual_verificable,
+      r.ingreso_neto,
+      r.ingreso_mensual_total,
+      r.depositos_recurrentes_mensuales,
+      r.depositos_recurrentes
+    ))
+    .filter(Boolean);
+  const ingresosTotales = docsIngresos
+    .map(r => primerMonto(
+      r.ingreso_mensual_total,
+      r.ingreso_bruto,
+      r.ingreso_neto,
+      r.depositos_recurrentes_mensuales,
+      r.depositos_recurrentes
+    ))
+    .filter(Boolean);
   const promedioIngreso = ingresosVerificables.length ? ingresosVerificables.reduce((a, b) => a + b, 0) / ingresosVerificables.length : null;
   const promedioTotal = ingresosTotales.length ? ingresosTotales.reduce((a, b) => a + b, 0) / ingresosTotales.length : null;
 
@@ -356,10 +405,11 @@ export default async function handler(req, res) {
         periodo: d.periodo || null,
         fecha_documento: d.fecha_documento || null,
         institucion_o_empleador: d.institucion_o_empleador || d.empleador_o_actividad || null,
-        ingreso_bruto: d.ingreso_bruto || null,
-        ingreso_neto: d.ingreso_neto || null,
-        depositos_recurrentes: d.depositos_recurrentes || null,
-        depositos_extraordinarios: d.depositos_extraordinarios || null,
+        ingreso_bruto: normalizarMonto(d.ingreso_bruto),
+        ingreso_neto: normalizarMonto(d.ingreso_neto),
+        depositos_recurrentes: normalizarMonto(d.depositos_recurrentes),
+        depositos_recurrentes_mensuales: normalizarMonto(d.depositos_recurrentes_mensuales),
+        depositos_extraordinarios: normalizarMonto(d.depositos_extraordinarios),
       })),
     },
     nombre_coincide: !nombresNoCoinciden,
