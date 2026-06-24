@@ -180,6 +180,38 @@ Este documento debe ser una constancia de situación fiscal.
 No determines licitud, autenticidad ni aprobación.`,
 };
 
+const promptIngresosCompacto = (nombre) => `Actúa exclusivamente como extractor documental.
+Solicitante declarado: "${nombre}".
+Devuelve SOLO este objeto JSON válido y conciso, sin markdown ni comentarios:
+{
+  "tipo_documento": "nomina_quincenal|nomina_mensual|estado_cuenta|declaracion_fiscal|otro",
+  "documento_legible": true,
+  "motivo_fallo": null,
+  "nombre_en_documentos": "nombre o null",
+  "nombre_coincide": true,
+  "institucion_o_empleador": "texto o null",
+  "fecha_documento": "texto o null",
+  "periodo": "texto o null",
+  "ingreso_bruto": null,
+  "ingreso_neto": null,
+  "ingreso_mensual_total": null,
+  "ingreso_mensual_verificable": null,
+  "ingreso_mensual_estimado": null,
+  "depositos_recurrentes": null,
+  "depositos_recurrentes_mensuales": null,
+  "depositos_extraordinarios": null,
+  "metodo_calculo_ingreso": "explicación breve",
+  "montos_detectados": [],
+  "inconsistencias": [],
+  "riesgos_observados": [],
+  "informacion_faltante": [],
+  "preguntas_revision_humana": [],
+  "resumen_analista": "resumen breve",
+  "confianza": "alta|media|baja",
+  "alertas": []
+}
+Usa números JSON sin símbolos ni comas. Para nómina mensualiza el neto según el periodo. Para estado de cuenta usa solo depósitos recurrentes identificables; nunca uses el saldo. No apruebes, rechaces ni emitas dictamen.`;
+
 async function autorizarReanalisis(req) {
   const authHeader = req.headers.authorization || '';
   const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -223,8 +255,8 @@ async function cargarArchivo(input) {
 
 async function analizarDocumento(documento, nombre) {
   const { mediaType, base64 } = await cargarArchivo(documento.input);
-  const llamarClaude = async (esReintento = false) => {
-    const prompt = `${prompts[documento.tipo](nombre)}
+  const llamarClaude = async ({ esReintento = false, promptAlterno = null } = {}) => {
+    const prompt = promptAlterno || `${prompts[documento.tipo](nombre)}
 ${esReintento ? '\nSEGUNDO INTENTO: La respuesta anterior no fue JSON válido. Sé conciso, completa todas las llaves y devuelve únicamente un objeto JSON parseable.' : ''}`;
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -236,7 +268,7 @@ ${esReintento ? '\nSEGUNDO INTENTO: La respuesta anterior no fue JSON válido. S
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: esReintento ? 1400 : 1800,
+        max_tokens: promptAlterno ? 1000 : esReintento ? 1800 : 1800,
         temperature: 0,
         messages: [{
           role: 'user',
@@ -271,13 +303,19 @@ ${esReintento ? '\nSEGUNDO INTENTO: La respuesta anterior no fue JSON válido. S
     }
   };
 
-  let data = await llamarClaude(false);
+  let data = await llamarClaude();
   let resultado = interpretarJSON(data);
   if (!resultado) {
-    data = await llamarClaude(true);
+    data = documento.tipo === 'ingresos'
+      ? await llamarClaude({ promptAlterno: promptIngresosCompacto(nombre) })
+      : await llamarClaude({ esReintento: true });
     resultado = interpretarJSON(data);
   }
-  if (!resultado) throw new Error('Claude no devolvió JSON válido después de un reintento');
+  if (!resultado) {
+    throw new Error(documento.tipo === 'ingresos'
+      ? 'No se pudo estructurar la información del comprobante'
+      : 'Claude no devolvió JSON válido después de un reintento');
+  }
 
   const textoFallo = [
     resultado.motivo_fallo,
