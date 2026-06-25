@@ -165,7 +165,6 @@ export default function FichaSolicitud() {
       })
       if (res.ok) {
         const resultado = await res.json()
-        alert('DEBUG validacionCurp en frontend: ' + JSON.stringify(resultado.validacionCurp))
         const updatePayload = {
           pre_viabilidad: resultado.resultado,
           pre_viabilidad_detalle: resultado.mensaje,
@@ -181,9 +180,7 @@ export default function FichaSolicitud() {
           updatePayload.curp_nombre_renapo = resultado.validacionCurp.nombre_en_renapo
           updatePayload.curp_status = resultado.validacionCurp.curp_status
         }
-        const { data: updatedRow, error: updateError } = await supabase.from('solicitudes_inquilino').update(updatePayload).eq('id', id).select()
-        if (updateError) alert('ERROR AL GUARDAR: ' + JSON.stringify(updateError))
-        alert('FILA DEVUELTA: ' + JSON.stringify(updatedRow))
+        await supabase.from('solicitudes_inquilino').update(updatePayload).eq('id', id)
         // Refrescar
         const { data } = await supabase.from('solicitudes_inquilino').select('*').eq('id', id).single()
         if (data) { setSol(data) }
