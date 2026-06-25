@@ -509,6 +509,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({ curp: sol.curp, nombre_completo: nombre }),
       });
       if (curpRes.ok) validacionCurp = await curpRes.json();
+      console.log('DEBUG validacionCurp recibido en analizar-solicitud:', JSON.stringify(validacionCurp));
     } catch (e) {
       console.error('Error validando CURP:', e.message);
     }
