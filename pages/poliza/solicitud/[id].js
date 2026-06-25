@@ -165,6 +165,7 @@ export default function FichaSolicitud() {
       })
       if (res.ok) {
         const resultado = await res.json()
+        alert('DEBUG validacionCurp en frontend: ' + JSON.stringify(resultado.validacionCurp))
         const updatePayload = {
           pre_viabilidad: resultado.resultado,
           pre_viabilidad_detalle: resultado.mensaje,
