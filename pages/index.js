@@ -120,6 +120,41 @@ const Ranking = ({ title, icon, rows, empty, pending }) => (
   </div>
 );
 
+const PropertyAttention = ({ title, icon, rows, empty, pending }) => (
+  <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", minHeight: 270 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
+      <span style={{ fontSize: 20 }}>{icon}</span>
+      <h3 style={{ margin: 0, fontSize: 14, color: brand.gray }}>{title}</h3>
+    </div>
+    {pending ? (
+      <p style={{ padding: "42px 0", textAlign: "center", fontSize: 13, color: "#9ca3af" }}>Pendiente de conectar</p>
+    ) : rows.length === 0 ? (
+      <p style={{ padding: "42px 0", textAlign: "center", fontSize: 13, color: "#9ca3af" }}>{empty}</p>
+    ) : rows.map((row, index) => (
+      <div key={row.id} style={{ padding: "11px 0", borderTop: index ? "1px solid #f3f4f6" : "none" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.label}</p>
+            <p style={{ margin: "3px 0 0", fontSize: 11, color: "#b45309", lineHeight: 1.35 }}>{row.reason}</p>
+          </div>
+          <span style={{ flexShrink: 0, background: "#d1fae5", color: "#065f46", borderRadius: 99, padding: "3px 7px", fontSize: 9, fontWeight: 900 }}>
+            Publicada
+          </span>
+        </div>
+        <p style={{ margin: "7px 0", fontSize: 10, color: "#6b7280" }}>
+          {row.activity.visitas} visitas · {row.activity.contactos} contactos · {row.activity.envios} envíos · {row.activity.citas} citas
+        </p>
+        <a
+          href={`/propiedades-admin?propiedad=${encodeURIComponent(row.id)}`}
+          style={{ display: "inline-block", color: brand.red, fontSize: 11, fontWeight: 800, textDecoration: "none" }}
+        >
+          Abrir propiedad →
+        </a>
+      </div>
+    ))}
+  </div>
+);
+
 const ModuleSummary = ({ href, icon, title, stats, pending }) => (
   <a href={href} style={{ textDecoration: "none", color: "inherit" }}>
     <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", height: "100%", boxSizing: "border-box" }}>
@@ -339,10 +374,13 @@ export default function Home() {
         })()),
         safe("monthAppointments", citasBase),
         safe("monthSends", enviosBase),
-        safe("sendProperties", supabase.from("envios_propiedades").select("envio_id, propiedad_id")),
-        safe("properties", supabase.from("propiedades").select("id, titulo, direccion")),
+        safe("sendProperties", supabase.from("envios_propiedades").select("envio_id, propiedad_id, envios(created_at)")),
+        safe("properties", supabase.from("propiedades").select("id, titulo, direccion, status, created_at")),
         safe("visits", supabase.from("visitas_propiedad").select("id, propiedad_id, created_at").gte("created_at", mesInicio).lt("created_at", mesFin)),
         safe("contacts", supabase.from("solicitudes_contacto_propiedad").select("id, propiedad_id, created_at").gte("created_at", mesInicio).lt("created_at", mesFin)),
+        safe("allVisits", supabase.from("visitas_propiedad").select("propiedad_id, created_at")),
+        safe("allContacts", supabase.from("solicitudes_contacto_propiedad").select("propiedad_id, created_at")),
+        safe("allAppointments", supabase.from("citas").select("propiedad_id, fecha_hora")),
         safe("closings", supabase.from("cierres").select("id, anio, mes, comision, pendiente")),
         safe("closingPayments", supabase.from("cierre_pagos").select("id, monto, fecha").gte("fecha", mesInicio.slice(0, 10)).lt("fecha", mesFin.slice(0, 10))),
         safe("policies", supabase.from("poliza_expedientes").select("id, status, fecha_vigencia")),
@@ -365,6 +403,9 @@ export default function Home() {
         properties,
         visits,
         contacts,
+        allVisits,
+        allContacts,
+        allAppointments,
         closings,
         closingPayments,
         policies,
@@ -443,6 +484,73 @@ export default function Home() {
         .sort((a, b) => b.total - a.total)
         .slice(0, 5);
 
+      const publishedProperties = properties.filter(p => p.status === "published");
+      const emptyActivity = () => ({ total: 0, citas: 0, envios: 0, visitas: 0, contactos: 0 });
+      const activityFor = propertyId => ({ ...emptyActivity(), ...(propertyActivity[propertyId] || {}) });
+      const lastActivity = {};
+      const rememberActivity = (propertyId, dateValue) => {
+        if (!propertyId || !dateValue) return;
+        const timestamp = new Date(dateValue).getTime();
+        if (!Number.isFinite(timestamp)) return;
+        lastActivity[propertyId] = Math.max(lastActivity[propertyId] || 0, Math.min(timestamp, ahora.getTime()));
+      };
+
+      allVisits.forEach(row => rememberActivity(row.propiedad_id, row.created_at));
+      allContacts.forEach(row => rememberActivity(row.propiedad_id, row.created_at));
+      allAppointments.forEach(row => rememberActivity(row.propiedad_id, row.fecha_hora));
+      sendProperties.forEach(row => rememberActivity(row.propiedad_id, row.envios?.created_at));
+
+      const metricDetail = activity => [
+        activity.visitas && `${activity.visitas} visitas`,
+        activity.contactos && `${activity.contactos} contactos`,
+        activity.envios && `${activity.envios} envíos`,
+      ].filter(Boolean);
+
+      const propiedadesSinActividad = publishedProperties
+        .map(property => {
+          const reference = lastActivity[property.id] || new Date(property.created_at).getTime();
+          const days = Number.isFinite(reference) ? Math.max(0, Math.floor((ahora.getTime() - reference) / 86400000)) : 0;
+          return {
+            id: property.id,
+            label: property.titulo || property.direccion || "Propiedad sin nombre",
+            reason: lastActivity[property.id] ? `${days} días desde la última actividad comercial` : `${days} días publicada sin actividad registrada`,
+            activity: activityFor(property.id),
+            days,
+          };
+        })
+        .filter(property => property.days >= 14)
+        .sort((a, b) => b.days - a.days)
+        .slice(0, 5);
+
+      const propiedadesBajaConversion = publishedProperties
+        .map(property => {
+          const activity = activityFor(property.id);
+          const signals = metricDetail(activity);
+          return {
+            id: property.id,
+            label: property.titulo || property.direccion || "Propiedad sin nombre",
+            reason: `${signals.length ? signals.join(" y ") : `${activity.total} acciones`} sin generar citas este mes`,
+            activity,
+          };
+        })
+        .filter(property => property.activity.total >= 10 && property.activity.citas === 0)
+        .sort((a, b) => b.activity.total - a.activity.total)
+        .slice(0, 5);
+
+      const propiedadesSinAvance = publishedProperties
+        .map(property => {
+          const activity = activityFor(property.id);
+          return {
+            id: property.id,
+            label: property.titulo || property.direccion || "Propiedad sin nombre",
+            reason: `${activity.citas} citas este mes y continúa publicada, sin apartado ni cierre`,
+            activity,
+          };
+        })
+        .filter(property => property.activity.citas >= 2)
+        .sort((a, b) => b.activity.citas - a.activity.citas || b.activity.total - a.activity.total)
+        .slice(0, 5);
+
       const advisorActivity = {};
       const addAdvisorActivity = (row, type) => {
         const id = row.asesor_id;
@@ -500,6 +608,9 @@ export default function Home() {
           citasProximas: signatureAppointments.length,
         },
         propiedadesRanking,
+        propiedadesSinActividad,
+        propiedadesBajaConversion,
+        propiedadesSinAvance,
         asesoresRanking,
         errores,
       });
@@ -631,6 +742,13 @@ export default function Home() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 12 }}>
                 <Ranking title="Propiedades con más actividad del mes" icon="🏠" rows={dashboard.propiedadesRanking} empty="Sin actividad registrada este mes." pending={errores.monthAppointments || errores.monthSends || errores.sendProperties || errores.properties || errores.visits || errores.contacts} />
                 <Ranking title="Asesores con más actividad del mes" icon="🏆" rows={dashboard.asesoresRanking} empty="Sin citas o envíos registrados este mes." pending={errores.monthAppointments || errores.monthSends} />
+              </div>
+
+              <p style={{ margin: "22px 0 10px", fontSize: 11, fontWeight: 900, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>Propiedades que requieren atención</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 12 }}>
+                <PropertyAttention title="Propiedades sin actividad reciente" icon="⏸️" rows={dashboard.propiedadesSinActividad} empty="Todas las propiedades publicadas tienen actividad reciente." pending={errores.properties || errores.allVisits || errores.allContacts || errores.allAppointments || errores.sendProperties} />
+                <PropertyAttention title="Baja conversión" icon="📉" rows={dashboard.propiedadesBajaConversion} empty="No hay propiedades con 10 acciones y cero citas este mes." pending={errores.properties || errores.monthAppointments || errores.monthSends || errores.sendProperties || errores.visits || errores.contacts} />
+                <PropertyAttention title="Actividad sin avance" icon="🔎" rows={dashboard.propiedadesSinAvance} empty="No hay propiedades publicadas con dos o más citas sin avance." pending={errores.properties || errores.monthAppointments || errores.monthSends || errores.sendProperties || errores.visits || errores.contacts} />
               </div>
             </>
           )}

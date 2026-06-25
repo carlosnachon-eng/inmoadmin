@@ -541,6 +541,7 @@ export default function PropiedadesAdmin() {
   const [seleccionadas, setSeleccionadas] = useState([]);
   const [modalEnvioCorreo, setModalEnvioCorreo] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const propiedadAbiertaDesdeUrl = useRef(null);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
 
@@ -648,6 +649,16 @@ export default function PropiedadesAdmin() {
   };
 
   useEffect(() => { if (session) loadPropiedades(); }, [session]);
+
+  useEffect(() => {
+    if (!router.isReady || propiedades.length === 0) return;
+    const propiedadId = Array.isArray(router.query.propiedad) ? router.query.propiedad[0] : router.query.propiedad;
+    if (!propiedadId || propiedadAbiertaDesdeUrl.current === propiedadId) return;
+    const propiedad = propiedades.find(p => p.id === propiedadId);
+    if (!propiedad) return;
+    propiedadAbiertaDesdeUrl.current = propiedadId;
+    setModalDetalle(propiedad);
+  }, [router.isReady, router.query.propiedad, propiedades]);
 
   const filtered = propiedades.filter(p => {
     const matchSearch = !search ||
