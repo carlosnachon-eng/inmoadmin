@@ -1,0 +1,21 @@
+.DS_Store
+
+# Dependencias y artefactos de Next.js
+node_modules/
+.next/
+out/
+
+# Variables locales y secretos
+.env*
+!.env.example
+
+# Vercel local
+.vercel/
+
+# Logs y cobertura
+*.log
+coverage/
+
+# Archivos temporales
+*.tmp
+*.swp
