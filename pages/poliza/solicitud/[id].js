@@ -165,16 +165,22 @@ export default function FichaSolicitud() {
       })
       if (res.ok) {
         const resultado = await res.json()
-        await supabase.from('solicitudes_inquilino').update({
+        const updatePayload = {
           pre_viabilidad: resultado.resultado,
           pre_viabilidad_detalle: resultado.mensaje,
           pre_viabilidad_detalle_interno: resultado.mensajeInterno,
           ingreso_detectado_ia: resultado.detalles?.ingresoDetectado,
           ingreso_total_ia: resultado.detalles?.analisisIA?.ingreso_mensual_total,
-          curp_validada: resultado.validacionCurp?.valido,
-          curp_nombre_renapo: resultado.validacionCurp?.nombre_en_renapo,
-          curp_status: resultado.validacionCurp?.curp_status,
-        }).eq('id', id)
+        }
+        // Solo tocar los campos de CURP si la validación contra RENAPO sí respondió esta vez.
+        // Si falló (timeout, servicio caído, etc.), conservamos el último resultado válido conocido
+        // en vez de sobrescribirlo con null.
+        if (resultado.validacionCurp) {
+          updatePayload.curp_validada = resultado.validacionCurp.valido
+          updatePayload.curp_nombre_renapo = resultado.validacionCurp.nombre_en_renapo
+          updatePayload.curp_status = resultado.validacionCurp.curp_status
+        }
+        await supabase.from('solicitudes_inquilino').update(updatePayload).eq('id', id)
         // Refrescar
         const { data } = await supabase.from('solicitudes_inquilino').select('*').eq('id', id).single()
         if (data) { setSol(data) }
