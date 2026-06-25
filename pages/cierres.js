@@ -92,7 +92,7 @@ export default function Cierres() {
       supabase.from("cierres").select("*").order("fecha_cierre", { ascending: false }),
       supabase.from("cierre_pagos").select("*").order("fecha", { ascending: true }),
       supabase.from("recibos_apartado")
-        .select("id, folio, tipo, cliente_nombre, inmueble, monto, created_at, estatus, propiedad_id, asesor_id, firma_id, flujo_estado, propiedades:propiedad_id(id, titulo, operacion, precio), profiles:asesor_id(full_name, email), firmas:firma_id(status)")
+        .select("id, folio, tipo, cliente_nombre, inmueble, monto, monto_total_acordado, fecha, forma_pago, created_at, estatus, propiedad_id, asesor_id, firma_id, flujo_estado, recibos_abonos(id, monto, fecha, forma_pago, notas, created_at), propiedades:propiedad_id(id, titulo, operacion, precio), profiles:asesor_id(full_name, email), firmas:firma_id(status)")
         .eq("flujo_estado", "completo")
         .order("created_at", { ascending: false }),
     ]);
@@ -157,10 +157,13 @@ export default function Cierres() {
     };
 
     let error;
+    let cierreGuardado = null;
     if (editando) {
       ({ error } = await supabase.from("cierres").update(data).eq("id", editando));
     } else {
-      ({ error } = await supabase.from("cierres").insert([data]));
+      const result = await supabase.from("cierres").insert([data]).select("id").single();
+      error = result.error;
+      cierreGuardado = result.data;
     }
     setSaving(false);
     if (error) { showToast("Error: " + error.message, false); return; }
@@ -173,6 +176,32 @@ export default function Cierres() {
       }).eq("id", form.propiedad_id);
     }
     if (!editando && form.recibo_id) {
+      const reciboOrigen = apartadosPendientes.find(r => r.id === form.recibo_id);
+      if (cierreGuardado?.id && reciboOrigen) {
+        const pagosOrigen = [
+          {
+            concepto: "apartado",
+            monto: Number(reciboOrigen.monto || 0),
+            fecha: reciboOrigen.fecha || String(reciboOrigen.created_at || new Date().toISOString()).slice(0, 10),
+            metodo_pago: String(reciboOrigen.forma_pago || "transferencia").toLowerCase(),
+            notas: `recibo_inicial:${reciboOrigen.id} · Folio ${reciboOrigen.folio}`,
+          },
+          ...[...(reciboOrigen.recibos_abonos || [])]
+            .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+            .map(abono => ({
+              concepto: "complemento",
+              monto: Number(abono.monto || 0),
+              fecha: abono.fecha,
+              metodo_pago: String(abono.forma_pago || "transferencia").toLowerCase(),
+              notas: [abono.notas, `recibo_abono:${abono.id}`].filter(Boolean).join(" · "),
+            })),
+        ].filter(pago => pago.monto > 0);
+        if (pagosOrigen.length > 0) {
+          await supabase.from("cierre_pagos").insert(
+            pagosOrigen.map(pago => ({ cierre_id: cierreGuardado.id, ...pago }))
+          );
+        }
+      }
       await supabase.from("recibos_log").insert({
         recibo_id: form.recibo_id,
         accion: "cierre_financiero_confirmado",
@@ -229,6 +258,9 @@ export default function Cierres() {
     const vendedor = recibo.profiles?.full_name?.split(" ")[0] || "Otro";
     const vendedorValido = VENDEDORES.find(v => v.toLowerCase() === vendedor.toLowerCase()) || "Otro";
     const propiedad = recibo.propiedades?.titulo || recibo.inmueble || "";
+    const totalAbonos = (recibo.recibos_abonos || [])
+      .reduce((sum, abono) => sum + Number(abono.monto || 0), 0);
+    const totalRecibido = Number(recibo.monto || 0) + totalAbonos;
     setEditando(null);
     setForm({
       ...emptyForm,
@@ -237,8 +269,8 @@ export default function Cierres() {
       operacion: recibo.tipo === "compraventa" ? "VENTA" : "RENTA",
       precio: recibo.propiedades?.precio || "",
       vendedor: vendedorValido,
-      cobrado: "0",
-      notas: `Prospecto: ${recibo.cliente_nombre}. Apartado registrado: ${fmt(recibo.monto)}. Folio: ${recibo.folio}.`,
+      cobrado: totalRecibido.toString(),
+      notas: `Prospecto: ${recibo.cliente_nombre}. Recibido acumulado: ${fmt(totalRecibido)}. Folio: ${recibo.folio}.`,
       anio: d.getFullYear(),
       mes: d.getMonth() + 1,
       mes_nombre: MESES[d.getMonth() + 1],

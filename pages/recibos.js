@@ -487,6 +487,29 @@ export default function Recibos() {
     setSaving(false);
   };
 
+  const sincronizarAbonoConCierre = async (abono) => {
+    if (!esCarlos) return;
+    setSaving(true);
+    try {
+      const response = await fetch("/api/recibos/sincronizar-abono-cierre", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ abono_id: abono.id }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo sincronizar");
+      showToast(data.pendiente_cierre
+        ? "El abono está listo y se integrará cuando crees el cierre"
+        : "Abono aplicado en Cierres");
+    } catch (error) {
+      showToast(error.message || "No se pudo sincronizar el abono", false);
+    }
+    setSaving(false);
+  };
+
   const guardarAbono = async () => {
     if (!modalAbono || !puedeRegistrarAbono) return;
     const monto = Number(formAbono.monto || 0);
@@ -530,7 +553,7 @@ export default function Recibos() {
         .from("recibos-apartado")
         .createSignedUrl(pdfPath, 60 * 60 * 24 * 365);
 
-      const { error } = await supabase.from("recibos_abonos").insert({
+      const { data: abonoCreado, error } = await supabase.from("recibos_abonos").insert({
         recibo_id: modalAbono.id,
         monto,
         fecha: formAbono.fecha,
@@ -540,7 +563,7 @@ export default function Recibos() {
         pdf_url: signedPdf?.signedUrl || null,
         notas: formAbono.notas || null,
         created_by: session.user.id,
-      });
+      }).select("id").single();
       if (error) throw error;
       await supabase.from("recibos_log").insert({
         recibo_id: modalAbono.id,
@@ -548,9 +571,23 @@ export default function Recibos() {
         usuario_id: session.user.id,
         notas: `${folioAbono}: ${fmt(monto)}. Saldo: ${fmt(saldo)}`,
       });
+      const syncResponse = await fetch("/api/recibos/sincronizar-abono-cierre", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ abono_id: abonoCreado.id }),
+      });
+      const syncData = await syncResponse.json();
+      if (!syncResponse.ok || !syncData.ok) {
+        throw new Error(syncData.error || "El abono se guardó, pero no pudo sincronizarse con Cierres");
+      }
       doc.save(`${folioAbono}.pdf`);
       setModalAbono(null);
-      showToast(`Abono de ${fmt(monto)} registrado`);
+      showToast(syncData.pendiente_cierre
+        ? `Abono de ${fmt(monto)} registrado; se integrará al crear el cierre`
+        : `Abono de ${fmt(monto)} registrado y aplicado en Cierres`);
       loadRecibos();
     } catch (error) {
       showToast(error.message || "No se pudo registrar el abono", false);
@@ -658,6 +695,7 @@ export default function Recibos() {
                         {abono.pdf_url && <a href={abono.pdf_url} target="_blank" rel="noreferrer" style={{ marginLeft: 6, color: brand.red }}>PDF</a>}
                         {abono.comprobante_url && <a href={abono.comprobante_url} target="_blank" rel="noreferrer" style={{ marginLeft: 6, color: "#1e40af" }}>Comprobante</a>}
                         {esCarlos && <button onClick={() => regenerarPdfAbono(r, abono)} disabled={saving} style={{ marginLeft: 6, border: "none", background: "transparent", color: "#7c3aed", cursor: "pointer", padding: 0, fontSize: 11 }}>Regenerar PDF</button>}
+                        {esCarlos && <button onClick={() => sincronizarAbonoConCierre(abono)} disabled={saving} style={{ marginLeft: 6, border: "none", background: "transparent", color: "#065f46", cursor: "pointer", padding: 0, fontSize: 11 }}>Aplicar a Cierres</button>}
                       </div>
                     ))}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -729,6 +767,7 @@ export default function Recibos() {
                             {abono.pdf_url && <a href={abono.pdf_url} target="_blank" rel="noreferrer" style={{ marginLeft: 4, color: brand.red }}>PDF</a>}
                             {abono.comprobante_url && <a href={abono.comprobante_url} target="_blank" rel="noreferrer" style={{ marginLeft: 4, color: "#1e40af" }}>Comp.</a>}
                             {esCarlos && <button onClick={() => regenerarPdfAbono(r, abono)} disabled={saving} style={{ marginLeft: 4, border: "none", background: "transparent", color: "#7c3aed", cursor: "pointer", padding: 0, fontSize: 10 }}>Regenerar</button>}
+                            {esCarlos && <button onClick={() => sincronizarAbonoConCierre(abono)} disabled={saving} style={{ marginLeft: 4, border: "none", background: "transparent", color: "#065f46", cursor: "pointer", padding: 0, fontSize: 10 }}>A Cierres</button>}
                           </div>
                         ))}
                       </td>
