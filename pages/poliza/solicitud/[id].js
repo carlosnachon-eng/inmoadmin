@@ -181,7 +181,8 @@ export default function FichaSolicitud() {
           updatePayload.curp_nombre_renapo = resultado.validacionCurp.nombre_en_renapo
           updatePayload.curp_status = resultado.validacionCurp.curp_status
         }
-        await supabase.from('solicitudes_inquilino').update(updatePayload).eq('id', id)
+        const { error: updateError } = await supabase.from('solicitudes_inquilino').update(updatePayload).eq('id', id)
+        if (updateError) alert('ERROR AL GUARDAR: ' + JSON.stringify(updateError))
         // Refrescar
         const { data } = await supabase.from('solicitudes_inquilino').select('*').eq('id', id).single()
         if (data) { setSol(data) }
