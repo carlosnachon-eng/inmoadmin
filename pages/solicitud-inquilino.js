@@ -322,16 +322,19 @@ export default function SolicitudInquilino() {
           const resultado = await analisisRes.json();
           setAnalisis(resultado);
           // Guardar resultado en Supabase
-          await supabase.from('solicitudes_inquilino').update({
+          const updatePayload = {
             pre_viabilidad: resultado.resultado,
             pre_viabilidad_detalle: resultado.mensaje,
             pre_viabilidad_detalle_interno: resultado.mensajeInterno,
             ingreso_detectado_ia: resultado.detalles?.ingresoDetectado,
             ingreso_total_ia: resultado.detalles?.analisisIA?.ingreso_mensual_total,
-            curp_validada: resultado.validacionCurp?.valido,
-            curp_nombre_renapo: resultado.validacionCurp?.nombre_en_renapo,
-            curp_status: resultado.validacionCurp?.curp_status,
-          }).eq('id', data.id);
+          };
+          if (resultado.validacionCurp) {
+            updatePayload.curp_validada = resultado.validacionCurp.valido;
+            updatePayload.curp_nombre_renapo = resultado.validacionCurp.nombre_en_renapo;
+            updatePayload.curp_status = resultado.validacionCurp.curp_status;
+          }
+          await supabase.from('solicitudes_inquilino').update(updatePayload).eq('id', data.id);
         }
       } catch (e) {
         console.error('Error análisis IA:', e.message);
