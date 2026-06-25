@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
 import jsPDF from "jspdf";
+import { FIRMA_CARLOS_B64 } from "../lib/firmaCarlos";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -275,66 +276,160 @@ export default function Recibos() {
     });
   };
 
-  const generarPdfAbono = (recibo, abono, totalRecibido, saldo) => {
+  const generarPdfAbono = async (recibo, abono, totalRecibido, saldo) => {
     const doc = new jsPDF({ unit: "pt", format: "letter" });
+    const W = 612, H = 792, M = 42;
+    const RED = [185, 28, 60], DARK = [26, 26, 46], GRAY = [107, 114, 128];
+    const LIGHT = [249, 250, 251], GREEN = [6, 95, 70], ORANGE = [194, 65, 12];
     const folioAbono = `${recibo.folio}-A${String((recibo.recibos_abonos?.length || 0) + 1).padStart(2, "0")}`;
-    doc.setFillColor(185, 28, 60);
-    doc.rect(0, 0, 612, 8, "F");
+    const fechaTexto = new Date(`${abono.fecha}T12:00:00`).toLocaleDateString("es-MX", {
+      day: "numeric", month: "long", year: "numeric"
+    });
+
+    doc.setFillColor(...RED);
+    doc.rect(0, 0, W, 6, "F");
+
+    try {
+      const res = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
+      const blob = await res.blob();
+      const logo = await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+      doc.addImage(logo, "PNG", M, 14, 105, 56);
+    } catch (_) {}
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.setTextColor(...DARK);
+    doc.text("RECIBO COMPLEMENTARIO", 165, 38);
+    doc.setFontSize(10);
+    doc.setTextColor(...RED);
+    doc.text(recibo.tipo === "compraventa" ? "COMPRAVENTA" : "ARRENDAMIENTO", 165, 54);
+    doc.setFontSize(8);
+    doc.setTextColor(...GRAY);
+    doc.text(`Fecha: ${fechaTexto}`, W - M, 30, { align: "right" });
+    doc.text(`Folio: ${folioAbono}`, W - M, 44, { align: "right" });
+    doc.text(`Recibo original: ${recibo.folio}`, W - M, 58, { align: "right" });
+    doc.setDrawColor(...RED);
+    doc.setLineWidth(2);
+    doc.line(M, 82, W - M, 82);
+
+    let y = 102;
+    doc.setFillColor(253, 240, 241);
+    doc.roundedRect(M, y, W - (M * 2), 82, 6, 6, "F");
+    doc.setFillColor(...RED);
+    doc.rect(M, y, 5, 82, "F");
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...GRAY);
+    doc.text("RECIBÍ DE", M + 18, y + 20);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(...DARK);
+    doc.text(recibo.cliente_nombre || "—", M + 18, y + 38);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...GRAY);
+    doc.text("LA CANTIDAD DE", M + 310, y + 20);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
-    doc.setTextColor(26, 26, 46);
-    doc.text("RECIBO COMPLEMENTARIO", 42, 58);
-    doc.setFontSize(10);
-    doc.setTextColor(185, 28, 60);
-    doc.text(`Folio: ${folioAbono}`, 42, 78);
-    doc.setDrawColor(185, 28, 60);
-    doc.line(42, 92, 570, 92);
+    doc.setTextColor(...RED);
+    doc.text(fmt(abono.monto), M + 310, y + 43);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...DARK);
+    doc.text(`Pago: ${abono.forma_pago} · Recibido por: ${abono.recibido_por}`, M + 18, y + 64);
 
-    const filas = [
-      ["Recibo original", recibo.folio],
-      ["Fecha", new Date(`${abono.fecha}T12:00:00`).toLocaleDateString("es-MX")],
-      ["Recibí de", recibo.cliente_nombre],
-      ["Cantidad recibida", fmt(abono.monto)],
-      ["Forma de pago", abono.forma_pago],
-      ["Recibido por", abono.recibido_por],
-      ["Inmueble", recibo.inmueble],
-      ["Total acordado", fmt(recibo.monto_total_acordado || recibo.monto)],
-      ["Total recibido acumulado", fmt(totalRecibido)],
-      ["Saldo pendiente", fmt(saldo)],
+    y += 104;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...RED);
+    doc.text("INMUEBLE Y CONCEPTO", M, y);
+    y += 14;
+    doc.setFillColor(...LIGHT);
+    doc.roundedRect(M, y, W - (M * 2), 66, 5, 5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...DARK);
+    doc.text("Abono complementario al recibo de apartado", M + 14, y + 20);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...GRAY);
+    doc.text(doc.splitTextToSize(recibo.inmueble || "—", W - (M * 2) - 28), M + 14, y + 38);
+
+    y += 88;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...RED);
+    doc.text("RESUMEN DEL APARTADO", M, y);
+    y += 14;
+    const cards = [
+      { label: "TOTAL ACORDADO", value: fmt(recibo.monto_total_acordado || recibo.monto), color: DARK },
+      { label: "TOTAL RECIBIDO", value: fmt(totalRecibido), color: GREEN },
+      { label: "SALDO PENDIENTE", value: fmt(saldo), color: saldo > 0 ? ORANGE : GREEN },
     ];
-    let y = 125;
-    filas.forEach(([label, value]) => {
+    const cardW = (W - (M * 2) - 20) / 3;
+    cards.forEach((card, index) => {
+      const x = M + index * (cardW + 10);
+      doc.setFillColor(...LIGHT);
+      doc.roundedRect(x, y, cardW, 62, 5, 5, "F");
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.setTextColor(107, 114, 128);
-      doc.text(label.toUpperCase(), 42, y);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
-      doc.setTextColor(31, 41, 55);
-      const lines = doc.splitTextToSize(String(value || "—"), 350);
-      doc.text(lines, 190, y);
-      y += Math.max(28, lines.length * 14 + 8);
+      doc.setFontSize(7.5);
+      doc.setTextColor(...GRAY);
+      doc.text(card.label, x + 10, y + 18);
+      doc.setFontSize(14);
+      doc.setTextColor(...card.color);
+      doc.text(card.value, x + 10, y + 42);
     });
+    y += 82;
+
     if (abono.notas) {
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.setTextColor(107, 114, 128);
-      doc.text("NOTAS", 42, y);
+      doc.setFontSize(8);
+      doc.setTextColor(...GRAY);
+      doc.text("NOTAS", M, y);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(31, 41, 55);
-      doc.text(doc.splitTextToSize(abono.notas, 380), 190, y);
-      y += 45;
+      doc.setFontSize(9);
+      doc.setTextColor(...DARK);
+      doc.text(doc.splitTextToSize(abono.notas, W - (M * 2)), M, y + 16);
+      y += 46;
     }
-    doc.setDrawColor(156, 163, 175);
-    doc.line(42, y + 50, 240, y + 50);
-    doc.setFontSize(9);
-    doc.text("Emporio Inmobiliario", 42, y + 65);
-    doc.line(330, y + 50, 570, y + 50);
-    doc.text(recibo.cliente_nombre || "Cliente", 330, y + 65);
+
+    y = Math.max(y + 20, 480);
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
-    doc.setTextColor(107, 114, 128);
-    doc.text("Este documento complementa el recibo de apartado original y no lo sustituye.", 42, 750);
+    doc.setTextColor(...RED);
+    doc.text("Por Emporio Inmobiliario", M, y);
+    try {
+      doc.addImage(FIRMA_CARLOS_B64, "PNG", M, y + 4, 95, 50);
+    } catch (_) {}
+    doc.setDrawColor(180, 180, 180);
+    doc.line(M, y + 58, M + 190, y + 58);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...DARK);
+    doc.text("Carlos Alejandro Nachón Saldivar", M, y + 70);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...GRAY);
+    doc.text(`Recibido por: ${abono.recibido_por}`, M, y + 81);
+
+    const clientX = 330;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...DARK);
+    doc.text(recibo.tipo === "compraventa" ? "Nombre y firma del comprador" : "Nombre y firma del cliente", clientX, y);
+    doc.line(clientX, y + 58, W - M, y + 58);
+    doc.text(recibo.cliente_nombre || "Cliente", clientX, y + 70);
+
+    doc.setFillColor(...RED);
+    doc.rect(0, H - 6, W, 6, "F");
+    doc.setFontSize(8);
+    doc.setTextColor(...GRAY);
+    doc.text("Este documento complementa el recibo de apartado original y no lo sustituye.", W / 2, H - 22, { align: "center" });
+    doc.setFontSize(6.5);
+    doc.text("Emporio Inmobiliario · emporioinmobiliario.com.mx", W / 2, H - 11, { align: "center" });
     return { doc, folioAbono };
   };
 
@@ -366,7 +461,7 @@ export default function Recibos() {
 
       const totalRecibido = resumen.totalRecibido + monto;
       const saldo = Math.max(0, resumen.totalAcordado - totalRecibido);
-      const { doc, folioAbono } = generarPdfAbono(
+      const { doc, folioAbono } = await generarPdfAbono(
         modalAbono,
         { ...formAbono, monto },
         totalRecibido,
