@@ -6,6 +6,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const formatearFechaTitulo = (fecha) => {
+  if (!fecha) return "";
+  const valor = new Date(`${fecha}T12:00:00`);
+  if (Number.isNaN(valor.getTime())) return "";
+  return valor.toLocaleDateString("es-MX", { day: "numeric", month: "long" });
+};
+
 async function autenticar(req) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
@@ -92,8 +99,22 @@ export default async function handler(req, res) {
     if (!firma) {
       const tipoFirma = recibo.tipo === "compraventa" ? "compraventa" : "arrendamiento";
       const inmuebleCorto = (propiedad.titulo || recibo.inmueble || "Propiedad").split(",")[0].trim();
-      const clienteCorto = (recibo.cliente_nombre || "Cliente").split(" ").slice(0, 2).join(" ");
-      const titulo = `${inmuebleCorto} - ${clienteCorto}`;
+      const { data: asesor } = recibo.asesor_id
+        ? await supabase
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", recibo.asesor_id)
+          .maybeSingle()
+        : { data: null };
+      const asesorNombre = (asesor?.full_name || asesor?.email?.split("@")[0] || "Sin asesor")
+        .trim()
+        .split(/\s+/)[0];
+      const fechaMaxima = formatearFechaTitulo(
+        recibo.fecha_limite_firma || recibo.apartado_vigencia_hasta
+      );
+      const titulo = tipoFirma === "arrendamiento"
+        ? [inmuebleCorto, asesorNombre, fechaMaxima].filter(Boolean).join(" - ")
+        : [inmuebleCorto, asesorNombre].filter(Boolean).join(" - ");
       const formaPago = String(recibo.forma_pago || "").toLowerCase().includes("transferencia") ? "transferencia" : "efectivo";
       const { data: propietarios } = await supabase
         .from("propietarios_inmuebles")
