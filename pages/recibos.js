@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import jsPDF from "jspdf";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -42,6 +43,12 @@ export default function Recibos() {
   const [motivoCancelacion, setMotivoCancelacion] = useState("");
   const [modalSolicitud, setModalSolicitud] = useState(null);
   const [fechaLimiraFirma, setFechaLimiteFirma] = useState("");
+  const [modalAbono, setModalAbono] = useState(null);
+  const [formAbono, setFormAbono] = useState({
+    monto: "", fecha: new Date().toISOString().split("T")[0],
+    forma_pago: "Transferencia", recibido_por: "Guillermo",
+    comprobante: null, notas: "",
+  });
   const [saving, setSaving] = useState(false);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
@@ -74,7 +81,10 @@ export default function Recibos() {
 
   const loadRecibos = async () => {
     setLoading(true);
-    const { data } = await supabase.from("recibos_apartado").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase
+      .from("recibos_apartado")
+      .select("*, recibos_abonos(*)")
+      .order("created_at", { ascending: false });
     setRecibos(data || []);
     setLoading(false);
   };
@@ -84,6 +94,20 @@ export default function Recibos() {
   // Carlos es el único que puede reactivar vencidos
   const esCarlos = profile?.role_id === "admin" || profile?.email === "carlos.nachon@emporioinmobiliario.mx";
   const puedeIniciarFlujo = ["admin", "gerente_ventas"].includes(profile?.role_id);
+  const puedeRegistrarAbono = ["admin", "gerente_ventas"].includes(profile?.role_id);
+
+  const resumenPago = (recibo) => {
+    const abonos = recibo.recibos_abonos || [];
+    const totalAbonos = abonos.reduce((sum, abono) => sum + Number(abono.monto || 0), 0);
+    const totalRecibido = Number(recibo.monto || 0) + totalAbonos;
+    const totalAcordado = Number(recibo.monto_total_acordado || recibo.monto || 0);
+    return {
+      totalAbonos,
+      totalRecibido,
+      totalAcordado,
+      saldo: Math.max(0, totalAcordado - totalRecibido),
+    };
+  };
 
   const filtered = recibos.filter(r => {
     const matchSearch = !search ||
@@ -238,6 +262,153 @@ export default function Recibos() {
     loadRecibos();
   };
 
+  const abrirAbono = (recibo) => {
+    const { saldo } = resumenPago(recibo);
+    setModalAbono(recibo);
+    setFormAbono({
+      monto: saldo > 0 ? saldo.toString() : "",
+      fecha: new Date().toISOString().split("T")[0],
+      forma_pago: "Transferencia",
+      recibido_por: "Guillermo",
+      comprobante: null,
+      notas: "",
+    });
+  };
+
+  const generarPdfAbono = (recibo, abono, totalRecibido, saldo) => {
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    const folioAbono = `${recibo.folio}-A${String((recibo.recibos_abonos?.length || 0) + 1).padStart(2, "0")}`;
+    doc.setFillColor(185, 28, 60);
+    doc.rect(0, 0, 612, 8, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(26, 26, 46);
+    doc.text("RECIBO COMPLEMENTARIO", 42, 58);
+    doc.setFontSize(10);
+    doc.setTextColor(185, 28, 60);
+    doc.text(`Folio: ${folioAbono}`, 42, 78);
+    doc.setDrawColor(185, 28, 60);
+    doc.line(42, 92, 570, 92);
+
+    const filas = [
+      ["Recibo original", recibo.folio],
+      ["Fecha", new Date(`${abono.fecha}T12:00:00`).toLocaleDateString("es-MX")],
+      ["Recibí de", recibo.cliente_nombre],
+      ["Cantidad recibida", fmt(abono.monto)],
+      ["Forma de pago", abono.forma_pago],
+      ["Recibido por", abono.recibido_por],
+      ["Inmueble", recibo.inmueble],
+      ["Total acordado", fmt(recibo.monto_total_acordado || recibo.monto)],
+      ["Total recibido acumulado", fmt(totalRecibido)],
+      ["Saldo pendiente", fmt(saldo)],
+    ];
+    let y = 125;
+    filas.forEach(([label, value]) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(107, 114, 128);
+      doc.text(label.toUpperCase(), 42, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      doc.setTextColor(31, 41, 55);
+      const lines = doc.splitTextToSize(String(value || "—"), 350);
+      doc.text(lines, 190, y);
+      y += Math.max(28, lines.length * 14 + 8);
+    });
+    if (abono.notas) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(107, 114, 128);
+      doc.text("NOTAS", 42, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(31, 41, 55);
+      doc.text(doc.splitTextToSize(abono.notas, 380), 190, y);
+      y += 45;
+    }
+    doc.setDrawColor(156, 163, 175);
+    doc.line(42, y + 50, 240, y + 50);
+    doc.setFontSize(9);
+    doc.text("Emporio Inmobiliario", 42, y + 65);
+    doc.line(330, y + 50, 570, y + 50);
+    doc.text(recibo.cliente_nombre || "Cliente", 330, y + 65);
+    doc.setFontSize(8);
+    doc.setTextColor(107, 114, 128);
+    doc.text("Este documento complementa el recibo de apartado original y no lo sustituye.", 42, 750);
+    return { doc, folioAbono };
+  };
+
+  const guardarAbono = async () => {
+    if (!modalAbono || !puedeRegistrarAbono) return;
+    const monto = Number(formAbono.monto || 0);
+    const resumen = resumenPago(modalAbono);
+    if (monto <= 0) { showToast("Captura un monto válido", false); return; }
+    if (monto > resumen.saldo && resumen.saldo > 0) {
+      showToast(`El abono excede el saldo pendiente de ${fmt(resumen.saldo)}`, false);
+      return;
+    }
+    setSaving(true);
+    try {
+      const timestamp = Date.now();
+      let comprobanteUrl = null;
+      if (formAbono.comprobante) {
+        const ext = formAbono.comprobante.name.split(".").pop();
+        const path = `${modalAbono.folio}/abono-${timestamp}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from("recibos-comprobantes")
+          .upload(path, formAbono.comprobante, { upsert: false });
+        if (uploadError) throw uploadError;
+        const { data: signed } = await supabase.storage
+          .from("recibos-comprobantes")
+          .createSignedUrl(path, 60 * 60 * 24 * 365);
+        comprobanteUrl = signed?.signedUrl || null;
+      }
+
+      const totalRecibido = resumen.totalRecibido + monto;
+      const saldo = Math.max(0, resumen.totalAcordado - totalRecibido);
+      const { doc, folioAbono } = generarPdfAbono(
+        modalAbono,
+        { ...formAbono, monto },
+        totalRecibido,
+        saldo
+      );
+      const pdfPath = `${modalAbono.folio}/abono-${timestamp}.pdf`;
+      const { error: pdfError } = await supabase.storage
+        .from("recibos-apartado")
+        .upload(pdfPath, doc.output("blob"), { contentType: "application/pdf", upsert: false });
+      if (pdfError) throw pdfError;
+      const { data: signedPdf } = await supabase.storage
+        .from("recibos-apartado")
+        .createSignedUrl(pdfPath, 60 * 60 * 24 * 365);
+
+      const { error } = await supabase.from("recibos_abonos").insert({
+        recibo_id: modalAbono.id,
+        monto,
+        fecha: formAbono.fecha,
+        forma_pago: formAbono.forma_pago,
+        recibido_por: formAbono.recibido_por,
+        comprobante_url: comprobanteUrl,
+        pdf_url: signedPdf?.signedUrl || null,
+        notas: formAbono.notas || null,
+        created_by: session.user.id,
+      });
+      if (error) throw error;
+      await supabase.from("recibos_log").insert({
+        recibo_id: modalAbono.id,
+        accion: "abono_registrado",
+        usuario_id: session.user.id,
+        notas: `${folioAbono}: ${fmt(monto)}. Saldo: ${fmt(saldo)}`,
+      });
+      doc.save(`${folioAbono}.pdf`);
+      setModalAbono(null);
+      showToast(`Abono de ${fmt(monto)} registrado`);
+      loadRecibos();
+    } catch (error) {
+      showToast(error.message || "No se pudo registrar el abono", false);
+    }
+    setSaving(false);
+  };
+
   if (authLoading) return (
     <div style={{ minHeight: "100vh", background: brand.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 48, opacity: 0.4 }} />
@@ -301,6 +472,7 @@ export default function Recibos() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {filtered.map(r => {
                 const est = ESTATUS_STYLE[r.estatus] || ESTATUS_STYLE.activo;
+                const pago = resumenPago(r);
                 return (
                   <div key={r.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
@@ -323,6 +495,21 @@ export default function Recibos() {
                       </div>
                       <span style={{ fontSize: 12, color: "#6b7280" }}>Recibió: {r.recibido_por || "—"}</span>
                     </div>
+                    {r.monto_total_acordado && (
+                      <div style={{ background: pago.saldo > 0 ? "#fff7ed" : "#f0fdf4", borderRadius: 8, padding: "7px 9px", marginBottom: 8, fontSize: 11 }}>
+                        <strong>Recibido: {fmt(pago.totalRecibido)}</strong> de {fmt(pago.totalAcordado)}
+                        <span style={{ marginLeft: 6, color: pago.saldo > 0 ? "#c2410c" : "#065f46" }}>
+                          {pago.saldo > 0 ? `· Saldo ${fmt(pago.saldo)}` : "· Liquidado"}
+                        </span>
+                      </div>
+                    )}
+                    {(r.recibos_abonos || []).map(abono => (
+                      <div key={abono.id} style={{ fontSize: 11, color: "#6b7280", marginBottom: 5 }}>
+                        Abono {fmt(abono.monto)} · {abono.fecha}
+                        {abono.pdf_url && <a href={abono.pdf_url} target="_blank" rel="noreferrer" style={{ marginLeft: 6, color: brand.red }}>PDF</a>}
+                        {abono.comprobante_url && <a href={abono.comprobante_url} target="_blank" rel="noreferrer" style={{ marginLeft: 6, color: "#1e40af" }}>Comprobante</a>}
+                      </div>
+                    ))}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {r.pdf_url && (
                         <a href={r.pdf_url} target="_blank" rel="noreferrer" style={{ background: "#fce8ed", color: brand.red, fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 8, textDecoration: "none" }}>📄 Ver PDF</a>
@@ -332,6 +519,9 @@ export default function Recibos() {
                       )}
                       {r.flujo_estado === "requiere_revision" && puedeIniciarFlujo && (
                         <button onClick={() => reintentarFlujo(r)} disabled={saving} style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fdba74", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↻ Reintentar flujo</button>
+                      )}
+                      {puedeRegistrarAbono && pago.saldo > 0 && r.estatus !== "cancelado" && (
+                        <button onClick={() => abrirAbono(r)} disabled={saving} style={{ background: "#ecfdf5", color: "#065f46", border: "1px solid #6ee7b7", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Registrar abono</button>
                       )}
                       {/* Botones de acción según estatus */}
                       {r.estatus === "activo" && (<>
@@ -365,6 +555,7 @@ export default function Recibos() {
               <tbody>
                 {filtered.map(r => {
                   const est = ESTATUS_STYLE[r.estatus] || ESTATUS_STYLE.activo;
+                  const pago = resumenPago(r);
                   return (
                     <tr key={r.id} style={{ borderTop: "1px solid #f3f4f6" }}>
                       <td style={{ padding: "11px 14px", fontFamily: "monospace", fontWeight: 700, color: brand.red, fontSize: 13 }}>{r.folio}</td>
@@ -375,7 +566,21 @@ export default function Recibos() {
                       </td>
                       <td style={{ padding: "11px 14px", fontSize: 13, color: "#1a1a2e", fontWeight: 600 }}>{r.cliente_nombre}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: "#6b7280", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.inmueble}</td>
-                      <td style={{ padding: "11px 14px", fontWeight: 700, fontSize: 13, color: "#1a1a2e" }}>{fmt(r.monto)}</td>
+                      <td style={{ padding: "11px 14px", fontWeight: 700, fontSize: 13, color: "#1a1a2e" }}>
+                        {fmt(pago.totalRecibido)}
+                        {r.monto_total_acordado && (
+                          <div style={{ fontSize: 10, fontWeight: 500, color: pago.saldo > 0 ? "#c2410c" : "#065f46", marginTop: 2 }}>
+                            {pago.saldo > 0 ? `de ${fmt(pago.totalAcordado)} · falta ${fmt(pago.saldo)}` : "Liquidado"}
+                          </div>
+                        )}
+                        {(r.recibos_abonos || []).map(abono => (
+                          <div key={abono.id} style={{ fontSize: 10, fontWeight: 500, color: "#6b7280", marginTop: 3 }}>
+                            + {fmt(abono.monto)}
+                            {abono.pdf_url && <a href={abono.pdf_url} target="_blank" rel="noreferrer" style={{ marginLeft: 4, color: brand.red }}>PDF</a>}
+                            {abono.comprobante_url && <a href={abono.comprobante_url} target="_blank" rel="noreferrer" style={{ marginLeft: 4, color: "#1e40af" }}>Comp.</a>}
+                          </div>
+                        ))}
+                      </td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: "#6b7280" }}>{r.recibido_por || "—"}</td>
                       <td style={{ padding: "11px 14px" }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: est.color, background: est.bg, padding: "3px 8px", borderRadius: 99 }}>{est.label}</span>
@@ -420,6 +625,9 @@ export default function Recibos() {
                           )}
                           {r.flujo_estado === "requiere_revision" && puedeIniciarFlujo && (
                             <button onClick={() => reintentarFlujo(r)} disabled={saving} style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fdba74", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>↻ Flujo</button>
+                          )}
+                          {puedeRegistrarAbono && pago.saldo > 0 && r.estatus !== "cancelado" && (
+                            <button onClick={() => abrirAbono(r)} disabled={saving} style={{ background: "#ecfdf5", color: "#065f46", border: "1px solid #6ee7b7", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Abono</button>
                           )}
                         </div>
                       </td>
@@ -485,6 +693,80 @@ export default function Recibos() {
               {saving ? "Guardando…" : "Confirmar solicitud recibida"}
             </button>
           </div>
+        </Modal>
+      )}
+
+      {modalAbono && (
+        <Modal title={`Registrar abono — ${modalAbono.folio}`} onClose={() => setModalAbono(null)}>
+          {(() => {
+            const pago = resumenPago(modalAbono);
+            return (
+              <>
+                <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 10, padding: "10px 12px", marginBottom: 16, fontSize: 13 }}>
+                  <div>Total acordado: <strong>{fmt(pago.totalAcordado)}</strong></div>
+                  <div>Recibido anteriormente: <strong>{fmt(pago.totalRecibido)}</strong></div>
+                  <div>Saldo pendiente: <strong style={{ color: "#c2410c" }}>{fmt(pago.saldo)}</strong></div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>Monto *</label>
+                    <input type="number" min="0.01" step="0.01" value={formAbono.monto}
+                      onChange={e => setFormAbono(f => ({ ...f, monto: e.target.value }))}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "10px", border: "1px solid #d1d5db", borderRadius: 8 }} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>Fecha *</label>
+                    <input type="date" value={formAbono.fecha}
+                      onChange={e => setFormAbono(f => ({ ...f, fecha: e.target.value }))}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "10px", border: "1px solid #d1d5db", borderRadius: 8 }} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>Forma de pago</label>
+                    <select value={formAbono.forma_pago}
+                      onChange={e => setFormAbono(f => ({ ...f, forma_pago: e.target.value }))}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff" }}>
+                      <option>Transferencia</option>
+                      <option>Efectivo</option>
+                      <option>Ventanilla</option>
+                      <option>Tarjeta</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>Recibido por</label>
+                    <select value={formAbono.recibido_por}
+                      onChange={e => setFormAbono(f => ({ ...f, recibido_por: e.target.value }))}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff" }}>
+                      <option>Guillermo</option>
+                      <option>Carlos</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ marginTop: 14 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>Comprobante de pago</label>
+                  <input type="file" accept="image/*,.pdf"
+                    onChange={e => setFormAbono(f => ({ ...f, comprobante: e.target.files?.[0] || null }))}
+                    style={{ width: "100%" }} />
+                </div>
+                <div style={{ marginTop: 14 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>Notas</label>
+                  <textarea rows={2} value={formAbono.notas}
+                    onChange={e => setFormAbono(f => ({ ...f, notas: e.target.value }))}
+                    placeholder="Ej. Complemento del apartado"
+                    style={{ width: "100%", boxSizing: "border-box", padding: "10px", border: "1px solid #d1d5db", borderRadius: 8, resize: "vertical" }} />
+                </div>
+                <p style={{ fontSize: 11, color: "#6b7280" }}>
+                  Se generará un PDF complementario sin modificar el recibo original.
+                </p>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                  <button onClick={() => setModalAbono(null)} style={{ border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}>Cancelar</button>
+                  <button onClick={guardarAbono} disabled={saving || !formAbono.monto || !formAbono.fecha}
+                    style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer" }}>
+                    {saving ? "Guardando…" : "Guardar y generar PDF"}
+                  </button>
+                </div>
+              </>
+            );
+          })()}
         </Modal>
       )}
     </div>

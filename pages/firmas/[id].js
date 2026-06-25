@@ -33,7 +33,13 @@ export default function DetalleFirma() {
   const [avanzando, setAvanzando] = useState(false)
   const [editandoDatos, setEditandoDatos] = useState(false)
   const [guardandoDatos, setGuardandoDatos] = useState(false)
-  const [datosForm, setDatosForm] = useState({ nombre_comprador: '', nombre_vendedor: '' })
+  const [datosForm, setDatosForm] = useState({
+    titulo: '',
+    direccion: '',
+    nombre_comprador: '',
+    nombre_vendedor: '',
+    modalidad_firma: 'presencial',
+  })
 
   useEffect(() => { if (!id) return; cargarTodo() }, [id])
 
@@ -45,8 +51,11 @@ export default function DetalleFirma() {
     ])
     setFirma(f)
     setDatosForm({
+      titulo: f?.titulo || '',
+      direccion: f?.direccion || '',
       nombre_comprador: f?.nombre_comprador || '',
       nombre_vendedor: f?.nombre_vendedor || '',
+      modalidad_firma: f?.modalidad_firma || 'presencial',
     })
     setEtapas(e || [])
     setComentarios(c || [])
@@ -91,8 +100,11 @@ export default function DetalleFirma() {
     setGuardandoDatos(true)
     const { data: { user } } = await supabase.auth.getUser()
     const cambios = {
+      titulo: datosForm.titulo.trim(),
+      direccion: datosForm.direccion.trim(),
       nombre_comprador: datosForm.nombre_comprador.trim(),
       nombre_vendedor: datosForm.nombre_vendedor.trim(),
+      modalidad_firma: datosForm.modalidad_firma,
     }
     const { error } = await supabase.from('firmas').update(cambios).eq('id', id)
     if (!error) {
@@ -100,7 +112,7 @@ export default function DetalleFirma() {
         firma_id: id,
         usuario_id: user?.id,
         usuario_nombre: user?.email,
-        mensaje: 'Datos de comprador/inquilino y propietario actualizados.',
+        mensaje: 'Datos generales del expediente actualizados: propiedad, dirección, participantes o modalidad de firma.',
         tipo: 'comentario'
       })
       setEditandoDatos(false)
@@ -203,6 +215,21 @@ export default function DetalleFirma() {
           {editandoDatos && (
             <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.1)', borderRadius: '8px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', color: '#aac4de', fontSize: '0.75rem', marginBottom: 4 }}>Nombre de la propiedad / expediente</label>
+                  <input value={datosForm.titulo}
+                    onChange={e => setDatosForm(f => ({ ...f, titulo: e.target.value }))}
+                    placeholder="Nombre interno para el expediente"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem' }} />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', color: '#aac4de', fontSize: '0.75rem', marginBottom: 4 }}>Dirección</label>
+                  <textarea value={datosForm.direccion}
+                    onChange={e => setDatosForm(f => ({ ...f, direccion: e.target.value }))}
+                    rows={2}
+                    placeholder="Dirección correcta del inmueble"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem', resize: 'vertical' }} />
+                </div>
                 <div>
                   <label style={{ display: 'block', color: '#aac4de', fontSize: '0.75rem', marginBottom: 4 }}>Comprador / Inquilino</label>
                   <input value={datosForm.nombre_comprador}
@@ -215,6 +242,15 @@ export default function DetalleFirma() {
                     onChange={e => setDatosForm(f => ({ ...f, nombre_vendedor: e.target.value }))}
                     placeholder="Escribe el nombre del dueño"
                     style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#aac4de', fontSize: '0.75rem', marginBottom: 4 }}>Modalidad de firma</label>
+                  <select value={datosForm.modalidad_firma}
+                    onChange={e => setDatosForm(f => ({ ...f, modalidad_firma: e.target.value }))}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem', background: '#fff' }}>
+                    <option value="presencial">Presencial</option>
+                    <option value="digital">Digital</option>
+                  </select>
                 </div>
               </div>
               <button onClick={guardarDatosGenerales} disabled={guardandoDatos}
