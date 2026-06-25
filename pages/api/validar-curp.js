@@ -28,9 +28,6 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    // TEMP DEBUG — quitar después de diagnosticar
-    console.log('DIDIT RAW RESPONSE:', JSON.stringify(data));
-
     if (!response.ok) {
       return res.status(200).json({
         valido: false,
