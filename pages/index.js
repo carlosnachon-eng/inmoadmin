@@ -636,7 +636,7 @@ export default function Home() {
 
   if (!session) return <LoginScreen onLogin={() => {}} />;
 
-  const navConModulo = nav.filter(n => n.modulo);
+  const navConModulo = nav.filter(n => n.modulo && (!n.soloAdmin || esAdmin));
   const navAccesible = esAdmin ? navConModulo : navConModulo.filter(n => modulosPermitidos.includes(n.modulo));
   const nombre = perfil?.full_name || perfil?.email?.split("@")[0] || "";
   const horaDelDia = new Date().getHours();

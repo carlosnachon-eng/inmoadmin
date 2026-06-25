@@ -23,6 +23,7 @@ export const nav = [
   { id: "kpis",          label: "KPIs",               icon: "🎯",  link: "/kpis",               modulo: "kpis" },
   { id: "clientes",      label: "Clientes",           icon: "👥",  link: "/clientes",           modulo: "clientes" },
   { id: "kpis_dashboard",label: "KPIs Dashboard",     icon: "📊",  link: "/kpis-dashboard",     modulo: "kpis-dashboard" },
+  { id: "estadisticas_proyectos", label: "Estadísticas Proyectos", icon: "📣", link: "/estadisticas-proyectos", modulo: "estadisticas-proyectos", soloAdmin: true },
   { id: "propiedades",   label: "Propiedades",        icon: "🏠",  link: "/propiedades",        modulo: "propiedades" },
   { id: "catalogo_venta",label: "Catálogo Web",       icon: "🌐",  link: "/propiedades-admin",  modulo: "propiedades-admin" },
   { id: "payments",      label: "Cobranza",           icon: "💰",  link: "/cobranza",           modulo: "cobranza" },
@@ -79,7 +80,10 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
 
   const navFiltrado = permisosCargando
     ? []
-    : nav.filter(n => n.siempreVisible || esAdmin || modulosPermitidos.includes(n.modulo));
+    : nav.filter(n =>
+        (!n.soloAdmin || esAdmin) &&
+        (n.siempreVisible || esAdmin || modulosPermitidos.includes(n.modulo))
+      );
 
   const currentLabel = navFiltrado.find(n => n.id === view)?.label || "Inicio";
   const nombreRol = perfilPermisos?.roles?.nombre || (esAdmin ? "Administrador" : "Staff");
