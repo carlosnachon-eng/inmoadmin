@@ -276,12 +276,13 @@ export default function Recibos() {
     });
   };
 
-  const generarPdfAbono = async (recibo, abono, totalRecibido, saldo) => {
+  const generarPdfAbono = async (recibo, abono, totalRecibido, saldo, folioPersonalizado = null) => {
     const doc = new jsPDF({ unit: "pt", format: "letter" });
     const W = 612, H = 792, M = 42;
     const RED = [185, 28, 60], DARK = [26, 26, 46], GRAY = [107, 114, 128];
     const LIGHT = [249, 250, 251], GREEN = [6, 95, 70], ORANGE = [194, 65, 12];
-    const folioAbono = `${recibo.folio}-A${String((recibo.recibos_abonos?.length || 0) + 1).padStart(2, "0")}`;
+    const folioAbono = folioPersonalizado
+      || `${recibo.folio}-A${String((recibo.recibos_abonos?.length || 0) + 1).padStart(2, "0")}`;
     const fechaTexto = new Date(`${abono.fecha}T12:00:00`).toLocaleDateString("es-MX", {
       day: "numeric", month: "long", year: "numeric"
     });
@@ -423,6 +424,22 @@ export default function Recibos() {
     doc.line(clientX, y + 58, W - M, y + 58);
     doc.text(recibo.cliente_nombre || "Cliente", clientX, y + 70);
 
+    try {
+      const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(`https://www.emporioinmobiliario.com.mx/verificar/${recibo.folio}`)}&size=90&margin=1`;
+      const qrRes = await fetch(qrUrl);
+      const qrBlob = await qrRes.blob();
+      const qrB64 = await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(qrBlob);
+      });
+      doc.addImage(qrB64, "PNG", W - M - 58, H - 94, 58, 58);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6);
+      doc.setTextColor(...GRAY);
+      doc.text("Verificar recibo", W - M - 29, H - 31, { align: "center" });
+    } catch (_) {}
+
     doc.setFillColor(...RED);
     doc.rect(0, H - 6, W, 6, "F");
     doc.setFontSize(8);
@@ -431,6 +448,43 @@ export default function Recibos() {
     doc.setFontSize(6.5);
     doc.text("Emporio Inmobiliario · emporioinmobiliario.com.mx", W / 2, H - 11, { align: "center" });
     return { doc, folioAbono };
+  };
+
+  const regenerarPdfAbono = async (recibo, abono) => {
+    if (!esCarlos) return;
+    setSaving(true);
+    try {
+      const abonosOrdenados = [...(recibo.recibos_abonos || [])]
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      const indice = Math.max(0, abonosOrdenados.findIndex(item => item.id === abono.id));
+      const folioAbono = `${recibo.folio}-A${String(indice + 1).padStart(2, "0")}`;
+      const totalAbonosHastaEste = abonosOrdenados
+        .slice(0, indice + 1)
+        .reduce((sum, item) => sum + Number(item.monto || 0), 0);
+      const totalAcordado = Number(recibo.monto_total_acordado || recibo.monto || 0);
+      const totalRecibido = Number(recibo.monto || 0) + totalAbonosHastaEste;
+      const saldo = Math.max(0, totalAcordado - totalRecibido);
+      const { doc } = await generarPdfAbono(recibo, abono, totalRecibido, saldo, folioAbono);
+      const pdfPath = `${recibo.folio}/abono-${abono.id}.pdf`;
+      const { error: pdfError } = await supabase.storage
+        .from("recibos-apartado")
+        .upload(pdfPath, doc.output("blob"), { contentType: "application/pdf", upsert: true });
+      if (pdfError) throw pdfError;
+      const { data: signedPdf } = await supabase.storage
+        .from("recibos-apartado")
+        .createSignedUrl(pdfPath, 60 * 60 * 24 * 365);
+      const { error: updateError } = await supabase
+        .from("recibos_abonos")
+        .update({ pdf_url: signedPdf?.signedUrl || null })
+        .eq("id", abono.id);
+      if (updateError) throw updateError;
+      doc.save(`${folioAbono}.pdf`);
+      showToast("PDF complementario regenerado con QR");
+      loadRecibos();
+    } catch (error) {
+      showToast(error.message || "No se pudo regenerar el PDF", false);
+    }
+    setSaving(false);
   };
 
   const guardarAbono = async () => {
@@ -603,6 +657,7 @@ export default function Recibos() {
                         Abono {fmt(abono.monto)} · {abono.fecha}
                         {abono.pdf_url && <a href={abono.pdf_url} target="_blank" rel="noreferrer" style={{ marginLeft: 6, color: brand.red }}>PDF</a>}
                         {abono.comprobante_url && <a href={abono.comprobante_url} target="_blank" rel="noreferrer" style={{ marginLeft: 6, color: "#1e40af" }}>Comprobante</a>}
+                        {esCarlos && <button onClick={() => regenerarPdfAbono(r, abono)} disabled={saving} style={{ marginLeft: 6, border: "none", background: "transparent", color: "#7c3aed", cursor: "pointer", padding: 0, fontSize: 11 }}>Regenerar PDF</button>}
                       </div>
                     ))}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -673,6 +728,7 @@ export default function Recibos() {
                             + {fmt(abono.monto)}
                             {abono.pdf_url && <a href={abono.pdf_url} target="_blank" rel="noreferrer" style={{ marginLeft: 4, color: brand.red }}>PDF</a>}
                             {abono.comprobante_url && <a href={abono.comprobante_url} target="_blank" rel="noreferrer" style={{ marginLeft: 4, color: "#1e40af" }}>Comp.</a>}
+                            {esCarlos && <button onClick={() => regenerarPdfAbono(r, abono)} disabled={saving} style={{ marginLeft: 4, border: "none", background: "transparent", color: "#7c3aed", cursor: "pointer", padding: 0, fontSize: 10 }}>Regenerar</button>}
                           </div>
                         ))}
                       </td>
