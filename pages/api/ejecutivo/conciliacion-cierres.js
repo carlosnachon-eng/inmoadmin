@@ -21,17 +21,33 @@ const EMAILS_DIRECCION = new Set([
 
 const TABLA_IGNORADOS = 'bi_conciliacion_ignorados';
 
-async function autenticarDireccion(req) {
-  if (!supabase) return { error: 'Falta configuración de Supabase para conciliación', status: 500 };
-
+function obtenerToken(req) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  return token;
+}
+
+function crearClienteSupabase(token) {
+  if (!supabaseUrl || !supabaseServerKey) return null;
+  return createClient(supabaseUrl, supabaseServerKey, token ? {
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  } : undefined);
+}
+
+async function autenticarDireccion(req, cliente = supabase) {
+  if (!cliente) return { error: 'Falta configuración de Supabase para conciliación', status: 500 };
+
+  const token = obtenerToken(req);
   if (!token) return { error: 'Sesión requerida', status: 401 };
 
-  const { data: { user }, error } = await supabase.auth.getUser(token);
+  const { data: { user }, error } = await cliente.auth.getUser(token);
   if (error || !user) return { error: 'Sesión inválida', status: 401 };
 
-  const { data: perfil, error: perfilError } = await supabase
+  const { data: perfil, error: perfilError } = await cliente
     .from('profiles')
     .select('id, full_name, email, role_id')
     .eq('id', user.id)
@@ -54,8 +70,8 @@ function errorTablaNoExiste(error) {
   return error?.code === '42P01' || String(error?.message || '').includes('does not exist');
 }
 
-async function cargarIgnorados() {
-  const { data, error } = await supabase
+async function cargarIgnorados(cliente = supabase) {
+  const { data, error } = await cliente
     .from(TABLA_IGNORADOS)
     .select('id, modulo, entidad_tipo, entidad_id, motivo, created_at, created_by')
     .eq('modulo', 'cierres')
@@ -74,8 +90,8 @@ async function cargarIgnorados() {
   return { disponibles: true, ignorados, error: null };
 }
 
-async function cargarDatosConciliacion() {
-  const { data: cierres, error: cierresError } = await supabase
+async function cargarDatosConciliacion(cliente = supabase) {
+  const { data: cierres, error: cierresError } = await cliente
     .from('cierres')
     .select('id, propiedad, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, origen, notas, created_at, updated_at')
     .order('fecha_cierre', { ascending: false });
@@ -86,7 +102,7 @@ async function cargarDatosConciliacion() {
   let pagos = [];
 
   if (cierreIds.length > 0) {
-    const { data, error } = await supabase
+    const { data, error } = await cliente
       .from('cierre_pagos')
       .select('id, cierre_id, concepto, monto, fecha, metodo_pago, notas, created_at')
       .in('cierre_id', cierreIds)
@@ -100,7 +116,7 @@ async function cargarDatosConciliacion() {
   let recibos = [];
 
   if (reciboIds.length > 0) {
-    const { data, error } = await supabase
+    const { data, error } = await cliente
       .from('recibos_apartado')
       .select('id, folio, cliente_nombre, inmueble, monto, monto_total_acordado, fecha, forma_pago, created_at, recibos_abonos(id, monto, fecha, forma_pago, notas, created_at)')
       .in('id', reciboIds);
@@ -109,7 +125,7 @@ async function cargarDatosConciliacion() {
     recibos = data || [];
   }
 
-  const ignorados = await cargarIgnorados();
+  const ignorados = await cargarIgnorados(cliente);
 
   return {
     cierres: cierres || [],
@@ -165,11 +181,11 @@ function mapearItems({ cierres, pagos, recibos, ignorados }) {
   });
 }
 
-async function listarConciliacion(req, res) {
+async function listarConciliacion(req, res, cliente = supabase) {
   const incluirConciliados = req.query?.include === 'all' || req.query?.include === 'conciliados';
   const incluirIgnorados = req.query?.include === 'all' || req.query?.include === 'ignorados';
 
-  const datos = await cargarDatosConciliacion();
+  const datos = await cargarDatosConciliacion(cliente);
   const todos = mapearItems(datos);
   const resumen = construirResumenConciliacion(todos);
 
@@ -188,8 +204,8 @@ async function listarConciliacion(req, res) {
   });
 }
 
-async function regularizarCierre({ cierreId, user }) {
-  const datos = await cargarDatosConciliacion();
+async function regularizarCierre({ cierreId, user, cliente = supabase }) {
+  const datos = await cargarDatosConciliacion(cliente);
   const items = mapearItems(datos);
   const item = items.find((registro) => String(registro.id) === String(cierreId));
 
@@ -205,7 +221,7 @@ async function regularizarCierre({ cierreId, user }) {
     throw error;
   }
 
-  const { data: pagoExistente, error: existenteError } = await supabase
+  const { data: pagoExistente, error: existenteError } = await cliente
     .from('cierre_pagos')
     .select('id')
     .eq('cierre_id', item.id)
@@ -228,7 +244,7 @@ async function regularizarCierre({ cierreId, user }) {
     `Usuario: ${user.email || user.id}`,
   ].filter(Boolean).join(' · ');
 
-  const { error: insertError } = await supabase.from('cierre_pagos').insert({
+  const { error: insertError } = await cliente.from('cierre_pagos').insert({
     cierre_id: item.id,
     concepto: 'regularizacion_historica',
     monto: item.regularizacion.monto,
@@ -239,7 +255,7 @@ async function regularizarCierre({ cierreId, user }) {
 
   if (insertError) throw insertError;
 
-  const { data: pagosActualizados, error: pagosError } = await supabase
+  const { data: pagosActualizados, error: pagosError } = await cliente
     .from('cierre_pagos')
     .select('monto')
     .eq('cierre_id', item.id);
@@ -249,7 +265,7 @@ async function regularizarCierre({ cierreId, user }) {
   const totalPagos = sumarMontos(pagosActualizados || []);
   const pendiente = redondearMoneda(Math.max(0, item.comision - totalPagos));
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await cliente
     .from('cierres')
     .update({
       cobrado: totalPagos,
@@ -262,7 +278,7 @@ async function regularizarCierre({ cierreId, user }) {
   if (updateError) throw updateError;
 
   if (item.recibo_id) {
-    await supabase.from('recibos_log').insert({
+    await cliente.from('recibos_log').insert({
       recibo_id: item.recibo_id,
       accion: 'regularizacion_historica_cierre',
       usuario_id: user.id || null,
@@ -289,15 +305,15 @@ async function regularizarCierre({ cierreId, user }) {
   };
 }
 
-async function ignorarCierre({ cierreId, motivo, user }) {
-  const { disponibles } = await cargarIgnorados();
+async function ignorarCierre({ cierreId, motivo, user, cliente = supabase }) {
+  const { disponibles } = await cargarIgnorados(cliente);
   if (!disponibles) {
     const error = new Error(`Falta crear la tabla ${TABLA_IGNORADOS} para persistir casos ignorados`);
     error.status = 409;
     throw error;
   }
 
-  const { error } = await supabase.from(TABLA_IGNORADOS).upsert({
+  const { error } = await cliente.from(TABLA_IGNORADOS).upsert({
     modulo: 'cierres',
     entidad_tipo: 'cierre',
     entidad_id: String(cierreId),
@@ -312,18 +328,18 @@ async function ignorarCierre({ cierreId, motivo, user }) {
   return { cierre_id: cierreId, estado: 'ignorado' };
 }
 
-async function ejecutarAccion(req, res, auth) {
+async function ejecutarAccion(req, res, auth, cliente = supabase) {
   const { action, cierre_id: cierreId, motivo } = req.body || {};
 
   if (!cierreId) return res.status(400).json({ ok: false, error: 'Falta cierre_id' });
 
   if (action === 'regularizar') {
-    const result = await regularizarCierre({ cierreId, user: { ...auth.user, email: auth.perfil.email } });
+    const result = await regularizarCierre({ cierreId, user: { ...auth.user, email: auth.perfil.email }, cliente });
     return res.status(200).json({ ok: true, action, result });
   }
 
   if (action === 'ignorar') {
-    const result = await ignorarCierre({ cierreId, motivo, user: auth.user });
+    const result = await ignorarCierre({ cierreId, motivo, user: auth.user, cliente });
     return res.status(200).json({ ok: true, action, result });
   }
 
@@ -331,16 +347,18 @@ async function ejecutarAccion(req, res, auth) {
 }
 
 export default async function handler(req, res) {
-  if (!supabase) {
-    return res.status(500).json({ ok: false, error: 'Falta configuración de Supabase para conciliación' });
-  }
-
-  const auth = await autenticarDireccion(req);
-  if (auth.error) return res.status(auth.status).json({ ok: false, error: auth.error });
-
   try {
-    if (req.method === 'GET') return listarConciliacion(req, res);
-    if (req.method === 'POST') return ejecutarAccion(req, res, auth);
+    if (!supabase) {
+      return res.status(500).json({ ok: false, error: 'Falta configuración de Supabase para conciliación' });
+    }
+
+    const token = obtenerToken(req);
+    const cliente = crearClienteSupabase(token) || supabase;
+    const auth = await autenticarDireccion(req, cliente);
+    if (auth.error) return res.status(auth.status).json({ ok: false, error: auth.error });
+
+    if (req.method === 'GET') return listarConciliacion(req, res, cliente);
+    if (req.method === 'POST') return ejecutarAccion(req, res, auth, cliente);
     return res.status(405).json({ ok: false, error: 'Método no permitido' });
   } catch (error) {
     return res.status(error.status || 500).json({
