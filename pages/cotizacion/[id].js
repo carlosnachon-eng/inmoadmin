@@ -191,12 +191,28 @@ export default function CotizacionPublica() {
         <div style={{ background: "#fff", borderRadius: 16, padding: 20, marginBottom: 16, border: "1px solid #f0f0f0" }}>
           <p style={{ margin: "0 0 16px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Desglose</p>
           {(() => {
+            const tieneDescuento = cotizacion.descuento_valor > 0 && cotizacion.monto_sin_descuento > cotizacion.monto_final;
+            const montoOriginal = cotizacion.monto_sin_descuento ?? cotizacion.monto_final;
             const subtotal = cotizacion.monto_final;
             const iva = Math.round(subtotal * 0.16);
             const total = subtotal + iva;
             const anticipo = Math.round(total * 0.5);
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {tieneDescuento && (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 14, color: "#6b7280" }}>Precio original</span>
+                      <span style={{ fontSize: 14, color: "#9ca3af", textDecoration: "line-through" }}>{fmt(montoOriginal)}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 14, color: "#b91c3c", fontWeight: 700 }}>
+                        🏷️ Descuento {cotizacion.descuento_tipo === "pct" ? `(${cotizacion.descuento_valor}%)` : ""}
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "#b91c3c" }}>− {fmt(montoOriginal - subtotal)}</span>
+                    </div>
+                  </>
+                )}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 14, color: "#6b7280" }}>Subtotal</span>
                   <span style={{ fontSize: 14, fontWeight: 600, color: "#4a4a4a" }}>{fmt(subtotal)}</span>

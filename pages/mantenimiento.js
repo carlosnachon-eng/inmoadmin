@@ -168,6 +168,12 @@ export default function Mantenimiento() {
   const [savingCotizacion, setSavingCotizacion] = useState(false);
   const [quotes, setQuotes] = useState([]);
 
+  // ── Descuento sobre cotización ──
+  const [showModalDescuento, setShowModalDescuento] = useState(false);
+  const [quoteDescontando, setQuoteDescontando] = useState(null);
+  const [descuentoForm, setDescuentoForm] = useState({ tipo: "pct", valor: "" });
+  const [savingDescuento, setSavingDescuento] = useState(false);
+
   const emptyTicket = {
     property_name: "", tenant_name: "", title: "", description: "",
     category: "otro", priority: "media", payer: "propietario",
@@ -347,7 +353,10 @@ export default function Mantenimiento() {
       descripcion: cotizacionForm.descripcion || ticketCotizando.title,
       costo_proveedor: costo,
       margen_pct: margen,
-      monto_final,
+      monto_final: monto_final,
+      monto_sin_descuento: monto_final,
+      descuento_tipo: null,
+      descuento_valor: 0,
       status: "pendiente",
     }]).select().single();
 
@@ -405,6 +414,52 @@ export default function Mantenimiento() {
     setSavingCotizacion(false);
     setShowModalCotizar(false);
     setTicketCotizando(null);
+    loadData();
+  };
+
+  // ── Editar descuento de una cotización ya generada ──
+  const openDescuento = (quote) => {
+    setQuoteDescontando(quote);
+    setDescuentoForm({
+      tipo: quote.descuento_tipo || "pct",
+      valor: quote.descuento_valor ? String(quote.descuento_valor) : "",
+    });
+    setShowModalDescuento(true);
+  };
+
+  const calcularMontoConDescuento = (base, tipo, valor) => {
+    const v = parseFloat(valor) || 0;
+    if (v <= 0) return base;
+    if (tipo === "pct") return Math.max(0, Math.round(base * (1 - v / 100)));
+    return Math.max(0, Math.round(base - v));
+  };
+
+  const saveDescuento = async () => {
+    if (!quoteDescontando) return;
+    setSavingDescuento(true);
+    const base = quoteDescontando.monto_sin_descuento ?? quoteDescontando.monto_final;
+    const valor = parseFloat(descuentoForm.valor) || 0;
+    const nuevoMonto = calcularMontoConDescuento(base, descuentoForm.tipo, valor);
+
+    const { error } = await supabase.from("maintenance_quotes").update({
+      descuento_tipo: valor > 0 ? descuentoForm.tipo : null,
+      descuento_valor: valor,
+      monto_final: nuevoMonto,
+      updated_at: new Date().toISOString(),
+    }).eq("id", quoteDescontando.id);
+
+    if (error) { showToast("Error: " + error.message, false); setSavingDescuento(false); return; }
+
+    // Mantener charged_amount del ticket sincronizado si la cotización sigue pendiente/aprobada
+    await supabase.from("maintenance_tickets").update({
+      charged_amount: nuevoMonto,
+      updated_at: new Date().toISOString(),
+    }).eq("id", quoteDescontando.ticket_id);
+
+    showToast(valor > 0 ? "Descuento aplicado" : "Descuento eliminado");
+    setSavingDescuento(false);
+    setShowModalDescuento(false);
+    setQuoteDescontando(null);
     loadData();
   };
 
@@ -624,10 +679,26 @@ export default function Mantenimiento() {
                     {quote && (
                       <div style={{ marginTop: 12, background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #e5e7eb" }}>
                         <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#6b7280" }}>COTIZACIÓN</p>
-                        <p style={{ margin: "0 0 4px", fontSize: 13, color: "#374151" }}>Costo: {fmt(quote.costo_proveedor)} + {quote.margen_pct}% = <strong>{fmt(quote.monto_final)}</strong></p>
-                        <a href={`/cotizacion/${quote.id}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#7c3aed", fontWeight: 700 }}>
-                          Ver página de cotización →
-                        </a>
+                        <p style={{ margin: "0 0 4px", fontSize: 13, color: "#374151" }}>Costo: {fmt(quote.costo_proveedor)} + {quote.margen_pct}% = {fmt(quote.monto_sin_descuento ?? quote.monto_final)}</p>
+                        {quote.descuento_valor > 0 && (
+                          <p style={{ margin: "0 0 4px", fontSize: 13, color: "#b91c3c" }}>
+                            Descuento: {quote.descuento_tipo === "pct" ? `${quote.descuento_valor}%` : fmt(quote.descuento_valor)} → <strong>Total con descuento: {fmt(quote.monto_final)}</strong>
+                          </p>
+                        )}
+                        {!quote.descuento_valor && (
+                          <p style={{ margin: "0 0 4px", fontSize: 13, color: "#374151" }}>Total: <strong>{fmt(quote.monto_final)}</strong></p>
+                        )}
+                        <div style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+                          <a href={`/cotizacion/${quote.id}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#7c3aed", fontWeight: 700 }}>
+                            Ver página de cotización →
+                          </a>
+                          {quote.status !== "rechazada" && (
+                            <button onClick={() => openDescuento(quote)}
+                              style={{ fontSize: 12, color: "#b91c3c", fontWeight: 700, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                              ✏️ {quote.descuento_valor > 0 ? "Editar descuento" : "Agregar descuento"}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -782,6 +853,84 @@ export default function Mantenimiento() {
             </button>
             <Btn onClick={saveCotizacion} disabled={savingCotizacion || !cotizacionForm.costo_proveedor || !cotizacionForm.descripcion} color="#7c3aed">
               {savingCotizacion ? "Guardando..." : ticketCotizando.payer === "condominio" ? "Guardar cotización" : "Enviar cotización"}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* MODAL DESCUENTO SOBRE COTIZACIÓN */}
+      {showModalDescuento && quoteDescontando && (
+        <Modal title="🏷️ Descuento sobre cotización" onClose={() => { setShowModalDescuento(false); setQuoteDescontando(null); }}>
+          <div style={{ background: "#f9fafb", borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
+            <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{quoteDescontando.descripcion}</p>
+            <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>
+              Monto original: {fmt(quoteDescontando.monto_sin_descuento ?? quoteDescontando.monto_final)}
+            </p>
+          </div>
+
+          <Field label="Tipo de descuento">
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setDescuentoForm(f => ({ ...f, tipo: "pct" }))}
+                style={{
+                  flex: 1, padding: "10px", borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer",
+                  border: descuentoForm.tipo === "pct" ? "2px solid #7c3aed" : "1px solid #e5e7eb",
+                  background: descuentoForm.tipo === "pct" ? "#faf5ff" : "#fff",
+                  color: descuentoForm.tipo === "pct" ? "#7c3aed" : "#374151",
+                }}>
+                % Porcentaje
+              </button>
+              <button
+                onClick={() => setDescuentoForm(f => ({ ...f, tipo: "fijo" }))}
+                style={{
+                  flex: 1, padding: "10px", borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer",
+                  border: descuentoForm.tipo === "fijo" ? "2px solid #7c3aed" : "1px solid #e5e7eb",
+                  background: descuentoForm.tipo === "fijo" ? "#faf5ff" : "#fff",
+                  color: descuentoForm.tipo === "fijo" ? "#7c3aed" : "#374151",
+                }}>
+                $ Monto fijo
+              </button>
+            </div>
+          </Field>
+
+          <Field label={descuentoForm.tipo === "pct" ? "Descuento (%)" : "Descuento ($)"} hint="Déjalo en 0 o vacío para quitar el descuento">
+            <Input
+              type="number" placeholder="0"
+              value={descuentoForm.valor}
+              onChange={e => setDescuentoForm(f => ({ ...f, valor: e.target.value }))}
+            />
+          </Field>
+
+          {(() => {
+            const base = quoteDescontando.monto_sin_descuento ?? quoteDescontando.monto_final;
+            const nuevoMonto = calcularMontoConDescuento(base, descuentoForm.tipo, descuentoForm.valor);
+            const ahorro = base - nuevoMonto;
+            return (
+              <div style={{ background: ahorro > 0 ? "#fff5f5" : "#f0fdf4", border: `1px solid ${ahorro > 0 ? "#fca5a5" : "#86efac"}`, borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#6b7280", marginBottom: 4 }}>
+                  <span>Monto original</span><span>{fmt(base)}</span>
+                </div>
+                {ahorro > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#b91c3c", marginBottom: 4 }}>
+                    <span>Descuento</span><span>− {fmt(ahorro)}</span>
+                  </div>
+                )}
+                <div style={{ height: 1, background: "#e5e7eb", margin: "6px 0" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#1a1a2e" }}>Nuevo total</span>
+                  <span style={{ fontSize: 24, fontWeight: 900, color: "#065f46" }}>{fmt(nuevoMonto)}</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button onClick={() => { setShowModalDescuento(false); setQuoteDescontando(null); }}
+              style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>
+              Cancelar
+            </button>
+            <Btn onClick={saveDescuento} disabled={savingDescuento} color="#7c3aed">
+              {savingDescuento ? "Guardando..." : "Guardar descuento"}
             </Btn>
           </div>
         </Modal>
