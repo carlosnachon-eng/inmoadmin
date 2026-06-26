@@ -30,6 +30,35 @@ const nombreRelacionado = (relacion, respaldo) => {
   const perfil = Array.isArray(relacion) ? relacion[0] : relacion;
   return perfil?.full_name || perfil?.email || respaldo;
 };
+const normalizarTexto = (valor) => String(valor || "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase()
+  .replace(/\s+/g, " ")
+  .trim();
+
+const solicitudSigueAbierta = (status) => {
+  const valor = normalizarTexto(status);
+  return !valor || ["pendiente", "en_revision"].includes(valor);
+};
+
+const nombresCoinciden = (a, b) => {
+  const uno = normalizarTexto(a);
+  const dos = normalizarTexto(b);
+  if (!uno || !dos || Math.min(uno.length, dos.length) < 8) return false;
+  return uno === dos || uno.includes(dos) || dos.includes(uno);
+};
+
+const firmaCierraSolicitud = (firma, solicitud) => {
+  if (!firma || !solicitud) return false;
+  const nombreSolicitud = solicitud.nombre_completo || solicitud.razon_social;
+  const coincideSolicitante = nombresCoinciden(nombreSolicitud, firma.nombre_comprador)
+    || nombresCoinciden(nombreSolicitud, firma.titulo);
+  if (!coincideSolicitante) return false;
+  const statusFirma = normalizarTexto(firma.status);
+  const etapaActual = Number(firma.etapa_actual) || 0;
+  return statusFirma === "completado" || etapaActual >= 12;
+};
 
 async function autenticar(req) {
   const authHeader = req.headers.authorization || "";
@@ -360,13 +389,15 @@ export default async function handler(req, res) {
         .select("id, nombre_arrendatario, direccion_inmueble, fecha_vigencia, status, expediente_anterior_id, monto_poliza, anticipo_poliza, saldo_pagado, created_at, updated_at")),
       safe("Firmas", supabase
         .from("firmas")
-        .select("id, titulo, status, created_at, updated_at, firma_etapas(status, responsable, nombre)")),
+        .select("id, titulo, nombre_comprador, status, etapa_actual, created_at, updated_at, firma_etapas(status, responsable, nombre)")),
       safe("Citas de firma", supabase
         .from("firmas_citas")
         .select("id, firma_id, titulo, fecha, hora")),
     ]);
 
     solicitudes.forEach((solicitud) => {
+      if (!solicitudSigueAbierta(solicitud.status)) return;
+      if (firmas.some((firma) => firmaCierraSolicitud(firma, solicitud))) return;
       const analisis = solicitud.ia_analisis_documental || {};
       const fallos = Array.isArray(analisis.documentos_fallidos) ? analisis.documentos_fallidos : [];
       const pendienteHoras = solicitud.status === "pendiente" ? horasDesde(solicitud.created_at, ahora) : 0;
