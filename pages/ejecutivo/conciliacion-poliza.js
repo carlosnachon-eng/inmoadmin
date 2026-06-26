@@ -241,6 +241,7 @@ export default function ConciliacionPoliza() {
         'anticipo_poliza = anticipo de póliza',
         'pago_poliza = pago completo de póliza',
         'saldo_poliza = saldo de póliza',
+        'historico_validado = cobro real anterior al expediente digital',
         'no_bi = excluir de BI / ajuste operativo',
       ];
 
@@ -259,7 +260,7 @@ export default function ConciliacionPoliza() {
     const concepto = nuevoConcepto.trim();
     const permitidos = movimiento.tipo === 'egreso'
       ? ['gasto_juridico', 'no_bi']
-      : ['investigacion', 'anticipo_poliza', 'pago_poliza', 'saldo_poliza', 'no_bi'];
+      : ['investigacion', 'anticipo_poliza', 'pago_poliza', 'saldo_poliza', 'historico_validado', 'no_bi'];
     if (!permitidos.includes(concepto)) {
       window.alert(`Concepto no válido. Usa: ${permitidos.join(', ')}`);
       return;
@@ -388,6 +389,11 @@ export default function ConciliacionPoliza() {
         )}
         {item.tipo === 'movimiento_caja' && !item.expediente_id && !item.solicitud_id && (
           <>
+            {item.evidencia?.caja?.[0]?.tipo === 'ingreso' && (
+              <button disabled={disabled} onClick={() => validarHistorico(item)} style={{ ...actionButton, color: '#047857' }}>
+                Validar histórico
+              </button>
+            )}
             <button disabled={disabled} onClick={() => vincularMovimiento(item, 'expediente')} style={actionButton}>
               Vincular expediente
             </button>
@@ -404,6 +410,49 @@ export default function ConciliacionPoliza() {
         {savingAction.endsWith(item.id) && <span style={{ color: '#6b7280', fontSize: 12 }}>Guardando…</span>}
       </div>
     );
+  };
+
+  const validarHistorico = async (item) => {
+    const movimiento = item?.evidencia?.caja?.[0];
+    if (!item?.movimiento_id || !movimiento) return;
+
+    const motivo = window.prompt([
+      'Validar cobro histórico',
+      '',
+      'Usa esta opción solo si el cobro es real, pero no tiene expediente/solicitud porque fue registrado antes de que esos expedientes existieran en el sistema.',
+      '',
+      `Movimiento: ${movimiento.fecha} · ${movimiento.tipo}/${movimiento.concepto}`,
+      `Monto: ${fmtMoney(movimiento.monto)}`,
+      `Descripción: ${movimiento.descripcion}`,
+      '',
+      'Escribe una nota breve de validación:',
+    ].join('\n'));
+    if (!motivo) return;
+
+    const confirmar = window.prompt([
+      'Confirmación requerida',
+      '',
+      'Se marcará este movimiento como historico_validado.',
+      'Seguirá existiendo en Caja Póliza, pero dejará de aparecer como inconsistencia pendiente.',
+      '',
+      `Nota: ${motivo}`,
+      '',
+      'Para confirmar escribe: VALIDAR HISTORICO',
+    ].join('\n'));
+    if (confirmar !== 'VALIDAR HISTORICO') return;
+
+    await ejecutarAccion(`historico-${item.id}`, async () => {
+      const nota = [
+        movimiento.descripcion || null,
+        `Validado histórico BI: ${motivo}`,
+      ].filter(Boolean).join(' · ');
+
+      const { error: updateError } = await supabase
+        .from('poliza_caja')
+        .update({ concepto: 'historico_validado', descripcion: nota })
+        .eq('id', item.movimiento_id);
+      if (updateError) throw updateError;
+    });
   };
 
   const itemsFiltrados = useMemo(() => {
