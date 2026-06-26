@@ -20,6 +20,7 @@ const EMAILS_DIRECCION = new Set([
 ]);
 
 const TABLA_IGNORADOS = 'bi_conciliacion_ignorados';
+const BATCH_SIZE = 100;
 
 function obtenerToken(req) {
   const header = req.headers.authorization || '';
@@ -70,6 +71,24 @@ function errorTablaNoExiste(error) {
   return error?.code === '42P01' || String(error?.message || '').includes('does not exist');
 }
 
+function partirEnLotes(items = [], size = BATCH_SIZE) {
+  const lotes = [];
+  for (let i = 0; i < items.length; i += size) {
+    lotes.push(items.slice(i, i + size));
+  }
+  return lotes;
+}
+
+async function consultarEnLotes({ ids, queryFactory }) {
+  const resultados = [];
+  for (const lote of partirEnLotes(ids)) {
+    const { data, error } = await queryFactory(lote);
+    if (error) throw error;
+    resultados.push(...(data || []));
+  }
+  return resultados;
+}
+
 async function cargarIgnorados(cliente = supabase) {
   const { data, error } = await cliente
     .from(TABLA_IGNORADOS)
@@ -102,27 +121,27 @@ async function cargarDatosConciliacion(cliente = supabase) {
   let pagos = [];
 
   if (cierreIds.length > 0) {
-    const { data, error } = await cliente
-      .from('cierre_pagos')
-      .select('id, cierre_id, concepto, monto, fecha, metodo_pago, notas, created_at')
-      .in('cierre_id', cierreIds)
-      .order('fecha', { ascending: true });
-
-    if (error) throw error;
-    pagos = data || [];
+    pagos = await consultarEnLotes({
+      ids: cierreIds,
+      queryFactory: (lote) => cliente
+        .from('cierre_pagos')
+        .select('id, cierre_id, concepto, monto, fecha, metodo_pago, notas, created_at')
+        .in('cierre_id', lote)
+        .order('fecha', { ascending: true }),
+    });
   }
 
   const reciboIds = [...new Set((cierres || []).map((cierre) => cierre.recibo_id).filter(Boolean))];
   let recibos = [];
 
   if (reciboIds.length > 0) {
-    const { data, error } = await cliente
-      .from('recibos_apartado')
-      .select('id, folio, cliente_nombre, inmueble, monto, monto_total_acordado, fecha, forma_pago, created_at, recibos_abonos(id, monto, fecha, forma_pago, notas, created_at)')
-      .in('id', reciboIds);
-
-    if (error) throw error;
-    recibos = data || [];
+    recibos = await consultarEnLotes({
+      ids: reciboIds,
+      queryFactory: (lote) => cliente
+        .from('recibos_apartado')
+        .select('id, folio, cliente_nombre, inmueble, monto, monto_total_acordado, fecha, forma_pago, created_at, recibos_abonos(id, monto, fecha, forma_pago, notas, created_at)')
+        .in('id', lote),
+    });
   }
 
   const ignorados = await cargarIgnorados(cliente);

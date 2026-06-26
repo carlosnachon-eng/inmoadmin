@@ -374,7 +374,15 @@ export default function ConciliacionCierres() {
         )}
 
         {error && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 14, padding: 14, marginBottom: 16, fontWeight: 750 }}>
+          <div style={{
+            background: data?.source === 'supabase_direct_fallback' ? '#fffbeb' : '#fef2f2',
+            border: `1px solid ${data?.source === 'supabase_direct_fallback' ? '#fde68a' : '#fecaca'}`,
+            color: data?.source === 'supabase_direct_fallback' ? '#92400e' : '#991b1b',
+            borderRadius: 14,
+            padding: 14,
+            marginBottom: 16,
+            fontWeight: 750,
+          }}>
             {error}
           </div>
         )}
