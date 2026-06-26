@@ -7,6 +7,7 @@ import {
   toNumber,
 } from '../../../lib/ejecutivo/lecturaBiCierresAdmin';
 import {
+  construirDiagnosticoCaja,
   construirCentroInteligencia,
   resumirMantenimientoCentro,
   resumirPolizaCentro,
@@ -156,6 +157,31 @@ async function cargarMantenimiento() {
   };
 }
 
+async function cargarCajaPeriodo(periodo) {
+  const [cashRes, polizaRes] = await Promise.all([
+    supabase
+      .from('cash_movements')
+      .select('id, type, category, description, amount, payment_method, date, notes, created_by, created_at, reference_id, reference_type')
+      .gte('date', periodo.startDate)
+      .lt('date', periodo.endExclusive)
+      .order('date', { ascending: true }),
+    supabase
+      .from('poliza_caja')
+      .select('*')
+      .gte('fecha', periodo.startDate)
+      .lt('fecha', periodo.endExclusive)
+      .order('fecha', { ascending: true }),
+  ]);
+
+  if (cashRes.error) throw cashRes.error;
+  if (polizaRes.error) throw polizaRes.error;
+
+  return {
+    cashMovements: cashRes.data || [],
+    polizaCaja: polizaRes.data || [],
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Método no permitido' });
 
@@ -174,11 +200,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    const [datosCierres, datosAdmin, datosPoliza, datosMantenimiento] = await Promise.all([
+    const [datosCierres, datosAdmin, datosPoliza, datosMantenimiento, datosCaja] = await Promise.all([
       cargarCierres(periodo),
       cargarAdministracion(periodo),
       cargarPoliza(),
       cargarMantenimiento(),
+      cargarCajaPeriodo(periodo),
     ]);
 
     const resumenCierres = resumirCierres(datosCierres);
@@ -196,7 +223,7 @@ export default async function handler(req, res) {
       ), 0),
     );
 
-    const centro = construirCentroInteligencia({
+    const centroBase = construirCentroInteligencia({
       periodo,
       cierres: unidadDesdeLecturaBi({
         key: 'cierres',
@@ -215,6 +242,16 @@ export default async function handler(req, res) {
       poliza: resumenPoliza,
       mantenimiento: resumenMantenimiento,
     });
+    const diagnosticoCaja = construirDiagnosticoCaja({
+      periodo,
+      cashMovements: datosCaja.cashMovements,
+      polizaCaja: datosCaja.polizaCaja,
+      resultadoOperativo: centroBase.resumen_general.resultado_operativo,
+    });
+    const centro = {
+      ...centroBase,
+      caja_vs_resultado: diagnosticoCaja,
+    };
 
     return res.status(200).json({
       ok: true,

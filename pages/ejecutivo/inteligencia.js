@@ -123,6 +123,103 @@ const UnidadCard = ({ unidad }) => (
   </div>
 );
 
+const CajaVsResultado = ({ diagnostico }) => {
+  if (!diagnostico) return null;
+
+  const diferencia = Number(diagnostico.diferencia_por_explicar || 0);
+  const categorias = diagnostico.categorias || [];
+
+  return (
+    <section style={{ background: '#111827', color: '#fff', borderRadius: 26, padding: 24, marginBottom: 22, boxShadow: '0 16px 38px rgba(15, 23, 42, 0.16)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 18 }}>
+        <div>
+          <p style={{ margin: '0 0 8px', color: '#93c5fd', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.9 }}>
+            Diagnóstico de tesorería
+          </p>
+          <h2 style={{ margin: 0, fontSize: 28, letterSpacing: -0.7 }}>Caja vs Resultado Operativo</h2>
+          <p style={{ margin: '8px 0 0', color: '#cbd5e1', maxWidth: 820, lineHeight: 1.45 }}>
+            {diagnostico.nota}
+          </p>
+        </div>
+        <span style={{ border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.08)', borderRadius: 999, padding: '8px 12px', fontSize: 12, fontWeight: 950 }}>
+          Solo lectura
+        </span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 18 }}>
+        <DarkMetric label="Resultado operativo" value={fmtMoney(diagnostico.resultado_operativo)} />
+        <DarkMetric label="Flujo neto de caja" value={fmtMoney(diagnostico.flujo_neto_caja)} />
+        <DarkMetric label="Entradas caja" value={fmtMoney(diagnostico.entradas)} tone="green" />
+        <DarkMetric label="Salidas caja" value={fmtMoney(diagnostico.salidas)} tone="red" />
+      </div>
+
+      <div style={{
+        background: Math.abs(diferencia) > 0 ? 'rgba(245, 158, 11, 0.14)' : 'rgba(16, 185, 129, 0.14)',
+        border: `1px solid ${Math.abs(diferencia) > 0 ? 'rgba(245, 158, 11, 0.35)' : 'rgba(16, 185, 129, 0.35)'}`,
+        borderRadius: 18,
+        padding: 16,
+        marginBottom: 18,
+      }}>
+        <p style={{ margin: 0, color: '#cbd5e1', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>Diferencia por explicar</p>
+        <p style={{ margin: '6px 0 0', fontSize: 30, fontWeight: 950, color: Math.abs(diferencia) > 0 ? '#fbbf24' : '#34d399' }}>
+          {fmtMoney(diagnostico.diferencia_por_explicar)}
+        </p>
+        <p style={{ margin: '6px 0 0', color: '#cbd5e1', fontSize: 13, lineHeight: 1.45 }}>
+          Esta diferencia ayuda a ubicar retiros, gastos corporativos, fondos de terceros o movimientos sin clasificación. No significa automáticamente que falte dinero.
+        </p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div>
+          <h3 style={{ margin: '0 0 10px', fontSize: 16 }}>Lectura por categoría</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {categorias.map((categoria) => (
+              <div key={categoria.key} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 14, padding: 12 }}>
+                <div>
+                  <p style={{ margin: 0, fontWeight: 950 }}>{categoria.label}</p>
+                  <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: 12 }}>
+                    {categoria.movimientos} mov. · Entradas {fmtMoney(categoria.entradas)} · Salidas {fmtMoney(categoria.salidas)}
+                  </p>
+                </div>
+                <p style={{ margin: 0, fontWeight: 950, color: Number(categoria.neto || 0) >= 0 ? '#34d399' : '#f87171' }}>
+                  {fmtMoney(categoria.neto)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h3 style={{ margin: '0 0 10px', fontSize: 16 }}>Qué revisar</h3>
+          {(diagnostico.alertas || []).length === 0 ? (
+            <div style={{ background: 'rgba(16,185,129,0.14)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: 14, padding: 14, color: '#bbf7d0', fontWeight: 900 }}>
+              No hay alertas importantes en caja para este periodo.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {diagnostico.alertas.map((alerta, index) => (
+                <div key={index} style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 14, padding: 12, color: '#e5e7eb', lineHeight: 1.4 }}>
+                  {alerta}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const DarkMetric = ({ label, value, tone = 'default' }) => {
+  const color = tone === 'green' ? '#34d399' : tone === 'red' ? '#f87171' : '#fff';
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.11)', borderRadius: 18, padding: 15 }}>
+      <p style={{ margin: 0, color: '#94a3b8', fontSize: 11, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</p>
+      <p style={{ margin: '8px 0 0', color, fontSize: 22, fontWeight: 950 }}>{value}</p>
+    </div>
+  );
+};
+
 const Metric = ({ label, value, positive, warning }) => (
   <div style={{ background: '#f9fafb', borderRadius: 16, padding: 14 }}>
     <p style={{ margin: 0, fontSize: 11, color: '#6b7280', fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</p>
@@ -209,6 +306,7 @@ export default function CentroInteligencia() {
   const calidad = data?.calidad_informacion || {};
   const unidades = data?.unidades || [];
   const acciones = data?.acciones_pendientes || [];
+  const cajaVsResultado = data?.caja_vs_resultado || null;
 
   const fraseEjecutiva = useMemo(() => {
     if (!data) return 'Cargando lectura ejecutiva consolidada.';
@@ -297,6 +395,8 @@ export default function CentroInteligencia() {
             {unidades.map((unidad) => <UnidadCard key={unidad.key} unidad={unidad} />)}
           </div>
         </section>
+
+        <CajaVsResultado diagnostico={cajaVsResultado} />
 
         <section style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 16 }}>
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 24, padding: 22, boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)' }}>
