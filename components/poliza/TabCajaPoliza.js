@@ -7,7 +7,8 @@ const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
 
 const CONCEPTOS = {
   investigacion: 'Investigación', anticipo_poliza: 'Anticipo póliza',
-  pago_poliza: 'Pago póliza', saldo_poliza: 'Saldo póliza', otro: 'Otro',
+  pago_poliza: 'Pago póliza', saldo_poliza: 'Saldo póliza',
+  gasto_juridico: 'Gasto jurídico', no_bi: 'Fuera de BI', otro: 'Otro',
 }
 
 const emptyForm = () => ({

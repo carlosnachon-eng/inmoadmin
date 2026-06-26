@@ -114,6 +114,17 @@ const tdRight = {
   fontWeight: 800,
 };
 
+const actionButton = {
+  border: '1px solid #e5e7eb',
+  background: '#fff',
+  color: '#374151',
+  borderRadius: 9,
+  padding: '7px 10px',
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: 'pointer',
+};
+
 export default function ConciliacionPoliza() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -125,6 +136,7 @@ export default function ConciliacionPoliza() {
   const [busqueda, setBusqueda] = useState('');
   const [estadoFiltro, setEstadoFiltro] = useState('pendientes');
   const [mostrarEvidencia, setMostrarEvidencia] = useState({});
+  const [savingAction, setSavingAction] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -202,6 +214,198 @@ export default function ConciliacionPoliza() {
     }
   };
 
+  const ejecutarAccion = async (key, callback) => {
+    setSavingAction(key);
+    setError('');
+    try {
+      await callback();
+      await cargarDatos();
+    } catch (err) {
+      setError(err.message || 'No se pudo ejecutar la acción.');
+    } finally {
+      setSavingAction('');
+    }
+  };
+
+  const clasificarMovimiento = async (item) => {
+    const movimiento = item?.evidencia?.caja?.[0];
+    if (!item?.movimiento_id || !movimiento) return;
+
+    const opciones = movimiento.tipo === 'egreso'
+      ? [
+        'gasto_juridico = gasto real del área jurídica, fuera de ingresos BI',
+        'no_bi = excluir de BI / ajuste operativo',
+      ]
+      : [
+        'investigacion = cobro de investigación',
+        'anticipo_poliza = anticipo de póliza',
+        'pago_poliza = pago completo de póliza',
+        'saldo_poliza = saldo de póliza',
+        'no_bi = excluir de BI / ajuste operativo',
+      ];
+
+    const nuevoConcepto = window.prompt([
+      'Clasificar movimiento de Caja Póliza',
+      '',
+      `Movimiento: ${movimiento.fecha} · ${movimiento.tipo}/${movimiento.concepto}`,
+      `Monto: ${fmtMoney(movimiento.monto)}`,
+      `Descripción: ${movimiento.descripcion}`,
+      '',
+      'Escribe uno de estos valores:',
+      ...opciones.map((opcion) => `- ${opcion}`),
+    ].join('\n'));
+
+    if (!nuevoConcepto) return;
+    const concepto = nuevoConcepto.trim();
+    const permitidos = movimiento.tipo === 'egreso'
+      ? ['gasto_juridico', 'no_bi']
+      : ['investigacion', 'anticipo_poliza', 'pago_poliza', 'saldo_poliza', 'no_bi'];
+    if (!permitidos.includes(concepto)) {
+      window.alert(`Concepto no válido. Usa: ${permitidos.join(', ')}`);
+      return;
+    }
+
+    const confirmar = window.prompt([
+      'Confirmación requerida',
+      '',
+      `Se actualizará poliza_caja ${String(item.movimiento_id).slice(0, 8)}`,
+      `Concepto actual: ${movimiento.concepto}`,
+      `Nuevo concepto: ${concepto}`,
+      '',
+      'Para confirmar escribe: CLASIFICAR',
+    ].join('\n'));
+    if (confirmar !== 'CLASIFICAR') return;
+
+    await ejecutarAccion(`clasificar-${item.id}`, async () => {
+      const { error: updateError } = await supabase
+        .from('poliza_caja')
+        .update({ concepto })
+        .eq('id', item.movimiento_id);
+      if (updateError) throw updateError;
+    });
+  };
+
+  const vincularMovimiento = async (item, tipo) => {
+    if (!item?.movimiento_id) return;
+    const label = tipo === 'expediente' ? 'expediente' : 'solicitud';
+    const campo = tipo === 'expediente' ? 'expediente_id' : 'solicitud_id';
+    const limpiarCampo = tipo === 'expediente' ? 'solicitud_id' : 'expediente_id';
+    const idDestino = window.prompt(`Pega el ID completo del ${label} que corresponde a este movimiento:`);
+    if (!idDestino) return;
+
+    const confirmar = window.prompt([
+      'Confirmación requerida',
+      '',
+      `Se vinculará el movimiento ${String(item.movimiento_id).slice(0, 8)} al ${label}:`,
+      idDestino,
+      '',
+      `También se limpiará ${limpiarCampo} para evitar doble vínculo.`,
+      'Para confirmar escribe: VINCULAR',
+    ].join('\n'));
+    if (confirmar !== 'VINCULAR') return;
+
+    await ejecutarAccion(`vincular-${item.id}`, async () => {
+      const { error: updateError } = await supabase
+        .from('poliza_caja')
+        .update({ [campo]: idDestino.trim(), [limpiarCampo]: null })
+        .eq('id', item.movimiento_id);
+      if (updateError) throw updateError;
+    });
+  };
+
+  const regularizarOperativo = async (item) => {
+    if (item.estado !== 'regularizable') return;
+
+    if (item.tipo === 'expediente_poliza') {
+      const cubrePoliza = Number(item.cobrado_caja || 0) >= Number(item.monto_generado || 0) - 0.009;
+      const payload = cubrePoliza
+        ? { saldo_pagado: true, anticipo_pagado: item.anticipo_pagado_operativo || Number(item.cobrado_caja || 0) > 0 }
+        : { anticipo_pagado: true };
+
+      const confirmar = window.prompt([
+        'Confirmación requerida',
+        '',
+        `Expediente: ${item.expediente_id}`,
+        `Cliente: ${item.cliente}`,
+        `Monto póliza: ${fmtMoney(item.monto_generado)}`,
+        `Cobrado en caja: ${fmtMoney(item.cobrado_caja)}`,
+        '',
+        `Se actualizará: ${Object.entries(payload).map(([k, v]) => `${k}=${v}`).join(', ')}`,
+        'No se modificará caja.',
+        '',
+        'Para confirmar escribe: REGULARIZAR POLIZA',
+      ].join('\n'));
+      if (confirmar !== 'REGULARIZAR POLIZA') return;
+
+      await ejecutarAccion(`regularizar-${item.id}`, async () => {
+        const { error: updateError } = await supabase
+          .from('poliza_expedientes')
+          .update(payload)
+          .eq('id', item.expediente_id);
+        if (updateError) throw updateError;
+      });
+      return;
+    }
+
+    if (item.tipo === 'investigacion') {
+      const movimiento = item?.evidencia?.caja?.[0];
+      const confirmar = window.prompt([
+        'Confirmación requerida',
+        '',
+        `Solicitud: ${item.solicitud_id}`,
+        `Cliente: ${item.cliente}`,
+        `Cobrado en caja: ${fmtMoney(item.cobrado_caja)}`,
+        '',
+        'Se marcará la investigación como cobrada.',
+        'No se modificará caja.',
+        '',
+        'Para confirmar escribe: REGULARIZAR INVESTIGACION',
+      ].join('\n'));
+      if (confirmar !== 'REGULARIZAR INVESTIGACION') return;
+
+      await ejecutarAccion(`regularizar-${item.id}`, async () => {
+        const { error: updateError } = await supabase
+          .from('solicitudes_inquilino')
+          .update({
+            cobro_investigacion: true,
+            fecha_cobro_investigacion: movimiento?.fecha || new Date().toISOString().slice(0, 10),
+            monto_investigacion: item.monto_generado || Math.abs(item.cobrado_caja || 0),
+          })
+          .eq('id', item.solicitud_id);
+        if (updateError) throw updateError;
+      });
+    }
+  };
+
+  const renderAcciones = (item) => {
+    const disabled = Boolean(savingAction);
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 150 }}>
+        {item.tipo === 'movimiento_caja' && item.evidencia?.caja?.[0]?.concepto === 'otro' && (
+          <button disabled={disabled} onClick={() => clasificarMovimiento(item)} style={{ ...actionButton, color: '#991b1b' }}>
+            Clasificar
+          </button>
+        )}
+        {item.tipo === 'movimiento_caja' && !item.expediente_id && !item.solicitud_id && (
+          <>
+            <button disabled={disabled} onClick={() => vincularMovimiento(item, 'expediente')} style={actionButton}>
+              Vincular expediente
+            </button>
+            <button disabled={disabled} onClick={() => vincularMovimiento(item, 'solicitud')} style={actionButton}>
+              Vincular solicitud
+            </button>
+          </>
+        )}
+        {item.estado === 'regularizable' && (
+          <button disabled={disabled} onClick={() => regularizarOperativo(item)} style={{ ...actionButton, color: '#047857' }}>
+            Regularizar estado
+          </button>
+        )}
+        {savingAction.endsWith(item.id) && <span style={{ color: '#6b7280', fontSize: 12 }}>Guardando…</span>}
+      </div>
+    );
+  };
+
   const itemsFiltrados = useMemo(() => {
     const items = data?.items || [];
     return items.filter((item) => {
@@ -256,7 +460,7 @@ export default function ConciliacionPoliza() {
           </p>
           <h1 style={{ margin: 0, fontSize: 42, lineHeight: 1, letterSpacing: -1.5 }}>Conciliación de Póliza Jurídica</h1>
           <p style={{ margin: '14px 0 0', maxWidth: 900, color: '#6b7280', fontSize: 18 }}>
-            Detecta diferencias entre el estado operativo de pólizas/investigaciones y la caja trazable del área jurídica. Modo solo lectura.
+            Detecta diferencias entre el estado operativo de pólizas/investigaciones y la caja trazable del área jurídica. Las correcciones requieren confirmación explícita.
           </p>
           <p style={{ margin: '10px 0 0', color: '#9ca3af', fontSize: 13 }}>
             Última actualización: {fmtDateTime(lastLoadedAt)}
@@ -298,7 +502,7 @@ export default function ConciliacionPoliza() {
       </section>
 
       <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 14, padding: '12px 16px', color: '#92400e', fontSize: 14, fontWeight: 700, marginBottom: 24 }}>
-        Esta pantalla no modifica datos. El estado <strong>Ignorado</strong> queda preparado para una futura tabla de persistencia, pero por ahora no se guarda.
+        Esta pantalla solo modifica datos cuando usas una acción y confirmas escribiendo la palabra solicitada. El estado <strong>Ignorado</strong> queda preparado para una futura tabla de persistencia, pero por ahora no se guarda.
       </div>
 
       <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 18, overflow: 'hidden' }}>
@@ -332,7 +536,7 @@ export default function ConciliacionPoliza() {
         </div>
 
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1420 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1540 }}>
             <thead style={{ background: '#f9fafb' }}>
               <tr>
                 <th style={th}>Tipo</th>
@@ -349,16 +553,17 @@ export default function ConciliacionPoliza() {
                 <th style={th}>Diferencia</th>
                 <th style={th}>Estado</th>
                 <th style={th}>Diagnóstico</th>
+                <th style={th}>Acción</th>
               </tr>
             </thead>
             <tbody>
-              {loading && (
-                <tr><td colSpan={14} style={{ ...td, padding: 32, textAlign: 'center', color: '#6b7280' }}>Cargando conciliación…</td></tr>
+              {loading && !data && (
+                <tr><td colSpan={15} style={{ ...td, padding: 32, textAlign: 'center', color: '#6b7280' }}>Cargando conciliación…</td></tr>
               )}
               {!loading && itemsFiltrados.length === 0 && (
-                <tr><td colSpan={14} style={{ ...td, padding: 32, color: '#047857', fontSize: 18, fontWeight: 900 }}>No hay casos con los filtros actuales.</td></tr>
+                <tr><td colSpan={15} style={{ ...td, padding: 32, color: '#047857', fontSize: 18, fontWeight: 900 }}>No hay casos con los filtros actuales.</td></tr>
               )}
-              {!loading && itemsFiltrados.map((item) => {
+              {itemsFiltrados.map((item) => {
                 const evidenciaAbierta = Boolean(mostrarEvidencia[item.id]);
                 return (
                   <tr key={item.id}>
@@ -408,6 +613,7 @@ export default function ConciliacionPoliza() {
                         </pre>
                       )}
                     </td>
+                    <td style={td}>{renderAcciones(item)}</td>
                   </tr>
                 );
               })}
