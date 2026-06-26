@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ESTADOS_CONCILIACION_CIERRES } from '../../lib/ejecutivo/conciliacionCierres';
+import {
+  ESTADOS_CONCILIACION_CIERRES,
+  clasificarConciliacionCierre,
+  construirResumenConciliacion,
+  redondearMoneda,
+  sumarMontos,
+} from '../../lib/ejecutivo/conciliacionCierres';
 
 const fmtMoney = (value) => new Intl.NumberFormat('es-MX', {
   style: 'currency',
@@ -127,6 +133,100 @@ export default function ConciliacionCierres() {
 
   const token = session?.access_token;
 
+  const cargarDatosDirectoSupabase = async () => {
+    const { data: cierres, error: cierresError } = await supabase
+      .from('cierres')
+      .select('id, propiedad, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, origen, notas, created_at, updated_at')
+      .order('fecha_cierre', { ascending: false });
+
+    if (cierresError) throw cierresError;
+
+    const cierreIds = (cierres || []).map((cierre) => cierre.id).filter(Boolean);
+    let pagos = [];
+
+    if (cierreIds.length > 0) {
+      const { data: pagosData, error: pagosError } = await supabase
+        .from('cierre_pagos')
+        .select('id, cierre_id, concepto, monto, fecha, metodo_pago, notas, created_at')
+        .in('cierre_id', cierreIds)
+        .order('fecha', { ascending: true });
+
+      if (pagosError) throw pagosError;
+      pagos = pagosData || [];
+    }
+
+    const reciboIds = [...new Set((cierres || []).map((cierre) => cierre.recibo_id).filter(Boolean))];
+    let recibos = [];
+
+    if (reciboIds.length > 0) {
+      const { data: recibosData, error: recibosError } = await supabase
+        .from('recibos_apartado')
+        .select('id, folio, cliente_nombre, inmueble, monto, monto_total_acordado, fecha, forma_pago, created_at, recibos_abonos(id, monto, fecha, forma_pago, notas, created_at)')
+        .in('id', reciboIds);
+
+      if (recibosError) throw recibosError;
+      recibos = recibosData || [];
+    }
+
+    const pagosPorCierre = new Map();
+    pagos.forEach((pago) => {
+      const key = String(pago.cierre_id);
+      if (!pagosPorCierre.has(key)) pagosPorCierre.set(key, []);
+      pagosPorCierre.get(key).push(pago);
+    });
+
+    const recibosPorId = new Map();
+    recibos.forEach((recibo) => recibosPorId.set(String(recibo.id), recibo));
+
+    const todos = (cierres || []).map((cierre) => {
+      const pagosCierre = pagosPorCierre.get(String(cierre.id)) || [];
+      const recibo = cierre.recibo_id ? recibosPorId.get(String(cierre.recibo_id)) : null;
+      const clasificacion = clasificarConciliacionCierre({
+        cierre,
+        pagos: pagosCierre,
+        recibo,
+        ignorado: null,
+      });
+
+      return {
+        id: cierre.id,
+        propiedad: cierre.propiedad || '—',
+        fecha_cierre: cierre.fecha_cierre,
+        comision: redondearMoneda(cierre.comision || 0),
+        cobrado_sistema: redondearMoneda(cierre.cobrado || 0),
+        cobrado_trazable: sumarMontos(pagosCierre),
+        pendiente_sistema: redondearMoneda(cierre.pendiente || 0),
+        pendiente_reconstruido: clasificacion.pendiente_reconstruido,
+        diferencia: clasificacion.diferencia,
+        estado: clasificacion.estado,
+        causa_probable: clasificacion.causa_probable,
+        accion_sugerida: clasificacion.accion_sugerida,
+        evidencia: clasificacion.evidencia,
+        regularizacion: clasificacion.regularizacion,
+        recibo_id: cierre.recibo_id || null,
+        origen: cierre.origen || null,
+        pagos_count: pagosCierre.length,
+        created_at: cierre.created_at || null,
+        updated_at: cierre.updated_at || null,
+      };
+    });
+
+    const items = todos.filter((item) => {
+      if (item.estado === 'conciliado') return false;
+      if (item.estado === 'ignorado') return includeIgnored;
+      return true;
+    });
+
+    return {
+      ok: true,
+      generated_at: new Date().toISOString(),
+      source: 'supabase_direct_fallback',
+      ignorados_disponibles: false,
+      resumen: construirResumenConciliacion(todos),
+      items,
+    };
+  };
+
   const cargarDatos = async () => {
     setLoading(true);
     setError('');
@@ -142,8 +242,15 @@ export default function ConciliacionCierres() {
       setData(json);
       setLastLoadedAt(new Date().toISOString());
     } catch (err) {
-      setData(null);
-      setError(err.message || 'Error al cargar conciliación');
+      try {
+        const fallbackData = await cargarDatosDirectoSupabase();
+        setData(fallbackData);
+        setLastLoadedAt(new Date().toISOString());
+        setError(`El API no respondió correctamente, pero cargué la conciliación en modo lectura directa. Detalle API: ${err.message || 'Error al cargar conciliación'}`);
+      } catch (fallbackError) {
+        setData(null);
+        setError(`${err.message || 'Error al cargar conciliación'} · Fallback Supabase: ${fallbackError.message || 'no disponible'}`);
+      }
     } finally {
       setLoading(false);
     }
