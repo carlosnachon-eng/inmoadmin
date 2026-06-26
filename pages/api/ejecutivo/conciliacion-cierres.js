@@ -382,6 +382,95 @@ async function regularizarCierre({ cierreId, user, cliente = supabase }) {
   };
 }
 
+async function regularizarManualCierre({ cierreId, motivo, user, cliente = supabase }) {
+  const item = await cargarItemConciliacion(cierreId, cliente);
+
+  if (!item) {
+    const error = new Error('Cierre no encontrado');
+    error.status = 404;
+    throw error;
+  }
+
+  if (item.estado === 'conciliado' || item.estado === 'ignorado') {
+    const error = new Error('Este cierre no requiere regularización manual');
+    error.status = 409;
+    throw error;
+  }
+
+  if (Number(item.diferencia || 0) <= 0) {
+    const error = new Error('La regularización manual solo aplica cuando el cobrado sistema es mayor que el cobrado trazable');
+    error.status = 409;
+    throw error;
+  }
+
+  if (!String(motivo || '').trim()) {
+    const error = new Error('La regularización manual requiere motivo para auditoría');
+    error.status = 400;
+    throw error;
+  }
+
+  const marcador = `regularizacion_historica_manual:${item.id}:${Date.now()}`;
+  const notas = [
+    marcador,
+    'Regularización histórica manual autorizada desde Centro de Inteligencia · Conciliación de cierres',
+    `Motivo Dirección: ${String(motivo).trim()}`,
+    `Diferencia regularizada: ${item.diferencia}`,
+    `Cobrado sistema previo: ${item.cobrado_sistema}`,
+    `Cobrado trazable previo: ${item.cobrado_trazable}`,
+    `Usuario: ${user.email || user.id}`,
+  ].filter(Boolean).join(' · ');
+
+  const { error: insertError } = await cliente.from('cierre_pagos').insert({
+    cierre_id: item.id,
+    concepto: 'regularizacion_historica_manual',
+    monto: item.diferencia,
+    fecha: item.fecha_cierre || new Date().toISOString().slice(0, 10),
+    metodo_pago: 'transferencia',
+    notas,
+  });
+
+  if (insertError) throw insertError;
+
+  const { data: pagosActualizados, error: pagosError } = await cliente
+    .from('cierre_pagos')
+    .select('monto')
+    .eq('cierre_id', item.id);
+
+  if (pagosError) throw pagosError;
+
+  const totalPagos = sumarMontos(pagosActualizados || []);
+  const pendiente = redondearMoneda(Math.max(0, item.comision - totalPagos));
+
+  const { error: updateError } = await cliente
+    .from('cierres')
+    .update({
+      cobrado: totalPagos,
+      pendiente,
+      cobrado_bool: totalPagos >= item.comision && item.comision > 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', item.id);
+
+  if (updateError) throw updateError;
+
+  return {
+    cierre_id: item.id,
+    pago_creado: {
+      concepto: 'regularizacion_historica_manual',
+      monto: item.diferencia,
+      fecha: item.fecha_cierre || new Date().toISOString().slice(0, 10),
+      metodo_pago: 'transferencia',
+      notas,
+    },
+    resumen_actualizado: {
+      cobrado: totalPagos,
+      pendiente,
+      cobrado_bool: totalPagos >= item.comision && item.comision > 0,
+      conciliado: dineroIgual(totalPagos, item.cobrado_sistema),
+    },
+  };
+}
+
 async function ignorarCierre({ cierreId, motivo, user, cliente = supabase }) {
   const { disponibles } = await cargarIgnorados(cliente);
   if (!disponibles) {
@@ -412,6 +501,11 @@ async function ejecutarAccion(req, res, auth, cliente = supabase) {
 
   if (action === 'regularizar') {
     const result = await regularizarCierre({ cierreId, user: { ...auth.user, email: auth.perfil.email }, cliente });
+    return res.status(200).json({ ok: true, action, result });
+  }
+
+  if (action === 'regularizar_manual') {
+    const result = await regularizarManualCierre({ cierreId, motivo, user: { ...auth.user, email: auth.perfil.email }, cliente });
     return res.status(200).json({ ok: true, action, result });
   }
 

@@ -286,6 +286,29 @@ export default function ConciliacionCierres() {
     await ejecutarAccion({ action: 'regularizar', cierreId: item.id });
   };
 
+  const regularizarManual = async (item) => {
+    const motivo = window.prompt([
+      `Regularización manual del cierre #${item.id} · ${item.propiedad}`,
+      `Monto a crear en cierre_pagos: ${fmtMoney(item.diferencia)}`,
+      '',
+      'Usa esto solo si tú confirmas que el cobro fue real aunque el sistema no tenga evidencia automática.',
+      'Escribe el motivo para auditoría:',
+    ].join('\n'));
+
+    if (!motivo) return;
+
+    const confirmacion = window.prompt([
+      `Confirmación final para cierre #${item.id}`,
+      `Se creará un pago por ${fmtMoney(item.diferencia)} con concepto regularizacion_historica_manual.`,
+      'Después se recalcularán cierres.cobrado, cierres.pendiente y cobrado_bool desde cierre_pagos.',
+      '',
+      'Para confirmar escribe: REGULARIZAR MANUAL',
+    ].join('\n'));
+
+    if (confirmacion !== 'REGULARIZAR MANUAL') return;
+    await ejecutarAccion({ action: 'regularizar_manual', cierreId: item.id, motivo });
+  };
+
   const ignorar = async (item) => {
     const motivo = window.prompt([
       `Ignorar cierre #${item.id} · ${item.propiedad}`,
@@ -472,9 +495,16 @@ export default function ConciliacionCierres() {
                                 {savingId === item.id ? 'Regularizando…' : 'Regularizar'}
                               </button>
                             ) : (
-                              <div style={{ color: '#9ca3af', fontSize: 12, fontWeight: 750 }}>
-                                Requiere revisión manual
-                              </div>
+                              <>
+                                <div style={{ color: '#9ca3af', fontSize: 12, fontWeight: 750 }}>
+                                  Requiere revisión manual
+                                </div>
+                                {item.estado !== 'conciliado' && item.estado !== 'ignorado' && item.diferencia > 0 && (
+                                  <button onClick={() => regularizarManual(item)} disabled={savingId === item.id} style={manualBtn}>
+                                    {savingId === item.id ? 'Regularizando…' : 'Regularizar manual'}
+                                  </button>
+                                )}
+                              </>
                             )}
                             {item.estado !== 'ignorado' && item.estado !== 'conciliado' && (
                               <button onClick={() => ignorar(item)} disabled={savingId === item.id || !data?.ignorados_disponibles} style={secondaryBtn}>
@@ -550,5 +580,19 @@ const secondaryBtn = {
   padding: '8px 10px',
   fontSize: 12,
   fontWeight: 850,
+  cursor: 'pointer',
+};
+
+const manualBtn = {
+  display: 'block',
+  width: '100%',
+  marginTop: 8,
+  border: '1px solid #f59e0b',
+  background: '#fffbeb',
+  color: '#92400e',
+  borderRadius: 10,
+  padding: '8px 10px',
+  fontSize: 12,
+  fontWeight: 950,
   cursor: 'pointer',
 };
