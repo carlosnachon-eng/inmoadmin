@@ -135,7 +135,10 @@ export default function Cobranza() {
       return;
     }
 
-    await supabase.from("payments").update({ status, ...(status === "pagado" ? { recibido_por: "emporio" } : {}) }).eq("id", id);
+    await supabase.from("payments").update({
+      status,
+      ...(status === "pagado" ? { recibido_por: "emporio", payment_date: today } : {}),
+    }).eq("id", id);
     if (status === "pagado" && pago && rentReceiver === "inmobiliaria") {
       const comision = contrato ? calcComision(contrato) : 0;
       await supabase.from("cash_movements").insert([{
@@ -153,7 +156,7 @@ export default function Cobranza() {
   // Confirmación de quién recibió el pago (solo rentas directas al propietario)
   const confirmarRecibido = async (recibidoPor) => {
     const { pago } = modalRecibido;
-    await supabase.from("payments").update({ status: "pagado", recibido_por: recibidoPor }).eq("id", pago.id);
+    await supabase.from("payments").update({ status: "pagado", recibido_por: recibidoPor, payment_date: today }).eq("id", pago.id);
     if (recibidoPor === "emporio") {
       await supabase.from("cash_movements").insert([{
         type: "entrada", category: "renta_cobrada",
@@ -308,7 +311,7 @@ export default function Cobranza() {
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 750 }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["Inquilino", "Propiedad", "Monto", "Vencimiento", "Estado", "Comprobante", "Actualizar", "Acciones"].map(h => (
+                  {["Inquilino", "Propiedad", "Monto", "Fechas", "Estado", "Comprobante", "Actualizar", "Acciones"].map(h => (
                     <th key={h} style={{ padding: "11px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                   ))}
                 </tr>
@@ -324,7 +327,14 @@ export default function Cobranza() {
                         {contrato && <span style={{ display: "block", fontSize: 10, color: contrato.rent_receiver === "propietario" ? "#3730a3" : "#065f46" }}>{contrato.rent_receiver === "propietario" ? (p.recibido_por === "emporio" ? "al propietario · 💵 cobrada en oficina" : "al propietario") : "a Emporio"}</span>}
                       </td>
                       <td style={{ padding: "11px 14px", fontWeight: 700 }}>{fmt(p.amount)}</td>
-                      <td style={{ padding: "11px 14px", fontSize: 13, color: "#6b7280" }}>{p.due_date || "-"}</td>
+                      <td style={{ padding: "11px 14px", fontSize: 13, color: "#6b7280" }}>
+                        <span style={{ display: "block" }}>Vence: {p.due_date || "-"}</span>
+                        {p.status === "pagado" && (
+                          <span style={{ display: "block", color: "#065f46", fontWeight: 700 }}>
+                            Pagado: {p.payment_date || "sin fecha real"}
+                          </span>
+                        )}
+                      </td>
                       <td style={{ padding: "11px 14px" }}><StatusBadge status={p.status} /></td>
                       <td style={{ padding: "11px 14px" }}>
                         {p.receipt_url
