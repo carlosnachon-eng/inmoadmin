@@ -16,6 +16,7 @@ const META_GERENTE = 380000;
 const PCT_ALTO = 0.05;
 const PCT_BAJO = 0.03;
 const PCT_VENDEDOR_DEFAULT = 20;
+const MARCADOR_COBRO_MANUAL = "auto_cobro_manual";
 
 const esRenovacion = (propiedad) => (propiedad || "").toLowerCase().startsWith("renov");
 
@@ -121,27 +122,204 @@ export default function Cierres() {
     return (c.comision || 0) * pct;
   };
 
+  const parseMonto = (v) => Number(parseFloat(v) || 0);
+
+  const normalizarMetodoPago = (metodo) =>
+    String(metodo || "transferencia").toLowerCase().includes("efectivo")
+      ? "efectivo"
+      : "transferencia";
+
+  const sumarPagosCierre = async (cierreId) => {
+    const { data, error } = await supabase
+      .from("cierre_pagos")
+      .select("id, monto, notas")
+      .eq("cierre_id", cierreId);
+    if (error) throw error;
+    return {
+      pagos: data || [],
+      total: (data || []).reduce((sum, p) => sum + Number(p.monto || 0), 0),
+    };
+  };
+
+  const actualizarResumenDesdePagos = async (cierreId, comision) => {
+    const { total } = await sumarPagosCierre(cierreId);
+    const pendiente = Math.max(0, Number(comision || 0) - total);
+    const { error } = await supabase.from("cierres").update({
+      cobrado: total,
+      pendiente,
+      cobrado_bool: total >= Number(comision || 0) && Number(comision || 0) > 0,
+      updated_at: new Date().toISOString(),
+    }).eq("id", cierreId);
+    if (error) throw error;
+    return { total, pendiente };
+  };
+
+  const pagoExistePorMarcador = async (cierreId, marcador) => {
+    const { data, error } = await supabase
+      .from("cierre_pagos")
+      .select("id")
+      .eq("cierre_id", cierreId)
+      .ilike("notas", `%${marcador}%`)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  };
+
+  const sincronizarPagosDesdeRecibo = async (cierreId, reciboOrigen) => {
+    if (!cierreId || !reciboOrigen?.id) return;
+
+    const pagosOrigen = [
+      {
+        concepto: "apartado",
+        monto: Number(reciboOrigen.monto || 0),
+        fecha: reciboOrigen.fecha || String(reciboOrigen.created_at || new Date().toISOString()).slice(0, 10),
+        metodo_pago: normalizarMetodoPago(reciboOrigen.forma_pago),
+        notas: `recibo_inicial:${reciboOrigen.id} · Folio ${reciboOrigen.folio}`,
+        marcador: `recibo_inicial:${reciboOrigen.id}`,
+      },
+      ...[...(reciboOrigen.recibos_abonos || [])]
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+        .map(abono => ({
+          concepto: "complemento",
+          monto: Number(abono.monto || 0),
+          fecha: abono.fecha,
+          metodo_pago: normalizarMetodoPago(abono.forma_pago),
+          notas: [abono.notas, `recibo_abono:${abono.id}`].filter(Boolean).join(" · "),
+          marcador: `recibo_abono:${abono.id}`,
+        })),
+    ].filter(pago => pago.monto > 0);
+
+    for (const pago of pagosOrigen) {
+      const existente = await pagoExistePorMarcador(cierreId, pago.marcador);
+      if (existente) continue;
+      const { marcador, ...payload } = pago;
+      const { error } = await supabase.from("cierre_pagos").insert({
+        cierre_id: cierreId,
+        ...payload,
+      });
+      if (error) throw error;
+    }
+  };
+
+  const sincronizarCobroRapido = async ({ cierreId, objetivoCobrado, comision, fecha, metodoPago, notas }) => {
+    const marcador = `${MARCADOR_COBRO_MANUAL}:${cierreId}`;
+    const { pagos } = await sumarPagosCierre(cierreId);
+    const pagosDetalle = pagos.filter(p => !String(p.notas || "").includes(marcador));
+    const pagoManual = pagos.find(p => String(p.notas || "").includes(marcador));
+    const totalDetalle = pagosDetalle.reduce((sum, p) => sum + Number(p.monto || 0), 0);
+    const diferencia = Math.max(0, Number(objetivoCobrado || 0) - totalDetalle);
+
+    if (Number(objetivoCobrado || 0) < totalDetalle) {
+      if (pagoManual) await supabase.from("cierre_pagos").delete().eq("id", pagoManual.id);
+      await actualizarResumenDesdePagos(cierreId, comision);
+      throw new Error(`El cobrado capturado (${fmt(objetivoCobrado)}) es menor que los pagos detallados existentes (${fmt(totalDetalle)}). Ajusta/elimina pagos primero.`);
+    }
+
+    if (diferencia > 0) {
+      const payload = {
+        concepto: "captura_manual",
+        monto: diferencia,
+        fecha: fecha || new Date().toISOString().slice(0, 10),
+        metodo_pago: normalizarMetodoPago(metodoPago),
+        notas: [
+          marcador,
+          "Captura rápida desde formulario de cierre",
+          notas ? `Notas cierre: ${notas}` : null,
+        ].filter(Boolean).join(" · "),
+      };
+
+      if (pagoManual) {
+        const { error } = await supabase.from("cierre_pagos").update(payload).eq("id", pagoManual.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("cierre_pagos").insert({ cierre_id: cierreId, ...payload });
+        if (error) throw error;
+      }
+    } else if (pagoManual) {
+      const { error } = await supabase.from("cierre_pagos").delete().eq("id", pagoManual.id);
+      if (error) throw error;
+    }
+
+    return actualizarResumenDesdePagos(cierreId, comision);
+  };
+
+  const evaluarProteccionHistorica = async ({ cierreOriginal, cobradoCapturado, comisionCapturada }) => {
+    if (!cierreOriginal?.id) {
+      return {
+        protegido: false,
+        permitirCobroRapido: true,
+      };
+    }
+
+    const { pagos, total } = await sumarPagosCierre(cierreOriginal.id);
+    const marcador = `${MARCADOR_COBRO_MANUAL}:${cierreOriginal.id}`;
+    const tienePagoAuto = pagos.some(p => String(p.notas || "").includes(marcador));
+    const cobradoOriginal = parseMonto(cierreOriginal.cobrado);
+    const comisionOriginal = parseMonto(cierreOriginal.comision);
+    const inconsistenteHistorico = Math.abs(cobradoOriginal - total) > 0.009 && !tienePagoAuto;
+
+    if (!inconsistenteHistorico) {
+      return {
+        protegido: false,
+        permitirCobroRapido: true,
+      };
+    }
+
+    const cambioCobrado = Math.abs(parseMonto(cobradoCapturado) - cobradoOriginal) > 0.009;
+    const cambioComision = Math.abs(parseMonto(comisionCapturada) - comisionOriginal) > 0.009;
+
+    if (cambioCobrado || cambioComision) {
+      throw new Error("Este cierre tiene una inconsistencia histórica entre cobrado y pagos detallados. Para evitar regularizarlo por accidente, primero requiere conciliación manual antes de cambiar comisión o cobrado.");
+    }
+
+    return {
+      protegido: true,
+      permitirCobroRapido: false,
+      cobradoOriginal,
+      pendienteOriginal: parseMonto(cierreOriginal.pendiente),
+      cobradoBoolOriginal: Boolean(cierreOriginal.cobrado_bool),
+    };
+  };
+
   const saveCierre = async () => {
     if (profile?.role_id !== "admin") { showToast("Solo Admin puede confirmar cierres financieros", false); return; }
     setSaving(true);
-    const comision = parseFloat(form.comision) || 0;
-    const cobrado = parseFloat(form.cobrado) || 0;
-    const comVend = parseFloat(form.com_vendedor) || 0;
-    const pagVend = parseFloat(form.pag_vendedor) || 0;
+    const comision = parseMonto(form.comision);
+    const cobrado = parseMonto(form.cobrado);
+    const comVend = parseMonto(form.com_vendedor);
+    const pagVend = parseMonto(form.pag_vendedor);
     const comInmob = Math.max(0, comision - comVend);
     const pendiente = Math.max(0, comision - cobrado);
     const pendVend = Math.max(0, comVend - pagVend);
-    const montoGer = esRenovacion(form.propiedad) ? 0 : (parseFloat(form.monto_gerente) || 0);
-    const gerPagado = parseFloat(form.gerente_pagado_monto) || 0;
+    const montoGer = esRenovacion(form.propiedad) ? 0 : parseMonto(form.monto_gerente);
+    const gerPagado = parseMonto(form.gerente_pagado_monto);
+
+    const cierreOriginal = editando ? cierres.find(c => c.id === editando) : null;
+    let proteccionHistorica = { protegido: false, permitirCobroRapido: true };
+
+    try {
+      proteccionHistorica = await evaluarProteccionHistorica({
+        cierreOriginal,
+        cobradoCapturado: cobrado,
+        comisionCapturada: comision,
+      });
+    } catch (error) {
+      showToast("Error: " + error.message, false);
+      setSaving(false);
+      return;
+    }
 
     const data = {
       propiedad: form.propiedad, fecha_cierre: form.fecha_cierre || null,
       operacion: form.operacion, precio: parseFloat(form.precio) || 0,
-      comision, cobrado, pendiente, vendedor: form.vendedor,
+      comision,
+      cobrado: proteccionHistorica.protegido ? proteccionHistorica.cobradoOriginal : cobrado,
+      pendiente: proteccionHistorica.protegido ? proteccionHistorica.pendienteOriginal : pendiente,
+      vendedor: form.vendedor,
       com_vendedor: comVend, pag_vendedor: pagVend, pend_vend: pendVend,
       comision_inmobiliaria: comInmob, monto_gerente: montoGer,
       gerente_pagado_monto: gerPagado,
-      cobrado_bool: cobrado >= comision && comision > 0,
+      cobrado_bool: proteccionHistorica.protegido ? proteccionHistorica.cobradoBoolOriginal : cobrado >= comision && comision > 0,
       vendedor_pagado: pagVend >= comVend && comVend > 0,
       gerente_pagado: gerPagado >= montoGer && montoGer > 0,
       notas: form.notas, anio: parseInt(form.anio),
@@ -156,60 +334,66 @@ export default function Cierres() {
       updated_at: new Date().toISOString(),
     };
 
-    let error;
     let cierreGuardado = null;
-    if (editando) {
-      ({ error } = await supabase.from("cierres").update(data).eq("id", editando));
-    } else {
-      const result = await supabase.from("cierres").insert([data]).select("id").single();
-      error = result.error;
-      cierreGuardado = result.data;
-    }
-    setSaving(false);
-    if (error) { showToast("Error: " + error.message, false); return; }
-    if (!editando && form.propiedad_id) {
-      await supabase.from("propiedades").update({
-        status: "reserved",
-        status_motivo: `Cierre financiero registrado; operación pendiente de firma${form.recibo_id ? " · recibo vinculado" : ""}`,
-        status_actualizado_en: new Date().toISOString(),
-        status_actualizado_por: session?.user?.id || null,
-      }).eq("id", form.propiedad_id);
-    }
-    if (!editando && form.recibo_id) {
-      const reciboOrigen = apartadosPendientes.find(r => r.id === form.recibo_id);
-      if (cierreGuardado?.id && reciboOrigen) {
-        const pagosOrigen = [
-          {
-            concepto: "apartado",
-            monto: Number(reciboOrigen.monto || 0),
-            fecha: reciboOrigen.fecha || String(reciboOrigen.created_at || new Date().toISOString()).slice(0, 10),
-            metodo_pago: String(reciboOrigen.forma_pago || "transferencia").toLowerCase(),
-            notas: `recibo_inicial:${reciboOrigen.id} · Folio ${reciboOrigen.folio}`,
-          },
-          ...[...(reciboOrigen.recibos_abonos || [])]
-            .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-            .map(abono => ({
-              concepto: "complemento",
-              monto: Number(abono.monto || 0),
-              fecha: abono.fecha,
-              metodo_pago: String(abono.forma_pago || "transferencia").toLowerCase(),
-              notas: [abono.notas, `recibo_abono:${abono.id}`].filter(Boolean).join(" · "),
-            })),
-        ].filter(pago => pago.monto > 0);
-        if (pagosOrigen.length > 0) {
-          await supabase.from("cierre_pagos").insert(
-            pagosOrigen.map(pago => ({ cierre_id: cierreGuardado.id, ...pago }))
-          );
-        }
+    try {
+      let error;
+      const cierreId = editando;
+      if (editando) {
+        ({ error } = await supabase.from("cierres").update(data).eq("id", editando));
+        cierreGuardado = { id: editando };
+      } else {
+        const result = await supabase.from("cierres").insert([data]).select("id").single();
+        error = result.error;
+        cierreGuardado = result.data;
       }
-      await supabase.from("recibos_log").insert({
-        recibo_id: form.recibo_id,
-        accion: "cierre_financiero_confirmado",
-        usuario_id: session?.user?.id || null,
-      });
+      if (error) throw error;
+
+      if (!editando && form.propiedad_id) {
+        await supabase.from("propiedades").update({
+          status: "reserved",
+          status_motivo: `Cierre financiero registrado; operación pendiente de firma${form.recibo_id ? " · recibo vinculado" : ""}`,
+          status_actualizado_en: new Date().toISOString(),
+          status_actualizado_por: session?.user?.id || null,
+        }).eq("id", form.propiedad_id);
+      }
+
+      const reciboOrigen = form.recibo_id
+        ? apartadosPendientes.find(r => r.id === form.recibo_id)
+        : null;
+      if (cierreGuardado?.id && reciboOrigen) {
+        await sincronizarPagosDesdeRecibo(cierreGuardado.id, reciboOrigen);
+      }
+      if (!editando && form.recibo_id) {
+        await supabase.from("recibos_log").insert({
+          recibo_id: form.recibo_id,
+          accion: "cierre_financiero_confirmado",
+          usuario_id: session?.user?.id || null,
+        });
+      }
+
+      if (cierreGuardado?.id && proteccionHistorica.permitirCobroRapido) {
+        await sincronizarCobroRapido({
+          cierreId: cierreGuardado.id || cierreId,
+          objetivoCobrado: cobrado,
+          comision,
+          fecha: form.fecha_cierre,
+          metodoPago: "transferencia",
+          notas: form.notas,
+        });
+      }
+
+      showToast(proteccionHistorica.protegido
+        ? "Cierre actualizado. Cobro histórico no sincronizado; requiere conciliación manual."
+        : editando ? "Cierre actualizado" : "Cierre financiero confirmado");
+      setShowModal(false); setEditando(null); setForm(emptyForm); loadCierres();
+    } catch (error) {
+      if (cierreGuardado?.id && proteccionHistorica.permitirCobroRapido) {
+        await actualizarResumenDesdePagos(cierreGuardado.id, comision).catch(() => {});
+      }
+      showToast("Error: " + error.message, false);
+    } finally {
+      setSaving(false);
     }
-    showToast(editando ? "Cierre actualizado" : "Cierre financiero confirmado");
-    setShowModal(false); setEditando(null); setForm(emptyForm); loadCierres();
   };
 
   const deleteCierre = async (id, nombre) => {
@@ -380,19 +564,13 @@ export default function Cierres() {
     const { error } = await supabase.from("cierre_pagos").insert([{
       cierre_id: cierreActivoPago.id,
       concepto: formPago.concepto,
-      monto: parseFloat(formPago.monto) || 0,
+      monto: parseMonto(formPago.monto),
       fecha: formPago.fecha,
       metodo_pago: formPago.metodo_pago,
       notas: formPago.notas,
     }]);
     if (!error) {
-      const totalCobrado = (cierreActivoPago.cobrado || 0) + (parseFloat(formPago.monto) || 0);
-      const pendiente = Math.max(0, (cierreActivoPago.comision || 0) - totalCobrado);
-      await supabase.from("cierres").update({
-        cobrado: totalCobrado,
-        pendiente,
-        cobrado_bool: totalCobrado >= (cierreActivoPago.comision || 0) && (cierreActivoPago.comision || 0) > 0,
-      }).eq("id", cierreActivoPago.id);
+      await actualizarResumenDesdePagos(cierreActivoPago.id, cierreActivoPago.comision || 0);
       showToast("Pago registrado ✅");
       setShowModalPago(false);
       loadCierres();
@@ -406,14 +584,8 @@ export default function Cierres() {
     if (profile?.role_id !== "admin") { showToast("Solo Admin puede modificar pagos", false); return; }
     if (!confirm("¿Eliminar este pago?")) return;
     await supabase.from("cierre_pagos").delete().eq("id", pagoId);
-    const pagosRestantes = cierre_pagos.filter(p => p.cierre_id === cierreId && p.id !== pagoId);
-    const totalCobrado = pagosRestantes.reduce((a, p) => a + (p.monto || 0), 0);
     const cierre = cierres.find(c => c.id === cierreId);
-    const pendiente = Math.max(0, (cierre?.comision || 0) - totalCobrado);
-    await supabase.from("cierres").update({
-      cobrado: totalCobrado, pendiente,
-      cobrado_bool: totalCobrado >= (cierre?.comision || 0) && (cierre?.comision || 0) > 0,
-    }).eq("id", cierreId);
+    await actualizarResumenDesdePagos(cierreId, cierre?.comision || 0);
     showToast("Pago eliminado");
     loadCierres();
   };
