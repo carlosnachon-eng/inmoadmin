@@ -1,0 +1,365 @@
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../../lib/supabase';
+
+const fmtMoney = (value) => {
+  if (value === null || value === undefined) return '—';
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+};
+
+const fmtDateTime = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+};
+
+const monthValue = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const confianzaConfig = {
+  calculable: {
+    label: 'Alta',
+    bg: '#ecfdf5',
+    color: '#047857',
+    border: '#a7f3d0',
+  },
+  parcial: {
+    label: 'En validación',
+    bg: '#fffbeb',
+    color: '#92400e',
+    border: '#fde68a',
+  },
+  requiere_conciliacion: {
+    label: 'Requiere revisión',
+    bg: '#fef2f2',
+    color: '#b91c1c',
+    border: '#fecaca',
+  },
+  no_disponible: {
+    label: 'No disponible',
+    bg: '#f3f4f6',
+    color: '#374151',
+    border: '#d1d5db',
+  },
+};
+
+const confianzaInfo = (estado) => confianzaConfig[estado] || confianzaConfig.parcial;
+
+const KpiCard = ({ label, value, hint, tone = 'default' }) => {
+  const palette = {
+    default: ['#fff', '#111827'],
+    green: ['#ecfdf5', '#047857'],
+    yellow: ['#fffbeb', '#92400e'],
+    red: ['#fef2f2', '#b91c1c'],
+    dark: ['#111827', '#fff'],
+  }[tone] || ['#fff', '#111827'];
+
+  return (
+    <div style={{
+      background: palette[0],
+      color: palette[1],
+      border: tone === 'dark' ? '1px solid #111827' : '1px solid #e5e7eb',
+      borderRadius: 22,
+      padding: 22,
+      minHeight: 142,
+      boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)',
+    }}>
+      <p style={{ margin: 0, fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.72 }}>{label}</p>
+      <p style={{ margin: '16px 0 0', fontSize: 34, lineHeight: 1, fontWeight: 950, letterSpacing: -1 }}>{value}</p>
+      {hint && <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.35, opacity: 0.72 }}>{hint}</p>}
+    </div>
+  );
+};
+
+const Badge = ({ estado }) => {
+  const info = confianzaInfo(estado);
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: 999,
+      padding: '7px 11px',
+      fontSize: 12,
+      fontWeight: 950,
+      color: info.color,
+      background: info.bg,
+      border: `1px solid ${info.border}`,
+      whiteSpace: 'nowrap',
+    }}>
+      {info.label}
+    </span>
+  );
+};
+
+const UnidadCard = ({ unidad }) => (
+  <div style={{
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 22,
+    padding: 20,
+    boxShadow: '0 10px 26px rgba(15, 23, 42, 0.045)',
+  }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 18 }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: 21, letterSpacing: -0.3 }}>{unidad.label}</h3>
+        <p style={{ margin: '6px 0 0', color: '#6b7280', fontSize: 13, lineHeight: 1.35 }}>{unidad.nota}</p>
+      </div>
+      <Badge estado={unidad.estado_confianza} />
+    </div>
+
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+      <Metric label="Generado" value={fmtMoney(unidad.metricas?.generado)} />
+      <Metric label="Cobrado" value={fmtMoney(unidad.metricas?.cobrado)} positive />
+      <Metric label="Pendiente" value={fmtMoney(unidad.metricas?.pendiente)} warning={Number(unidad.metricas?.pendiente || 0) > 0} />
+    </div>
+  </div>
+);
+
+const Metric = ({ label, value, positive, warning }) => (
+  <div style={{ background: '#f9fafb', borderRadius: 16, padding: 14 }}>
+    <p style={{ margin: 0, fontSize: 11, color: '#6b7280', fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</p>
+    <p style={{
+      margin: '8px 0 0',
+      fontSize: 19,
+      fontWeight: 950,
+      color: positive ? '#047857' : warning ? '#b45309' : '#111827',
+      fontVariantNumeric: 'tabular-nums',
+    }}>
+      {value}
+    </p>
+  </div>
+);
+
+const QualityBar = ({ value }) => (
+  <div>
+    <div style={{ height: 12, background: '#e5e7eb', borderRadius: 999, overflow: 'hidden' }}>
+      <div style={{
+        height: '100%',
+        width: `${Math.max(0, Math.min(100, Number(value || 0)))}%`,
+        background: Number(value || 0) >= 90 ? '#10b981' : Number(value || 0) >= 75 ? '#f59e0b' : '#ef4444',
+        borderRadius: 999,
+      }} />
+    </div>
+    <p style={{ margin: '8px 0 0', color: '#6b7280', fontSize: 13, fontWeight: 800 }}>{Number(value || 0)}% de confiabilidad general</p>
+  </div>
+);
+
+export default function CentroInteligencia() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [data, setData] = useState(null);
+  const [periodoInput, setPeriodoInput] = useState(monthValue());
+
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      if (!active) return;
+      setSession(currentSession);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (session) cargarDatos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, periodoInput]);
+
+  const cargarDatos = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const token = session?.access_token;
+      if (!token) throw new Error('Sesión requerida');
+
+      const [year, month] = periodoInput.split('-').map(Number);
+      const res = await fetch(`/api/ejecutivo/centro-inteligencia?year=${year}&month=${month}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.ok) throw new Error(payload.error || 'No se pudo cargar Centro de Inteligencia.');
+      setData(payload);
+    } catch (err) {
+      setData(null);
+      setError(err.message || 'No se pudo cargar Centro de Inteligencia.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resumen = data?.resumen_general || {};
+  const calidad = data?.calidad_informacion || {};
+  const unidades = data?.unidades || [];
+  const acciones = data?.acciones_pendientes || [];
+
+  const fraseEjecutiva = useMemo(() => {
+    if (!data) return 'Cargando lectura ejecutiva consolidada.';
+    return `Emporio ha generado ${fmtMoney(resumen.total_generado)}, ha cobrado ${fmtMoney(resumen.total_cobrado)} y mantiene ${fmtMoney(resumen.total_pendiente)} pendiente por cobrar en el periodo seleccionado.`;
+  }, [data, resumen.total_generado, resumen.total_cobrado, resumen.total_pendiente]);
+
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#f7f3ed' }}>
+        <p style={{ color: '#6b7280', fontWeight: 800 }}>Cargando...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    if (typeof window !== 'undefined') window.location.href = '/';
+    return null;
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#f7f3ed', fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', color: '#111827' }}>
+      <div style={{ maxWidth: 1440, margin: '0 auto', padding: '42px 26px 72px' }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 28 }}>
+          <div>
+            <div style={{ display: 'inline-flex', background: '#111827', color: '#fff', borderRadius: 999, padding: '7px 13px', fontSize: 12, fontWeight: 950, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 14 }}>
+              Centro de Inteligencia Empresarial
+            </div>
+            <h1 style={{ margin: 0, fontSize: 46, letterSpacing: -1.6, lineHeight: 1.02 }}>Dirección General</h1>
+            <p style={{ margin: '14px 0 0', maxWidth: 920, color: '#4b5563', fontSize: 20, lineHeight: 1.35 }}>{fraseEjecutiva}</p>
+            <p style={{ margin: '10px 0 0', color: '#9ca3af', fontSize: 14, fontWeight: 800 }}>
+              Última actualización: {fmtDateTime(data?.generated_at)}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="month"
+              value={periodoInput}
+              onChange={(event) => setPeriodoInput(event.target.value)}
+              style={{ border: '1px solid #e5e7eb', borderRadius: 14, background: '#fff', padding: '12px 14px', fontSize: 15, fontWeight: 900 }}
+            />
+            <button
+              onClick={cargarDatos}
+              disabled={loading}
+              style={{ border: 0, background: loading ? '#6b7280' : '#111827', color: '#fff', borderRadius: 14, padding: '13px 18px', fontSize: 15, fontWeight: 950, cursor: loading ? 'not-allowed' : 'pointer' }}
+            >
+              {loading ? 'Actualizando...' : 'Actualizar'}
+            </button>
+          </div>
+        </header>
+
+        {error && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 16, padding: '18px 20px', fontWeight: 900, marginBottom: 24 }}>
+            {error}
+          </div>
+        )}
+
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 16, marginBottom: 22 }}>
+          <KpiCard label="Total generado" value={fmtMoney(resumen.total_generado)} hint="Cierres + Administración + Póliza + Mantenimiento" />
+          <KpiCard label="Total cobrado" value={fmtMoney(resumen.total_cobrado)} hint="Cobros trazables, sin caja no vinculada" tone="green" />
+          <KpiCard label="Total pendiente" value={fmtMoney(resumen.total_pendiente)} hint="Por cobrar reconstruido por unidad" tone={Number(resumen.total_pendiente || 0) > 0 ? 'yellow' : 'green'} />
+          <KpiCard
+            label="Neto para Emporio"
+            value={resumen.neto_emporio_estado === 'en_validacion' ? 'En validación' : fmtMoney(resumen.neto_emporio)}
+            hint={resumen.neto_emporio_nota}
+            tone="dark"
+          />
+        </section>
+
+        <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 24, padding: 22, marginBottom: 22, boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 26, letterSpacing: -0.6 }}>Estado de confianza del consolidado</h2>
+              <p style={{ margin: '7px 0 0', color: '#6b7280', fontSize: 15 }}>El indicador mide qué tan lista está la información para decisiones ejecutivas.</p>
+            </div>
+            <Badge estado={resumen.estado_confianza} />
+          </div>
+          <div style={{ marginTop: 18 }}>
+            <QualityBar value={resumen.confianza_porcentaje} />
+          </div>
+        </section>
+
+        <section style={{ marginBottom: 22 }}>
+          <h2 style={{ margin: '0 0 14px', fontSize: 28, letterSpacing: -0.7 }}>Desglose por unidad</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
+            {unidades.map((unidad) => <UnidadCard key={unidad.key} unidad={unidad} />)}
+          </div>
+        </section>
+
+        <section style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 16 }}>
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 24, padding: 22, boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)' }}>
+            <h2 style={{ margin: 0, fontSize: 26, letterSpacing: -0.6 }}>Calidad de información</h2>
+            <p style={{ margin: '7px 0 18px', color: '#6b7280', fontSize: 15 }}>Conciliación por unidad antes de tomar decisiones finas.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {(calidad.unidades || []).map((unidad) => (
+                <div key={unidad.key} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 12, background: '#f9fafb', borderRadius: 16, padding: 14 }}>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 950 }}>{unidad.label}</p>
+                    <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: 13 }}>
+                      {unidad.conciliados}/{unidad.total || 0} conciliados · {unidad.inconsistencias_activas || 0} pendientes
+                    </p>
+                  </div>
+                  <p style={{ margin: 0, fontWeight: 950, color: unidad.confianza_porcentaje >= 90 ? '#047857' : unidad.confianza_porcentaje >= 75 ? '#92400e' : '#b91c1c' }}>
+                    {unidad.confianza_porcentaje}%
+                  </p>
+                  <Badge estado={unidad.estado_confianza} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 24, padding: 22, boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)' }}>
+            <h2 style={{ margin: 0, fontSize: 26, letterSpacing: -0.6 }}>Acciones pendientes</h2>
+            <p style={{ margin: '7px 0 18px', color: '#6b7280', fontSize: 15 }}>Solo asuntos que requieren atención o seguimiento.</p>
+            {acciones.length === 0 ? (
+              <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', borderRadius: 16, padding: 16, fontWeight: 950 }}>
+                No hay acciones pendientes relevantes para el periodo.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {acciones.map((item) => (
+                  <div key={item.key} style={{ border: '1px solid #e5e7eb', borderRadius: 16, padding: 15 }}>
+                    <p style={{ margin: 0, fontWeight: 950 }}>{item.label}</p>
+                    <p style={{ margin: '7px 0 0', color: '#6b7280', fontSize: 13, lineHeight: 1.35 }}>{item.nota}</p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                      {item.inconsistencias_activas > 0 && <Pill color="#b91c1c">{item.inconsistencias_activas} inconsistencias</Pill>}
+                      {item.regularizaciones_pendientes > 0 && <Pill color="#047857">{item.regularizaciones_pendientes} regularizables</Pill>}
+                      {item.revision_manual > 0 && <Pill color="#92400e">{item.revision_manual} revisión manual</Pill>}
+                      {item.sin_evidencia > 0 && <Pill color="#b91c1c">{item.sin_evidencia} sin evidencia</Pill>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+const Pill = ({ children, color }) => (
+  <span style={{
+    display: 'inline-flex',
+    borderRadius: 999,
+    padding: '5px 9px',
+    fontSize: 12,
+    fontWeight: 950,
+    background: `${color}14`,
+    color,
+    border: `1px solid ${color}33`,
+  }}>
+    {children}
+  </span>
+);
