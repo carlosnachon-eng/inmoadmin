@@ -200,6 +200,66 @@ function mapearItems({ cierres, pagos, recibos, ignorados }) {
   });
 }
 
+async function cargarItemConciliacion(cierreId, cliente = supabase) {
+  const { data: cierre, error: cierreError } = await cliente
+    .from('cierres')
+    .select('id, propiedad, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, origen, notas, created_at, updated_at')
+    .eq('id', cierreId)
+    .maybeSingle();
+
+  if (cierreError) throw cierreError;
+  if (!cierre) return null;
+
+  const { data: pagos, error: pagosError } = await cliente
+    .from('cierre_pagos')
+    .select('id, cierre_id, concepto, monto, fecha, metodo_pago, notas, created_at')
+    .eq('cierre_id', cierre.id)
+    .order('fecha', { ascending: true });
+
+  if (pagosError) throw pagosError;
+
+  let recibo = null;
+  if (cierre.recibo_id) {
+    const { data, error } = await cliente
+      .from('recibos_apartado')
+      .select('id, folio, cliente_nombre, inmueble, monto, monto_total_acordado, fecha, forma_pago, created_at, recibos_abonos(id, monto, fecha, forma_pago, notas, created_at)')
+      .eq('id', cierre.recibo_id)
+      .maybeSingle();
+
+    if (error) throw error;
+    recibo = data || null;
+  }
+
+  const clasificacion = clasificarConciliacionCierre({
+    cierre,
+    pagos: pagos || [],
+    recibo,
+    ignorado: null,
+  });
+
+  return {
+    id: cierre.id,
+    propiedad: cierre.propiedad || '—',
+    fecha_cierre: cierre.fecha_cierre,
+    comision: redondearMoneda(cierre.comision || 0),
+    cobrado_sistema: redondearMoneda(cierre.cobrado || 0),
+    cobrado_trazable: sumarMontos(pagos || []),
+    pendiente_sistema: redondearMoneda(cierre.pendiente || 0),
+    pendiente_reconstruido: clasificacion.pendiente_reconstruido,
+    diferencia: clasificacion.diferencia,
+    estado: clasificacion.estado,
+    causa_probable: clasificacion.causa_probable,
+    accion_sugerida: clasificacion.accion_sugerida,
+    evidencia: clasificacion.evidencia,
+    regularizacion: clasificacion.regularizacion,
+    recibo_id: cierre.recibo_id || null,
+    origen: cierre.origen || null,
+    pagos_count: (pagos || []).length,
+    created_at: cierre.created_at || null,
+    updated_at: cierre.updated_at || null,
+  };
+}
+
 async function listarConciliacion(req, res, cliente = supabase) {
   const incluirConciliados = req.query?.include === 'all' || req.query?.include === 'conciliados';
   const incluirIgnorados = req.query?.include === 'all' || req.query?.include === 'ignorados';
@@ -224,9 +284,7 @@ async function listarConciliacion(req, res, cliente = supabase) {
 }
 
 async function regularizarCierre({ cierreId, user, cliente = supabase }) {
-  const datos = await cargarDatosConciliacion(cliente);
-  const items = mapearItems(datos);
-  const item = items.find((registro) => String(registro.id) === String(cierreId));
+  const item = await cargarItemConciliacion(cierreId, cliente);
 
   if (!item) {
     const error = new Error('Cierre no encontrado');

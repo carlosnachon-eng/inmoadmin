@@ -220,7 +220,7 @@ export default function ConciliacionCierres() {
     return {
       ok: true,
       generated_at: new Date().toISOString(),
-      source: 'supabase_direct_fallback',
+      source: 'supabase_direct',
       ignorados_disponibles: false,
       resumen: construirResumenConciliacion(todos),
       items,
@@ -233,24 +233,12 @@ export default function ConciliacionCierres() {
 
     try {
       if (!token) throw new Error('Sesión requerida');
-      const include = includeIgnored ? '?include=ignorados' : '';
-      const res = await fetch(`/api/ejecutivo/conciliacion-cierres${include}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await leerRespuestaJson(res, 'No se pudo cargar conciliación');
-      if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo cargar conciliación');
-      setData(json);
+      const directData = await cargarDatosDirectoSupabase();
+      setData(directData);
       setLastLoadedAt(new Date().toISOString());
     } catch (err) {
-      try {
-        const fallbackData = await cargarDatosDirectoSupabase();
-        setData(fallbackData);
-        setLastLoadedAt(new Date().toISOString());
-        setError(`El API no respondió correctamente, pero cargué la conciliación en modo lectura directa. Detalle API: ${err.message || 'Error al cargar conciliación'}`);
-      } catch (fallbackError) {
-        setData(null);
-        setError(`${err.message || 'Error al cargar conciliación'} · Fallback Supabase: ${fallbackError.message || 'no disponible'}`);
-      }
+      setData(null);
+      setError(err.message || 'Error al cargar conciliación');
     } finally {
       setLoading(false);
     }
@@ -375,9 +363,9 @@ export default function ConciliacionCierres() {
 
         {error && (
           <div style={{
-            background: data?.source === 'supabase_direct_fallback' ? '#fffbeb' : '#fef2f2',
-            border: `1px solid ${data?.source === 'supabase_direct_fallback' ? '#fde68a' : '#fecaca'}`,
-            color: data?.source === 'supabase_direct_fallback' ? '#92400e' : '#991b1b',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#991b1b',
             borderRadius: 14,
             padding: 14,
             marginBottom: 16,
