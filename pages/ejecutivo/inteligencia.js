@@ -126,8 +126,17 @@ const UnidadCard = ({ unidad }) => (
 const CajaVsResultado = ({ diagnostico }) => {
   if (!diagnostico) return null;
 
-  const diferencia = Number(diagnostico.diferencia_por_explicar || 0);
   const categorias = diagnostico.categorias || [];
+  const flujoNeto = Number(diagnostico.flujo_neto_caja || 0);
+  const mayorSalida = categorias
+    .filter((categoria) => Number(categoria.salidas || 0) > 0)
+    .sort((a, b) => Number(b.salidas || 0) - Number(a.salidas || 0))[0];
+  const sinClasificar = categorias.find((categoria) => categoria.key === 'no_clasificado');
+  const lectura = flujoNeto < 0
+    ? `En este periodo salieron ${fmtMoney(Math.abs(flujoNeto))} más de los que entraron a caja.`
+    : flujoNeto > 0
+      ? `En este periodo entraron ${fmtMoney(flujoNeto)} más de los que salieron de caja.`
+      : 'En este periodo las entradas y salidas de caja quedaron equilibradas.';
 
   return (
     <section style={{ background: '#111827', color: '#fff', borderRadius: 26, padding: 24, marginBottom: 22, boxShadow: '0 16px 38px rgba(15, 23, 42, 0.16)' }}>
@@ -136,7 +145,7 @@ const CajaVsResultado = ({ diagnostico }) => {
           <p style={{ margin: '0 0 8px', color: '#93c5fd', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.9 }}>
             Diagnóstico de tesorería
           </p>
-          <h2 style={{ margin: 0, fontSize: 28, letterSpacing: -0.7 }}>Caja vs Resultado Operativo</h2>
+          <h2 style={{ margin: 0, fontSize: 28, letterSpacing: -0.7 }}>Movimiento de Caja del Mes</h2>
           <p style={{ margin: '8px 0 0', color: '#cbd5e1', maxWidth: 820, lineHeight: 1.45 }}>
             {diagnostico.nota}
           </p>
@@ -146,26 +155,18 @@ const CajaVsResultado = ({ diagnostico }) => {
         </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 18 }}>
-        <DarkMetric label="Resultado operativo" value={fmtMoney(diagnostico.resultado_operativo)} />
-        <DarkMetric label="Flujo neto de caja" value={fmtMoney(diagnostico.flujo_neto_caja)} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 18 }}>
         <DarkMetric label="Entradas caja" value={fmtMoney(diagnostico.entradas)} tone="green" />
         <DarkMetric label="Salidas caja" value={fmtMoney(diagnostico.salidas)} tone="red" />
+        <DarkMetric label="Movimiento neto del mes" value={fmtMoney(diagnostico.flujo_neto_caja)} tone={flujoNeto >= 0 ? 'green' : 'red'} />
       </div>
 
-      <div style={{
-        background: Math.abs(diferencia) > 0 ? 'rgba(245, 158, 11, 0.14)' : 'rgba(16, 185, 129, 0.14)',
-        border: `1px solid ${Math.abs(diferencia) > 0 ? 'rgba(245, 158, 11, 0.35)' : 'rgba(16, 185, 129, 0.35)'}`,
-        borderRadius: 18,
-        padding: 16,
-        marginBottom: 18,
-      }}>
-        <p style={{ margin: 0, color: '#cbd5e1', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>Diferencia por explicar</p>
-        <p style={{ margin: '6px 0 0', fontSize: 30, fontWeight: 950, color: Math.abs(diferencia) > 0 ? '#fbbf24' : '#34d399' }}>
-          {fmtMoney(diagnostico.diferencia_por_explicar)}
-        </p>
-        <p style={{ margin: '6px 0 0', color: '#cbd5e1', fontSize: 13, lineHeight: 1.45 }}>
-          Esta diferencia ayuda a ubicar retiros, gastos corporativos, fondos de terceros o movimientos sin clasificación. No significa automáticamente que falte dinero.
+      <div style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 18, padding: 16, marginBottom: 18 }}>
+        <p style={{ margin: 0, color: '#93c5fd', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>Lectura ejecutiva</p>
+        <p style={{ margin: '7px 0 0', color: '#fff', fontSize: 18, lineHeight: 1.45, fontWeight: 850 }}>
+          {lectura}
+          {mayorSalida ? ` La mayor salida fue ${mayorSalida.label.toLowerCase()} por ${fmtMoney(mayorSalida.salidas)}.` : ''}
+          {Number(sinClasificar?.salidas || 0) > 0 ? ` Hay ${fmtMoney(sinClasificar.salidas)} en salidas sin clasificación suficiente.` : ''}
         </p>
       </div>
 
