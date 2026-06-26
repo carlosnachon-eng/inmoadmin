@@ -1,8 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import {
+  roundMoney,
   resolverPeriodo,
   resumirAdministracion,
   resumirCierres,
+  toNumber,
 } from '../../../lib/ejecutivo/lecturaBiCierresAdmin';
 import {
   construirCentroInteligencia,
@@ -51,7 +53,7 @@ async function autenticarDireccion(req) {
 async function cargarCierres(periodo) {
   const { data: cierres, error: cierresError } = await supabase
     .from('cierres')
-    .select('id, fecha_cierre, operacion, precio, comision, cobrado, pendiente, cobrado_bool, vendedor, propiedad_id, recibo_id, firma_id')
+    .select('id, fecha_cierre, operacion, precio, comision, cobrado, pendiente, cobrado_bool, vendedor, propiedad_id, recibo_id, firma_id, comision_inmobiliaria, monto_gerente')
     .gte('fecha_cierre', periodo.startDate)
     .lt('fecha_cierre', periodo.endExclusive)
     .order('fecha_cierre', { ascending: true });
@@ -183,6 +185,16 @@ export default async function handler(req, res) {
     const resumenAdmin = resumirAdministracion(datosAdmin);
     const resumenPoliza = resumirPolizaCentro({ periodo, ...datosPoliza });
     const resumenMantenimiento = resumirMantenimientoCentro({ periodo, ...datosMantenimiento });
+    const resultadoCierres = roundMoney(
+      (datosCierres.cierres || []).reduce((acc, cierre) => (
+        acc + Math.max(0, toNumber(cierre.comision_inmobiliaria) - toNumber(cierre.monto_gerente))
+      ), 0),
+    );
+    const costosCierres = roundMoney(
+      (datosCierres.cierres || []).reduce((acc, cierre) => (
+        acc + Math.max(0, toNumber(cierre.comision) - toNumber(cierre.comision_inmobiliaria)) + toNumber(cierre.monto_gerente)
+      ), 0),
+    );
 
     const centro = construirCentroInteligencia({
       periodo,
@@ -190,11 +202,15 @@ export default async function handler(req, res) {
         key: 'cierres',
         label: 'Ventas y rentas',
         unidad: resumenCierres,
+        resultado: resultadoCierres,
+        costosDirectos: costosCierres,
       }),
       administracion: unidadDesdeLecturaBi({
         key: 'administracion',
         label: 'Administración',
         unidad: resumenAdmin,
+        resultado: resumenAdmin.metricas.cobrado,
+        costosDirectos: 0,
       }),
       poliza: resumenPoliza,
       mantenimiento: resumenMantenimiento,

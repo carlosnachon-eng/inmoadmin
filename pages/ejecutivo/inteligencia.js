@@ -114,10 +114,11 @@ const UnidadCard = ({ unidad }) => (
       <Badge estado={unidad.estado_confianza} />
     </div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
       <Metric label="Generado" value={fmtMoney(unidad.metricas?.generado)} />
       <Metric label="Cobrado" value={fmtMoney(unidad.metricas?.cobrado)} positive />
       <Metric label="Pendiente" value={fmtMoney(unidad.metricas?.pendiente)} warning={Number(unidad.metricas?.pendiente || 0) > 0} />
+      <Metric label="Resultado" value={fmtMoney(unidad.metricas?.resultado)} positive={Number(unidad.metricas?.resultado || 0) >= 0} warning={Number(unidad.metricas?.resultado || 0) < 0} />
     </div>
   </div>
 );
@@ -270,9 +271,9 @@ export default function CentroInteligencia() {
           <KpiCard label="Total cobrado" value={fmtMoney(resumen.total_cobrado)} hint="Cobros trazables, sin caja no vinculada" tone="green" />
           <KpiCard label="Total pendiente" value={fmtMoney(resumen.total_pendiente)} hint="Por cobrar reconstruido por unidad" tone={Number(resumen.total_pendiente || 0) > 0 ? 'yellow' : 'green'} />
           <KpiCard
-            label="Neto para Emporio"
-            value={resumen.neto_emporio_estado === 'en_validacion' ? 'En validación' : fmtMoney(resumen.neto_emporio)}
-            hint={resumen.neto_emporio_nota}
+            label="Resultado operativo consolidado"
+            value={fmtMoney(resumen.resultado_operativo)}
+            hint={resumen.resultado_operativo_nota}
             tone="dark"
           />
         </section>
