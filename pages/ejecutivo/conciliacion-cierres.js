@@ -77,6 +77,22 @@ const StatCard = ({ label, value, hint, tone = 'default' }) => {
   );
 };
 
+const leerRespuestaJson = async (res, fallback) => {
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) return res.json();
+
+  const text = await res.text();
+  const pareceHtml = text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html');
+  const detalle = pareceHtml
+    ? 'El servidor devolvió HTML en vez de JSON. Normalmente significa que el API no está desplegado, la ruta está dando 404, o Vercel devolvió una página de error.'
+    : text.slice(0, 240);
+
+  return {
+    ok: false,
+    error: `${fallback}. HTTP ${res.status}. ${detalle}`,
+  };
+};
+
 export default function ConciliacionCierres() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -121,7 +137,7 @@ export default function ConciliacionCierres() {
       const res = await fetch(`/api/ejecutivo/conciliacion-cierres${include}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const json = await res.json();
+      const json = await leerRespuestaJson(res, 'No se pudo cargar conciliación');
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo cargar conciliación');
       setData(json);
       setLastLoadedAt(new Date().toISOString());
@@ -147,7 +163,7 @@ export default function ConciliacionCierres() {
         },
         body: JSON.stringify({ action, cierre_id: cierreId, motivo }),
       });
-      const json = await res.json();
+      const json = await leerRespuestaJson(res, 'No se pudo ejecutar la acción');
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo ejecutar la acción');
       await cargarDatos();
     } catch (err) {

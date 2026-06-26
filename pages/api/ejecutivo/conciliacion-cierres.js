@@ -7,10 +7,12 @@ import {
   sumarMontos,
 } from '../../../lib/ejecutivo/conciliacionCierres';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServerKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabase = supabaseUrl && supabaseServerKey
+  ? createClient(supabaseUrl, supabaseServerKey)
+  : null;
 
 const ROLES_BI = new Set(['admin', 'direccion']);
 const EMAILS_DIRECCION = new Set([
@@ -20,6 +22,8 @@ const EMAILS_DIRECCION = new Set([
 const TABLA_IGNORADOS = 'bi_conciliacion_ignorados';
 
 async function autenticarDireccion(req) {
+  if (!supabase) return { error: 'Falta configuración de Supabase para conciliación', status: 500 };
+
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return { error: 'Sesión requerida', status: 401 };
@@ -327,7 +331,7 @@ async function ejecutarAccion(req, res, auth) {
 }
 
 export default async function handler(req, res) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!supabase) {
     return res.status(500).json({ ok: false, error: 'Falta configuración de Supabase para conciliación' });
   }
 
