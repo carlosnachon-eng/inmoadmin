@@ -344,6 +344,58 @@ export default function Liquidaciones() {
     });
   };
 
+  const periodoKeyDesdeDescripcion = (periodDescription) => {
+    const meses = { enero:"01",febrero:"02",marzo:"03",abril:"04",mayo:"05",junio:"06",julio:"07",agosto:"08",septiembre:"09",octubre:"10",noviembre:"11",diciembre:"12" };
+    const desc = (periodDescription || "").toLowerCase();
+    const anio = desc.match(/\d{4}/)?.[0];
+    const mes = Object.keys(meses).find(m => desc.includes(m));
+    return anio && mes ? `${anio}-${meses[mes]}` : null;
+  };
+
+  const getContratosAdministracionOwner = (ownerEmail, propertyName = "") => {
+    const propsProp = properties.filter(p => p.owner_email === ownerEmail);
+    const propNames = propsProp.map(p => p.name);
+    return contracts.filter(c =>
+      propNames.includes(c.property_name) &&
+      (!propertyName || c.property_name === propertyName) &&
+      c.status === "activo" &&
+      c.rent_receiver === "inmobiliaria"
+    );
+  };
+
+  const cargarComisionesPendientesOwnerPeriodo = async ({ ownerEmail, propertyName, periodDescription }) => {
+    const periodo = periodoKeyDesdeDescripcion(periodDescription);
+    if (!periodo) return { periodo: null, contratosProp: [], comisionesPendientes: [], totalComision: 0 };
+
+    const contratosProp = getContratosAdministracionOwner(ownerEmail, propertyName);
+    const contractIds = contratosProp.map(c => c.id);
+    if (contractIds.length === 0) return { periodo, contratosProp, comisionesPendientes: [], totalComision: 0 };
+
+    const { data } = await supabase.from("comisiones_admin")
+      .select("id, contract_id, monto, periodo, status")
+      .in("contract_id", contractIds)
+      .eq("periodo", periodo)
+      .eq("tipo", "automatica")
+      .eq("status", "pendiente");
+
+    const comisionesPendientes = data || [];
+    const totalComision = comisionesPendientes.reduce((a, c) => a + (c.monto || 0), 0);
+    return { periodo, contratosProp, comisionesPendientes, totalComision };
+  };
+
+  const sincronizarComisionesAdminCobradas = async ({ ownerEmail, propertyName, periodDescription, paymentDate }) => {
+    const { periodo, comisionesPendientes } = await cargarComisionesPendientesOwnerPeriodo({ ownerEmail, propertyName, periodDescription });
+    if (!periodo || comisionesPendientes.length === 0) return { periodo, totalComision: 0, actualizadas: 0 };
+
+    const ids = comisionesPendientes.map(c => c.id);
+    const totalComision = comisionesPendientes.reduce((a, c) => a + (c.monto || 0), 0);
+    await supabase.from("comisiones_admin")
+      .update({ status: "cobrada", fecha_cobro: paymentDate || today })
+      .in("id", ids);
+
+    return { periodo, totalComision, actualizadas: ids.length };
+  };
+
   const calcPendienteMes = (ownerEmail) => {
     const [anio, mes] = mesCorte.split("-").map(Number);
     const fechaCorte = new Date(anio, mes - 1, 1);
@@ -493,22 +545,64 @@ export default function Liquidaciones() {
     }
 
     const statusLiquidacion = formPago.concepto === "total" ? "pagado" : "pagado_parcial";
+    const montoPagoPropietario = parseFloat(formPago.monto) || 0;
+    const datosComisionRapida = formPago.concepto === "total"
+      ? await cargarComisionesPendientesOwnerPeriodo({
+        ownerEmail: propietarioPago.email,
+        propertyName: formPago.property_name,
+        periodDescription: formPago.periodo,
+      })
+      : { totalComision: 0 };
+
     // Para pagos de mantenimiento específico, no afecta el balance de liquidación mensual — solo se registra como referencia/recibo
     if (formPago.concepto !== "mantenimiento") {
       await supabase.from("owner_payments").insert([{
         owner_name: propietarioPago.name,
         owner_email: propietarioPago.email,
         period_description: formPago.periodo,
-        total_rent: 0,
-        total_commission: 0,
-        total_liquid: parseFloat(formPago.monto),
-        amount_paid: parseFloat(formPago.monto),
+        total_rent: formPago.concepto === "total" ? montoPagoPropietario + (datosComisionRapida.totalComision || 0) : 0,
+        total_commission: formPago.concepto === "total" ? (datosComisionRapida.totalComision || 0) : 0,
+        total_liquid: montoPagoPropietario,
+        amount_paid: montoPagoPropietario,
         payment_method: formPago.forma_pago,
         payment_date: formPago.fecha,
         status: statusLiquidacion,
         notes: `${formPago.concepto === "adelanto" ? "Adelanto" : formPago.concepto === "parcial" ? "Pago parcial" : "Liquidación total"}${formPago.property_name ? ` — ${formPago.property_name}` : ""} · Recibo: ${recibo.id.slice(0,8).toUpperCase()}`,
         rent_receiver: "inmobiliaria",
       }]);
+
+      await supabase.from("cash_movements").insert([{
+        type: "salida",
+        category: "liquidacion_propietario",
+        description: `${formPago.concepto === "total" ? "Liquidación" : "Pago parcial"} ${propietarioPago.name} - ${formPago.periodo}`,
+        amount: montoPagoPropietario,
+        payment_method: formPago.forma_pago,
+        date: formPago.fecha || today,
+        notes: `${formPago.property_name ? `Propiedad: ${formPago.property_name} · ` : ""}Recibo: ${recibo.id.slice(0,8).toUpperCase()}${datosComisionRapida.totalComision ? ` · Comisión retenida: ${fmt(datosComisionRapida.totalComision)}` : ""}`,
+        created_by: profile?.email || session.user.email,
+        created_at: new Date().toISOString(),
+      }]);
+
+      if (formPago.concepto === "total" && (datosComisionRapida.totalComision || 0) > 0) {
+        await supabase.from("cash_movements").insert([{
+          type: "entrada",
+          category: "comision_cobrada",
+          description: `Comisión administración ${propietarioPago.name} - ${formPago.periodo}`,
+          amount: datosComisionRapida.totalComision,
+          payment_method: formPago.forma_pago,
+          date: formPago.fecha || today,
+          notes: `Retenida de liquidación rápida. Recibo: ${recibo.id.slice(0,8).toUpperCase()}${formPago.property_name ? ` · Propiedad: ${formPago.property_name}` : ""}`,
+          created_by: profile?.email || session.user.email,
+          created_at: new Date().toISOString(),
+        }]);
+
+        await sincronizarComisionesAdminCobradas({
+          ownerEmail: propietarioPago.email,
+          propertyName: formPago.property_name,
+          periodDescription: formPago.periodo,
+          paymentDate: formPago.fecha,
+        });
+      }
     }
 
     // Si esto fue una liquidación TOTAL, marcar los tickets de mantenimiento pendientes de meses anteriores como ya descontados
