@@ -61,9 +61,6 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
       const dep = num(merged.deposito_garantia) || 0
       const mora = parseFloat((r * 0.01).toFixed(2))
       const pagares = merged.fecha_inicio ? calcularPagares(merged.fecha_inicio) : {}
-      const fechaTermino = merged.fecha_inicio
-        ? (() => { const d = new Date(merged.fecha_inicio + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0] })()
-        : merged.fecha_termino || null
       const meses = parseInt(merged.duracion_contrato_meses) || 12
       const fechaVigencia = merged.fecha_inicio ? calcularFechaVigencia(merged.fecha_inicio, meses) : merged.fecha_vigencia || null
 
@@ -84,7 +81,7 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
         mora_diaria_letra: numeroALetra(mora),
         monto_poliza: num(merged.monto_poliza),
         monto_poliza_letra: num(merged.monto_poliza) ? numeroALetra(num(merged.monto_poliza)) : null,
-        fecha_termino: fechaTermino,
+        fecha_termino: fechaVigencia,
         duracion_contrato_meses: meses,
         fecha_vigencia: fechaVigencia,
         status_expediente: merged.status_expediente || 'borrador',
@@ -255,6 +252,18 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
             <input type="text" value={form.giro_comercial || ''} onChange={e => set('giro_comercial', e.target.value)} style={st.input} />
           </div>
         </div>
+        {form.tipo_arrendatario === 'moral' && (
+          <div style={st.grid2}>
+            <div style={{ marginBottom: 14 }}>
+              <label style={st.label}>Razón social del arrendatario</label>
+              <input type="text" value={form.razon_social_arrendatario || ''} onChange={e => set('razon_social_arrendatario', e.target.value)} style={st.input} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={st.label}>Representante legal</label>
+              <input type="text" value={form.representante_legal_arrendatario || ''} onChange={e => set('representante_legal_arrendatario', e.target.value)} style={st.input} />
+            </div>
+          </div>
+        )}
 
         <div style={{ ...st.divider, margin: '16px 0' }} />
         <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 12px' }}>Status y cobros</p>

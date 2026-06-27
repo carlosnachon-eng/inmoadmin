@@ -86,6 +86,15 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
   }
 
   const generarComision = async (op) => {
+    const expediente = op.poliza_expedientes
+    if (!op.poliza_expediente_id || !expediente) {
+      alert('Primero vincula la operacion a un expediente de poliza.')
+      return
+    }
+    if (expediente.status !== 'activo' || !expediente.saldo_pagado) {
+      alert('La comision solo se puede generar cuando la poliza esta activa y cobrada.')
+      return
+    }
     const base = Number(op.monto_poliza_final || op.monto_poliza_estimado) || 0
     if (!base) {
       alert('Captura monto final o estimado de poliza antes de generar comision.')

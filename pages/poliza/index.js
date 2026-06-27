@@ -85,7 +85,7 @@ export default function PolizaPanel() {
       const [{ data }, { data: agencies }] = await Promise.all([
         supabase
           .from('partner_operations')
-          .select('*, partner_agencies:partner_agency_id(nombre_comercial)')
+          .select('*, partner_agencies:partner_agency_id(nombre_comercial), poliza_expedientes:poliza_expediente_id(id, status, saldo_pagado)')
           .order('created_at', { ascending: false }),
         supabase
           .from('partner_agencies')

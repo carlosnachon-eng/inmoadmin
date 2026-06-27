@@ -48,7 +48,22 @@ export default function ModalNuevoExpediente({ propietarios, solicitudes, prefil
     if (!solId) return
     const sol = solicitudes.find(x => x.id === solId)
     if (!sol) return
-    setForm(f => ({ ...f, nombre_arrendatario: sol.nombre_completo || sol.razon_social || '', domicilio_arrendatario: sol.domicilio_actual || '', rfc_arrendatario: sol.rfc || sol.rfc_empresa || '', telefono_arrendatario: sol.telefono || '', correo_arrendatario: sol.correo || '', clave_elector_arrendatario: sol.clave_elector || '', ocupacion_arrendatario: sol.empresa_labora || sol.giro_empresa || '', comprobante_ingresos: sol.tipo_ingresos || '' }))
+    const esMoral = sol.tipo_solicitante === 'moral' || !!sol.razon_social
+    setForm(f => ({
+      ...f,
+      tipo_arrendatario: esMoral ? 'moral' : 'fisica',
+      nombre_arrendatario: esMoral ? (sol.razon_social || sol.nombre_completo || '') : (sol.nombre_completo || ''),
+      razon_social_arrendatario: esMoral ? (sol.razon_social || '') : '',
+      representante_legal_arrendatario: esMoral ? (sol.nombre_representante || sol.nombre_completo || '') : '',
+      domicilio_arrendatario: esMoral ? (sol.domicilio_fiscal || sol.domicilio_actual || '') : (sol.domicilio_actual || ''),
+      rfc_arrendatario: sol.rfc || sol.rfc_empresa || '',
+      telefono_arrendatario: sol.telefono || sol.telefono_representante || '',
+      correo_arrendatario: sol.correo || sol.email_representante || '',
+      clave_elector_arrendatario: sol.clave_elector || '',
+      ocupacion_arrendatario: sol.empresa_labora || sol.giro_empresa || sol.giro_comercial || '',
+      giro_comercial: sol.giro_comercial || sol.giro_empresa || '',
+      comprobante_ingresos: sol.tipo_ingresos || ''
+    }))
   }, [solId])
 
   useEffect(() => {
@@ -56,10 +71,6 @@ export default function ModalNuevoExpediente({ propietarios, solicitudes, prefil
     if (!r) return
     setForm(f => ({ ...f, deposito_garantia: r, mora_diaria: (r * 0.01).toFixed(2) }))
   }, [form.renta_mensual])
-
-  const fechaTermino = form.fecha_inicio
-    ? (() => { const d = new Date(form.fecha_inicio + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0] })()
-    : ''
 
   const fechaVigenciaCalc = form.fecha_inicio
     ? calcularFechaVigencia(form.fecha_inicio, form.duracion_contrato_meses)
@@ -96,7 +107,7 @@ export default function ModalNuevoExpediente({ propietarios, solicitudes, prefil
         monto_poliza: parseFloat(merged.monto_poliza) || null,
         monto_poliza_letra: merged.monto_poliza ? numeroALetra(parseFloat(merged.monto_poliza)) : null,
         dia_limite_pago: parseInt(form.dia_limite_pago) || 5,
-        fecha_termino: fechaTermino || null,
+        fecha_termino: fechaVigencia || null,
         duracion_contrato_meses: meses,
         fecha_vigencia: fechaVigencia || null,
         recordatorio_30_enviado: false,
