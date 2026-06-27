@@ -49,6 +49,8 @@ export default function DetalleFirma() {
     fecha_entrega: new Date().toISOString().split('T')[0],
     descripcion_inmueble: '',
     compradores_adicionales: '',
+    identificacion_vendedor: '',
+    identificaciones_compradores: '',
     telefono_vendedor: '',
     correo_vendedor: '',
     observaciones_checklist: '',
@@ -453,6 +455,14 @@ export default function DetalleFirma() {
                 <ActaField label="Compradores adicionales">
                   <textarea value={actaForm.compradores_adicionales} onChange={e => setActaForm(f => ({ ...f, compradores_adicionales: e.target.value }))}
                     rows={2} placeholder="Uno por línea, si aplica" style={{ ...actaInputStyle, resize: 'vertical' }} />
+                </ActaField>
+                <ActaField label="INE vendedor">
+                  <input value={actaForm.identificacion_vendedor} onChange={e => setActaForm(f => ({ ...f, identificacion_vendedor: e.target.value }))}
+                    placeholder="Número de credencial, opcional" style={actaInputStyle} />
+                </ActaField>
+                <ActaField label="INE compradores">
+                  <textarea value={actaForm.identificaciones_compradores} onChange={e => setActaForm(f => ({ ...f, identificaciones_compradores: e.target.value }))}
+                    rows={2} placeholder="Números de credencial, separados por coma o texto libre" style={{ ...actaInputStyle, resize: 'vertical' }} />
                 </ActaField>
               </div>
 
