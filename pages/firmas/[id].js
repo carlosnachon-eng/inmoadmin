@@ -6,10 +6,67 @@ import { generarActaEntregaInmueble } from '../../lib/generarActaEntregaInmueble
 
 const RESPONSABLE_LABELS = {
   ventas: 'Ventas',
-  juridico: 'Juridico',
-  administracion: 'Administracion (Tania)',
-  coordinacion: 'Administracion (Tania)',
-  direccion: 'Direccion',
+  juridico: 'Jurídico',
+  administracion: 'Administración (Tania)',
+  coordinacion: 'Administración (Tania)',
+  direccion: 'Dirección',
+  asesor: 'Asesor',
+  automatico: 'Automático',
+}
+
+const CHECKLISTS_ETAPA = {
+  arrendamiento: {
+    coordinacion_entrega: [
+      'Limpieza confirmada',
+      'Inventario preparado',
+      'Llaves disponibles',
+      'Controles disponibles',
+      'Servicios funcionando',
+      'Propiedad lista',
+      'Cita de entrega confirmada',
+      'Asesor asignado',
+      'Documentación preparada',
+    ],
+    entrega: [
+      'Recorrido del inmueble realizado',
+      'Llaves y accesos entregados',
+      'Inventario revisado con inquilino',
+      'Recepción del inmueble confirmada',
+      'Observaciones iniciales registradas',
+    ],
+    seguimiento_post_entrega: [
+      'Seguimiento a 7 días programado',
+      'Seguimiento a 30 días programado',
+      'Solicitud de reseña considerada',
+      'Incidencias iniciales cerradas o canalizadas',
+    ],
+  },
+  compraventa: {
+    coordinacion_entrega: [
+      'Escritura firmada',
+      'Recursos liberados',
+      'Propiedad desocupada',
+      'Limpieza confirmada',
+      'Llaves disponibles',
+      'Controles disponibles',
+      'Acta de entrega generada',
+      'Caja de bienvenida preparada',
+      'Cita confirmada con comprador',
+      'Cita confirmada con vendedor',
+      'Asesor asignado',
+    ],
+    entrega: [
+      'Recorrido del inmueble realizado',
+      'Llaves y accesos entregados',
+      'Acta de entrega revisada',
+      'Observaciones registradas',
+    ],
+    seguimiento_postventa: [
+      'Seguimiento postventa programado',
+      'Solicitud de reseña considerada',
+      'Incidencias iniciales cerradas o canalizadas',
+    ],
+  },
 }
 
 const STATUS_COLORS = {
@@ -315,6 +372,7 @@ export default function DetalleFirma() {
               const sc = STATUS_COLORS[etapa.status] || STATUS_COLORS.pendiente
               const esActual = etapa.status === 'pendiente' && (i === 0 || etapas[i-1]?.status === 'completada' || etapas[i-1]?.status === 'no_aplica')
               const abierta = etapaActiva === etapa.id
+              const checklist = CHECKLISTS_ETAPA[firma.tipo]?.[etapa.clave] || []
               return (
                 <div key={etapa.id} style={{
                   background: '#fff', borderRadius: '8px', marginBottom: '8px',
@@ -352,6 +410,24 @@ export default function DetalleFirma() {
                   </div>
                   {abierta && (
                     <div style={{ borderTop: '1px solid #eee', padding: '0.9rem 1rem', background: '#fafafa', borderRadius: '0 0 8px 8px' }}>
+                      {checklist.length > 0 && (
+                        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '0.75rem', marginBottom: '0.75rem' }}>
+                          <p style={{ margin: '0 0 8px', color: '#1a3c5e', fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Checklist guía
+                          </p>
+                          <div style={{ display: 'grid', gap: 6 }}>
+                            {checklist.map(item => (
+                              <label key={item} style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#444', fontSize: '0.82rem' }}>
+                                <input type="checkbox" disabled style={{ accentColor: '#1a3c5e' }} />
+                                {item}
+                              </label>
+                            ))}
+                          </div>
+                          <p style={{ margin: '8px 0 0', color: '#888', fontSize: '0.74rem' }}>
+                            Esta guía no guarda checks individuales todavía; usa las notas para dejar evidencia.
+                          </p>
+                        </div>
+                      )}
                       <label style={{ fontSize: '0.82rem', color: '#555', display: 'block', marginBottom: '6px' }}>Notas (opcional)</label>
                       <textarea value={notaEtapa} onChange={e => setNotaEtapa(e.target.value)} rows={2}
                         placeholder="Agrega observaciones si es necesario..."

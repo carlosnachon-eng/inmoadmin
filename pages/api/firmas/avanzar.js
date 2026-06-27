@@ -33,7 +33,25 @@ export default async function handler(req, res) {
     .order('orden', { ascending: true })
     .limit(1)
 
-  const siguiente = siguientes?.[0]
+  let siguiente = siguientes?.[0] || null
+  let etapaAutomaticaCerrada = null
+
+  if (siguiente?.clave === 'expediente_concluido') {
+    const { data: etapaCerrada } = await supabase
+      .from('firma_etapas')
+      .update({
+        status: 'completada',
+        notas: 'Cierre automático al completar la etapa operativa final.',
+        completada_por: usuario_id || null,
+        completada_at: new Date()
+      })
+      .eq('id', siguiente.id)
+      .select()
+      .single()
+
+    etapaAutomaticaCerrada = etapaCerrada
+    siguiente = null
+  }
 
   if (siguiente) {
     await supabase.from('firmas').update({ etapa_actual: siguiente.orden }).eq('id', firma_id)
@@ -47,6 +65,15 @@ export default async function handler(req, res) {
     mensaje: `Etapa completada: "${etapa.nombre}". ${notas ? 'Nota: ' + notas : ''}`,
     tipo: 'cambio_etapa'
   })
+
+  if (etapaAutomaticaCerrada) {
+    await supabase.from('firma_comentarios').insert({
+      firma_id,
+      usuario_nombre: 'Sistema',
+      mensaje: `Etapa completada automáticamente: "${etapaAutomaticaCerrada.nombre}".`,
+      tipo: 'cambio_etapa'
+    })
+  }
 
   const { data: firma } = await supabase
     .from('firmas')

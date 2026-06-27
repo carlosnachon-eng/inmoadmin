@@ -95,7 +95,15 @@ export default function FirmasDashboard() {
 
   async function handleLogout() { await supabase.auth.signOut(); setSession(null) }
 
-  const RESPONSABLE_LABELS = { ventas: 'Ventas', juridico: 'Juridico', administracion: 'Administracion (Tania)', coordinacion: 'Administracion (Tania)', direccion: 'Direccion' }
+  const RESPONSABLE_LABELS = {
+    ventas: 'Ventas',
+    juridico: 'Jurídico',
+    administracion: 'Administración (Tania)',
+    coordinacion: 'Administración (Tania)',
+    direccion: 'Dirección',
+    asesor: 'Asesor',
+    automatico: 'Automático',
+  }
 
   // Calendario — construir días del mes
   const primerDia = new Date(anioActual, mesActual, 1).getDay()
