@@ -135,10 +135,10 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
     onReload()
   }
 
-  if (!operaciones?.length && !pendientes.length) return (
+  if (!operaciones?.length && !pendientes.length && !agenciasActivas.length) return (
     <div style={st.emptyState}>
-      <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin operaciones de partners</p>
-      <p>Cuando una inmobiliaria aliada envie una operacion aparecera aqui.</p>
+      <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin partners registrados</p>
+      <p>Cuando una inmobiliaria solicite acceso o envie una operacion aparecera aqui.</p>
     </div>
   )
 
@@ -153,8 +153,8 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
 
       {pendientes.length > 0 && (
         <div style={{ marginBottom: 28 }}>
-          <p style={st.sectionTitle}>Inmobiliarias pendientes de aprobacion</p>
-          <p style={st.sectionSub}>Estas inmobiliarias se registraron solas y esperan activacion de Emporio.</p>
+          <p style={st.sectionTitle}>Solicitudes de acceso por aprobar</p>
+          <p style={st.sectionSub}>Inmobiliarias o asesores que pidieron entrar al programa Partner y esperan activacion de Emporio.</p>
           <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
             {pendientes.map(ag => (
               <div key={ag.id} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -180,47 +180,82 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
         </div>
       )}
 
-      <div style={{ marginBottom: 16 }}>
-        <p style={st.sectionTitle}>Operaciones de inmobiliarias aliadas</p>
-        <p style={st.sectionSub}>Seguimiento operativo visible para partners. El trabajo juridico sigue en el flujo normal de Poliza.</p>
-      </div>
-
-      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: 10, alignItems: 'center' }}>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por partner, inquilino, propietario, folio o direccion..."
-            style={st.input}
-          />
-          <select value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} style={st.input}>
-            <option value="todas">Todas las inmobiliarias</option>
-            {agencias.map(ag => <option key={ag.id} value={ag.id}>{ag.nombre_comercial}</option>)}
-          </select>
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={st.input}>
-            <option value="todos">Todos los estatus</option>
-            {statusOptions.map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}
-          </select>
-          <select value={commissionFilter} onChange={e => setCommissionFilter(e.target.value)} style={st.input}>
-            {commissionFilters.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-          </select>
-          <button onClick={clearFilters} style={{ ...st.btn, ...st.btnGhost, whiteSpace: 'nowrap' }}>Limpiar</button>
-        </div>
-        <p style={{ margin: '10px 0 0', color: C.muted, fontSize: 12, fontWeight: 700 }}>
-          Mostrando {operacionesFiltradas.length} de {operaciones.length} operacion{operaciones.length === 1 ? '' : 'es'}
-        </p>
-      </div>
-
-      {operaciones.length > 0 && operacionesFiltradas.length === 0 && (
-        <div style={{ ...st.emptyState, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 14 }}>
-          <p style={{ fontSize: 15, fontWeight: 800, color: C.text, margin: 0 }}>Sin resultados con esos filtros</p>
-          <p style={{ margin: '6px 0 0' }}>Prueba limpiar filtros o buscar por otro dato.</p>
+      {agenciasActivas.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <p style={st.sectionTitle}>Partners activos</p>
+          <p style={st.sectionSub}>Inmobiliarias y asesores aprobados para enviar operaciones a Emporio Blindaje Legal.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10, marginTop: 12 }}>
+            {agenciasActivas.map(ag => {
+              const operacionesAgencia = operaciones.filter(op => op.partner_agency_id === ag.id)
+              return (
+                <div key={ag.id} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+                    {ag.logo_url ? (
+                      <img src={ag.logo_url} alt={ag.nombre_comercial} style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'contain', border: `1px solid ${C.border}` }} />
+                    ) : (
+                      <div style={{ width: 46, height: 46, borderRadius: 8, background: ag.brand_color || C.gold, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 900 }}>{ag.nombre_comercial?.[0] || 'P'}</div>
+                    )}
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: 0, color: C.text, fontWeight: 850 }}>{ag.nombre_comercial}</p>
+                      <p style={{ margin: '3px 0 0', color: C.muted, fontSize: 12 }}>{ag.email_contacto || '-'} · {ag.telefono || '-'}</p>
+                      <p style={{ margin: '3px 0 0', color: C.greenText, fontSize: 11, fontWeight: 800 }}>{operacionesAgencia.length} operacion{operacionesAgencia.length === 1 ? '' : 'es'}</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
-      <div style={{ display: 'grid', gap: 10 }}>
-        {operacionesFiltradas.map(op => (
-          <div key={op.id} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+      <div style={{ marginBottom: 16 }}>
+        <p style={st.sectionTitle}>Operaciones y expedientes de partners</p>
+        <p style={st.sectionSub}>Solicitudes enviadas por partners. Cuando se vinculan a un expediente, el seguimiento y comisiones viven aqui.</p>
+      </div>
+
+      {operaciones.length === 0 ? (
+        <div style={{ ...st.emptyState, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: '34px 20px' }}>
+          <p style={{ fontSize: 15, fontWeight: 800, color: C.text, margin: 0 }}>Sin operaciones partner todavía</p>
+          <p style={{ margin: '6px 0 0' }}>Cuando un partner cree una operacion, aparecera en este bloque.</p>
+        </div>
+      ) : (
+        <>
+          <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: 10, alignItems: 'center' }}>
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Buscar por partner, inquilino, propietario, folio o direccion..."
+                style={st.input}
+              />
+              <select value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} style={st.input}>
+                <option value="todas">Todas las inmobiliarias</option>
+                {agencias.map(ag => <option key={ag.id} value={ag.id}>{ag.nombre_comercial}</option>)}
+              </select>
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={st.input}>
+                <option value="todos">Todos los estatus</option>
+                {statusOptions.map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}
+              </select>
+              <select value={commissionFilter} onChange={e => setCommissionFilter(e.target.value)} style={st.input}>
+                {commissionFilters.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              </select>
+              <button onClick={clearFilters} style={{ ...st.btn, ...st.btnGhost, whiteSpace: 'nowrap' }}>Limpiar</button>
+            </div>
+            <p style={{ margin: '10px 0 0', color: C.muted, fontSize: 12, fontWeight: 700 }}>
+              Mostrando {operacionesFiltradas.length} de {operaciones.length} operacion{operaciones.length === 1 ? '' : 'es'}
+            </p>
+          </div>
+
+          {operacionesFiltradas.length === 0 && (
+            <div style={{ ...st.emptyState, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 14 }}>
+              <p style={{ fontSize: 15, fontWeight: 800, color: C.text, margin: 0 }}>Sin resultados con esos filtros</p>
+              <p style={{ margin: '6px 0 0' }}>Prueba limpiar filtros o buscar por otro dato.</p>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gap: 10 }}>
+            {operacionesFiltradas.map(op => (
+              <div key={op.id} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <p style={{ margin: 0, color: C.text, fontSize: 15, fontWeight: 800 }}>{op.nombre_inquilino || 'Inquilino pendiente'}</p>
@@ -257,9 +292,11 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
                 Marcar pagada
               </button>
             </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
 
       {selected && (
         <div style={st.modal} onClick={e => e.target === e.currentTarget && setSelected(null)}>

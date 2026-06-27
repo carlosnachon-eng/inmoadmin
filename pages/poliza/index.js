@@ -128,7 +128,7 @@ export default function PolizaPanel() {
     { id: 'propietarios', label: `Propietarios (${propietariosFiltrados.length})` },
     { id: 'solicitudes', label: `Solicitudes (${solicitudes.length})` },
     { id: 'caja', label: '💰 Caja Póliza' },
-    { id: 'partners', label: `🤝 Partners (${partnerOps.length})` },
+    { id: 'partners', label: `🤝 Partners (${partnerAgencies.length})` },
     { id: 'compraventa', label: '🔑 Compraventa' },
     { id: 'kpis', label: '📊 KPIs' },
   ]
