@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { C, st, fmt, fmtDate, calcularPagares, calcularFechaVigencia, numeroALetra } from '../../lib/polizaUtils'
+import { calcCommission, COMMISSION_RATE } from '../../lib/partners'
 
 export default function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onSaved }) {
   const [propId, setPropId] = useState('')
@@ -103,8 +104,31 @@ export default function ModalNuevoExpediente({ propietarios, solicitudes, prefil
         ...pagares,
       }
 
-      const { error } = await supabase.from('poliza_expedientes').insert(payload)
+      const { data: nuevoExpediente, error } = await supabase.from('poliza_expedientes').insert(payload).select('id, monto_poliza, status, saldo_pagado').single()
       if (error) throw error
+
+      if (solId || propId) {
+        const partnerUpdate = {
+          poliza_expediente_id: nuevoExpediente.id,
+          monto_poliza_final: nuevoExpediente.monto_poliza || null,
+          updated_at: new Date().toISOString(),
+        }
+        if (nuevoExpediente.status === 'activo' && nuevoExpediente.saldo_pagado && nuevoExpediente.monto_poliza) {
+          partnerUpdate.status_partner = 'activa'
+          partnerUpdate.commission_generated = calcCommission(nuevoExpediente.monto_poliza, COMMISSION_RATE)
+          partnerUpdate.commission_generated_at = new Date().toISOString()
+          partnerUpdate.observaciones_publicas = 'Poliza activa. Fechas de firma y vigencia disponibles para seguimiento y renovacion.'
+        } else {
+          partnerUpdate.status_partner = 'contrato_en_proceso'
+          partnerUpdate.observaciones_publicas = 'Expediente juridico creado. Emporio continua con contrato, firma y activacion.'
+        }
+
+        let query = supabase.from('partner_operations').update(partnerUpdate)
+        if (solId && propId) query = query.or(`solicitud_inquilino_id.eq.${solId},propietario_id.eq.${propId}`)
+        else if (solId) query = query.eq('solicitud_inquilino_id', solId)
+        else query = query.eq('propietario_id', propId)
+        await query
+      }
       onSaved()
     } catch (e) {
       setMsg('Error: ' + e.message)

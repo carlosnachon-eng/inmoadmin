@@ -14,7 +14,8 @@ export default function PartnerLogin() {
   useEffect(() => {
     async function check() {
       const ctx = await getPartnerContext()
-      if (ctx.agency) window.location.href = '/partners/dashboard'
+      if (ctx.agency?.status === 'activo') window.location.href = '/partners/dashboard'
+      else if (ctx.agency) window.location.href = '/partners/pendiente'
       else setChecking(false)
     }
     check()
@@ -37,7 +38,7 @@ export default function PartnerLogin() {
       setError('Este usuario no tiene acceso activo al Portal Partner.')
       return
     }
-    window.location.href = '/partners/dashboard'
+    window.location.href = ctx.agency.status === 'activo' ? '/partners/dashboard' : '/partners/pendiente'
   }
 
   if (checking) return null
@@ -67,6 +68,9 @@ export default function PartnerLogin() {
           <button onClick={handleLogin} disabled={loading || !email || !password} style={{ ...button, width: '100%', minHeight: 46, background: P.red, color: '#fff', opacity: loading ? .65 : 1 }}>
             {loading ? 'Entrando...' : 'Entrar al portal'}
           </button>
+          <a href="/partners/registro" style={{ ...button, width: '100%', minHeight: 42, background: '#f4f4f5', color: P.text, marginTop: 10 }}>
+            Quiero ser Partner
+          </a>
           <p style={{ margin: '16px 0 0', color: P.muted, fontSize: 12, lineHeight: 1.45, textAlign: 'center' }}>
             Este portal es exclusivo para inmobiliarias aliadas de Emporio Blindaje Legal.
           </p>

@@ -7,6 +7,7 @@ import { generarReciboPoliza } from '../../lib/generarRecibo'
 import { generarContratoPromocion } from '../../lib/generarContratoPromocion'
 import { generarContratoAdministracion } from '../../lib/generarContratoAdministracion'
 import { C, st, fmt, fmtDate, calcularPagares, calcularFechaVigencia, numeroALetra } from '../../lib/polizaUtils'
+import { calcCommission, COMMISSION_RATE } from '../../lib/partners'
 
 export default function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSaved }) {
   const [form, setForm] = useState({ ...expediente })
@@ -104,6 +105,24 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
         const saldo = montoPoliza - anticipo
         await supabase.from('poliza_caja').insert({ tipo: 'ingreso', concepto: anticipo > 0 ? 'saldo_poliza' : 'pago_poliza', descripcion: `${anticipo > 0 ? 'Saldo' : 'Pago'} póliza — ${merged.nombre_arrendatario || ''}`, monto: anticipo > 0 ? saldo : montoPoliza, metodo_pago: merged.metodo_pago_completo || 'efectivo', expediente_id: expediente.id, nombre_cliente: merged.nombre_arrendatario || '', fecha: new Date().toISOString().split('T')[0] })
       }
+
+      const montoPolizaFinal = num(merged.monto_poliza)
+      const partnerPayload = {
+        monto_poliza_final: montoPolizaFinal,
+        updated_at: new Date().toISOString(),
+      }
+      if (merged.status === 'activo' && merged.saldo_pagado && montoPolizaFinal) {
+        partnerPayload.status_partner = 'activa'
+        partnerPayload.commission_generated = calcCommission(montoPolizaFinal, COMMISSION_RATE)
+        partnerPayload.commission_generated_at = new Date().toISOString()
+        partnerPayload.observaciones_publicas = 'Poliza activa. Fechas de firma y vigencia disponibles para seguimiento y renovacion.'
+      } else if (merged.fecha_firma) {
+        partnerPayload.status_partner = 'lista_para_firma'
+        partnerPayload.observaciones_publicas = 'Contrato preparado y fecha de firma registrada.'
+      } else {
+        partnerPayload.status_partner = 'contrato_en_proceso'
+      }
+      await supabase.from('partner_operations').update(partnerPayload).eq('poliza_expediente_id', expediente.id)
 
       onSaved()
     } catch (e) {

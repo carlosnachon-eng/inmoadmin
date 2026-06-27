@@ -5,9 +5,10 @@ import { PARTNER_STATUS, calcCommission, COMMISSION_RATE } from '../../lib/partn
 
 const statusOptions = Object.entries(PARTNER_STATUS)
 
-export default function TabPartners({ operaciones, onReload }) {
+export default function TabPartners({ operaciones, agencias = [], onReload }) {
   const [selected, setSelected] = useState(null)
   const [saving, setSaving] = useState(false)
+  const pendientes = agencias.filter(a => a.status === 'pendiente')
 
   const saveSelected = async () => {
     if (!selected) return
@@ -60,7 +61,16 @@ export default function TabPartners({ operaciones, onReload }) {
     onReload()
   }
 
-  if (!operaciones?.length) return (
+  const actualizarAgencia = async (agencia, status) => {
+    await supabase.from('partner_agencies').update({
+      status,
+      approved_at: status === 'activo' ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', agencia.id)
+    onReload()
+  }
+
+  if (!operaciones?.length && !pendientes.length) return (
     <div style={st.emptyState}>
       <p style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Sin operaciones de partners</p>
       <p>Cuando una inmobiliaria aliada envie una operacion aparecera aqui.</p>
@@ -69,6 +79,35 @@ export default function TabPartners({ operaciones, onReload }) {
 
   return (
     <div>
+      {pendientes.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <p style={st.sectionTitle}>Inmobiliarias pendientes de aprobacion</p>
+          <p style={st.sectionSub}>Estas inmobiliarias se registraron solas y esperan activacion de Emporio.</p>
+          <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+            {pendientes.map(ag => (
+              <div key={ag.id} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+                  {ag.logo_url ? (
+                    <img src={ag.logo_url} alt={ag.nombre_comercial} style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'contain', border: `1px solid ${C.border}` }} />
+                  ) : (
+                    <div style={{ width: 44, height: 44, borderRadius: 8, background: ag.brand_color || C.gold, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 900 }}>{ag.nombre_comercial?.[0] || 'P'}</div>
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, color: C.text, fontWeight: 850 }}>{ag.nombre_comercial}</p>
+                    <p style={{ margin: '3px 0 0', color: C.muted, fontSize: 12 }}>{ag.email_contacto || '-'} · {ag.telefono || '-'} · {ag.ciudad || '-'}</p>
+                    {ag.website && <p style={{ margin: '3px 0 0', color: C.muted, fontSize: 11 }}>{ag.website}</p>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => actualizarAgencia(ag, 'activo')} style={{ ...st.btn, ...st.btnGreen, padding: '7px 12px', fontSize: 12 }}>Aprobar</button>
+                  <button onClick={() => actualizarAgencia(ag, 'suspendido')} style={{ ...st.btn, background: C.red, color: '#fff', padding: '7px 12px', fontSize: 12 }}>Rechazar</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ marginBottom: 16 }}>
         <p style={st.sectionTitle}>Operaciones de inmobiliarias aliadas</p>
         <p style={st.sectionSub}>Seguimiento operativo visible para partners. El trabajo juridico sigue en el flujo normal de Poliza.</p>

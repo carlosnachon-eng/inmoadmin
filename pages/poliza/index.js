@@ -34,6 +34,7 @@ export default function PolizaPanel() {
   const [caja, setCaja] = useState([])
   const [compradores, setCompradores] = useState([])
   const [partnerOps, setPartnerOps] = useState([])
+  const [partnerAgencies, setPartnerAgencies] = useState([])
   const [subTabCV, setSubTabCV] = useState('vendedores')
 
   useEffect(() => {
@@ -81,11 +82,18 @@ export default function PolizaPanel() {
       setCompradores(data || [])
     }
     if (tabId === 'partners') {
-      const { data } = await supabase
-        .from('partner_operations')
-        .select('*, partner_agencies:partner_agency_id(nombre_comercial)')
-        .order('created_at', { ascending: false })
+      const [{ data }, { data: agencies }] = await Promise.all([
+        supabase
+          .from('partner_operations')
+          .select('*, partner_agencies:partner_agency_id(nombre_comercial)')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('partner_agencies')
+          .select('*')
+          .order('created_at', { ascending: false }),
+      ])
       setPartnerOps(data || [])
+      setPartnerAgencies(agencies || [])
     }
     setLoading(false)
   }
@@ -184,7 +192,7 @@ export default function PolizaPanel() {
             {tab === 'propietarios' && <TabPropietarios propietarios={propietariosFiltrados} onSelect={p => { setSelected(p); setModal('propietario') }} />}
             {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected({ _solicitud: sol }); setModal('nuevo') }} />}
             {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} esAdmin={esAdmin} />}
-            {tab === 'partners' && <TabPartners operaciones={partnerOps} onReload={loadAll} />}
+            {tab === 'partners' && <TabPartners operaciones={partnerOps} agencias={partnerAgencies} onReload={loadAll} />}
             {tab === 'compraventa' && (
               <TabCompraventa
                 vendedores={vendedoresFiltrados}

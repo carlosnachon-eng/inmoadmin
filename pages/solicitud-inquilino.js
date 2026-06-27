@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 
 const colors = {
   dark: "#4a4a4a", gold: "#b91c3c", red: "#b91c3c", gray: "#f8f8f8",
@@ -72,7 +73,28 @@ const FileUpload = ({ label, hint, required, onChange, value, error }) => (
   </Field>
 );
 
+const PartnerBanner = ({ branding }) => {
+  if (!branding?.agency) return null;
+  const color = branding.agency.brand_color || colors.red;
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${colors.border}`, borderRadius: 14, padding: "16px 18px", marginBottom: 18, display: "flex", alignItems: "center", gap: 14, boxShadow: "0 2px 10px rgba(0,0,0,0.04)" }}>
+      {branding.agency.logo_url ? (
+        <img src={branding.agency.logo_url} alt={branding.agency.nombre_comercial} style={{ width: 54, height: 54, borderRadius: 12, objectFit: "contain", border: `1px solid ${colors.border}`, background: "#fff" }} />
+      ) : (
+        <div style={{ width: 54, height: 54, borderRadius: 12, background: color, color: "#fff", display: "grid", placeItems: "center", fontWeight: 900 }}>
+          {branding.agency.nombre_comercial?.[0] || "P"}
+        </div>
+      )}
+      <div style={{ minWidth: 0 }}>
+        <p style={{ margin: 0, color, fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.8 }}>Solicitud enviada por {branding.agency.nombre_comercial}</p>
+        <p style={{ margin: "4px 0 0", color: colors.text, fontSize: 13, lineHeight: 1.45 }}>En alianza con Emporio Blindaje Legal. Nuestro equipo juridico revisara tu expediente.</p>
+      </div>
+    </div>
+  );
+};
+
 export default function SolicitudInquilino() {
+  const router = useRouter();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -81,6 +103,7 @@ export default function SolicitudInquilino() {
   const [error, setError] = useState("");
   const [errors, setErrors] = useState({});
   const [aceptaPrivacidad, setAceptaPrivacidad] = useState(false);
+  const [partnerBranding, setPartnerBranding] = useState(null);
 
   const [files, setFiles] = useState({
     identidad_fisica: null,
@@ -124,6 +147,25 @@ export default function SolicitudInquilino() {
   const isExtranjero = form.es_extranjero === "Sí";
   const hasConyuge = ["Casado(a)", "Unión libre"].includes(form.estado_civil);
   const totalSteps = 6;
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const { partner, operacion } = router.query;
+    if (!partner || !operacion) return;
+    fetch(`/api/partners/public-branding?partner=${encodeURIComponent(partner)}&operacion=${encodeURIComponent(operacion)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        setPartnerBranding(data);
+        setForm(f => ({
+          ...f,
+          direccion_inmueble: f.direccion_inmueble || data.operation?.direccion_inmueble || "",
+          monto_renta: f.monto_renta || (data.operation?.monto_renta ? String(data.operation.monto_renta) : ""),
+          nombre_completo: f.nombre_completo || data.operation?.nombre_inquilino || "",
+        }));
+      })
+      .catch(() => {});
+  }, [router.isReady, router.query]);
 
   const handleFile = (key, e) => {
     const file = e.target.files[0];
@@ -310,6 +352,19 @@ export default function SolicitudInquilino() {
 
       setSubmitId(data.id);
 
+      if (router.query.partner && router.query.operacion) {
+        fetch('/api/partners/link-submission', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            partner_agency_id: router.query.partner,
+            partner_operation_id: router.query.operacion,
+            tipo: 'inquilino',
+            record_id: data.id,
+          }),
+        }).catch(() => {});
+      }
+
       // ── Análisis de pre-viabilidad con IA ──
       try {
         // Solo pasamos el ID — el endpoint lee los archivos directo de Supabase
@@ -410,6 +465,7 @@ export default function SolicitudInquilino() {
       </div>
 
       <div style={{ maxWidth: 780, margin: "0 auto", padding: "32px 20px" }}>
+        <PartnerBanner branding={partnerBranding} />
         <div style={{ background: "#fff", borderRadius: 16, padding: 32, boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: "1px solid #e5e7eb", maxWidth: 780, margin: "24px auto", marginLeft: 16, marginRight: 16 }}>
 
           {/* PASO 1 — Inmueble y tipo */}

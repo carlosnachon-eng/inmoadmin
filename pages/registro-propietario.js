@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Head from 'next/head'
+import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 
 const Field = ({ label, error, children, required }) => (
@@ -36,6 +37,26 @@ const SectionTitle = ({ title, subtitle }) => (
   </div>
 )
 
+const PartnerBanner = ({ branding }) => {
+  if (!branding?.agency) return null
+  const color = branding.agency.brand_color || '#b91c3c'
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '16px 18px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
+      {branding.agency.logo_url ? (
+        <img src={branding.agency.logo_url} alt={branding.agency.nombre_comercial} style={{ width: 54, height: 54, borderRadius: 12, objectFit: 'contain', border: '1px solid #e5e7eb', background: '#fff' }} />
+      ) : (
+        <div style={{ width: 54, height: 54, borderRadius: 12, background: color, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 900 }}>
+          {branding.agency.nombre_comercial?.[0] || 'P'}
+        </div>
+      )}
+      <div style={{ minWidth: 0 }}>
+        <p style={{ margin: 0, color, fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.8 }}>Registro enviado por {branding.agency.nombre_comercial}</p>
+        <p style={{ margin: '4px 0 0', color: '#374151', fontSize: 13, lineHeight: 1.45 }}>En alianza con Emporio Blindaje Legal. Nuestro equipo juridico revisara la documentacion del inmueble.</p>
+      </div>
+    </div>
+  )
+}
+
 const uploadDoc = async (file, folder, fileName) => {
   const ext = file.name.split('.').pop()
   const path = `${folder}/${fileName}.${ext}`
@@ -45,6 +66,7 @@ const uploadDoc = async (file, folder, fileName) => {
 }
 
 export default function RegistroPropietario() {
+  const router = useRouter()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState({})
@@ -56,6 +78,7 @@ export default function RegistroPropietario() {
   const [reglamento, setReglamento] = useState('no')
   const [contratoAdmin, setContratoAdmin] = useState(false)
   const [files, setFiles] = useState({ doc_identificacion: null, doc_comprobante_domicilio: null, doc_predial: null })
+  const [partnerBranding, setPartnerBranding] = useState(null)
   const formRef = useRef(null)
   const savedValues = useRef({})
   const fileRef1 = useRef(); const fileRef2 = useRef(); const fileRef3 = useRef()
@@ -67,6 +90,25 @@ export default function RegistroPropietario() {
   }
   const saveCurrentStep = () => { if (!formRef.current) return; formRef.current.querySelectorAll('input[name], textarea[name]').forEach(el => { savedValues.current[el.name] = el.value }) }
   const handleFile = (field, file) => { setFiles(f => ({ ...f, [field]: file })); setErrors(e => ({ ...e, [field]: undefined })) }
+
+  useEffect(() => {
+    if (!router.isReady) return
+    const { partner, operacion } = router.query
+    if (!partner || !operacion) return
+    fetch(`/api/partners/public-branding?partner=${encodeURIComponent(partner)}&operacion=${encodeURIComponent(operacion)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return
+        setPartnerBranding(data)
+        savedValues.current = {
+          ...savedValues.current,
+          nombre_propietario: savedValues.current.nombre_propietario || data.operation?.nombre_propietario || '',
+          direccion_inmueble: savedValues.current.direccion_inmueble || data.operation?.direccion_inmueble || '',
+          monto_renta: savedValues.current.monto_renta || (data.operation?.monto_renta ? String(data.operation.monto_renta) : ''),
+        }
+      })
+      .catch(() => {})
+  }, [router.isReady, router.query])
 
   const validateStep1 = () => {
     const v = getValues(); const e = {}
@@ -137,6 +179,19 @@ export default function RegistroPropietario() {
         await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', id)
       }
 
+      if (router.query.partner && router.query.operacion) {
+        fetch('/api/partners/link-submission', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            partner_agency_id: router.query.partner,
+            partner_operation_id: router.query.operacion,
+            tipo: 'propietario',
+            record_id: id,
+          }),
+        }).catch(() => {})
+      }
+
       setSubmitId(id); setStep(4)
     } catch (err) {
       console.error(err)
@@ -193,7 +248,9 @@ export default function RegistroPropietario() {
             ))}
           </div>
         )}
-        <div style={{ maxWidth: 580, margin: '20px auto', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16, padding: '28px 24px', marginLeft: 16, marginRight: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }} ref={formRef}>
+        <div style={{ maxWidth: 580, margin: '20px auto', marginLeft: 16, marginRight: 16 }}>
+          <PartnerBanner branding={partnerBranding} />
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16, padding: '28px 24px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }} ref={formRef}>
           {step === 1 && (<>
             <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: '#4a4a4a' }}>Sus datos personales</h2>
             <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>Esta información aparecerá en su contrato de prestación de servicios.</p>
@@ -269,6 +326,7 @@ export default function RegistroPropietario() {
               </button>
             </div>
           )}
+          </div>
         </div>
         <footer style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12, marginTop: 20 }}>© {new Date().getFullYear()} Emporio Inmobiliario · Puebla, México</footer>
       </div>

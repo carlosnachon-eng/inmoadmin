@@ -15,6 +15,10 @@ export default function PartnerComisiones() {
         window.location.href = '/partners/login'
         return
       }
+      if (nextCtx.agency.status !== 'activo') {
+        window.location.href = '/partners/pendiente'
+        return
+      }
       setCtx(nextCtx)
       setOperations(await loadPartnerOperations(nextCtx.agency.id))
       setLoading(false)

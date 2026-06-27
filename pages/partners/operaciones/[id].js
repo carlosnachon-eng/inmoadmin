@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import PartnerLayout, { P, PartnerBadge, button } from '../../../components/partners/PartnerLayout'
-import { fmtMoney, getPartnerContext, PARTNER_STATUS } from '../../../lib/partners'
+import { fmtMoney, getPartnerContext, PARTNER_STATUS, partnerOperationLinks } from '../../../lib/partners'
 import { supabase } from '../../../lib/supabase'
 
 export default function PartnerOperacionDetalle() {
@@ -26,7 +26,7 @@ export default function PartnerOperacionDetalle() {
         setCtx(nextCtx)
         const { data: op, error: opError } = await supabase
           .from('partner_operations')
-          .select('*')
+          .select('*, poliza_expedientes:poliza_expediente_id(id, status, fecha_firma, fecha_vigencia, fecha_inicio)')
           .eq('id', id)
           .eq('partner_agency_id', nextCtx.agency.id)
           .maybeSingle()
@@ -69,6 +69,13 @@ export default function PartnerOperacionDetalle() {
 
   const finalDocs = documents.filter(d => d.is_final || d.visible_to_partner)
   const uploadedDocs = documents.filter(d => !d.is_final && !d.visible_to_partner)
+  const links = partnerOperationLinks(operation, ctx.agency)
+  const expediente = operation.poliza_expedientes
+
+  const copy = async (value) => {
+    await navigator.clipboard.writeText(value)
+    alert('Liga copiada')
+  }
 
   return (
     <PartnerLayout agency={ctx.agency}>
@@ -85,12 +92,33 @@ export default function PartnerOperacionDetalle() {
       <div style={{ display: 'grid', gridTemplateColumns: '1.25fr .75fr', gap: 16 }}>
         <section style={{ display: 'grid', gap: 16 }}>
           <div style={{ background: '#fff', border: `1px solid ${P.line}`, borderRadius: 10, padding: 20 }}>
+            <h2 style={{ margin: '0 0 8px', color: P.ink, fontSize: 18 }}>Ligas personalizadas</h2>
+            <p style={{ margin: '0 0 14px', color: P.muted, fontSize: 13, lineHeight: 1.5 }}>
+              Envia estas ligas. Cada formulario mostrara la marca de tu inmobiliaria en alianza con Emporio Blindaje Legal.
+            </p>
+            <LinkBox label="Solicitud para inquilino" value={links.inquilino} onCopy={() => copy(links.inquilino)} />
+            <LinkBox label="Registro para propietario" value={links.propietario} onCopy={() => copy(links.propietario)} />
+          </div>
+
+          <div style={{ background: '#fff', border: `1px solid ${P.line}`, borderRadius: 10, padding: 20 }}>
             <h2 style={{ margin: '0 0 12px', color: P.ink, fontSize: 18 }}>Seguimiento</h2>
             <div style={{ background: '#fafafa', border: `1px solid ${P.line}`, borderRadius: 9, padding: 14 }}>
               <p style={{ margin: 0, color: P.text, fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-line' }}>
                 {operation.observaciones_publicas || 'Emporio recibio la operacion. Cuando haya novedades apareceran aqui.'}
               </p>
             </div>
+          </div>
+
+          <div style={{ background: '#fff', border: `1px solid ${P.line}`, borderRadius: 10, padding: 20 }}>
+            <h2 style={{ margin: '0 0 12px', color: P.ink, fontSize: 18 }}>Fechas clave</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+              <DateCard label="Firma" value={expediente?.fecha_firma} empty="Por definir" />
+              <DateCard label="Inicio" value={expediente?.fecha_inicio} empty="Por definir" />
+              <DateCard label="Vigencia / renovacion" value={expediente?.fecha_vigencia} empty="Pendiente" />
+            </div>
+            <p style={{ margin: '12px 0 0', color: P.muted, fontSize: 12, lineHeight: 1.45 }}>
+              Cuando la poliza este activa, esta fecha ayuda a anticipar renovaciones y futuras comisiones.
+            </p>
           </div>
 
           <div style={{ background: '#fff', border: `1px solid ${P.line}`, borderRadius: 10, padding: 20 }}>
@@ -127,6 +155,8 @@ export default function PartnerOperacionDetalle() {
               ['Renta', fmtMoney(operation.monto_renta)],
               ['Poliza estimada', fmtMoney(operation.monto_poliza_estimado)],
               ['Poliza final', fmtMoney(operation.monto_poliza_final)],
+              ['Solicitud inquilino', operation.solicitud_inquilino_id ? 'Recibida' : 'Pendiente'],
+              ['Registro propietario', operation.propietario_id ? 'Recibido' : 'Pendiente'],
             ].map(([label, value]) => (
               <div key={label} style={{ borderTop: `1px solid ${P.line}`, padding: '10px 0' }}>
                 <p style={{ margin: '0 0 2px', color: P.muted, fontSize: 11, fontWeight: 850, textTransform: 'uppercase' }}>{label}</p>
@@ -155,6 +185,28 @@ export default function PartnerOperacionDetalle() {
         }
       `}</style>
     </PartnerLayout>
+  )
+}
+
+function DateCard({ label, value, empty }) {
+  return (
+    <div style={{ background: '#fafafa', border: `1px solid ${P.line}`, borderRadius: 9, padding: 12 }}>
+      <p style={{ margin: '0 0 4px', color: P.muted, fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }}>{label}</p>
+      <p style={{ margin: 0, color: value ? P.ink : P.muted, fontSize: 14, fontWeight: 850 }}>{value || empty}</p>
+    </div>
+  )
+}
+
+function LinkBox({ label, value, onCopy }) {
+  return (
+    <div style={{ background: '#fafafa', border: `1px solid ${P.line}`, borderRadius: 9, padding: 12, marginBottom: 10 }}>
+      <p style={{ margin: '0 0 7px', color: P.text, fontSize: 13, fontWeight: 850 }}>{label}</p>
+      <p style={{ margin: '0 0 10px', color: P.muted, fontSize: 12, overflowWrap: 'anywhere' }}>{value}</p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button onClick={onCopy} style={{ ...button, background: P.red, color: '#fff', padding: '8px 11px', fontSize: 12 }}>Copiar liga</button>
+        <a href={value} target="_blank" rel="noreferrer" style={{ ...button, background: '#f4f4f5', color: P.text, padding: '8px 11px', fontSize: 12 }}>Abrir</a>
+      </div>
+    </div>
   )
 }
 
