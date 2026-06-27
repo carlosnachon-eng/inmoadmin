@@ -1,14 +1,70 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { C, st, fmt } from '../../lib/polizaUtils'
 import { PARTNER_STATUS, calcCommission, COMMISSION_RATE } from '../../lib/partners'
 
 const statusOptions = Object.entries(PARTNER_STATUS)
+const commissionFilters = [
+  { value: 'todas', label: 'Todas las comisiones' },
+  { value: 'por_generar', label: 'Por generar' },
+  { value: 'por_pagar', label: 'Por pagar' },
+  { value: 'pagadas', label: 'Pagadas' },
+]
 
 export default function TabPartners({ operaciones, agencias = [], onReload }) {
   const [selected, setSelected] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('todos')
+  const [agencyFilter, setAgencyFilter] = useState('todas')
+  const [commissionFilter, setCommissionFilter] = useState('todas')
   const pendientes = agencias.filter(a => a.status === 'pendiente')
+  const agenciasActivas = agencias.filter(a => a.status === 'activo')
+
+  const resumen = useMemo(() => {
+    const totalGenerado = operaciones.reduce((acc, op) => acc + (Number(op.commission_generated) || 0), 0)
+    const totalPagado = operaciones.reduce((acc, op) => acc + (Number(op.commission_paid) || 0), 0)
+    const porPagar = operaciones.reduce((acc, op) => acc + Math.max(0, (Number(op.commission_generated) || 0) - (Number(op.commission_paid) || 0)), 0)
+    return {
+      operaciones: operaciones.length,
+      activas: operaciones.filter(op => op.status_partner === 'activa').length,
+      pendientes: operaciones.filter(op => !['activa', 'rechazada', 'cancelada'].includes(op.status_partner)).length,
+      partners: agenciasActivas.length,
+      totalGenerado,
+      totalPagado,
+      porPagar,
+    }
+  }, [operaciones, agenciasActivas.length])
+
+  const operacionesFiltradas = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return operaciones.filter(op => {
+      const generated = Number(op.commission_generated) || 0
+      const paid = Number(op.commission_paid) || 0
+      const matchesText = !q || [
+        op.folio,
+        op.nombre_inquilino,
+        op.nombre_propietario,
+        op.direccion_inmueble,
+        op.partner_agencies?.nombre_comercial,
+      ].some(v => String(v || '').toLowerCase().includes(q))
+      const matchesStatus = statusFilter === 'todos' || op.status_partner === statusFilter
+      const matchesAgency = agencyFilter === 'todas' || op.partner_agency_id === agencyFilter
+      const matchesCommission =
+        commissionFilter === 'todas' ||
+        (commissionFilter === 'por_generar' && generated <= 0 && op.status_partner === 'activa') ||
+        (commissionFilter === 'por_pagar' && generated > paid) ||
+        (commissionFilter === 'pagadas' && generated > 0 && paid >= generated)
+      return matchesText && matchesStatus && matchesAgency && matchesCommission
+    })
+  }, [operaciones, search, statusFilter, agencyFilter, commissionFilter])
+
+  const clearFilters = () => {
+    setSearch('')
+    setStatusFilter('todos')
+    setAgencyFilter('todas')
+    setCommissionFilter('todas')
+  }
 
   const saveSelected = async () => {
     if (!selected) return
@@ -79,6 +135,13 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
 
   return (
     <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 22 }}>
+        <Summary label="Operaciones" value={resumen.operaciones} hint={`${resumen.pendientes} en proceso`} />
+        <Summary label="Partners activos" value={resumen.partners} hint={`${pendientes.length} pendiente${pendientes.length === 1 ? '' : 's'} de aprobacion`} />
+        <Summary label="Por pagar" value={fmt(resumen.porPagar)} hint="Comisiones generadas no pagadas" tone="gold" />
+        <Summary label="Pagado" value={fmt(resumen.totalPagado)} hint={`Generado ${fmt(resumen.totalGenerado)}`} tone="green" />
+      </div>
+
       {pendientes.length > 0 && (
         <div style={{ marginBottom: 28 }}>
           <p style={st.sectionTitle}>Inmobiliarias pendientes de aprobacion</p>
@@ -113,8 +176,41 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
         <p style={st.sectionSub}>Seguimiento operativo visible para partners. El trabajo juridico sigue en el flujo normal de Poliza.</p>
       </div>
 
+      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: 10, alignItems: 'center' }}>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por partner, inquilino, propietario, folio o direccion..."
+            style={st.input}
+          />
+          <select value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} style={st.input}>
+            <option value="todas">Todas las inmobiliarias</option>
+            {agencias.map(ag => <option key={ag.id} value={ag.id}>{ag.nombre_comercial}</option>)}
+          </select>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={st.input}>
+            <option value="todos">Todos los estatus</option>
+            {statusOptions.map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}
+          </select>
+          <select value={commissionFilter} onChange={e => setCommissionFilter(e.target.value)} style={st.input}>
+            {commissionFilters.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+          <button onClick={clearFilters} style={{ ...st.btn, ...st.btnGhost, whiteSpace: 'nowrap' }}>Limpiar</button>
+        </div>
+        <p style={{ margin: '10px 0 0', color: C.muted, fontSize: 12, fontWeight: 700 }}>
+          Mostrando {operacionesFiltradas.length} de {operaciones.length} operacion{operaciones.length === 1 ? '' : 'es'}
+        </p>
+      </div>
+
+      {operaciones.length > 0 && operacionesFiltradas.length === 0 && (
+        <div style={{ ...st.emptyState, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 14 }}>
+          <p style={{ fontSize: 15, fontWeight: 800, color: C.text, margin: 0 }}>Sin resultados con esos filtros</p>
+          <p style={{ margin: '6px 0 0' }}>Prueba limpiar filtros o buscar por otro dato.</p>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gap: 10 }}>
-        {operaciones.map(op => (
+        {operacionesFiltradas.map(op => (
           <div key={op.id} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
@@ -125,7 +221,7 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <span style={{ background: '#f3f4f6', borderRadius: 999, padding: '5px 9px', fontSize: 11, fontWeight: 800, color: C.muted }}>
+                <span style={statusBadgeStyle(op.status_partner)}>
                   {PARTNER_STATUS[op.status_partner]?.label || op.status_partner}
                 </span>
                 <button onClick={() => setSelected(op)} style={{ ...st.btn, ...st.btnGhost, padding: '7px 12px', fontSize: 12 }}>Gestionar</button>
@@ -207,4 +303,41 @@ function Mini({ label, value }) {
       <p style={{ margin: 0, color: C.text, fontSize: 14, fontWeight: 800 }}>{value}</p>
     </div>
   )
+}
+
+function Summary({ label, value, hint, tone = 'neutral' }) {
+  const palette = {
+    neutral: { bg: '#fff', color: C.text },
+    gold: { bg: C.goldLight, color: C.goldText },
+    green: { bg: C.greenBg, color: C.greenText },
+  }[tone] || { bg: '#fff', color: C.text }
+  return (
+    <div style={{ background: palette.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+      <p style={{ margin: 0, color: C.muted, fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }}>{label}</p>
+      <p style={{ margin: '6px 0 0', color: palette.color, fontSize: 22, fontWeight: 900 }}>{value}</p>
+      <p style={{ margin: '4px 0 0', color: C.muted, fontSize: 11 }}>{hint}</p>
+    </div>
+  )
+}
+
+function statusBadgeStyle(status) {
+  const tone = PARTNER_STATUS[status]?.tone || 'neutral'
+  const tones = {
+    green: { bg: C.greenBg, color: C.greenText },
+    red: { bg: C.redBg, color: C.redText },
+    blue: { bg: C.blueBg, color: C.blueText },
+    amber: { bg: '#fffbeb', color: '#92400e' },
+    purple: { bg: '#f5f3ff', color: '#5b21b6' },
+    neutral: { bg: '#f3f4f6', color: C.muted },
+  }
+  const p = tones[tone] || tones.neutral
+  return {
+    background: p.bg,
+    color: p.color,
+    borderRadius: 999,
+    padding: '5px 9px',
+    fontSize: 11,
+    fontWeight: 800,
+    whiteSpace: 'nowrap',
+  }
 }
