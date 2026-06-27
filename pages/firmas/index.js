@@ -22,8 +22,6 @@ export default function FirmasDashboard() {
   const [filtro, setFiltro] = useState('activo')
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState('expedientes')
-  const [restaurandoFlujos, setRestaurandoFlujos] = useState(false)
-  const [resultadoRestauracion, setResultadoRestauracion] = useState(null)
 
   // Calendario
   const [citas, setCitas] = useState([])
@@ -96,59 +94,6 @@ export default function FirmasDashboard() {
   }
 
   async function handleLogout() { await supabase.auth.signOut(); setSession(null) }
-
-  async function restaurarFlujosActivos() {
-    setRestaurandoFlujos(true)
-    setResultadoRestauracion(null)
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const headers = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session?.access_token || ''}`,
-      }
-
-      const previewRes = await fetch('/api/firmas/restaurar-flujo-activo', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ dryRun: true }),
-      })
-      const preview = await previewRes.json()
-      if (!previewRes.ok || !preview.ok) throw new Error(preview.error || 'No se pudo revisar la restauración')
-
-      if (!preview.total_por_restaurar) {
-        setResultadoRestauracion('No encontré expedientes activos con respaldo pendiente de restaurar.')
-        setRestaurandoFlujos(false)
-        return
-      }
-
-      const nombres = (preview.resumen || []).map(item => `• ${item.titulo}`).slice(0, 8).join('\n')
-      const extra = preview.total_por_restaurar > 8 ? `\n…y ${preview.total_por_restaurar - 8} más` : ''
-      const confirmar = confirm(
-        `Se restaurarán ${preview.total_por_restaurar} expedientes activos al flujo completo.\n\n` +
-        `${nombres}${extra}\n\n` +
-        'Se usará el respaldo guardado en bitácora y se conservarán las etapas iniciales. ¿Continuar?'
-      )
-      if (!confirmar) {
-        setRestaurandoFlujos(false)
-        return
-      }
-
-      const res = await fetch('/api/firmas/restaurar-flujo-activo', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ dryRun: false }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo restaurar el flujo')
-
-      setResultadoRestauracion(`Flujos restaurados: ${data.total_restauradas}. Errores: ${data.total_errores}.`)
-      await cargarFirmas()
-    } catch (error) {
-      setResultadoRestauracion(`No se pudo restaurar: ${error.message}`)
-    } finally {
-      setRestaurandoFlujos(false)
-    }
-  }
 
   const RESPONSABLE_LABELS = {
     ventas: 'Ventas',
@@ -242,21 +187,6 @@ export default function FirmasDashboard() {
                 }}>{l}</button>
               ))}
             </div>
-            {filtro === 'activo' && (
-              <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '0.85rem 1rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                <div>
-                  <p style={{ margin: 0, color: '#9a3412', fontSize: '0.84rem', fontWeight: 800 }}>Restauración de flujo completo</p>
-                  <p style={{ margin: '3px 0 0', color: '#9a3412', fontSize: '0.78rem' }}>
-                    Si un expediente activo quedó con etapas faltantes, esta acción restaura el flujo usando el respaldo guardado en bitácora.
-                  </p>
-                  {resultadoRestauracion && <p style={{ margin: '6px 0 0', color: '#1a3c5e', fontSize: '0.78rem', fontWeight: 700 }}>{resultadoRestauracion}</p>}
-                </div>
-                <button onClick={restaurarFlujosActivos} disabled={restaurandoFlujos}
-                  style={{ background: restaurandoFlujos ? '#9ca3af' : '#1a3c5e', color: '#fff', border: 'none', borderRadius: 8, padding: '0.6rem 1rem', fontSize: '0.84rem', fontWeight: 800, cursor: restaurandoFlujos ? 'not-allowed' : 'pointer' }}>
-                  {restaurandoFlujos ? 'Restaurando...' : 'Restaurar flujo completo'}
-                </button>
-              </div>
-            )}
             {loading && <p style={{ color: '#888' }}>Cargando...</p>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {firmas.map(firma => {

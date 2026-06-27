@@ -43,7 +43,6 @@ const CHECKLISTS_ETAPA = {
   },
   compraventa: {
     coordinacion_entrega: [
-      'Escritura firmada',
       'Recursos liberados',
       'Propiedad desocupada',
       'Limpieza confirmada',
@@ -87,6 +86,7 @@ export default function DetalleFirma() {
   const [comentario, setComentario] = useState('')
   const [notaEtapa, setNotaEtapa] = useState('')
   const [etapaActiva, setEtapaActiva] = useState(null)
+  const [checklistChecks, setChecklistChecks] = useState({})
   const [loading, setLoading] = useState(true)
   const [avanzando, setAvanzando] = useState(false)
   const [editandoDatos, setEditandoDatos] = useState(false)
@@ -142,21 +142,45 @@ export default function DetalleFirma() {
   async function completarEtapa(etapa) {
     setAvanzando(true)
     const { data: { user } } = await supabase.auth.getUser()
+    const checklist = CHECKLISTS_ETAPA[firma.tipo]?.[etapa.clave] || []
+    const checksEtapa = checklistChecks[etapa.id] || {}
+    const checklistTexto = checklist.length
+      ? [
+          'Checklist:',
+          ...checklist.map(item => `${checksEtapa[item] ? '✓' : '☐'} ${item}`)
+        ].join('\n')
+      : ''
+    const notasFinales = [notaEtapa.trim(), checklistTexto].filter(Boolean).join('\n\n')
     await fetch('/api/firmas/avanzar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         firma_id: id,
         etapa_id: etapa.id,
-        notas: notaEtapa,
+        notas: notasFinales,
         usuario_id: user?.id,
         usuario_nombre: user?.email,
       })
     })
     setNotaEtapa('')
+    setChecklistChecks(prev => {
+      const next = { ...prev }
+      delete next[etapa.id]
+      return next
+    })
     setEtapaActiva(null)
     setAvanzando(false)
     cargarTodo()
+  }
+
+  function toggleChecklist(etapaId, item) {
+    setChecklistChecks(prev => ({
+      ...prev,
+      [etapaId]: {
+        ...(prev[etapaId] || {}),
+        [item]: !prev[etapaId]?.[item],
+      }
+    }))
   }
 
   async function enviarComentario() {
@@ -232,6 +256,7 @@ export default function DetalleFirma() {
   const progreso = etapas.filter(e => e.status === 'completada').length
   const total = etapas.filter(e => e.status !== 'no_aplica').length
   const pct = total > 0 ? Math.round((progreso / total) * 100) : 0
+  const comentariosVisibles = comentarios.filter(c => !String(c.mensaje || '').startsWith('Respaldo antes de migrar al flujo operativo nuevo:'))
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
       {/* Header */}
@@ -418,13 +443,18 @@ export default function DetalleFirma() {
                           <div style={{ display: 'grid', gap: 6 }}>
                             {checklist.map(item => (
                               <label key={item} style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#444', fontSize: '0.82rem' }}>
-                                <input type="checkbox" disabled style={{ accentColor: '#1a3c5e' }} />
+                                <input
+                                  type="checkbox"
+                                  checked={!!checklistChecks[etapa.id]?.[item]}
+                                  onChange={() => toggleChecklist(etapa.id, item)}
+                                  style={{ accentColor: '#1a3c5e', cursor: 'pointer' }}
+                                />
                                 {item}
                               </label>
                             ))}
                           </div>
                           <p style={{ margin: '8px 0 0', color: '#888', fontSize: '0.74rem' }}>
-                            Esta guía no guarda checks individuales todavía; usa las notas para dejar evidencia.
+                            Al completar la etapa, los checks quedarán guardados como evidencia en la nota.
                           </p>
                         </div>
                       )}
@@ -474,7 +504,7 @@ export default function DetalleFirma() {
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {comentarios.map(c => (
+              {comentariosVisibles.map(c => (
                 <div key={c.id} style={{ background: c.tipo === 'cambio_etapa' ? '#f0f7ff' : '#fff', border: '1px solid #eee', borderRadius: '8px', padding: '0.75rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1a3c5e' }}>{c.usuario_nombre || 'Sistema'}</span>
