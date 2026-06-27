@@ -39,9 +39,6 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bi_poliza_expedientes_fecha_inicio
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bi_solicitudes_fecha_cobro_investigacion
   ON public.solicitudes_inquilino (fecha_cobro_investigacion);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bi_solicitudes_fecha_pago_investigacion
-  ON public.solicitudes_inquilino (fecha_pago_investigacion);
-
 -- Mantenimiento
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bi_maintenance_tickets_created_at
   ON public.maintenance_tickets (created_at);
