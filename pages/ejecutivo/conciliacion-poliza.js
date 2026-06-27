@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import {
   ESTADOS_CONCILIACION_POLIZA,
-  construirConciliacionPoliza,
   coincideBusquedaPoliza,
   textoEvidencia,
 } from '../../lib/ejecutivo/conciliacionPoliza';
@@ -184,28 +183,19 @@ export default function ConciliacionPoliza() {
         return;
       }
 
-      const [expedientesRes, cajaRes, solicitudesRes] = await Promise.all([
-        supabase.from('poliza_expedientes').select('*').order('created_at', { ascending: false }),
-        supabase.from('poliza_caja').select('*').order('fecha', { ascending: false }),
-        supabase.from('solicitudes_inquilino').select('*').order('created_at', { ascending: false }),
-      ]);
-
-      if (expedientesRes.error) throw expedientesRes.error;
-      if (cajaRes.error) throw cajaRes.error;
-      if (solicitudesRes.error) throw solicitudesRes.error;
-
-      const conciliacion = construirConciliacionPoliza({
-        expedientes: expedientesRes.data || [],
-        solicitudes: solicitudesRes.data || [],
-        caja: cajaRes.data || [],
+      const token = session?.access_token;
+      const res = await fetch('/api/ejecutivo/conciliacion-poliza', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+      const conciliacion = await res.json();
+      if (!res.ok || !conciliacion.ok) {
+        throw new Error(conciliacion.error || 'No se pudo cargar conciliación de póliza.');
+      }
 
       setData({
-        ok: true,
-        generated_at: new Date().toISOString(),
         ...conciliacion,
       });
-      setLastLoadedAt(new Date().toISOString());
+      setLastLoadedAt(conciliacion.generated_at || new Date().toISOString());
     } catch (err) {
       setData(null);
       setError(err.message || 'No se pudo cargar conciliación de póliza.');

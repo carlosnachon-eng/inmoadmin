@@ -13,6 +13,11 @@ import {
   resumirPolizaCentro,
   unidadDesdeLecturaBi,
 } from '../../../lib/ejecutivo/centroInteligencia';
+import {
+  cargarMantenimientoPeriodo,
+  cargarPolizaPeriodo,
+} from '../../../lib/ejecutivo/dataLoaders';
+import { createQueryMetrics } from '../../../lib/ejecutivo/queryMetrics';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -51,22 +56,24 @@ async function autenticarDireccion(req) {
   return { user, perfil: { ...perfil, email } };
 }
 
-async function cargarCierres(periodo) {
-  const { data: cierres, error: cierresError } = await supabase
+async function cargarCierres(periodo, metrics) {
+  const measure = metrics?.measure?.bind(metrics) || ((label, promiseFactory) => promiseFactory());
+
+  const { data: cierres, error: cierresError } = await measure('cierres.periodo', () => supabase
     .from('cierres')
     .select('id, fecha_cierre, operacion, precio, comision, cobrado, pendiente, cobrado_bool, vendedor, propiedad_id, recibo_id, firma_id, comision_inmobiliaria, monto_gerente')
     .gte('fecha_cierre', periodo.startDate)
     .lt('fecha_cierre', periodo.endExclusive)
-    .order('fecha_cierre', { ascending: true });
+    .order('fecha_cierre', { ascending: true }));
 
   if (cierresError) throw cierresError;
 
-  const { data: pagosPeriodo, error: pagosPeriodoError } = await supabase
+  const { data: pagosPeriodo, error: pagosPeriodoError } = await measure('cierre_pagos.periodo', () => supabase
     .from('cierre_pagos')
     .select('id, cierre_id, concepto, monto, fecha, notas')
     .gte('fecha', periodo.startDate)
     .lt('fecha', periodo.endExclusive)
-    .order('fecha', { ascending: true });
+    .order('fecha', { ascending: true }));
 
   if (pagosPeriodoError) throw pagosPeriodoError;
 
@@ -74,10 +81,10 @@ async function cargarCierres(periodo) {
   let pagosConciliacion = [];
 
   if (cierreIds.length > 0) {
-    const { data, error } = await supabase
+    const { data, error } = await measure('cierre_pagos.cierres_periodo', () => supabase
       .from('cierre_pagos')
       .select('id, cierre_id, concepto, monto, fecha, notas')
-      .in('cierre_id', cierreIds);
+      .in('cierre_id', cierreIds));
 
     if (error) throw error;
     pagosConciliacion = data || [];
@@ -90,22 +97,24 @@ async function cargarCierres(periodo) {
   };
 }
 
-async function cargarAdministracion(periodo) {
-  const { data: comisionesPeriodo, error: periodoError } = await supabase
+async function cargarAdministracion(periodo, metrics) {
+  const measure = metrics?.measure?.bind(metrics) || ((label, promiseFactory) => promiseFactory());
+
+  const { data: comisionesPeriodo, error: periodoError } = await measure('comisiones_admin.periodo', () => supabase
     .from('comisiones_admin')
     .select('id, contract_id, periodo, monto, tipo, status, fecha_cobro')
     .eq('periodo', periodo.periodKey)
-    .order('periodo', { ascending: true });
+    .order('periodo', { ascending: true }));
 
   if (periodoError) throw periodoError;
 
-  const { data: comisionesCobradasPeriodo, error: cobroError } = await supabase
+  const { data: comisionesCobradasPeriodo, error: cobroError } = await measure('comisiones_admin.cobradas_periodo', () => supabase
     .from('comisiones_admin')
     .select('id, contract_id, periodo, monto, tipo, status, fecha_cobro')
     .eq('status', 'cobrada')
     .gte('fecha_cobro', periodo.startDate)
     .lt('fecha_cobro', periodo.endExclusive)
-    .order('fecha_cobro', { ascending: true });
+    .order('fecha_cobro', { ascending: true }));
 
   if (cobroError) throw cobroError;
 
@@ -115,70 +124,20 @@ async function cargarAdministracion(periodo) {
   };
 }
 
-async function cargarPoliza() {
-  const [expedientesRes, cajaRes, solicitudesRes] = await Promise.all([
-    supabase.from('poliza_expedientes').select('*').order('created_at', { ascending: false }),
-    supabase.from('poliza_caja').select('*').order('fecha', { ascending: false }),
-    supabase.from('solicitudes_inquilino').select('*').order('created_at', { ascending: false }),
-  ]);
+async function cargarCajaPeriodo(periodo, metrics) {
+  const measure = metrics?.measure?.bind(metrics) || ((label, promiseFactory) => promiseFactory());
 
-  if (expedientesRes.error) throw expedientesRes.error;
-  if (cajaRes.error) throw cajaRes.error;
-  if (solicitudesRes.error) throw solicitudesRes.error;
-
-  return {
-    expedientes: expedientesRes.data || [],
-    caja: cajaRes.data || [],
-    solicitudes: solicitudesRes.data || [],
-  };
-}
-
-async function cargarMantenimiento() {
-  const [ticketsRes, quotesRes, cashRes, propertiesRes, contractsRes] = await Promise.all([
-    supabase.from('maintenance_tickets').select('*').order('created_at', { ascending: false }),
-    supabase.from('maintenance_quotes').select('*').order('created_at', { ascending: false }),
-    supabase.from('cash_movements').select('*').in('category', ['mantenimiento_cobrado', 'anticipo_mantenimiento', 'pago_proveedor']).order('created_at', { ascending: false }),
-    supabase.from('properties').select('*').order('name', { ascending: true }),
-    supabase.from('contracts').select('*').eq('status', 'activo').order('created_at', { ascending: false }),
-  ]);
-
-  if (ticketsRes.error) throw ticketsRes.error;
-  if (quotesRes.error) throw quotesRes.error;
-  if (cashRes.error) throw cashRes.error;
-  if (propertiesRes.error) throw propertiesRes.error;
-  if (contractsRes.error) throw contractsRes.error;
-
-  return {
-    tickets: ticketsRes.data || [],
-    quotes: quotesRes.data || [],
-    cashMovements: cashRes.data || [],
-    properties: propertiesRes.data || [],
-    contracts: contractsRes.data || [],
-  };
-}
-
-async function cargarCajaPeriodo(periodo) {
-  const [cashRes, polizaRes] = await Promise.all([
-    supabase
+  const cashRes = await measure('cash_movements.caja_periodo', () => supabase
       .from('cash_movements')
       .select('id, type, category, description, amount, payment_method, date, notes, created_by, created_at, reference_id, reference_type')
       .gte('date', periodo.startDate)
       .lt('date', periodo.endExclusive)
-      .order('date', { ascending: true }),
-    supabase
-      .from('poliza_caja')
-      .select('*')
-      .gte('fecha', periodo.startDate)
-      .lt('fecha', periodo.endExclusive)
-      .order('fecha', { ascending: true }),
-  ]);
+      .order('date', { ascending: true }));
 
   if (cashRes.error) throw cashRes.error;
-  if (polizaRes.error) throw polizaRes.error;
 
   return {
     cashMovements: cashRes.data || [],
-    polizaCaja: polizaRes.data || [],
   };
 }
 
@@ -200,12 +159,13 @@ export default async function handler(req, res) {
   }
 
   try {
+    const metrics = createQueryMetrics();
     const [datosCierres, datosAdmin, datosPoliza, datosMantenimiento, datosCaja] = await Promise.all([
-      cargarCierres(periodo),
-      cargarAdministracion(periodo),
-      cargarPoliza(),
-      cargarMantenimiento(),
-      cargarCajaPeriodo(periodo),
+      cargarCierres(periodo, metrics),
+      cargarAdministracion(periodo, metrics),
+      cargarPolizaPeriodo(supabase, periodo, metrics),
+      cargarMantenimientoPeriodo(supabase, periodo, metrics),
+      cargarCajaPeriodo(periodo, metrics),
     ]);
 
     const resumenCierres = resumirCierres(datosCierres);
@@ -245,7 +205,7 @@ export default async function handler(req, res) {
     const diagnosticoCaja = construirDiagnosticoCaja({
       periodo,
       cashMovements: datosCaja.cashMovements,
-      polizaCaja: datosCaja.polizaCaja,
+      polizaCaja: datosPoliza.caja,
       resultadoOperativo: centroBase.resumen_general.resultado_operativo,
     });
     const centro = {
@@ -262,6 +222,14 @@ export default async function handler(req, res) {
         role_id: auth.perfil.role_id,
       },
       ...centro,
+      _performance: metrics.summary({
+        optimized: true,
+        notes: [
+          'Póliza y mantenimiento se consultan por periodo desde el origen.',
+          'Se eliminaron select(*) en los loaders del Centro de Inteligencia.',
+          'poliza_caja del periodo se reutiliza para métricas y caja_vs_resultado.',
+        ],
+      }),
     });
   } catch (error) {
     return res.status(500).json({

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import {
   ESTADOS_CONCILIACION_MANTENIMIENTO,
-  construirConciliacionMantenimiento,
   coincideBusquedaMantenimiento,
   textoEvidenciaMantenimiento,
 } from '../../lib/ejecutivo/conciliacionMantenimiento';
@@ -166,34 +165,19 @@ export default function ConciliacionMantenimiento() {
         return;
       }
 
-      const [ticketsRes, quotesRes, cashRes, propertiesRes, contractsRes] = await Promise.all([
-        supabase.from('maintenance_tickets').select('*').order('created_at', { ascending: false }),
-        supabase.from('maintenance_quotes').select('*').order('created_at', { ascending: false }),
-        supabase.from('cash_movements').select('*').in('category', ['mantenimiento_cobrado', 'anticipo_mantenimiento', 'pago_proveedor']).order('created_at', { ascending: false }),
-        supabase.from('properties').select('*').order('name', { ascending: true }),
-        supabase.from('contracts').select('*').eq('status', 'activo').order('created_at', { ascending: false }),
-      ]);
-
-      if (ticketsRes.error) throw ticketsRes.error;
-      if (quotesRes.error) throw quotesRes.error;
-      if (cashRes.error) throw cashRes.error;
-      if (propertiesRes.error) throw propertiesRes.error;
-      if (contractsRes.error) throw contractsRes.error;
-
-      const conciliacion = construirConciliacionMantenimiento({
-        tickets: ticketsRes.data || [],
-        quotes: quotesRes.data || [],
-        cashMovements: cashRes.data || [],
-        properties: propertiesRes.data || [],
-        contracts: contractsRes.data || [],
+      const token = session?.access_token;
+      const res = await fetch('/api/ejecutivo/conciliacion-mantenimiento', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+      const conciliacion = await res.json();
+      if (!res.ok || !conciliacion.ok) {
+        throw new Error(conciliacion.error || 'No se pudo cargar conciliación de mantenimiento.');
+      }
 
       setData({
-        ok: true,
-        generated_at: new Date().toISOString(),
         ...conciliacion,
       });
-      setLastLoadedAt(new Date().toISOString());
+      setLastLoadedAt(conciliacion.generated_at || new Date().toISOString());
     } catch (err) {
       setData(null);
       setError(err.message || 'No se pudo cargar conciliación de mantenimiento.');
