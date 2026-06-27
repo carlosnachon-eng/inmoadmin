@@ -10,6 +10,7 @@ import TabSolicitudes from '../../components/poliza/TabSolicitudes'
 import TabCajaPoliza from '../../components/poliza/TabCajaPoliza'
 import TabCompraventa from '../../components/poliza/TabCompraventa'
 import TabKpisPoliza from '../../components/poliza/TabKpisPoliza'
+import TabPartners from '../../components/poliza/TabPartners'
 import ModalNuevoExpediente from '../../components/poliza/ModalNuevoExpediente'
 import ModalExpediente from '../../components/poliza/ModalExpediente'
 import ModalPropietario from '../../components/poliza/ModalPropietario'
@@ -32,6 +33,7 @@ export default function PolizaPanel() {
   const [selected, setSelected] = useState(null)
   const [caja, setCaja] = useState([])
   const [compradores, setCompradores] = useState([])
+  const [partnerOps, setPartnerOps] = useState([])
   const [subTabCV, setSubTabCV] = useState('vendedores')
 
   useEffect(() => {
@@ -78,6 +80,13 @@ export default function PolizaPanel() {
       const { data } = await supabase.from('compradores').select('*').order('created_at', { ascending: false })
       setCompradores(data || [])
     }
+    if (tabId === 'partners') {
+      const { data } = await supabase
+        .from('partner_operations')
+        .select('*, partner_agencies:partner_agency_id(nombre_comercial)')
+        .order('created_at', { ascending: false })
+      setPartnerOps(data || [])
+    }
     setLoading(false)
   }
 
@@ -105,6 +114,7 @@ export default function PolizaPanel() {
     { id: 'propietarios', label: `Propietarios (${propietariosFiltrados.length})` },
     { id: 'solicitudes', label: `Solicitudes (${solicitudes.length})` },
     { id: 'caja', label: '💰 Caja Póliza' },
+    { id: 'partners', label: `🤝 Partners (${partnerOps.length})` },
     { id: 'compraventa', label: '🔑 Compraventa' },
     { id: 'kpis', label: '📊 KPIs' },
   ]
@@ -174,6 +184,7 @@ export default function PolizaPanel() {
             {tab === 'propietarios' && <TabPropietarios propietarios={propietariosFiltrados} onSelect={p => { setSelected(p); setModal('propietario') }} />}
             {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected({ _solicitud: sol }); setModal('nuevo') }} />}
             {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} esAdmin={esAdmin} />}
+            {tab === 'partners' && <TabPartners operaciones={partnerOps} onReload={loadAll} />}
             {tab === 'compraventa' && (
               <TabCompraventa
                 vendedores={vendedoresFiltrados}
