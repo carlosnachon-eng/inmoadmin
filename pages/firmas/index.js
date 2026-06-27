@@ -22,6 +22,8 @@ export default function FirmasDashboard() {
   const [filtro, setFiltro] = useState('activo')
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState('expedientes')
+  const [migrandoFlujos, setMigrandoFlujos] = useState(false)
+  const [resultadoMigracion, setResultadoMigracion] = useState(null)
 
   // Calendario
   const [citas, setCitas] = useState([])
@@ -95,6 +97,59 @@ export default function FirmasDashboard() {
 
   async function handleLogout() { await supabase.auth.signOut(); setSession(null) }
 
+  async function actualizarFlujosActivos() {
+    setMigrandoFlujos(true)
+    setResultadoMigracion(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token || ''}`,
+      }
+
+      const previewRes = await fetch('/api/firmas/migrar-flujo-activo', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ dryRun: true }),
+      })
+      const preview = await previewRes.json()
+      if (!previewRes.ok || !preview.ok) throw new Error(preview.error || 'No se pudo revisar la migración')
+
+      if (!preview.total_por_migrar) {
+        setResultadoMigracion('Todos los expedientes activos ya usan el flujo vigente.')
+        setMigrandoFlujos(false)
+        return
+      }
+
+      const nombres = (preview.resumen || []).map(item => `• ${item.titulo}`).slice(0, 8).join('\n')
+      const extra = preview.total_por_migrar > 8 ? `\n…y ${preview.total_por_migrar - 8} más` : ''
+      const confirmar = confirm(
+        `Se actualizarán ${preview.total_por_migrar} expedientes activos al flujo operativo nuevo.\n\n` +
+        `${nombres}${extra}\n\n` +
+        'Se conservará respaldo en bitácora antes de cambiar etapas. ¿Continuar?'
+      )
+      if (!confirmar) {
+        setMigrandoFlujos(false)
+        return
+      }
+
+      const res = await fetch('/api/firmas/migrar-flujo-activo', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ dryRun: false }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo actualizar el flujo')
+
+      setResultadoMigracion(`Flujos actualizados: ${data.total_migradas}. Errores: ${data.total_errores}.`)
+      await cargarFirmas()
+    } catch (error) {
+      setResultadoMigracion(`No se pudo actualizar: ${error.message}`)
+    } finally {
+      setMigrandoFlujos(false)
+    }
+  }
+
   const RESPONSABLE_LABELS = {
     ventas: 'Ventas',
     juridico: 'Jurídico',
@@ -154,8 +209,8 @@ export default function FirmasDashboard() {
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <a href="/" style={{ color: '#9ca3af', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>← Panel</a>
-          <Link href="/firmas/nueva" style={{ background: '#C8102E', color: '#fff', padding: '0.6rem 1.25rem', borderRadius: '8px', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>
-            + Nuevo expediente
+          <Link href="/recibos/nuevo" style={{ background: '#C8102E', color: '#fff', padding: '0.6rem 1.25rem', borderRadius: '8px', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>
+            + Crear desde recibo
           </Link>
           <button onClick={handleLogout} style={{ background: '#f3f4f6', color: '#555', border: 'none', padding: '0.6rem 1rem', borderRadius: '8px', fontSize: '0.9rem', cursor: 'pointer' }}>Salir</button>
         </div>
@@ -187,6 +242,21 @@ export default function FirmasDashboard() {
                 }}>{l}</button>
               ))}
             </div>
+            {filtro === 'activo' && (
+              <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '0.85rem 1rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                <div>
+                  <p style={{ margin: 0, color: '#9a3412', fontSize: '0.84rem', fontWeight: 800 }}>Flujo operativo vigente</p>
+                  <p style={{ margin: '3px 0 0', color: '#9a3412', fontSize: '0.78rem' }}>
+                    Las firmas nuevas deben nacer desde recibos. Esta acción actualiza expedientes activos creados antes del nuevo flujo.
+                  </p>
+                  {resultadoMigracion && <p style={{ margin: '6px 0 0', color: '#1a3c5e', fontSize: '0.78rem', fontWeight: 700 }}>{resultadoMigracion}</p>}
+                </div>
+                <button onClick={actualizarFlujosActivos} disabled={migrandoFlujos}
+                  style={{ background: migrandoFlujos ? '#9ca3af' : '#1a3c5e', color: '#fff', border: 'none', borderRadius: 8, padding: '0.6rem 1rem', fontSize: '0.84rem', fontWeight: 800, cursor: migrandoFlujos ? 'not-allowed' : 'pointer' }}>
+                  {migrandoFlujos ? 'Revisando...' : 'Actualizar flujos activos'}
+                </button>
+              </div>
+            )}
             {loading && <p style={{ color: '#888' }}>Cargando...</p>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {firmas.map(firma => {
