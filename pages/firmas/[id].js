@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
+import { generarActaEntregaInmueble } from '../../lib/generarActaEntregaInmueble'
 
 const RESPONSABLE_LABELS = {
   ventas: 'Ventas',
@@ -33,12 +34,25 @@ export default function DetalleFirma() {
   const [avanzando, setAvanzando] = useState(false)
   const [editandoDatos, setEditandoDatos] = useState(false)
   const [guardandoDatos, setGuardandoDatos] = useState(false)
+  const [showActa, setShowActa] = useState(false)
+  const [generandoActa, setGenerandoActa] = useState(false)
   const [datosForm, setDatosForm] = useState({
     titulo: '',
     direccion: '',
     nombre_comprador: '',
     nombre_vendedor: '',
     modalidad_firma: 'presencial',
+  })
+  const [actaForm, setActaForm] = useState({
+    ciudad: 'Puebla, Puebla',
+    fecha_escritura: '',
+    fecha_entrega: new Date().toISOString().split('T')[0],
+    descripcion_inmueble: '',
+    compradores_adicionales: '',
+    telefono_vendedor: '',
+    correo_vendedor: '',
+    observaciones_checklist: '',
+    observaciones_generales: '',
   })
 
   useEffect(() => { if (!id) return; cargarTodo() }, [id])
@@ -57,6 +71,10 @@ export default function DetalleFirma() {
       nombre_vendedor: f?.nombre_vendedor || '',
       modalidad_firma: f?.modalidad_firma || 'presencial',
     })
+    setActaForm(prev => ({
+      ...prev,
+      descripcion_inmueble: prev.descripcion_inmueble || f?.direccion || '',
+    }))
     setEtapas(e || [])
     setComentarios(c || [])
     setLoading(false)
@@ -121,6 +139,32 @@ export default function DetalleFirma() {
       alert(`No se pudieron guardar los datos: ${error.message}`)
     }
     setGuardandoDatos(false)
+  }
+
+  async function generarActa() {
+    setGenerandoActa(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      await generarActaEntregaInmueble({
+        ...actaForm,
+        nombre_vendedor: firma.nombre_vendedor,
+        nombre_comprador: firma.nombre_comprador,
+        direccion_inmueble: firma.direccion,
+      })
+      await supabase.from('firma_comentarios').insert({
+        firma_id: id,
+        usuario_id: user?.id,
+        usuario_nombre: user?.email,
+        mensaje: 'Acta de entrega y recepción de inmueble generada en DOCX.',
+        tipo: 'comentario'
+      })
+      setShowActa(false)
+      await cargarTodo()
+    } catch (error) {
+      alert(`No se pudo generar el acta: ${error.message}`)
+    } finally {
+      setGenerandoActa(false)
+    }
   }
 
   if (loading) return <div style={{ padding: '2rem', fontFamily: 'system-ui' }}>Cargando expediente...</div>
@@ -327,6 +371,20 @@ export default function DetalleFirma() {
           </div>
 
           <div>
+            {firma.tipo === 'compraventa' && (
+              <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #eee', padding: '1rem', marginBottom: '1rem' }}>
+                <p style={{ margin: '0 0 4px', fontSize: '0.75rem', color: '#7c3aed', fontWeight: 700, textTransform: 'uppercase' }}>Etapa final</p>
+                <h2 style={{ fontSize: '1rem', color: '#1a3c5e', margin: '0 0 6px' }}>Acta de entrega de inmueble</h2>
+                <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: '#666', lineHeight: 1.35 }}>
+                  Genera el acta de entrega y recepción con datos del vendedor, comprador, inmueble, fechas, checklist y firmas.
+                </p>
+                <button onClick={() => setShowActa(true)}
+                  style={{ width: '100%', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '6px', padding: '9px 12px', fontSize: '0.86rem', fontWeight: 700, cursor: 'pointer' }}>
+                  Generar acta DOCX
+                </button>
+              </div>
+            )}
+
             <h2 style={{ fontSize: '1rem', color: '#1a3c5e', marginBottom: '1rem' }}>Bitacora</h2>
             <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #eee', padding: '1rem', marginBottom: '1rem' }}>
               <textarea value={comentario} onChange={e => setComentario(e.target.value)} rows={3}
@@ -351,6 +409,97 @@ export default function DetalleFirma() {
           </div>
         </div>
       </div>
+
+      {showActa && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 640, maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div>
+                <p style={{ margin: '0 0 2px', fontSize: '0.72rem', color: '#7c3aed', fontWeight: 700, textTransform: 'uppercase' }}>Compraventa</p>
+                <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#1a3c5e' }}>Acta de entrega y recepción</h2>
+              </div>
+              <button onClick={() => setShowActa(false)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}>✕</button>
+            </div>
+
+            <div style={{ padding: '1.25rem' }}>
+              <div style={{ background: '#f9fafb', border: '1px solid #eee', borderRadius: 10, padding: '0.85rem', marginBottom: '1rem' }}>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: '#666', lineHeight: 1.45 }}>
+                  Se autollenará con: <strong>{firma.nombre_vendedor}</strong>, <strong>{firma.nombre_comprador}</strong> y <strong>{firma.direccion || firma.titulo}</strong>.
+                  El checklist queda editable dentro del Word.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
+                <ActaField label="Ciudad">
+                  <input value={actaForm.ciudad} onChange={e => setActaForm(f => ({ ...f, ciudad: e.target.value }))}
+                    style={actaInputStyle} />
+                </ActaField>
+                <ActaField label="Fecha de entrega">
+                  <input type="date" value={actaForm.fecha_entrega} onChange={e => setActaForm(f => ({ ...f, fecha_entrega: e.target.value }))}
+                    style={actaInputStyle} />
+                </ActaField>
+                <ActaField label="Fecha de escritura">
+                  <input type="date" value={actaForm.fecha_escritura} onChange={e => setActaForm(f => ({ ...f, fecha_escritura: e.target.value }))}
+                    style={actaInputStyle} />
+                </ActaField>
+                <ActaField label="Teléfono vendedor">
+                  <input value={actaForm.telefono_vendedor} onChange={e => setActaForm(f => ({ ...f, telefono_vendedor: e.target.value }))}
+                    placeholder="Opcional" style={actaInputStyle} />
+                </ActaField>
+                <ActaField label="Correo vendedor">
+                  <input value={actaForm.correo_vendedor} onChange={e => setActaForm(f => ({ ...f, correo_vendedor: e.target.value }))}
+                    placeholder="Opcional" style={actaInputStyle} />
+                </ActaField>
+                <ActaField label="Compradores adicionales">
+                  <textarea value={actaForm.compradores_adicionales} onChange={e => setActaForm(f => ({ ...f, compradores_adicionales: e.target.value }))}
+                    rows={2} placeholder="Uno por línea, si aplica" style={{ ...actaInputStyle, resize: 'vertical' }} />
+                </ActaField>
+              </div>
+
+              <ActaField label="Descripción legal o detallada del inmueble">
+                <textarea value={actaForm.descripcion_inmueble} onChange={e => setActaForm(f => ({ ...f, descripcion_inmueble: e.target.value }))}
+                  rows={3} placeholder="Si se deja vacío usará la dirección del expediente" style={{ ...actaInputStyle, resize: 'vertical' }} />
+              </ActaField>
+              <ActaField label="Observaciones del checklist">
+                <textarea value={actaForm.observaciones_checklist} onChange={e => setActaForm(f => ({ ...f, observaciones_checklist: e.target.value }))}
+                  rows={2} placeholder="Opcional" style={{ ...actaInputStyle, resize: 'vertical' }} />
+              </ActaField>
+              <ActaField label="Observaciones generales">
+                <textarea value={actaForm.observaciones_generales} onChange={e => setActaForm(f => ({ ...f, observaciones_generales: e.target.value }))}
+                  rows={3} placeholder="Opcional" style={{ ...actaInputStyle, resize: 'vertical' }} />
+              </ActaField>
+
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button onClick={() => setShowActa(false)} style={{ background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 700, cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+                <button onClick={generarActa} disabled={generandoActa}
+                  style={{ background: generandoActa ? '#9ca3af' : '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 700, cursor: generandoActa ? 'not-allowed' : 'pointer' }}>
+                  {generandoActa ? 'Generando...' : 'Generar DOCX'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const actaInputStyle = {
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '8px 10px',
+  borderRadius: 7,
+  border: '1px solid #d1d5db',
+  fontSize: '0.88rem',
+}
+
+function ActaField({ label, children }) {
+  return (
+    <div style={{ marginBottom: '0.85rem' }}>
+      <label style={{ display: 'block', fontSize: '0.76rem', color: '#555', fontWeight: 700, marginBottom: 4 }}>{label}</label>
+      {children}
     </div>
   )
 }
