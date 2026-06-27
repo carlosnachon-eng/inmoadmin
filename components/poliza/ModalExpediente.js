@@ -24,6 +24,10 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
     return vals
   }
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const propietarioVinculado = form.propietarios_inmuebles || propietarios.find(p => p.id === form.propietario_id)
+  const arrendadorMoral = propietarioVinculado?.tipo_persona_propietario === 'moral'
+  const razonSocialArrendador = propietarioVinculado?.razon_social_propietario
+  const representanteArrendador = propietarioVinculado?.nombre_propietario || form.nombre_arrendador
 
   useEffect(() => {
     if (form.fecha_inicio && form.duracion_contrato_meses) {
@@ -145,9 +149,20 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
           </div>
         </div>
 
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Arrendador</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 12px' }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: 0, textTransform: 'uppercase' }}>Arrendador</p>
+          <span style={{ background: arrendadorMoral ? '#f5f3ff' : '#f3f4f6', color: arrendadorMoral ? '#5b21b6' : C.muted, borderRadius: 999, padding: '3px 8px', fontSize: 10, fontWeight: 800 }}>
+            {arrendadorMoral ? 'Persona moral' : 'Persona física'}
+          </span>
+        </div>
+        {arrendadorMoral && (
+          <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '10px 12px', marginBottom: 14 }}>
+            <p style={{ margin: 0, color: '#5b21b6', fontSize: 12, fontWeight: 800 }}>Razón social: {razonSocialArrendador || 'Sin capturar'}</p>
+            <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: 12 }}>Representante legal: {representanteArrendador || 'Sin capturar'}</p>
+          </div>
+        )}
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}><label style={st.label}>Nombre</label><input type="text" defaultValue={form.nombre_arrendador || ''} data-field='nombre_arrendador' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>{arrendadorMoral ? 'Representante legal' : 'Nombre'}</label><input type="text" defaultValue={form.nombre_arrendador || ''} data-field='nombre_arrendador' style={st.input} /></div>
           <div style={{ marginBottom: 14 }}><label style={st.label}>RFC</label><input type="text" defaultValue={form.rfc_arrendador || ''} data-field='rfc_arrendador' style={st.input} /></div>
         </div>
         <div style={st.grid2}>
@@ -160,9 +175,20 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
         </div>
 
         <div style={st.divider} />
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Arrendatario</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 12px' }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: 0, textTransform: 'uppercase' }}>Arrendatario</p>
+          <span style={{ background: form.tipo_arrendatario === 'moral' ? '#f5f3ff' : '#f3f4f6', color: form.tipo_arrendatario === 'moral' ? '#5b21b6' : C.muted, borderRadius: 999, padding: '3px 8px', fontSize: 10, fontWeight: 800 }}>
+            {form.tipo_arrendatario === 'moral' ? 'Persona moral' : 'Persona física'}
+          </span>
+        </div>
+        {form.tipo_arrendatario === 'moral' && (
+          <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '10px 12px', marginBottom: 14 }}>
+            <p style={{ margin: 0, color: '#5b21b6', fontSize: 12, fontWeight: 800 }}>Razón social: {form.razon_social_arrendatario || form.nombre_arrendatario || 'Sin capturar'}</p>
+            <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: 12 }}>Representante legal: {form.representante_legal_arrendatario || 'Sin capturar'}</p>
+          </div>
+        )}
         <div style={st.grid2}>
-          <div style={{ marginBottom: 14 }}><label style={st.label}>Nombre</label><input type="text" defaultValue={form.nombre_arrendatario || ''} data-field='nombre_arrendatario' style={st.input} /></div>
+          <div style={{ marginBottom: 14 }}><label style={st.label}>{form.tipo_arrendatario === 'moral' ? 'Razón social' : 'Nombre'}</label><input type="text" defaultValue={form.nombre_arrendatario || ''} data-field='nombre_arrendatario' style={st.input} /></div>
           <div style={{ marginBottom: 14 }}><label style={st.label}>RFC</label><input type="text" defaultValue={form.rfc_arrendatario || ''} data-field='rfc_arrendatario' style={st.input} /></div>
         </div>
         <div style={st.grid2}>

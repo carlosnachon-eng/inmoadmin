@@ -46,7 +46,10 @@ export default function PolizaPanel() {
   const loadTab = async (tabId) => {
     setLoading(true)
     if (tabId === 'expedientes') {
-      const { data } = await supabase.from('poliza_expedientes').select('*').order('created_at', { ascending: false })
+      const { data } = await supabase
+        .from('poliza_expedientes')
+        .select('*, propietarios_inmuebles:propietario_id(tipo_persona_propietario, razon_social_propietario, nombre_propietario)')
+        .order('created_at', { ascending: false })
       setExpedientes(data || [])
     }
     if (tabId === 'propietarios' && propietarios.length === 0) {
@@ -66,7 +69,10 @@ export default function PolizaPanel() {
       }
     }
     if (tabId === 'kpis' && expedientes.length === 0) {
-      const { data } = await supabase.from('poliza_expedientes').select('*').order('created_at', { ascending: false })
+      const { data } = await supabase
+        .from('poliza_expedientes')
+        .select('*, propietarios_inmuebles:propietario_id(tipo_persona_propietario, razon_social_propietario, nombre_propietario)')
+        .order('created_at', { ascending: false })
       setExpedientes(data || [])
     }
     if (tabId === 'compraventa' && propietarios.length === 0) {
