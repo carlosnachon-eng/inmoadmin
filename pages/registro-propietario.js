@@ -77,11 +77,17 @@ export default function RegistroPropietario() {
   const [mascotasPermitidas, setMascotasPermitidas] = useState('no')
   const [reglamento, setReglamento] = useState('no')
   const [contratoAdmin, setContratoAdmin] = useState(false)
-  const [files, setFiles] = useState({ doc_identificacion: null, doc_comprobante_domicilio: null, doc_predial: null })
+  const [tipoPersonaPropietario, setTipoPersonaPropietario] = useState('fisica')
+  const [files, setFiles] = useState({
+    doc_identificacion: null,
+    doc_comprobante_domicilio: null,
+    doc_predial: null,
+    doc_escritura: null,
+  })
   const [partnerBranding, setPartnerBranding] = useState(null)
   const formRef = useRef(null)
   const savedValues = useRef({})
-  const fileRef1 = useRef(); const fileRef2 = useRef(); const fileRef3 = useRef()
+  const fileRef1 = useRef(); const fileRef2 = useRef(); const fileRef3 = useRef(); const fileRef4 = useRef()
 
   const getValues = () => {
     const data = { ...savedValues.current }
@@ -112,10 +118,12 @@ export default function RegistroPropietario() {
 
   const validateStep1 = () => {
     const v = getValues(); const e = {}
-    if (!v.nombre_propietario?.trim()) e.nombre_propietario = 'Requerido'
+    if (tipoPersonaPropietario === 'moral' && !v.razon_social_propietario?.trim()) e.razon_social_propietario = 'Requerido'
+    if (!v.nombre_propietario?.trim()) e.nombre_propietario = tipoPersonaPropietario === 'moral' ? 'Indica el representante legal' : 'Requerido'
     if (!v.telefono_propietario?.trim()) e.telefono_propietario = 'Requerido'
     if (!v.correo_propietario?.trim()) e.correo_propietario = 'Requerido'
     if (!v.domicilio_propietario?.trim()) e.domicilio_propietario = 'Requerido'
+    if (tipoPersonaPropietario === 'moral' && !v.rfc_propietario?.trim()) e.rfc_propietario = 'Requerido para persona moral'
     if (formaPago === 'transferencia' && !v.clabe?.trim()) e.clabe = 'Requerido para transferencia'
     setErrors(e); return Object.keys(e).length === 0
   }
@@ -132,6 +140,9 @@ export default function RegistroPropietario() {
     if (!files.doc_identificacion) e.doc_identificacion = 'Sube tu identificación oficial'
     if (!files.doc_comprobante_domicilio) e.doc_comprobante_domicilio = 'Sube comprobante de domicilio'
     if (!files.doc_predial) e.doc_predial = 'Sube la boleta de predial'
+    if (tipoPersonaPropietario === 'moral') {
+      if (!files.doc_escritura) e.doc_escritura = 'Sube los documentos legales de la empresa'
+    }
     setErrors(e); return Object.keys(e).length === 0
   }
 
@@ -148,6 +159,8 @@ export default function RegistroPropietario() {
     try {
       const v = getValues()
       const payload = {
+        tipo_persona_propietario: tipoPersonaPropietario,
+        razon_social_propietario: tipoPersonaPropietario === 'moral' ? v.razon_social_propietario : null,
         nombre_propietario: v.nombre_propietario, telefono_propietario: v.telefono_propietario,
         correo_propietario: v.correo_propietario, domicilio_propietario: v.domicilio_propietario,
         rfc_propietario: v.rfc_propietario, clave_elector_propietario: v.clave_elector_propietario,
@@ -165,15 +178,17 @@ export default function RegistroPropietario() {
       const folder = `propietarios/${id}`
       const docUpdates = {}
 
-      const [pathId, pathComp, pathPred] = await Promise.all([
+      const [pathId, pathComp, pathPred, pathEscritura] = await Promise.all([
         files.doc_identificacion ? uploadDoc(files.doc_identificacion, folder, 'identificacion') : Promise.resolve(null),
         files.doc_comprobante_domicilio ? uploadDoc(files.doc_comprobante_domicilio, folder, 'comprobante_domicilio') : Promise.resolve(null),
         files.doc_predial ? uploadDoc(files.doc_predial, folder, 'predial') : Promise.resolve(null),
+        files.doc_escritura ? uploadDoc(files.doc_escritura, folder, 'documentos_persona_moral') : Promise.resolve(null),
       ])
 
       if (pathId) docUpdates.doc_identificacion_b64 = pathId
       if (pathComp) docUpdates.doc_comprobante_domicilio_b64 = pathComp
       if (pathPred) docUpdates.doc_predial_b64 = pathPred
+      if (pathEscritura) docUpdates.doc_escritura_b64 = pathEscritura
 
       if (Object.keys(docUpdates).length > 0) {
         await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', id)
@@ -202,7 +217,7 @@ export default function RegistroPropietario() {
   }
 
   const totalSteps = 3
-  const STEPS = ['Sus datos', 'El inmueble', 'Documentos']
+  const STEPS = ['Datos del dueño', 'El inmueble', 'Documentos']
 
   const FileBox = ({ field, label, hint, fileRef }) => (
     <Field label={label} error={errors[field]}>
@@ -252,17 +267,25 @@ export default function RegistroPropietario() {
           <PartnerBanner branding={partnerBranding} />
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16, padding: '28px 24px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }} ref={formRef}>
           {step === 1 && (<>
-            <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: '#4a4a4a' }}>Sus datos personales</h2>
-            <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>Esta información aparecerá en su contrato de prestación de servicios.</p>
-            <Field label="Nombre completo" required error={errors.nombre_propietario}><Input name="nombre_propietario" placeholder="Como aparece en su identificación oficial" error={errors.nombre_propietario} /></Field>
+            <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: '#4a4a4a' }}>Datos del dueño</h2>
+            <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>Esta información se usará para revisar la operación y preparar los documentos jurídicos.</p>
+            <Field label="Tipo de dueño">
+              <RadioGroup value={tipoPersonaPropietario} onChange={setTipoPersonaPropietario} options={[{ value: 'fisica', label: 'Persona física' }, { value: 'moral', label: 'Persona moral' }]} />
+            </Field>
+            {tipoPersonaPropietario === 'moral' && (
+              <Field label="Razón social" required error={errors.razon_social_propietario}>
+                <Input name="razon_social_propietario" placeholder="Nombre legal de la empresa" error={errors.razon_social_propietario} />
+              </Field>
+            )}
+            <Field label={tipoPersonaPropietario === 'moral' ? 'Representante legal' : 'Nombre completo'} required error={errors.nombre_propietario}><Input name="nombre_propietario" placeholder={tipoPersonaPropietario === 'moral' ? 'Nombre completo del representante legal' : 'Como aparece en su identificación oficial'} error={errors.nombre_propietario} /></Field>
             <Field label="Teléfono de contacto" required error={errors.telefono_propietario}><Input name="telefono_propietario" type="tel" placeholder="10 dígitos" error={errors.telefono_propietario} /></Field>
             <Field label="Correo electrónico" required error={errors.correo_propietario}><Input name="correo_propietario" type="email" placeholder="correo@ejemplo.com" error={errors.correo_propietario} /></Field>
-            <Field label="Domicilio particular" required error={errors.domicilio_propietario}>
-              <textarea name="domicilio_propietario" placeholder="Calle, número, colonia, ciudad, estado" rows={3} style={{ width: '100%', background: '#fff', border: `1px solid ${errors.domicilio_propietario ? '#b91c3c' : '#e5e7eb'}`, borderRadius: 8, padding: '11px 14px', color: '#374151', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+            <Field label={tipoPersonaPropietario === 'moral' ? 'Domicilio fiscal' : 'Domicilio particular'} required error={errors.domicilio_propietario}>
+              <textarea name="domicilio_propietario" placeholder={tipoPersonaPropietario === 'moral' ? 'Domicilio fiscal de la empresa' : 'Calle, número, colonia, ciudad, estado'} rows={3} style={{ width: '100%', background: '#fff', border: `1px solid ${errors.domicilio_propietario ? '#b91c3c' : '#e5e7eb'}`, borderRadius: 8, padding: '11px 14px', color: '#374151', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
               {errors.domicilio_propietario && <p style={{ color: '#b91c3c', fontSize: 12, margin: '6px 0 0', fontWeight: 600 }}>{errors.domicilio_propietario}</p>}
             </Field>
-            <Field label="RFC"><Input name="rfc_propietario" placeholder="XXXX000000XXX" /></Field>
-            <Field label="Clave de elector (INE)"><Input name="clave_elector_propietario" placeholder="Clave de elector" /></Field>
+            <Field label="RFC" required={tipoPersonaPropietario === 'moral'} error={errors.rfc_propietario}><Input name="rfc_propietario" placeholder={tipoPersonaPropietario === 'moral' ? 'RFC de la empresa' : 'XXXX000000XXX'} error={errors.rfc_propietario} /></Field>
+            <Field label={tipoPersonaPropietario === 'moral' ? 'Clave de elector del representante' : 'Clave de elector (INE)'}><Input name="clave_elector_propietario" placeholder="Clave de elector" /></Field>
             <SectionTitle title="Datos para recibir su renta" />
             <Field label="Forma de pago preferida">
               <RadioGroup value={formaPago} onChange={setFormaPago} options={[{ value: 'transferencia', label: 'Transferencia bancaria' }, { value: 'efectivo', label: 'Efectivo' }]} />
@@ -299,9 +322,12 @@ export default function RegistroPropietario() {
             <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: '#4a4a4a' }}>Documentos requeridos</h2>
             <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>Suba una foto clara o PDF de cada documento. Todos son obligatorios.</p>
             {errors.global && <div style={{ background: '#fff0f3', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 16px', color: '#b91c3c', fontSize: 14, marginBottom: 16, fontWeight: 600 }}>{errors.global}</div>}
-            <FileBox field="doc_identificacion" label="Identificación oficial (INE/Pasaporte)" hint="Toca para subir identificación" fileRef={fileRef1} />
-            <FileBox field="doc_comprobante_domicilio" label="Comprobante de domicilio del inmueble (reciente)" hint="Toca para subir comprobante" fileRef={fileRef2} />
+            <FileBox field="doc_identificacion" label={tipoPersonaPropietario === 'moral' ? 'Identificación oficial del representante legal' : 'Identificación oficial (INE/Pasaporte)'} hint="Toca para subir identificación" fileRef={fileRef1} />
+            <FileBox field="doc_comprobante_domicilio" label={tipoPersonaPropietario === 'moral' ? 'Comprobante de domicilio fiscal' : 'Comprobante de domicilio del inmueble (reciente)'} hint="Toca para subir comprobante" fileRef={fileRef2} />
             <FileBox field="doc_predial" label="Última boleta de predial (año en curso)" hint="Toca para subir predial" fileRef={fileRef3} />
+            {tipoPersonaPropietario === 'moral' && (
+              <FileBox field="doc_escritura" label="Acta constitutiva, poder y constancia fiscal" hint="Sube un solo PDF con los documentos de la empresa" fileRef={fileRef4} />
+            )}
             <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.6, marginTop: 20, padding: '14px', background: '#f8f8f8', borderRadius: 8, border: '1px solid #e5e7eb' }}>
               🔒 Al enviar este formulario, acepta nuestro{' '}<a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: '#b91c3c' }}>Aviso de Privacidad</a>. Su información es confidencial.
             </div>

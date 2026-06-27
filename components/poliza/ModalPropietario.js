@@ -111,13 +111,17 @@ export default function ModalPropietario({ propietario: p, onClose, onSaved, onN
   // URL para Veridada con datos prellenados (solo Emporio)
   const urlVeridada = `https://veridada.mx/inmobiliaria?source=emporio&key=emporio2026&direccion=${encodeURIComponent(prop.direccion_inmueble || '')}&municipio=${encodeURIComponent(prop.municipio || '')}&precio=${prop.monto_renta || ''}&operacion=renta&tipo=${encodeURIComponent(prop.tipo_inmueble || 'casa')}`
 
+  const esPersonaMoral = prop.tipo_persona_propietario === 'moral'
   const tieneDocs = prop.doc_identificacion_b64 || prop.doc_comprobante_domicilio_b64 || prop.doc_predial_b64 || prop.doc_escritura_b64
 
   return (
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={st.modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{prop.nombre_propietario}</h2>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text, fontFamily: 'Georgia, serif' }}>{esPersonaMoral ? prop.razon_social_propietario : prop.nombre_propietario}</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: C.muted }}>{esPersonaMoral ? `Persona moral - Representante: ${prop.nombre_propietario || 'Sin capturar'}` : 'Persona física'}</p>
+          </div>
           <button onClick={onClose} style={{ ...st.btn, ...st.btnGhost }}>✕</button>
         </div>
 
@@ -128,7 +132,7 @@ export default function ModalPropietario({ propietario: p, onClose, onSaved, onN
           <InfoRow label="Renta" value={fmt(prop.monto_renta)} />
         </div>
         <InfoRow label="Inmueble" value={prop.direccion_inmueble} />
-        <InfoRow label="Domicilio del propietario" value={prop.domicilio_propietario} />
+        <InfoRow label={esPersonaMoral ? 'Domicilio fiscal' : 'Domicilio del propietario'} value={prop.domicilio_propietario} />
 
         {/* Vinculación con propiedad del catálogo (para el reporte mensual) */}
         <div style={{ ...st.divider, margin: '16px 0' }} />
@@ -185,7 +189,7 @@ export default function ModalPropietario({ propietario: p, onClose, onSaved, onN
             {prop.doc_identificacion_b64 && <DocChip label="Identificación" data={prop.doc_identificacion_b64?.startsWith('data:') ? prop.doc_identificacion_b64 : null} path={!prop.doc_identificacion_b64?.startsWith('data:') ? prop.doc_identificacion_b64 : null} />}
             {prop.doc_comprobante_domicilio_b64 && <DocChip label="Comprobante domicilio" data={prop.doc_comprobante_domicilio_b64?.startsWith('data:') ? prop.doc_comprobante_domicilio_b64 : null} path={!prop.doc_comprobante_domicilio_b64?.startsWith('data:') ? prop.doc_comprobante_domicilio_b64 : null} />}
             {prop.doc_predial_b64 && <DocChip label="Predial" data={prop.doc_predial_b64?.startsWith('data:') ? prop.doc_predial_b64 : null} path={!prop.doc_predial_b64?.startsWith('data:') ? prop.doc_predial_b64 : null} />}
-            {prop.doc_escritura_b64 && <DocChip label="Escritura" data={prop.doc_escritura_b64?.startsWith('data:') ? prop.doc_escritura_b64 : null} path={!prop.doc_escritura_b64?.startsWith('data:') ? prop.doc_escritura_b64 : null} />}
+            {prop.doc_escritura_b64 && <DocChip label={esPersonaMoral ? 'Documentos persona moral' : 'Escritura'} data={prop.doc_escritura_b64?.startsWith('data:') ? prop.doc_escritura_b64 : null} path={!prop.doc_escritura_b64?.startsWith('data:') ? prop.doc_escritura_b64 : null} />}
           </div>
         ) : (
           <p style={{ fontSize: 12, color: C.faint }}>Sin documentos adjuntos</p>

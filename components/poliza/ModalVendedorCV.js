@@ -229,7 +229,7 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
             {vend.doc_identificacion_b64 && <DocChip label="Identificación" data={vend.doc_identificacion_b64.startsWith('data:') ? vend.doc_identificacion_b64 : null} path={!vend.doc_identificacion_b64.startsWith('data:') ? vend.doc_identificacion_b64 : null} />}
             {vend.doc_comprobante_domicilio_b64 && <DocChip label="Comprobante domicilio" data={vend.doc_comprobante_domicilio_b64.startsWith('data:') ? vend.doc_comprobante_domicilio_b64 : null} path={!vend.doc_comprobante_domicilio_b64.startsWith('data:') ? vend.doc_comprobante_domicilio_b64 : null} />}
             {vend.doc_predial_b64 && <DocChip label="Predial" data={vend.doc_predial_b64.startsWith('data:') ? vend.doc_predial_b64 : null} path={!vend.doc_predial_b64.startsWith('data:') ? vend.doc_predial_b64 : null} />}
-            {vend.doc_escritura_b64 && <DocChip label="Escritura" data={vend.doc_escritura_b64.startsWith('data:') ? vend.doc_escritura_b64 : null} path={!vend.doc_escritura_b64.startsWith('data:') ? vend.doc_escritura_b64 : null} />}
+            {vend.doc_escritura_b64 && <DocChip label={vend.tipo_persona_propietario === 'moral' ? 'Documentos persona moral' : 'Escritura'} data={vend.doc_escritura_b64.startsWith('data:') ? vend.doc_escritura_b64 : null} path={!vend.doc_escritura_b64.startsWith('data:') ? vend.doc_escritura_b64 : null} />}
           </div>
         ) : (
           <p style={{ fontSize: 12, color: C.faint }}>Sin documentos adjuntos</p>
