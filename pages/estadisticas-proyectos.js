@@ -4,12 +4,14 @@ import Layout, { brand } from "../components/Layout";
 import { supabase } from "../lib/supabase";
 import { SinAcceso } from "../lib/permisos";
 
-const EVENTOS_CONTACTO = new Set(["whatsapp", "telefono"]);
+const EVENTOS_CONTACTO = new Set(["whatsapp", "telefono", "registro_partner"]);
 const EVENTO_LABEL = {
   visita: "Visita",
   whatsapp: "WhatsApp",
   telefono: "Teléfono",
   disponibilidad: "Disponibilidad",
+  registro_partner: "Registro partner",
+  login_partner: "Login partner",
 };
 
 const fmt = (value) => Number(value || 0).toLocaleString("es-MX");
@@ -320,7 +322,7 @@ export default function EstadisticasProyectos() {
               <StatCard label="WhatsApp" value={fmt(resumenTotal.whatsapp)} tone="green" />
               <StatCard label="Teléfono" value={fmt(resumenTotal.telefono)} tone="green" />
               <StatCard label="Disponibilidad" value={fmt(resumenTotal.disponibilidad)} tone="amber" />
-              <StatCard label="Contactos únicos" value={fmt(resumenTotal.contactos)} detail="Visitantes con WhatsApp o teléfono." tone="red" />
+              <StatCard label="Contactos únicos" value={fmt(resumenTotal.contactos)} detail="Visitantes con WhatsApp, teléfono o registro partner." tone="red" />
               <StatCard label="Conversión" value={pct(resumenTotal.conversion)} detail="Contactos únicos ÷ visitantes únicos." tone="red" />
             </div>
 
