@@ -20,7 +20,7 @@ const diasFuera = (fecha_prestamo) => {
   return Math.floor((new Date() - new Date(fecha_prestamo)) / (1000 * 60 * 60 * 24));
 };
 
-const PERSONAL = {
+const PERSONAL_FALLBACK = {
   'ariannet81@gmail.com':              'Ariannet',
   'angelicamomox@gmail.com':           'Angélica',
   'rddd298@gmail.com':                 'Rosario',
@@ -32,10 +32,65 @@ const PERSONAL = {
   'asistente1@emporioinmobiliario.mx': 'Tania',
 };
 
-const STAFF_FIJO = [
-  'juridico@emporioinmobiliario.mx',
-  'asistente1@emporioinmobiliario.mx',
-];
+const NOMBRES_CONOCIDOS = {
+  'carlos.nachon@emporioinmobiliario.mx': 'Carlos',
+  'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
+  'juridico@emporioinmobiliario.mx': 'Zaye',
+  'asistente1@emporioinmobiliario.mx': 'Tania',
+  'ariannet81@gmail.com': 'Ariannet',
+  'angelicamomox@gmail.com': 'Angélica',
+  'rddd298@gmail.com': 'Rosario',
+  'ivanmtzco@gmail.com': 'Iván',
+  'nextelmoto2@gmail.com': 'Andrea',
+  'islas.amanda111@gmail.com': 'Amanda',
+  'ismaelorortiz@gmail.com': 'Ismael Ortiz',
+};
+
+const ROLES_EQUIPO_CHECADOR_CRON = ['gerente_ventas', 'coord_operaciones', 'juridico', 'asesor', 'chofer'];
+const ROLES_ASISTENCIA_FIJA = ['coord_operaciones', 'juridico', 'chofer'];
+const ROLES_JUNTA = ['gerente_ventas', 'asesor'];
+
+const isPartnerEmail = (email, partnerEmails) => partnerEmails.has(String(email || '').toLowerCase());
+
+const getNombrePersona = (profile) => {
+  const email = String(profile?.email || '').toLowerCase();
+  return profile?.full_name || NOMBRES_CONOCIDOS[email] || email.split('@')[0] || profile?.email || 'Sin nombre';
+};
+
+const cargarEquipoChecador = async () => {
+  const [{ data: profiles, error: profilesError }, { data: partners }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('email, full_name, role_id, active')
+      .eq('active', true)
+      .in('role_id', ROLES_EQUIPO_CHECADOR_CRON),
+    supabase.from('partner_users').select('email'),
+  ]);
+
+  if (profilesError || !profiles?.length) {
+    const fallback = Object.entries(PERSONAL_FALLBACK).map(([email, nombre]) => ({
+      email,
+      nombre,
+      role_id: ['juridico@emporioinmobiliario.mx', 'asistente1@emporioinmobiliario.mx'].includes(email)
+        ? 'juridico'
+        : email === 'guillermo@emporioinmobiliario.com.mx'
+          ? 'gerente_ventas'
+          : 'asesor',
+    }));
+    return { equipo: fallback, source: 'fallback' };
+  }
+
+  const partnerEmails = new Set((partners || []).map(p => String(p.email || '').toLowerCase()));
+  const equipo = profiles
+    .filter(p => !isPartnerEmail(p.email, partnerEmails))
+    .map(p => ({
+      email: String(p.email || '').toLowerCase(),
+      nombre: getNombrePersona(p),
+      role_id: p.role_id,
+    }));
+
+  return { equipo, source: 'profiles' };
+};
 
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -47,6 +102,7 @@ export default async function handler(req, res) {
   const diaSemana = new Date().getDay(); // 0=dom, 2=mar, 6=sab
   const esLaborable = diaSemana >= 1 && diaSemana <= 5;
   const esMartes = diaSemana === 2;
+  const { equipo, source: equipoSource } = await cargarEquipoChecador();
 
   // 1. Llaves fuera de resguardo por más de 1 día
   const { data: llavesAfuera } = await supabase
@@ -73,7 +129,10 @@ export default async function handler(req, res) {
 
   // Staff fijo que debió checar ayer
   const staffNoCheco = esLaborable
-    ? STAFF_FIJO.map(em => PERSONAL[em]).filter(n => !nombresChecaronAyer.has(n))
+    ? equipo
+      .filter(p => ROLES_ASISTENCIA_FIJA.includes(p.role_id))
+      .map(p => p.nombre)
+      .filter(n => !nombresChecaronAyer.has(n))
     : [];
 
   // Asesores con guardia ayer que no checaron
@@ -94,7 +153,10 @@ export default async function handler(req, res) {
     : { data: [] };
   const nombresJuntaAyer = new Set((juntasAyer || []).map(c => c.nombre));
   const asesoresSinJunta = ayerFueMartes
-    ? Object.values(PERSONAL).filter(n => !['Zaye', 'Tania'].includes(n) && !nombresJuntaAyer.has(n))
+    ? equipo
+      .filter(p => ROLES_JUNTA.includes(p.role_id))
+      .map(p => p.nombre)
+      .filter(n => !nombresJuntaAyer.has(n))
     : [];
 
   // No enviar si no hay nada relevante
@@ -191,5 +253,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: e.message });
   }
 
-  return res.status(200).json({ ok: true, llavesAlerta: llavesAlerta.length, guardiasHoy: guardiasHoy.length });
+  return res.status(200).json({ ok: true, llavesAlerta: llavesAlerta.length, guardiasHoy: guardiasHoy.length, equipoSource });
 }

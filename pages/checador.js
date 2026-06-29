@@ -13,7 +13,7 @@ const supabase = createClient(
 // su rol en profiles, no tocar este código.
 const ROLES_CON_ACCESO_ADMIN_CHECADOR = ['admin', 'gerente_ventas']
 const ROLES_QUE_PUEDEN_PRESTAR_LLAVES = ['admin', 'gerente_ventas', 'coord_operaciones']
-const ROLES_EQUIPO_INTERNO = ['admin', 'gerente_ventas', 'coord_operaciones', 'juridico', 'asesor']
+const ROLES_EQUIPO_INTERNO = ['admin', 'gerente_ventas', 'coord_operaciones', 'juridico', 'asesor', 'chofer']
 const isPartnerEmail = (email, partnerEmails) => partnerEmails.has(String(email || '').toLowerCase())
 
 // El horario/turno de cada persona sigue siendo un dato manual que tú
@@ -21,7 +21,7 @@ const isPartnerEmail = (email, partnerEmails) => partnerEmails.has(String(email 
 // como configuración editable aquí, pero separado del ROL (que ya no se
 // hardcodea). Si agregas a alguien nuevo al equipo, agrégalo aquí también
 // con su horario, y asegúrate de que su cuenta en profiles tenga role_id
-// correcto (admin/gerente_ventas/coord_operaciones/juridico/asesor).
+// correcto (admin/gerente_ventas/coord_operaciones/juridico/asesor/chofer).
 const HORARIOS_POR_EMAIL = {
   'carlos.nachon@emporioinmobiliario.mx': null,
   'ariannet81@gmail.com': 'guardia',
@@ -194,6 +194,7 @@ export default function Checador() {
     coord_operaciones: 'staff',
     juridico: 'staff',
     asesor: 'asesor',
+    chofer: 'chofer',
   }
 
   const persona = perfilDb && perfilDb.active !== false && !esPartner && ROLES_EQUIPO_INTERNO.includes(perfilDb.role_id) ? {
@@ -222,6 +223,7 @@ export default function Checador() {
     'ivanmtzco@gmail.com': 'Iván',
     'nextelmoto2@gmail.com': 'Andrea',
     'islas.amanda111@gmail.com': 'Amanda',
+    'ismaelorortiz@gmail.com': 'Ismael Ortiz',
   }
 
   // Lista de personas del equipo interno (para el selector de "a quién le presto la llave").
@@ -313,6 +315,7 @@ export default function Checador() {
   const puedeChecar = () => {
     if (!persona) return false
     if (persona.rol === 'staff') return true
+    if (persona.rol === 'chofer') return true
     if (persona.rol === 'gerente') return esJuntaHoy()
     if (persona.rol === 'asesor') return tieneGuardiaHoy() || esJuntaHoy()
     return false
@@ -326,6 +329,7 @@ export default function Checador() {
     if (!persona) return null
     const esSabado = new Date().getDay() === 6
     if (persona.rol === 'staff') return esSabado ? '10:00' : '09:00'
+    if (persona.rol === 'chofer') return esSabado ? '10:00' : '09:00'
     if (persona.rol === 'gerente') return '10:00'
     if (persona.rol === 'asesor') return esJuntaHoy() && !tieneGuardiaHoy() ? '10:00' : '09:00'
     return '09:00'
@@ -359,10 +363,12 @@ export default function Checador() {
 
     // Validar ubicación
     const dist = distanciaMetros(lat, lng, OFICINA_LAT, OFICINA_LNG)
-    if (dist > RADIO_METROS) {
-      showToast(`📍 Estás a ${Math.round(dist)}m de la oficina. No puedes checar desde aquí.`, false)
-      setGuardando(false)
-      return
+    if (persona.rol !== 'chofer') {
+      if (dist > RADIO_METROS) {
+        showToast(`📍 Estás a ${Math.round(dist)}m de la oficina. No puedes checar desde aquí.`, false)
+        setGuardando(false)
+        return
+      }
     }
 
     // Detectar si llega tarde
@@ -800,13 +806,13 @@ export default function Checador() {
                       </div>
                     )
                   })()}
-                  {(tieneGuardiaHoy() || persona.rol === 'staff') && !yaEntro && (
+                  {(tieneGuardiaHoy() || persona.rol === 'staff' || persona.rol === 'chofer') && !yaEntro && (
                     <button onClick={() => checar('entrada')} disabled={guardando}
                       style={{ width: '100%', padding: 18, borderRadius: 14, border: 'none', background: '#065f46', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer' }}>
                       🟢 Registrar Entrada
                     </button>
                   )}
-                  {(tieneGuardiaHoy() || persona.rol === 'staff') && yaEntro && !yaSalio && (
+                  {(tieneGuardiaHoy() || persona.rol === 'staff' || persona.rol === 'chofer') && yaEntro && !yaSalio && (
                     <button onClick={() => checar('salida')} disabled={guardando}
                       style={{ width: '100%', padding: 18, borderRadius: 14, border: 'none', background: '#b91c3c', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer' }}>
                       🔴 Registrar Salida
