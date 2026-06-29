@@ -13,6 +13,8 @@ const ROLES_ADMIN_DASHBOARD = ['admin', 'gerente_ventas']
 // Roles que aparecen en el ranking/listado del dashboard (los que registran KPIs)
 const ROLES_EN_RANKING = ['asesor', 'gerente_ventas']
 
+const isPartnerEmail = (email, partnerEmails) => partnerEmails.has(String(email || '').toLowerCase())
+
 // Nombres reales como respaldo mientras profiles.full_name esté vacío para alguien
 const NOMBRES_CONOCIDOS = {
   'ariannet81@gmail.com': 'Ariannet',
@@ -78,16 +80,19 @@ export default function KPIsDashboard() {
       .then(({ data }) => { setPerfilDb(data); setPerfilCargado(true) })
   }, [session])
 
-  const esAdmin = ROLES_ADMIN_DASHBOARD.includes(perfilDb?.role_id)
+  const esAdmin = perfilDb?.active !== false && ROLES_ADMIN_DASHBOARD.includes(perfilDb?.role_id)
 
   // Lista de asesores (para el ranking) + su mapa nombre->correo,
   // cargados de profiles en vez de ASESORES/ASESORES_EMAILS hardcodeados.
   const [ASESORES, setASESORES] = useState([])
   const [ASESORES_EMAILS, setASESORES_EMAILS] = useState({})
   useEffect(() => {
-    supabase.from('profiles').select('email, full_name, role_id').eq('active', true)
-      .then(({ data }) => {
-        const enRanking = (data || []).filter(p => ROLES_EN_RANKING.includes(p.role_id))
+    Promise.all([
+      supabase.from('profiles').select('email, full_name, role_id').eq('active', true),
+      supabase.from('partner_users').select('email'),
+    ]).then(([profilesRes, partnersRes]) => {
+        const partnerEmails = new Set((partnersRes.data || []).map(p => String(p.email || '').toLowerCase()))
+        const enRanking = (profilesRes.data || []).filter(p => ROLES_EN_RANKING.includes(p.role_id) && !isPartnerEmail(p.email, partnerEmails))
         const mapa = {}
         const nombres = enRanking.map(p => {
           const n = p.full_name || NOMBRES_CONOCIDOS[p.email] || p.email

@@ -13,6 +13,8 @@ const supabase = createClient(
 // su rol en profiles, no tocar este código.
 const ROLES_CON_ACCESO_ADMIN_CHECADOR = ['admin', 'gerente_ventas']
 const ROLES_QUE_PUEDEN_PRESTAR_LLAVES = ['admin', 'gerente_ventas', 'coord_operaciones']
+const ROLES_EQUIPO_INTERNO = ['admin', 'gerente_ventas', 'coord_operaciones', 'juridico', 'asesor']
+const isPartnerEmail = (email, partnerEmails) => partnerEmails.has(String(email || '').toLowerCase())
 
 // El horario/turno de cada persona sigue siendo un dato manual que tú
 // asignas (no todos los asesores tienen el mismo turno) — esto se mantiene
@@ -169,11 +171,18 @@ export default function Checador() {
   // Cargamos el perfil real (con su role_id de la tabla roles) en vez de
   // sacarlo de una lista hardcodeada. Mientras carga, persona es null.
   const [perfilDb, setPerfilDb] = useState(null)
+  const [esPartner, setEsPartner] = useState(false)
   const [perfilCargado, setPerfilCargado] = useState(false)
   useEffect(() => {
     if (!session) { setPerfilCargado(true); return }
-    supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
-      .then(({ data }) => { setPerfilDb(data); setPerfilCargado(true) })
+    Promise.all([
+      supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
+      supabase.from('partner_users').select('id').eq('auth_user_id', session.user.id).maybeSingle(),
+    ]).then(([profileRes, partnerRes]) => {
+      setPerfilDb(profileRes.data)
+      setEsPartner(!!partnerRes.data)
+      setPerfilCargado(true)
+    })
   }, [session])
 
   // Traducimos el role_id nuevo al "rol de comportamiento" viejo que usa
@@ -187,9 +196,9 @@ export default function Checador() {
     asesor: 'asesor',
   }
 
-  const persona = perfilDb ? {
+  const persona = perfilDb && perfilDb.active !== false && !esPartner && ROLES_EQUIPO_INTERNO.includes(perfilDb.role_id) ? {
     nombre: (perfilDb.full_name || perfilDb.email || '').split('@')[0] || perfilDb.email,
-    rol: ROL_ID_A_COMPORTAMIENTO[perfilDb.role_id] || 'asesor',
+    rol: ROL_ID_A_COMPORTAMIENTO[perfilDb.role_id],
   } : null
 
   const esAdmin = ROLES_CON_ACCESO_ADMIN_CHECADOR.includes(perfilDb?.role_id)
@@ -215,25 +224,21 @@ export default function Checador() {
     'islas.amanda111@gmail.com': 'Amanda',
   }
 
-  // Roles que SÍ son parte del equipo interno (los únicos que deben
-  // aparecer en "a quién le presto la llave"). Los externos (propietario,
-  // inquilino, condómino) nunca deben salir en esta lista, sin importar
-  // si el join con `roles` funciona o no — por eso filtramos por una
-  // lista explícita en vez de depender de roles.es_externo.
-  const ROLES_EQUIPO_INTERNO = ['admin', 'gerente_ventas', 'coord_operaciones', 'juridico', 'asesor']
-
   // Lista de personas del equipo interno (para el selector de "a quién le presto la llave").
   // Antes salía de Object.keys(PERSONAL); ahora se carga de profiles, excluyendo
   // a los roles externos (propietario/inquilino/condómino) que no usan este módulo.
   const [listaPersonas, setListaPersonas] = useState([])
   useEffect(() => {
-    supabase.from('profiles').select('email, full_name, role_id').eq('active', true)
-      .then(({ data }) => {
-        const internos = (data || []).filter(p => ROLES_EQUIPO_INTERNO.includes(p.role_id))
+    Promise.all([
+      supabase.from('profiles').select('email, full_name, role_id').eq('active', true),
+      supabase.from('partner_users').select('email'),
+    ]).then(([profilesRes, partnersRes]) => {
+        const partnerEmails = new Set((partnersRes.data || []).map(p => String(p.email || '').toLowerCase()))
+        const internos = (profilesRes.data || []).filter(p => ROLES_EQUIPO_INTERNO.includes(p.role_id) && !isPartnerEmail(p.email, partnerEmails))
         setListaPersonas(internos.map(p => ({
           email: p.email,
           nombre: p.full_name || NOMBRES_CONOCIDOS[p.email] || p.email.split('@')[0],
-          rol: ROL_ID_A_COMPORTAMIENTO[p.role_id] || 'asesor',
+          rol: ROL_ID_A_COMPORTAMIENTO[p.role_id],
         })))
       })
   }, [])
@@ -280,14 +285,22 @@ export default function Checador() {
   const loadChecadasAdmin = async () => {
     const hoy = getFechaMexico()
     const inicioMes = hoy.substring(0, 7) + '-01'
-    const { data } = await supabase.from('checadas').select('*').gte('fecha', inicioMes).order('timestamp', { ascending: false })
-    setChecadasAdmin(data || [])
+    const [{ data }, { data: partners }] = await Promise.all([
+      supabase.from('checadas').select('*').gte('fecha', inicioMes).order('timestamp', { ascending: false }),
+      supabase.from('partner_users').select('email'),
+    ])
+    const partnerEmails = new Set((partners || []).map(p => String(p.email || '').toLowerCase()))
+    setChecadasAdmin((data || []).filter(c => !isPartnerEmail(c.email, partnerEmails)))
   }
 
   const loadGuardiasAdmin = async () => {
     const hoy = getFechaMexico()
-    const { data } = await supabase.from('guardias').select('*').gte('fecha_guardia', hoy).order('fecha_guardia', { ascending: true })
-    setGuardiasAdmin(data || [])
+    const [{ data }, { data: partners }] = await Promise.all([
+      supabase.from('guardias').select('*').gte('fecha_guardia', hoy).order('fecha_guardia', { ascending: true }),
+      supabase.from('partner_users').select('email'),
+    ])
+    const partnerEmails = new Set((partners || []).map(p => String(p.email || '').toLowerCase()))
+    setGuardiasAdmin((data || []).filter(g => !isPartnerEmail(g.email, partnerEmails)))
   }
 
   const tieneGuardiaHoy = () => {

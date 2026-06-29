@@ -16,6 +16,8 @@ const ROLES_QUE_REGISTRAN_KPIS = ['asesor', 'gerente_ventas']
 // "Ver Dashboard"). Antes era una lista de correos sueltos.
 const ROLES_ADMIN_KPIS = ['admin', 'gerente_ventas']
 
+const isPartnerEmail = (email, partnerEmails) => partnerEmails.has(String(email || '').toLowerCase())
+
 // Nombres reales como respaldo mientras profiles.full_name esté vacío
 // para alguien (lo ideal es llenarlo en la base de datos directamente).
 const NOMBRES_CONOCIDOS = {
@@ -71,26 +73,36 @@ export default function KPIs() {
 
   // Perfil real, cargado de profiles en vez de la lista hardcodeada ASESORES.
   const [perfilDb, setPerfilDb] = useState(null)
+  const [esPartner, setEsPartner] = useState(false)
   const [perfilCargado, setPerfilCargado] = useState(false)
   useEffect(() => {
     if (!session) { setPerfilCargado(true); return }
-    supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
-      .then(({ data }) => { setPerfilDb(data); setPerfilCargado(true) })
+    Promise.all([
+      supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
+      supabase.from('partner_users').select('id').eq('auth_user_id', session.user.id).maybeSingle(),
+    ]).then(([profileRes, partnerRes]) => {
+      setPerfilDb(profileRes.data)
+      setEsPartner(!!partnerRes.data)
+      setPerfilCargado(true)
+    })
   }, [session])
 
-  const nombre = perfilDb && ROLES_QUE_REGISTRAN_KPIS.includes(perfilDb.role_id)
+  const nombre = perfilDb && perfilDb.active !== false && !esPartner && ROLES_QUE_REGISTRAN_KPIS.includes(perfilDb.role_id)
     ? (perfilDb.full_name || NOMBRES_CONOCIDOS[perfilDb.email] || perfilDb.email)
     : null
-  const esAdmin = ROLES_ADMIN_KPIS.includes(perfilDb?.role_id)
+  const esAdmin = perfilDb?.active !== false && !esPartner && ROLES_ADMIN_KPIS.includes(perfilDb?.role_id)
   const esAsesor = !!nombre
 
   // Lista de nombres de todos los que registran KPIs (para el ranking),
   // cargada de profiles en vez de NOMBRES_LISTA hardcodeada.
   const [listaAsesores, setListaAsesores] = useState([])
   useEffect(() => {
-    supabase.from('profiles').select('email, full_name, role_id').eq('active', true)
-      .then(({ data }) => {
-        const asesores = (data || []).filter(p => ROLES_QUE_REGISTRAN_KPIS.includes(p.role_id))
+    Promise.all([
+      supabase.from('profiles').select('email, full_name, role_id').eq('active', true),
+      supabase.from('partner_users').select('email'),
+    ]).then(([profilesRes, partnersRes]) => {
+        const partnerEmails = new Set((partnersRes.data || []).map(p => String(p.email || '').toLowerCase()))
+        const asesores = (profilesRes.data || []).filter(p => ROLES_QUE_REGISTRAN_KPIS.includes(p.role_id) && !isPartnerEmail(p.email, partnerEmails))
         setListaAsesores(asesores.map(p => p.full_name || NOMBRES_CONOCIDOS[p.email] || p.email))
       })
   }, [])

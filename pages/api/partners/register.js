@@ -127,6 +127,15 @@ export default async function handler(req, res) {
       })
     if (userInsert.error) throw userInsert.error
 
+    const profileUpdate = await supabase
+      .from('profiles')
+      .update({
+        full_name: v.nombre_contacto || v.nombre_comercial,
+        active: false,
+      })
+      .eq('id', created.data.user.id)
+    if (profileUpdate.error) console.error('No se pudo aislar profile partner:', profileUpdate.error.message)
+
     try {
       await notifyPartnerRequest({ agencyId: agencyInsert.data.id, values: v, email })
     } catch (notifyError) {
