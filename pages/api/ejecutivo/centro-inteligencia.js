@@ -13,6 +13,7 @@ import {
   resumirPolizaCentro,
   unidadDesdeLecturaBi,
 } from '../../../lib/ejecutivo/centroInteligencia';
+import { construirCentroExcepciones } from '../../../lib/ejecutivo/excepcionesCentro';
 import {
   cargarMantenimientoPeriodo,
   cargarPolizaPeriodo,
@@ -141,6 +142,151 @@ async function cargarCajaPeriodo(periodo, metrics) {
   };
 }
 
+async function cargarDatosOperativos(metrics) {
+  const measure = metrics?.measure?.bind(metrics) || ((label, promiseFactory) => promiseFactory());
+  const fuentesConError = [];
+  const safe = async (label, promiseFactory) => {
+    try {
+      const { data, error } = await measure(label, promiseFactory);
+      if (error) {
+        fuentesConError.push({ fuente: label, error: error.message });
+        return [];
+      }
+      return data || [];
+    } catch (error) {
+      fuentesConError.push({ fuente: label, error: error.message });
+      return [];
+    }
+  };
+
+  const hoy = new Date();
+  const hace90 = new Date(hoy);
+  hace90.setDate(hoy.getDate() - 90);
+  const hace90Iso = hace90.toISOString();
+  const en45 = new Date(hoy);
+  en45.setDate(hoy.getDate() + 45);
+  const en45Date = en45.toISOString().slice(0, 10);
+
+  const [
+    pagos,
+    contratos,
+    mantenimientos,
+    citas,
+    clientes,
+    seguimientos,
+    propiedades,
+    visitasPropiedad,
+    contactosPropiedad,
+    enviosPropiedades,
+    recibos,
+    firmas,
+    citasFirma,
+    cierres,
+    cierrePagos,
+    solicitudes,
+    partnerOperations,
+  ] = await Promise.all([
+    safe('operativo.payments', () => supabase
+      .from('payments')
+      .select('id, tenant_name, property_name, amount, due_date, status, created_at')
+      .in('status', ['pendiente', 'atrasado'])
+      .order('due_date', { ascending: true })),
+    safe('operativo.contracts', () => supabase
+      .from('contracts')
+      .select('id, tenant_name, property_name, owner_name, end_date, status')
+      .eq('status', 'activo')
+      .lte('end_date', en45Date)
+      .order('end_date', { ascending: true })),
+    safe('operativo.maintenance_tickets', () => supabase
+      .from('maintenance_tickets')
+      .select('id, property_name, tenant_name, title, priority, status, created_at, updated_at')
+      .not('status', 'in', '("cerrado","cancelado","resuelto")')
+      .order('updated_at', { ascending: true })),
+    safe('operativo.citas', () => supabase
+      .from('citas')
+      .select('id, cliente_id, propiedad_id, fecha_hora, estado, asesor_id, clientes(nombre), profiles:asesor_id(full_name, email)')
+      .gte('fecha_hora', hace90Iso)
+      .order('fecha_hora', { ascending: true })),
+    safe('operativo.clientes', () => supabase
+      .from('clientes')
+      .select('id, nombre, etapa_interes, asesor_id, created_at, updated_at, profiles:asesor_id(full_name, email)')
+      .not('etapa_interes', 'in', '("perdido","cerrado")')
+      .order('updated_at', { ascending: true })),
+    safe('operativo.seguimientos_cliente', () => supabase
+      .from('seguimientos_cliente')
+      .select('id, cliente_id, asesor_id, created_at')
+      .gte('created_at', hace90Iso)
+      .order('created_at', { ascending: false })),
+    safe('operativo.propiedades', () => supabase
+      .from('propiedades')
+      .select('id, titulo, status, fotos, created_at, updated_at, apartado_fecha, apartado_monto, apartado_vigencia_hasta')
+      .in('status', ['published', 'reserved'])
+      .order('updated_at', { ascending: true })),
+    safe('operativo.visitas_propiedad', () => supabase
+      .from('visitas_propiedad')
+      .select('id, propiedad_id, created_at')
+      .gte('created_at', hace90Iso)),
+    safe('operativo.solicitudes_contacto_propiedad', () => supabase
+      .from('solicitudes_contacto_propiedad')
+      .select('id, propiedad_id, created_at')
+      .gte('created_at', hace90Iso)),
+    safe('operativo.envios_propiedades', () => supabase
+      .from('envios_propiedades')
+      .select('propiedad_id, envios(created_at)')),
+    safe('operativo.recibos_apartado', () => supabase
+      .from('recibos_apartado')
+      .select('id, folio, tipo, cliente_nombre, inmueble, propiedad_id, firma_id, estatus, monto, monto_total_acordado, apartado_vigencia_hasta, fecha_limite_firma, created_at, updated_at, recibos_abonos(id, monto, fecha, created_at)')
+      .neq('estatus', 'cancelado')
+      .order('created_at', { ascending: false })),
+    safe('operativo.firmas', () => supabase
+      .from('firmas')
+      .select('id, titulo, tipo, nombre_comprador, propiedad_id, recibo_id, status, etapa_actual, created_at, updated_at, firma_etapas(id, orden, clave, nombre, status, responsable, updated_at)')
+      .in('status', ['activo', 'completado'])
+      .order('updated_at', { ascending: true })),
+    safe('operativo.firmas_citas', () => supabase
+      .from('firmas_citas')
+      .select('id, firma_id, titulo, fecha, hora')
+      .order('fecha', { ascending: true })),
+    safe('operativo.cierres', () => supabase
+      .from('cierres')
+      .select('id, propiedad, operacion, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, firma_id, propiedad_id')
+      .order('fecha_cierre', { ascending: false })),
+    safe('operativo.cierre_pagos', () => supabase
+      .from('cierre_pagos')
+      .select('id, cierre_id, concepto, monto, fecha, notas')
+      .order('fecha', { ascending: false })),
+    safe('operativo.solicitudes_inquilino', () => supabase
+      .from('solicitudes_inquilino')
+      .select('id, nombre_completo, razon_social, status, created_at, updated_at, ia_revision_manual, ia_analisis_documental')
+      .order('updated_at', { ascending: true })),
+    safe('operativo.partner_operations', () => supabase
+      .from('partner_operations')
+      .select('id, folio, status_partner, nombre_propietario, nombre_inquilino, direccion_inmueble, monto_renta, commission_estimated, commission_generated, commission_paid, solicitud_inquilino_id, propietario_id, poliza_expediente_id, created_at, updated_at')
+      .order('updated_at', { ascending: true })),
+  ]);
+
+  return {
+    fuentesConError,
+    pagos,
+    contratos,
+    mantenimientos,
+    citas,
+    clientes,
+    seguimientos,
+    propiedades,
+    visitasPropiedad,
+    contactosPropiedad,
+    enviosPropiedades,
+    recibos,
+    firmas,
+    citasFirma,
+    cierres,
+    cierrePagos,
+    solicitudes,
+    partnerOperations,
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Método no permitido' });
 
@@ -160,12 +306,13 @@ export default async function handler(req, res) {
 
   try {
     const metrics = createQueryMetrics();
-    const [datosCierres, datosAdmin, datosPoliza, datosMantenimiento, datosCaja] = await Promise.all([
+    const [datosCierres, datosAdmin, datosPoliza, datosMantenimiento, datosCaja, datosOperativos] = await Promise.all([
       cargarCierres(periodo, metrics),
       cargarAdministracion(periodo, metrics),
       cargarPolizaPeriodo(supabase, periodo, metrics),
       cargarMantenimientoPeriodo(supabase, periodo, metrics),
       cargarCajaPeriodo(periodo, metrics),
+      cargarDatosOperativos(metrics),
     ]);
 
     const resumenCierres = resumirCierres(datosCierres);
@@ -211,6 +358,12 @@ export default async function handler(req, res) {
     const centro = {
       ...centroBase,
       caja_vs_resultado: diagnosticoCaja,
+      excepciones: construirCentroExcepciones({
+        ahora: new Date(),
+        datos: datosOperativos,
+        resumenCentro: centroBase,
+      }),
+      fuentes_excepciones_con_error: datosOperativos.fuentesConError || [],
     };
 
     return res.status(200).json({

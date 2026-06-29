@@ -250,6 +250,89 @@ const QualityBar = ({ value }) => (
   </div>
 );
 
+const priorityStyle = {
+  P0: { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca', label: 'P0' },
+  P1: { bg: '#fffbeb', color: '#92400e', border: '#fde68a', label: 'P1' },
+  P2: { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe', label: 'P2' },
+};
+
+const PriorityBadge = ({ value }) => {
+  const info = priorityStyle[value] || priorityStyle.P2;
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 999,
+      padding: '6px 10px',
+      minWidth: 42,
+      fontSize: 12,
+      fontWeight: 950,
+      background: info.bg,
+      color: info.color,
+      border: `1px solid ${info.border}`,
+    }}>
+      {info.label}
+    </span>
+  );
+};
+
+const ExceptionRow = ({ item, compact = false }) => (
+  <div style={{
+    display: 'grid',
+    gridTemplateColumns: compact ? 'auto 1fr' : 'auto 1fr auto',
+    gap: 14,
+    alignItems: 'center',
+    border: '1px solid #e5e7eb',
+    borderRadius: 18,
+    padding: 15,
+    background: '#fff',
+  }}>
+    <PriorityBadge value={item.prioridad || item.nivel} />
+    <div>
+      <p style={{ margin: 0, fontSize: 16, fontWeight: 950, color: '#111827' }}>{item.titulo}</p>
+      <p style={{ margin: '5px 0 0', color: '#6b7280', fontSize: 13, lineHeight: 1.4 }}>{item.motivo}</p>
+      {!compact && (
+        <p style={{ margin: '6px 0 0', color: '#374151', fontSize: 13, lineHeight: 1.4 }}>
+          <strong>Recomendación:</strong> {item.recomendacion}
+        </p>
+      )}
+      <p style={{ margin: '7px 0 0', color: '#9ca3af', fontSize: 12, fontWeight: 850 }}>
+        {item.area} · {item.modulo} · Responsable: {item.responsable}
+        {item.origen_regla === 'adn_emporio' ? ' · ADN Emporio' : ' · Regla automática'}
+      </p>
+    </div>
+    {!compact && item.href && (
+      <a href={item.href} style={{ justifySelf: 'end', textDecoration: 'none', background: '#111827', color: '#fff', borderRadius: 999, padding: '9px 13px', fontSize: 12, fontWeight: 950, whiteSpace: 'nowrap' }}>
+        Abrir →
+      </a>
+    )}
+  </div>
+);
+
+const ExceptionSection = ({ title, subtitle, items = [], empty = 'Sin excepciones relevantes.' }) => (
+  <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 24, padding: 22, boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
+      <div>
+        <h2 style={{ margin: 0, fontSize: 24, letterSpacing: -0.5 }}>{title}</h2>
+        {subtitle && <p style={{ margin: '6px 0 0', color: '#6b7280', fontSize: 14, lineHeight: 1.35 }}>{subtitle}</p>}
+      </div>
+      <span style={{ background: '#f3f4f6', color: '#374151', borderRadius: 999, padding: '6px 10px', fontSize: 12, fontWeight: 950 }}>
+        {items.length}
+      </span>
+    </div>
+    {items.length === 0 ? (
+      <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', borderRadius: 16, padding: 15, fontWeight: 900 }}>
+        {empty}
+      </div>
+    ) : (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {items.map((item) => <ExceptionRow key={item.id} item={item} compact />)}
+      </div>
+    )}
+  </section>
+);
+
 export default function CentroInteligencia() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -308,11 +391,17 @@ export default function CentroInteligencia() {
   const unidades = data?.unidades || [];
   const acciones = data?.acciones_pendientes || [];
   const cajaVsResultado = data?.caja_vs_resultado || null;
+  const excepciones = data?.excepciones || {};
+  const atencionInmediata = excepciones?.atencion_inmediata || [];
+  const resumenExcepciones = excepciones?.resumen_excepciones || {};
 
   const fraseEjecutiva = useMemo(() => {
     if (!data) return 'Cargando lectura ejecutiva consolidada.';
-    return `Emporio ha generado ${fmtMoney(resumen.total_generado)}, ha cobrado ${fmtMoney(resumen.total_cobrado)} y mantiene ${fmtMoney(resumen.total_pendiente)} pendiente por cobrar en el periodo seleccionado.`;
-  }, [data, resumen.total_generado, resumen.total_cobrado, resumen.total_pendiente]);
+    const p0 = Number(resumenExcepciones.p0 || 0);
+    const p1 = Number(resumenExcepciones.p1 || 0);
+    if (p0 || p1) return `Hoy hay ${p0} prioridad${p0 === 1 ? '' : 'es'} crítica${p0 === 1 ? '' : 's'} y ${p1} asunto${p1 === 1 ? '' : 's'} importante${p1 === 1 ? '' : 's'} para dirigir antes de revisar números.`;
+    return 'No hay excepciones críticas detectadas; la salud financiera queda como contexto para dirección.';
+  }, [data, resumenExcepciones.p0, resumenExcepciones.p1]);
 
   if (authLoading) {
     return (
@@ -335,10 +424,13 @@ export default function CentroInteligencia() {
             <div style={{ display: 'inline-flex', background: '#111827', color: '#fff', borderRadius: 999, padding: '7px 13px', fontSize: 12, fontWeight: 950, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 14 }}>
               Centro de Inteligencia Empresarial
             </div>
-            <h1 style={{ margin: 0, fontSize: 46, letterSpacing: -1.6, lineHeight: 1.02 }}>Dirección General</h1>
+            <h1 style={{ margin: 0, fontSize: 46, letterSpacing: -1.6, lineHeight: 1.02 }}>¿Qué necesita mi atención hoy?</h1>
             <p style={{ margin: '14px 0 0', maxWidth: 920, color: '#4b5563', fontSize: 20, lineHeight: 1.35 }}>{fraseEjecutiva}</p>
             <p style={{ margin: '10px 0 0', color: '#9ca3af', fontSize: 14, fontWeight: 800 }}>
               Última actualización: {fmtDateTime(data?.generated_at)}
+            </p>
+            <p style={{ margin: '8px 0 0', color: '#6b7280', fontSize: 13, fontWeight: 800 }}>
+              V1: reglas automáticas explicables. Preparado para incorporar ADN Emporio después.
             </p>
           </div>
 
@@ -364,6 +456,74 @@ export default function CentroInteligencia() {
             {error}
           </div>
         )}
+
+        <section style={{ background: '#111827', color: '#fff', borderRadius: 28, padding: 24, marginBottom: 22, boxShadow: '0 18px 44px rgba(15, 23, 42, 0.20)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start', marginBottom: 18 }}>
+            <div>
+              <p style={{ margin: '0 0 8px', color: '#c4b5fd', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 1 }}>
+                Director de Operaciones Digital
+              </p>
+              <h2 style={{ margin: 0, fontSize: 31, letterSpacing: -0.8 }}>Atención inmediata</h2>
+              <p style={{ margin: '8px 0 0', color: '#cbd5e1', maxWidth: 860, lineHeight: 1.45 }}>
+                Solo aparecen excepciones que pueden perder dinero, retrasar una operación, afectar un cliente o perder una oportunidad.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+              <DarkMetric label="P0 críticas" value={resumenExcepciones.p0 || 0} tone="red" />
+              <DarkMetric label="P1 importantes" value={resumenExcepciones.p1 || 0} tone="default" />
+              <DarkMetric label="Total excepciones" value={resumenExcepciones.total || 0} tone="green" />
+            </div>
+          </div>
+          {atencionInmediata.length === 0 ? (
+            <div style={{ background: 'rgba(16,185,129,0.14)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: 18, padding: 18, color: '#bbf7d0', fontWeight: 950 }}>
+              Todo en orden por ahora. No hay excepciones críticas detectadas.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {atencionInmediata.map((item) => (
+                <div key={item.id} style={{ background: 'rgba(255,255,255,0.96)', borderRadius: 18 }}>
+                  <ExceptionRow item={item} />
+                </div>
+              ))}
+            </div>
+          )}
+          {(data?.fuentes_excepciones_con_error || []).length > 0 && (
+            <p style={{ margin: '12px 0 0', color: '#fcd34d', fontSize: 12, fontWeight: 850 }}>
+              Algunas fuentes no pudieron consultarse: {data.fuentes_excepciones_con_error.map((item) => item.fuente).join(', ')}.
+            </p>
+          )}
+        </section>
+
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16, marginBottom: 28 }}>
+          <ExceptionSection
+            title="Propiedades que necesitan atención"
+            subtitle="Inventario publicado/reservado con señales de bajo desempeño o riesgo operativo."
+            items={excepciones.propiedades_atencion || []}
+          />
+          <ExceptionSection
+            title="Operaciones que necesitan atención"
+            subtitle="Recibos, firmas, pólizas y partners que pueden detener una operación."
+            items={excepciones.operaciones_atencion || []}
+          />
+          <ExceptionSection
+            title="Clientes que necesitan atención"
+            subtitle="Citas vencidas, citas próximas y prospectos que pueden enfriarse."
+            items={excepciones.clientes_atencion || []}
+          />
+          <ExceptionSection
+            title="Dinero que necesita atención"
+            subtitle="Cobros, saldos, cierres y conciliaciones con posible impacto en caja."
+            items={excepciones.dinero_atencion || []}
+          />
+        </section>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '8px 0 16px' }}>
+          <div style={{ height: 1, background: '#d1d5db', flex: 1 }} />
+          <p style={{ margin: 0, color: '#6b7280', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 1 }}>
+            Salud de la empresa
+          </p>
+          <div style={{ height: 1, background: '#d1d5db', flex: 1 }} />
+        </div>
 
         <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 16, marginBottom: 22 }}>
           <KpiCard label="Total generado" value={fmtMoney(resumen.total_generado)} hint="Cierres + Administración + Póliza + Mantenimiento" />
