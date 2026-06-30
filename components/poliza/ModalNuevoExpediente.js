@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { C, st, fmt, fmtDate, calcularPagares, calcularFechaVigencia, numeroALetra } from '../../lib/polizaUtils'
 import { calcCommission, COMMISSION_RATE } from '../../lib/partners'
 
-export default function ModalNuevoExpediente({ propietarios, solicitudes, prefill, prefillPropietario, onClose, onSaved }) {
+export default function ModalNuevoExpediente({ propietarios = [], solicitudes = [], prefill, prefillPropietario, onClose, onSaved }) {
   const [propId, setPropId] = useState(prefillPropietario?.id || '')
   const [solId, setSolId] = useState(prefill?.id || '')
   const [form, setForm] = useState({

@@ -31,6 +31,7 @@ export default function PolizaPanel() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null)
   const [selected, setSelected] = useState(null)
+  const [nuevoPrefill, setNuevoPrefill] = useState({ solicitud: null, propietario: null })
   const [caja, setCaja] = useState([])
   const [compradores, setCompradores] = useState([])
   const [partnerOps, setPartnerOps] = useState([])
@@ -133,7 +134,7 @@ export default function PolizaPanel() {
     { id: 'kpis', label: '📊 KPIs' },
   ]
 
-  const closeModal = () => { setModal(null); setSelected(null) }
+  const closeModal = () => { setModal(null); setSelected(null); setNuevoPrefill({ solicitud: null, propietario: null }) }
   const closeAndReload = () => { closeModal(); loadTab(tab) }
 
   const cambiarTab = (tabId) => {
@@ -196,7 +197,7 @@ export default function PolizaPanel() {
           <>
             {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={e => { setSelected(e); setModal('expediente') }} onReload={loadAll} onRenovar={e => { setSelected(e); setModal('renovar') }} />}
             {tab === 'propietarios' && <TabPropietarios propietarios={propietariosFiltrados} onSelect={p => { setSelected(p); setModal('propietario') }} />}
-            {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected({ _solicitud: sol }); setModal('nuevo') }} />}
+            {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected(null); setNuevoPrefill({ solicitud: sol, propietario: null }); setModal('nuevo') }} />}
             {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} esAdmin={esAdmin} />}
             {tab === 'partners' && <TabPartners operaciones={partnerOps} agencias={partnerAgencies} onReload={loadAll} />}
             {tab === 'compraventa' && (
@@ -217,11 +218,11 @@ export default function PolizaPanel() {
 
       {modal === 'vendedor_cv' && selected && <ModalVendedorCV vendedor={selected} compradores={compradores} onClose={closeModal} onSaved={closeAndReload} />}
       {modal === 'comprador_cv' && selected && <ModalCompradorCV comprador={selected} onClose={closeModal} onSaved={closeAndReload} />}
-      {modal === 'nuevo' && <ModalNuevoExpediente propietarios={propietarios} solicitudes={solicitudes} prefill={selected?._solicitud} prefillPropietario={selected?._propietario} onClose={closeModal} onSaved={closeAndReload} />}
+      {modal === 'nuevo' && <ModalNuevoExpediente propietarios={propietarios} solicitudes={solicitudes} prefill={nuevoPrefill.solicitud} prefillPropietario={nuevoPrefill.propietario} onClose={closeModal} onSaved={closeAndReload} />}
       {modal === 'expediente' && selected && <ModalExpediente expediente={selected} propietarios={propietarios} solicitudes={solicitudes} onClose={closeModal} onSaved={closeAndReload} />}
-      {modal === 'propietario' && selected && <ModalPropietario propietario={selected} onClose={closeModal} onSaved={closeAndReload} onNuevoExp={() => { setSelected({ _propietario: selected }); setModal('nuevo') }} />}
+      {modal === 'propietario' && selected && <ModalPropietario propietario={selected} onClose={closeModal} onSaved={closeAndReload} onNuevoExp={() => { setNuevoPrefill({ solicitud: null, propietario: selected }); setSelected(null); setModal('nuevo') }} />}
       {modal === 'renovar' && selected && <ModalRenovacion expediente={selected} onClose={closeModal} onSaved={closeAndReload} />}
-      {modal === 'solicitud' && selected && <ModalSolicitud solicitud={selected} onClose={closeModal} onSaved={closeAndReload} onNuevoExp={() => { setSelected({ _solicitud: selected }); setModal('nuevo') }} />}
+      {modal === 'solicitud' && selected && <ModalSolicitud solicitud={selected} onClose={closeModal} onSaved={closeAndReload} onNuevoExp={() => { setNuevoPrefill({ solicitud: selected, propietario: null }); setSelected(null); setModal('nuevo') }} />}
     </div>
   )
 }
