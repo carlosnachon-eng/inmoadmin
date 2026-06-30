@@ -3,8 +3,8 @@ import { supabase } from '../../lib/supabase'
 import { C, st, fmt, fmtDate, calcularPagares, calcularFechaVigencia, numeroALetra } from '../../lib/polizaUtils'
 import { calcCommission, COMMISSION_RATE } from '../../lib/partners'
 
-export default function ModalNuevoExpediente({ propietarios, solicitudes, prefill, onClose, onSaved }) {
-  const [propId, setPropId] = useState('')
+export default function ModalNuevoExpediente({ propietarios, solicitudes, prefill, prefillPropietario, onClose, onSaved }) {
+  const [propId, setPropId] = useState(prefillPropietario?.id || '')
   const [solId, setSolId] = useState(prefill?.id || '')
   const [form, setForm] = useState({
     tipo_contrato: 'habitacional_sin_muebles',
@@ -39,14 +39,14 @@ export default function ModalNuevoExpediente({ propietarios, solicitudes, prefil
 
   useEffect(() => {
     if (!propId) return
-    const p = propietarios.find(x => x.id === propId)
+    const p = propietarios.find(x => x.id === propId) || (prefillPropietario?.id === propId ? prefillPropietario : null)
     if (!p) return
     setForm(f => ({ ...f, nombre_arrendador: p.nombre_propietario || '', domicilio_arrendador: p.domicilio_propietario || '', rfc_arrendador: p.rfc_propietario || '', telefono_arrendador: p.telefono_propietario || '', correo_arrendador: p.correo_propietario || '', clave_elector_arrendador: p.clave_elector_propietario || '', direccion_inmueble: p.direccion_inmueble || '', renta_mensual: p.monto_renta || '', forma_pago: p.forma_pago || 'efectivo', banco_receptor: p.banco || '', clabe_interbancaria: p.clabe || '', mascotas_permitidas: p.mascotas_permitidas || 'no', detalle_mascotas: p.detalle_mascotas || '', incluye_administracion: p.contrato_administracion || false }))
-  }, [propId])
+  }, [propId, propietarios, prefillPropietario])
 
   useEffect(() => {
     if (!solId) return
-    const sol = solicitudes.find(x => x.id === solId)
+    const sol = solicitudes.find(x => x.id === solId) || (prefill?.id === solId ? prefill : null)
     if (!sol) return
     const esMoral = sol.tipo_solicitante === 'moral' || !!sol.razon_social
     setForm(f => ({
@@ -64,7 +64,7 @@ export default function ModalNuevoExpediente({ propietarios, solicitudes, prefil
       giro_comercial: sol.giro_comercial || sol.giro_empresa || '',
       comprobante_ingresos: sol.tipo_ingresos || ''
     }))
-  }, [solId])
+  }, [solId, solicitudes, prefill])
 
   useEffect(() => {
     const r = parseFloat(form.renta_mensual)
