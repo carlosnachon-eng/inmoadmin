@@ -73,6 +73,15 @@ const diasFuera = (fecha_prestamo) => {
 
 const MOTIVOS_BAJA = ['Se rentó la propiedad', 'Se vendió la propiedad', 'Se devolvió al propietario', 'Se perdió', 'Se duplicó el registro', 'Otro']
 const MOTIVOS_SIN_RECEPTOR = ['Se perdió', 'Se duplicó el registro']
+const FORM_VEHICULO_INICIAL = {
+  vehiculo_id: '',
+  vehiculo_nombre_manual: '',
+  kilometraje: '',
+  gasolina: '',
+  condicion: 'bien',
+  observaciones: '',
+  foto_tablero: null,
+}
 
 function ReceptorForm({ form, setForm, listaPersonas }) {
   return (
@@ -124,6 +133,11 @@ export default function Checador() {
   const [guardando, setGuardando] = useState(false)
   const [tieneCita, setTieneCita] = useState(false)
   const [motivoTarde, setMotivoTarde] = useState('')
+  const [vehiculos, setVehiculos] = useState([])
+  const [movimientosVehiculo, setMovimientosVehiculo] = useState([])
+  const [formVehiculo, setFormVehiculo] = useState(FORM_VEHICULO_INICIAL)
+  const [guardandoVehiculo, setGuardandoVehiculo] = useState(false)
+  const [vehiculosDisponibles, setVehiculosDisponibles] = useState(true)
 
   // Llaves
   const [llaves, setLlaves] = useState([])
@@ -254,11 +268,15 @@ export default function Checador() {
       loadHistorial()
       loadGuardias()
     }
+    if (perfilDb?.role_id === 'chofer') {
+      loadVehiculos()
+      loadMovimientosVehiculo()
+    }
     if (esAdmin || esCarlos) {
       loadChecadasAdmin()
       loadGuardiasAdmin()
     }
-  }, [session])
+  }, [session, perfilDb?.role_id])
 
   // Cambiar tab default
   useEffect(() => {
@@ -282,6 +300,36 @@ export default function Checador() {
     const hoy = getFechaMexico()
     const { data } = await supabase.from('guardias').select('*').eq('email', email).gte('fecha_guardia', hoy)
     setGuardias(data || [])
+  }
+
+  const loadVehiculos = async () => {
+    const { data, error } = await supabase
+      .from('vehiculos')
+      .select('*')
+      .eq('activo', true)
+      .order('nombre', { ascending: true })
+    if (error) {
+      setVehiculosDisponibles(false)
+      return
+    }
+    setVehiculosDisponibles(true)
+    setVehiculos(data || [])
+  }
+
+  const loadMovimientosVehiculo = async () => {
+    if (!email) return
+    const { data, error } = await supabase
+      .from('checador_vehiculos_movimientos')
+      .select('*')
+      .eq('chofer_email', email)
+      .order('created_at', { ascending: false })
+      .limit(40)
+    if (error) {
+      setVehiculosDisponibles(false)
+      return
+    }
+    setVehiculosDisponibles(true)
+    setMovimientosVehiculo(data || [])
   }
 
   const loadChecadasAdmin = async () => {
@@ -335,6 +383,120 @@ export default function Checador() {
     return '09:00'
   }
 
+  const obtenerGPS = async () => {
+    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, enableHighAccuracy: true }))
+    return { lat: pos.coords.latitude, lng: pos.coords.longitude }
+  }
+
+  const vehiculoActual = movimientosVehiculo[0]?.tipo === 'regreso_vehiculo' ? null : (movimientosVehiculo[0] || null)
+
+  const getNombreVehiculoForm = () => {
+    if (formVehiculo.vehiculo_id === 'otro') return formVehiculo.vehiculo_nombre_manual.trim()
+    return vehiculos.find(v => v.id === formVehiculo.vehiculo_id)?.nombre || ''
+  }
+
+  const necesitaSeleccionarVehiculo = !vehiculoActual || formVehiculo.vehiculo_id || formVehiculo.vehiculo_nombre_manual
+
+  const validarFormVehiculo = ({ requiereVehiculo = true } = {}) => {
+    const km = parseInt(formVehiculo.kilometraje, 10)
+    const nombreVehiculo = getNombreVehiculoForm()
+    if (requiereVehiculo && !nombreVehiculo) {
+      showToast('Selecciona o escribe el vehículo', false)
+      return null
+    }
+    if (!Number.isFinite(km) || km <= 0) {
+      showToast('Captura el kilometraje', false)
+      return null
+    }
+    if (!formVehiculo.gasolina) {
+      showToast('Selecciona el nivel de gasolina', false)
+      return null
+    }
+    if (!formVehiculo.foto_tablero) {
+      showToast('Toma foto del tablero/marcador', false)
+      return null
+    }
+    return { km, nombreVehiculo }
+  }
+
+  const subirFotoVehiculo = async (file, tipo) => {
+    if (!file) return null
+    const ext = file.name.split('.').pop() || 'jpg'
+    const fileName = `${email || 'chofer'}_${tipo}_${Date.now()}.${ext}`.replace(/[^a-zA-Z0-9_.-]/g, '_')
+    const { error: uploadError } = await supabase.storage.from('vehiculos-fotos').upload(fileName, file, { upsert: true })
+    if (uploadError) throw uploadError
+    const { data: { publicUrl } } = supabase.storage.from('vehiculos-fotos').getPublicUrl(fileName)
+    return publicUrl
+  }
+
+  const registrarMovimientoVehiculo = async (tipo, { lat, lng, checadaId = null, requiereVehiculo = true } = {}) => {
+    const validado = validarFormVehiculo({ requiereVehiculo })
+    if (!validado) return { ok: false }
+
+    let fotoUrl = null
+    try {
+      fotoUrl = await subirFotoVehiculo(formVehiculo.foto_tablero, tipo)
+    } catch (e) {
+      showToast('Error subiendo foto: ' + e.message, false)
+      return { ok: false }
+    }
+
+    const esOtro = formVehiculo.vehiculo_id === 'otro'
+    const vehiculoSeleccionado = !esOtro ? vehiculos.find(v => v.id === formVehiculo.vehiculo_id) : null
+    const payload = {
+      chofer_email: email,
+      chofer_nombre: persona?.nombre || null,
+      tipo,
+      fecha: getFechaMexico(),
+      checada_id: checadaId ? String(checadaId) : null,
+      vehiculo_id: vehiculoSeleccionado?.id || null,
+      vehiculo_nombre: validado.nombreVehiculo || vehiculoActual?.vehiculo_nombre || 'Vehículo no especificado',
+      vehiculo_anterior_id: tipo === 'cambio_vehiculo' ? (vehiculoActual?.vehiculo_id || null) : null,
+      vehiculo_anterior_nombre: tipo === 'cambio_vehiculo' ? (vehiculoActual?.vehiculo_nombre || null) : null,
+      kilometraje: validado.km,
+      gasolina: formVehiculo.gasolina || null,
+      condicion: formVehiculo.condicion || null,
+      observaciones: formVehiculo.observaciones || null,
+      foto_tablero_url: fotoUrl,
+      lat,
+      lng,
+    }
+
+    if (tipo === 'regreso_vehiculo' && vehiculoActual) {
+      payload.vehiculo_id = vehiculoActual.vehiculo_id || payload.vehiculo_id
+      payload.vehiculo_nombre = vehiculoActual.vehiculo_nombre || payload.vehiculo_nombre
+      payload.vehiculo_anterior_id = vehiculoActual.vehiculo_id || null
+      payload.vehiculo_anterior_nombre = vehiculoActual.vehiculo_nombre || null
+    }
+
+    const { error } = await supabase.from('checador_vehiculos_movimientos').insert(payload)
+    if (error) {
+      showToast('Error vehículo: ' + error.message, false)
+      return { ok: false }
+    }
+
+    setFormVehiculo(FORM_VEHICULO_INICIAL)
+    await loadMovimientosVehiculo()
+    return { ok: true }
+  }
+
+  const cambiarVehiculo = async () => {
+    if (!persona || persona.rol !== 'chofer') return
+    setGuardandoVehiculo(true)
+    let lat = null, lng = null
+    try {
+      const gps = await obtenerGPS()
+      lat = gps.lat; lng = gps.lng
+    } catch (e) {
+      showToast('⚠️ Debes habilitar el GPS para cambiar vehículo', false)
+      setGuardandoVehiculo(false)
+      return
+    }
+    const res = await registrarMovimientoVehiculo('cambio_vehiculo', { lat, lng })
+    if (res.ok) showToast('🚗 Cambio de vehículo registrado')
+    setGuardandoVehiculo(false)
+  }
+
   const checar = async (tipo) => {
     if (!persona) return
     setGuardando(true)
@@ -380,12 +542,37 @@ export default function Checador() {
     const minutosActual = hAct * 60 + mAct
     const llegaTardeAhora = tipo !== 'salida' && minutosActual > limiteConTolerancia
 
-    await supabase.from('checadas').insert({
+    if (persona.rol === 'chofer') {
+      const requiereVehiculo = tipo === 'entrada' || !vehiculoActual || necesitaSeleccionarVehiculo
+      const validado = validarFormVehiculo({ requiereVehiculo })
+      if (!validado) {
+        setGuardando(false)
+        return
+      }
+    }
+
+    const { data: checadaRegistrada, error: errorChecada } = await supabase.from('checadas').insert({
       email, nombre: persona.nombre, tipo, fecha: hoy, lat, lng,
       tiene_cita: tipo === 'entrada' ? tieneCita : false,
       llego_tarde: llegaTardeAhora,
       motivo_tarde: llegaTardeAhora ? (tieneCita ? 'Cita con cliente' : motivoTarde) : null,
-    })
+    }).select('id').single()
+
+    if (errorChecada) {
+      showToast('Error: ' + errorChecada.message, false)
+      setGuardando(false)
+      return
+    }
+
+    if (persona.rol === 'chofer' && tipo !== 'junta') {
+      const tipoVehiculo = tipo === 'entrada' ? 'toma_vehiculo' : 'regreso_vehiculo'
+      const requiereVehiculo = tipo === 'entrada' || !vehiculoActual || necesitaSeleccionarVehiculo
+      const vehiculoRes = await registrarMovimientoVehiculo(tipoVehiculo, { lat, lng, checadaId: checadaRegistrada?.id, requiereVehiculo })
+      if (!vehiculoRes.ok) {
+        setGuardando(false)
+        return
+      }
+    }
 
     // Notificación en tiempo real si llegó tarde o tiene cita
     if ((llegaTardeAhora || tieneCita) && tipo !== 'salida') {
@@ -410,6 +597,7 @@ export default function Checador() {
     setGuardando(false)
     setMotivoTarde('')
     loadChecadasHoy(); loadHistorial()
+    if (persona.rol === 'chofer') loadMovimientosVehiculo()
     if (esAdmin || esCarlos) loadChecadasAdmin()
   }
 
@@ -743,6 +931,123 @@ export default function Checador() {
                   )}
                 </div>
               </div>
+
+              {persona.rol === 'chofer' && (
+                <div style={{ background: '#fff', borderRadius: 14, padding: 16, marginBottom: 14, border: '1px solid #e5e7eb' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 12, color: '#9ca3af', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5 }}>🚗 Control de vehículo</p>
+                      <p style={{ margin: '4px 0 0', fontSize: 13, color: '#374151', fontWeight: 700 }}>
+                        {vehiculoActual ? `Actual: ${vehiculoActual.vehiculo_nombre}` : 'Toma vehículo para iniciar ruta'}
+                      </p>
+                    </div>
+                    {vehiculoActual && (
+                      <span style={{ background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe', borderRadius: 999, padding: '5px 9px', fontSize: 11, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                        En ruta
+                      </span>
+                    )}
+                  </div>
+
+                  {!vehiculosDisponibles && (
+                    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: 10, marginBottom: 10 }}>
+                      <p style={{ margin: 0, color: '#991b1b', fontSize: 12, fontWeight: 700 }}>
+                        Falta crear la tabla/bucket de vehículos en Supabase. Ejecuta el SQL de control vehicular.
+                      </p>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {(!vehiculoActual || formVehiculo.vehiculo_id || formVehiculo.vehiculo_nombre_manual) && (
+                      <>
+                        <select value={formVehiculo.vehiculo_id} onChange={e => setFormVehiculo(f => ({ ...f, vehiculo_id: e.target.value, vehiculo_nombre_manual: e.target.value === 'otro' ? f.vehiculo_nombre_manual : '' }))}
+                          style={{ width: '100%', padding: '11px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
+                          <option value="">Selecciona vehículo...</option>
+                          {vehiculos.map(v => (
+                            <option key={v.id} value={v.id}>{v.nombre}{v.placas ? ` · ${v.placas}` : ''}</option>
+                          ))}
+                          <option value="otro">Otro vehículo / apoyo familiar</option>
+                        </select>
+                        {formVehiculo.vehiculo_id === 'otro' && (
+                          <input value={formVehiculo.vehiculo_nombre_manual} onChange={e => setFormVehiculo(f => ({ ...f, vehiculo_nombre_manual: e.target.value }))}
+                            placeholder="Ej: Auto Carlos, camioneta Karla, vehículo familiar..."
+                            style={{ width: '100%', padding: '11px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+                        )}
+                      </>
+                    )}
+
+                    {vehiculoActual && !formVehiculo.vehiculo_id && !formVehiculo.vehiculo_nombre_manual && (
+                      <button onClick={() => setFormVehiculo(f => ({ ...f, vehiculo_id: 'otro' }))}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e40af', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+                        Cambiar a otro vehículo
+                      </button>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <input value={formVehiculo.kilometraje} onChange={e => setFormVehiculo(f => ({ ...f, kilometraje: e.target.value.replace(/\D/g, '') }))}
+                        inputMode="numeric"
+                        placeholder={vehiculoActual && !formVehiculo.vehiculo_id ? 'Km final' : 'Km inicial'}
+                        style={{ width: '100%', padding: '11px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+                      <select value={formVehiculo.gasolina} onChange={e => setFormVehiculo(f => ({ ...f, gasolina: e.target.value }))}
+                        style={{ width: '100%', padding: '11px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
+                        <option value="">Gasolina/batería</option>
+                        <option value="vacio">Vacío</option>
+                        <option value="1/4">1/4</option>
+                        <option value="1/2">1/2</option>
+                        <option value="3/4">3/4</option>
+                        <option value="lleno">Lleno</option>
+                      </select>
+                    </div>
+
+                    <select value={formVehiculo.condicion} onChange={e => setFormVehiculo(f => ({ ...f, condicion: e.target.value }))}
+                      style={{ width: '100%', padding: '11px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
+                      <option value="bien">Sin detalles visibles</option>
+                      <option value="detalle_menor">Detalle menor</option>
+                      <option value="requiere_revision">Requiere revisión</option>
+                      <option value="incidencia">Incidencia</option>
+                    </select>
+
+                    <label style={{ display: 'block', border: `1.5px dashed ${formVehiculo.foto_tablero ? '#86efac' : '#cbd5e1'}`, background: formVehiculo.foto_tablero ? '#f0fdf4' : '#f8fafc', borderRadius: 12, padding: 12, cursor: 'pointer' }}>
+                      <input type="file" accept="image/*" capture="environment" onChange={e => setFormVehiculo(f => ({ ...f, foto_tablero: e.target.files?.[0] || null }))}
+                        style={{ display: 'none' }} />
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: formVehiculo.foto_tablero ? '#065f46' : '#475569' }}>
+                        📷 {formVehiculo.foto_tablero ? 'Foto del tablero lista' : 'Foto del tablero (km y gasolina/batería)'}
+                      </p>
+                      <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>
+                        Debe verse el kilometraje y el marcador del tanque o batería.
+                      </p>
+                    </label>
+
+                    <textarea value={formVehiculo.observaciones} onChange={e => setFormVehiculo(f => ({ ...f, observaciones: e.target.value }))}
+                      placeholder="Observaciones opcionales: destino, apoyo familiar, detalle del auto..."
+                      rows={2}
+                      style={{ width: '100%', padding: '11px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box', resize: 'vertical' }} />
+
+                    {vehiculoActual && (formVehiculo.vehiculo_id || formVehiculo.vehiculo_nombre_manual) && (
+                      <button onClick={cambiarVehiculo} disabled={guardandoVehiculo || guardando}
+                        style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: guardandoVehiculo ? '#e5e7eb' : '#1e40af', color: guardandoVehiculo ? '#9ca3af' : '#fff', fontSize: 14, fontWeight: 900, cursor: guardandoVehiculo ? 'not-allowed' : 'pointer' }}>
+                        🔁 Registrar cambio de vehículo
+                      </button>
+                    )}
+                  </div>
+
+                  {movimientosVehiculo.length > 0 && (
+                    <div style={{ marginTop: 14, borderTop: '1px solid #f3f4f6', paddingTop: 10 }}>
+                      <p style={{ margin: '0 0 8px', fontSize: 11, color: '#9ca3af', fontWeight: 800, textTransform: 'uppercase' }}>Últimos movimientos</p>
+                      {movimientosVehiculo.slice(0, 3).map(m => (
+                        <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '7px 0', borderBottom: '1px solid #f9fafb' }}>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: '#374151' }}>
+                              {m.tipo === 'regreso_vehiculo' ? '🏁 Devolución' : m.tipo === 'cambio_vehiculo' ? '🔁 Cambio' : '🚗 Toma'} · {m.vehiculo_nombre}
+                            </p>
+                            <p style={{ margin: '2px 0 0', fontSize: 11, color: '#9ca3af' }}>{fmt12(m.created_at)} · {m.gasolina || '—'}</p>
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 900, color: '#1a1a2e' }}>{Number(m.kilometraje || 0).toLocaleString('es-MX')} km</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {persona.rol === 'asesor' && !tieneGuardiaHoy() && !esJuntaHoy() && (
                 <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12, padding: 16, marginBottom: 14, textAlign: 'center' }}>
