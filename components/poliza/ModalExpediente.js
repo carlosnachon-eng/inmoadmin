@@ -70,6 +70,13 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
 
       const camposNumericos = ['cuota_mantenimiento', 'mora_diaria', 'monto_poliza', 'anticipo_poliza', 'deposito_garantia', 'renta_mensual', 'monto_adeudo']
       const cleanMerged = { ...merged }
+      ;[
+        'propietarios_inmuebles',
+        'partner_operations',
+        'partner_agencies',
+        'poliza_documentos',
+        'poliza_caja',
+      ].forEach(k => delete cleanMerged[k])
       camposNumericos.forEach(k => {
         if (cleanMerged[k] === '' || cleanMerged[k] === undefined) cleanMerged[k] = null
         else if (cleanMerged[k] !== null) cleanMerged[k] = num(cleanMerged[k])
