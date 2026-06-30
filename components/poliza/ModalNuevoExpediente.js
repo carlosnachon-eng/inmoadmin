@@ -260,7 +260,7 @@ export default function ModalNuevoExpediente({ propietarios = [], solicitudes = 
           <div style={{ marginBottom: 14 }}><label style={st.label}>Fecha de inicio</label><input type="date" defaultValue={form.fecha_inicio || ''} data-field='fecha_inicio' onChange={e => set('fecha_inicio', e.target.value)} style={st.input} /></div>
           <div>
             <label style={st.label}>Fecha de término (1 año)</label>
-            <input value={fechaTermino} readOnly style={{ ...st.input, color: C.muted, cursor: 'not-allowed' }} />
+            <input value={fechaVigenciaCalc ? fmtDate(fechaVigenciaCalc) : '—'} readOnly style={{ ...st.input, color: C.muted, cursor: 'not-allowed' }} />
           </div>
           <div style={{ marginBottom: 14 }}><label style={st.label}>Entrega de posesión</label><input type="date" defaultValue={form.fecha_entrega_posesion || ''} data-field='fecha_entrega_posesion' style={st.input} /></div>
         </div>
