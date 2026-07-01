@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   if (!supabase) return res.status(500).json({ error: 'Falta configuracion de Supabase' })
 
-  const { partner_agency_id, partner_operation_id, tipo, record_id } = req.body || {}
+  const { partner_agency_id, partner_operation_id, tipo, record_id, participant_id } = req.body || {}
   if (!partner_agency_id || !partner_operation_id || !tipo || !record_id) {
     return res.status(400).json({ error: 'Faltan parametros' })
   }
@@ -21,6 +21,39 @@ export default async function handler(req, res) {
     .maybeSingle()
   if (opError) return res.status(500).json({ error: opError.message })
   if (!op) return res.status(404).json({ error: 'Operacion no encontrada' })
+
+  if (participant_id) {
+    const role = tipo === 'inquilino' ? 'inquilino_adicional' : tipo === 'propietario' ? 'propietario_adicional' : null
+    const table = tipo === 'inquilino' ? 'solicitudes_inquilino' : tipo === 'propietario' ? 'propietarios_inmuebles' : null
+    if (!role || !table) return res.status(400).json({ error: 'Tipo invalido' })
+
+    const { error: participantError } = await supabase
+      .from('partner_participants')
+      .update({
+        status: 'recibido',
+        submission_record_id: record_id,
+        submission_table: table,
+        submitted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', participant_id)
+      .eq('partner_operation_id', partner_operation_id)
+      .eq('partner_agency_id', partner_agency_id)
+      .eq('role', role)
+    if (participantError) return res.status(500).json({ error: participantError.message })
+
+    const { error: opUpdateError } = await supabase
+      .from('partner_operations')
+      .update({
+        status_partner: 'en_revision',
+        observaciones_publicas: 'Documentacion adicional recibida. Emporio revisara la informacion.',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', partner_operation_id)
+    if (opUpdateError) return res.status(500).json({ error: opUpdateError.message })
+
+    return res.status(200).json({ ok: true })
+  }
 
   const update = {
     updated_at: new Date().toISOString(),

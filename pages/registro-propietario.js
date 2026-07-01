@@ -201,6 +201,7 @@ export default function RegistroPropietario() {
           body: JSON.stringify({
             partner_agency_id: router.query.partner,
             partner_operation_id: router.query.operacion,
+            participant_id: router.query.participante || null,
             tipo: 'propietario',
             record_id: id,
           }),

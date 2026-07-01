@@ -359,6 +359,7 @@ export default function SolicitudInquilino() {
           body: JSON.stringify({
             partner_agency_id: router.query.partner,
             partner_operation_id: router.query.operacion,
+            participant_id: router.query.participante || null,
             tipo: 'inquilino',
             record_id: data.id,
           }),

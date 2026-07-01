@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import PartnerLayout, { P, PartnerBadge, button } from '../../../components/partners/PartnerLayout'
-import { fmtMoney, getPartnerContext, PARTNER_STATUS, partnerOperationLinks } from '../../../lib/partners'
+import { fmtMoney, getPartnerContext, PARTNER_STATUS, partnerOperationLinks, partnerParticipantLink } from '../../../lib/partners'
 import { supabase } from '../../../lib/supabase'
 
 export default function PartnerOperacionDetalle() {
@@ -11,6 +11,9 @@ export default function PartnerOperacionDetalle() {
   const [ctx, setCtx] = useState(null)
   const [operation, setOperation] = useState(null)
   const [documents, setDocuments] = useState([])
+  const [participants, setParticipants] = useState([])
+  const [participantForm, setParticipantForm] = useState({ role: 'obligado_solidario', nombre: '', email: '', telefono: '' })
+  const [participantSaving, setParticipantSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -34,14 +37,18 @@ export default function PartnerOperacionDetalle() {
         if (!op) throw new Error('Operacion no encontrada')
         setOperation(op)
 
-        const { data: docs, error: docsError } = await supabase
-          .from('partner_documents')
-          .select('id, party, document_type, original_name, storage_path, status, is_final, visible_to_partner, created_at')
-          .eq('partner_operation_id', id)
-          .eq('partner_agency_id', nextCtx.agency.id)
-          .order('created_at', { ascending: false })
+        const [{ data: docs, error: docsError }, loadedParticipants] = await Promise.all([
+          supabase
+            .from('partner_documents')
+            .select('id, party, document_type, original_name, storage_path, status, is_final, visible_to_partner, created_at')
+            .eq('partner_operation_id', id)
+            .eq('partner_agency_id', nextCtx.agency.id)
+            .order('created_at', { ascending: false }),
+          loadParticipants(nextCtx.session?.access_token, id),
+        ])
         if (docsError) throw docsError
         setDocuments(docs || [])
+        setParticipants(loadedParticipants || [])
       } catch (e) {
         setError(e.message)
       } finally {
@@ -58,6 +65,47 @@ export default function PartnerOperacionDetalle() {
       return
     }
     window.open(data.signedUrl, '_blank')
+  }
+
+  const loadParticipants = async (token, operationId = id) => {
+    if (!token || !operationId) return []
+    try {
+      const res = await fetch(`/api/partners/participants?operation_id=${encodeURIComponent(operationId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (!res.ok) return []
+      return data.participants || []
+    } catch (_e) {
+      return []
+    }
+  }
+
+  const addParticipant = async () => {
+    if (!participantForm.nombre) {
+      alert('Captura al menos el nombre del participante.')
+      return
+    }
+    setParticipantSaving(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/partners/participants', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({ operation_id: operation.id, ...participantForm }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'No se pudo agregar participante')
+      setParticipants(prev => [...prev, data.participant])
+      setParticipantForm({ role: 'obligado_solidario', nombre: '', email: '', telefono: '' })
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setParticipantSaving(false)
+    }
   }
 
   if (loading || !ctx) return null
@@ -98,6 +146,43 @@ export default function PartnerOperacionDetalle() {
             </p>
             <LinkBox label="Solicitud para inquilino" value={links.inquilino} onCopy={() => copy(links.inquilino)} />
             <LinkBox label="Registro para propietario" value={links.propietario} onCopy={() => copy(links.propietario)} />
+          </div>
+
+          <div style={{ background: '#fff', border: `1px solid ${P.line}`, borderRadius: 10, padding: 20 }}>
+            <h2 style={{ margin: '0 0 8px', color: P.ink, fontSize: 18 }}>Participantes adicionales</h2>
+            <p style={{ margin: '0 0 14px', color: P.muted, fontSize: 13, lineHeight: 1.5 }}>
+              Agrega otro propietario, otro titular de contrato u obligado solidario. Cada persona recibe su propia liga.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr 1fr auto', gap: 8, alignItems: 'center', marginBottom: 14 }}>
+              <select value={participantForm.role} onChange={e => setParticipantForm(f => ({ ...f, role: e.target.value }))} style={smallInput}>
+                <option value="obligado_solidario">Obligado solidario</option>
+                <option value="propietario_adicional">Propietario adicional</option>
+                <option value="inquilino_adicional">Inquilino adicional</option>
+              </select>
+              <input value={participantForm.nombre} onChange={e => setParticipantForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre" style={smallInput} />
+              <input value={participantForm.email} onChange={e => setParticipantForm(f => ({ ...f, email: e.target.value }))} placeholder="Correo" style={smallInput} />
+              <input value={participantForm.telefono} onChange={e => setParticipantForm(f => ({ ...f, telefono: e.target.value }))} placeholder="Telefono" style={smallInput} />
+              <button onClick={addParticipant} disabled={participantSaving} style={{ ...button, background: P.red, color: '#fff', padding: '9px 11px', fontSize: 12, opacity: participantSaving ? .6 : 1 }}>Agregar</button>
+            </div>
+
+            {participants.length === 0 ? (
+              <p style={{ margin: 0, color: P.muted, fontSize: 13 }}>Sin participantes adicionales.</p>
+            ) : participants.map(participant => {
+              const link = partnerParticipantLink(operation, ctx.agency, participant)
+              return (
+                <div key={participant.id} style={{ background: '#fafafa', border: `1px solid ${P.line}`, borderRadius: 9, padding: 12, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <div>
+                      <p style={{ margin: 0, color: P.text, fontSize: 13, fontWeight: 900 }}>{roleLabel(participant.role)} · {participant.nombre || 'Sin nombre'}</p>
+                      <p style={{ margin: '3px 0 0', color: P.muted, fontSize: 11 }}>{participant.email || '-'} · {participant.telefono || '-'} · {participant.status === 'recibido' ? 'Recibido' : 'Pendiente'}</p>
+                    </div>
+                    <button onClick={() => copy(link)} style={{ ...button, background: '#f4f4f5', color: P.text, padding: '7px 10px', fontSize: 12 }}>Copiar liga</button>
+                  </div>
+                  <p style={{ margin: '8px 0 0', color: P.muted, fontSize: 11, overflowWrap: 'anywhere' }}>{link}</p>
+                </div>
+              )
+            })}
           </div>
 
           <div style={{ background: '#fff', border: `1px solid ${P.line}`, borderRadius: 10, padding: 20 }}>
@@ -182,10 +267,29 @@ export default function PartnerOperacionDetalle() {
       <style jsx global>{`
         @media (max-width: 900px) {
           div[style*="grid-template-columns: 1.25fr"] { grid-template-columns: 1fr !important; }
+          div[style*="1fr 1.2fr"] { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </PartnerLayout>
   )
+}
+
+const smallInput = {
+  width: '100%',
+  border: `1px solid ${P.line}`,
+  borderRadius: 8,
+  padding: '9px 10px',
+  fontSize: 12,
+  boxSizing: 'border-box',
+  background: '#fff',
+}
+
+function roleLabel(role) {
+  return {
+    propietario_adicional: 'Propietario adicional',
+    inquilino_adicional: 'Inquilino adicional',
+    obligado_solidario: 'Obligado solidario',
+  }[role] || role
 }
 
 function DateCard({ label, value, empty }) {
