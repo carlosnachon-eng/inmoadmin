@@ -169,6 +169,7 @@ export default function Checador() {
   const [vistaAdmin, setVistaAdmin] = useState('hoy')
   const [checadasAdmin, setChecadasAdmin] = useState([])
   const [guardiasAdmin, setGuardiasAdmin] = useState([])
+  const [movimientosVehiculoAdmin, setMovimientosVehiculoAdmin] = useState([])
   const [showModalGuardia, setShowModalGuardia] = useState(false)
   const [formGuardia, setFormGuardia] = useState({ email: '', fecha: '' })
 
@@ -275,6 +276,7 @@ export default function Checador() {
     if (esAdmin || esCarlos) {
       loadChecadasAdmin()
       loadGuardiasAdmin()
+      loadMovimientosVehiculoAdmin()
     }
   }, [session, perfilDb?.role_id])
 
@@ -351,6 +353,21 @@ export default function Checador() {
     ])
     const partnerEmails = new Set((partners || []).map(p => String(p.email || '').toLowerCase()))
     setGuardiasAdmin((data || []).filter(g => !isPartnerEmail(g.email, partnerEmails)))
+  }
+
+  const loadMovimientosVehiculoAdmin = async () => {
+    const { data, error } = await supabase
+      .from('checador_vehiculos_movimientos')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (error) {
+      setVehiculosDisponibles(false)
+      setMovimientosVehiculoAdmin([])
+      return
+    }
+    setVehiculosDisponibles(true)
+    setMovimientosVehiculoAdmin(data || [])
   }
 
   const tieneGuardiaHoy = () => {
@@ -1379,7 +1396,7 @@ export default function Checador() {
           {tab === 'admin' && (esAdmin || esCarlos) && (
             <div>
               <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-                {[['hoy', '📍 Hoy'], ['semana', '📅 Semana'], ['guardias', '🗓️ Guardias']].map(([id, label]) => (
+                {[['hoy', '📍 Hoy'], ['semana', '📅 Semana'], ['vehiculos', '🚗 Vehículos'], ['guardias', '🗓️ Guardias']].map(([id, label]) => (
                   <button key={id} onClick={() => setVistaAdmin(id)}
                     style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${vistaAdmin === id ? '#b91c3c' : '#e5e7eb'}`, background: vistaAdmin === id ? '#fff0f3' : '#fff', color: vistaAdmin === id ? '#b91c3c' : '#9ca3af', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                     {label}
@@ -1445,6 +1462,91 @@ export default function Checador() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+              )}
+
+              {vistaAdmin === 'vehiculos' && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700 }}>Últimos movimientos de vehículos</p>
+                    <button onClick={loadMovimientosVehiculoAdmin}
+                      style={{ padding: '7px 11px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#64748b', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                      Actualizar
+                    </button>
+                  </div>
+                  {!vehiculosDisponibles && (
+                    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+                      <p style={{ margin: 0, color: '#991b1b', fontSize: 12, fontWeight: 700 }}>No se pudo cargar el control vehicular.</p>
+                    </div>
+                  )}
+                  {movimientosVehiculoAdmin.length === 0 && (
+                    <p style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>Sin movimientos de vehículos registrados</p>
+                  )}
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {movimientosVehiculoAdmin.map(m => {
+                      const tipoLabel = m.tipo === 'regreso_vehiculo' ? 'Devolución' : m.tipo === 'cambio_vehiculo' ? 'Cambio' : 'Toma'
+                      const tipoColor = m.tipo === 'regreso_vehiculo' ? '#b91c3c' : m.tipo === 'cambio_vehiculo' ? '#1e40af' : '#065f46'
+                      const mapsUrl = m.lat && m.lng ? `https://www.google.com/maps?q=${m.lat},${m.lng}` : null
+                      return (
+                        <div key={m.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <p style={{ margin: 0, fontSize: 14, fontWeight: 850, color: '#374151' }}>
+                                {m.chofer_nombre || m.chofer_email || 'Chofer'} · {m.vehiculo_nombre || 'Vehículo'}
+                              </p>
+                              <p style={{ margin: '3px 0 0', fontSize: 12, color: '#9ca3af' }}>
+                                {fmtFecha(m.fecha)} · {fmt12(m.created_at)}
+                              </p>
+                            </div>
+                            <span style={{ background: `${tipoColor}12`, color: tipoColor, border: `1px solid ${tipoColor}33`, borderRadius: 999, padding: '5px 9px', fontSize: 11, fontWeight: 850 }}>
+                              {tipoLabel}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginTop: 12 }}>
+                            <div style={{ background: '#f8fafc', borderRadius: 8, padding: 9 }}>
+                              <p style={{ margin: 0, fontSize: 10, color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>Kilometraje</p>
+                              <p style={{ margin: '3px 0 0', fontSize: 13, color: '#334155', fontWeight: 850 }}>{Number(m.kilometraje || 0).toLocaleString('es-MX')} km</p>
+                            </div>
+                            <div style={{ background: '#f8fafc', borderRadius: 8, padding: 9 }}>
+                              <p style={{ margin: 0, fontSize: 10, color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>Gasolina/batería</p>
+                              <p style={{ margin: '3px 0 0', fontSize: 13, color: '#334155', fontWeight: 850 }}>{m.gasolina || '—'}</p>
+                            </div>
+                            <div style={{ background: '#f8fafc', borderRadius: 8, padding: 9 }}>
+                              <p style={{ margin: 0, fontSize: 10, color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>Condición</p>
+                              <p style={{ margin: '3px 0 0', fontSize: 13, color: '#334155', fontWeight: 850 }}>{(m.condicion || '—').replace(/_/g, ' ')}</p>
+                            </div>
+                          </div>
+
+                          {m.tipo === 'cambio_vehiculo' && m.vehiculo_anterior_nombre && (
+                            <p style={{ margin: '10px 0 0', fontSize: 12, color: '#64748b' }}>
+                              Vehículo anterior: <strong>{m.vehiculo_anterior_nombre}</strong>
+                            </p>
+                          )}
+                          {m.observaciones && (
+                            <p style={{ margin: '10px 0 0', fontSize: 12, color: '#475569', background: '#f8fafc', borderRadius: 8, padding: 9 }}>
+                              {m.observaciones}
+                            </p>
+                          )}
+
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                            {m.foto_tablero_url && (
+                              <a href={m.foto_tablero_url} target="_blank" rel="noreferrer"
+                                style={{ textDecoration: 'none', padding: '7px 10px', borderRadius: 8, background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe', fontSize: 12, fontWeight: 850 }}>
+                                Ver foto
+                              </a>
+                            )}
+                            {mapsUrl && (
+                              <a href={mapsUrl} target="_blank" rel="noreferrer"
+                                style={{ textDecoration: 'none', padding: '7px 10px', borderRadius: 8, background: '#f0fdf4', color: '#065f46', border: '1px solid #bbf7d0', fontSize: 12, fontWeight: 850 }}>
+                                Ver ubicación
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
