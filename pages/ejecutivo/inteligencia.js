@@ -256,6 +256,36 @@ const priorityStyle = {
   P2: { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe', label: 'P2' },
 };
 
+const resolutionStyle = {
+  criterio_direccion: {
+    label: 'Requiere criterio de Dirección',
+    short: 'Dirección',
+    bg: '#111827',
+    color: '#fff',
+    border: '#111827',
+    accent: '#C8102E',
+    empty: 'No hay asuntos que requieran criterio de Dirección.',
+  },
+  revisar_coordinacion: {
+    label: 'Revisar por coordinación',
+    short: 'Coordinación',
+    bg: '#fffbeb',
+    color: '#92400e',
+    border: '#fde68a',
+    accent: '#f59e0b',
+    empty: 'No hay asuntos que requieran supervisión de coordinación.',
+  },
+  resolver_area: {
+    label: 'Resolver por el área',
+    short: 'Área',
+    bg: '#ecfdf5',
+    color: '#047857',
+    border: '#a7f3d0',
+    accent: '#10b981',
+    empty: 'No hay pendientes operativos relevantes por área.',
+  },
+};
+
 const PriorityBadge = ({ value }) => {
   const info = priorityStyle[value] || priorityStyle.P2;
   return (
@@ -277,26 +307,71 @@ const PriorityBadge = ({ value }) => {
   );
 };
 
+const ResolutionBadge = ({ value }) => {
+  const info = resolutionStyle[value] || resolutionStyle.resolver_area;
+  return (
+    <span style={{
+      display: 'inline-flex',
+      borderRadius: 999,
+      padding: '6px 10px',
+      fontSize: 11,
+      fontWeight: 950,
+      color: info.color,
+      background: info.bg,
+      border: `1px solid ${info.border}`,
+      whiteSpace: 'nowrap',
+    }}>
+      {info.short}
+    </span>
+  );
+};
+
+const ImpactChips = ({ impactos = {} }) => {
+  const labels = [
+    ['dinero', 'Dinero'],
+    ['reputacion', 'Reputación'],
+    ['tiempo', 'Tiempo'],
+    ['oportunidad', 'Oportunidad'],
+    ['riesgo', 'Riesgo'],
+    ['direccion', 'Dirección'],
+  ].filter(([key]) => Number(impactos[key] || 0) > 0)
+    .sort((a, b) => Number(impactos[b[0]] || 0) - Number(impactos[a[0]] || 0))
+    .slice(0, 3);
+
+  if (!labels.length) return null;
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+      {labels.map(([key, label]) => (
+        <span key={key} style={{ borderRadius: 999, padding: '4px 7px', background: '#f3f4f6', color: '#4b5563', fontSize: 11, fontWeight: 850 }}>
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+};
+
 const ExceptionRow = ({ item, compact = false }) => (
   <div style={{
     display: 'grid',
     gridTemplateColumns: compact ? 'auto 1fr' : 'auto 1fr auto',
     gap: 14,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     border: '1px solid #e5e7eb',
     borderRadius: 18,
     padding: 15,
     background: '#fff',
   }}>
-    <PriorityBadge value={item.prioridad || item.nivel} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, alignItems: 'flex-start' }}>
+      <PriorityBadge value={item.prioridad || item.nivel} />
+      <ResolutionBadge value={item.nivel_resolucion} />
+    </div>
     <div>
       <p style={{ margin: 0, fontSize: 16, fontWeight: 950, color: '#111827' }}>{item.titulo}</p>
-      <p style={{ margin: '5px 0 0', color: '#6b7280', fontSize: 13, lineHeight: 1.4 }}>{item.motivo}</p>
-      {!compact && (
-        <p style={{ margin: '6px 0 0', color: '#374151', fontSize: 13, lineHeight: 1.4 }}>
-          <strong>Recomendación:</strong> {item.recomendacion}
-        </p>
-      )}
+      <p style={{ margin: '5px 0 0', color: '#374151', fontSize: 13, lineHeight: 1.4 }}><strong>Por qué apareció:</strong> {item.motivo}</p>
+      <p style={{ margin: '5px 0 0', color: '#6b7280', fontSize: 13, lineHeight: 1.4 }}><strong>Riesgo:</strong> {item.riesgo || item.impacto}</p>
+      <p style={{ margin: '5px 0 0', color: '#111827', fontSize: 13, lineHeight: 1.4 }}><strong>Acción recomendada:</strong> {item.accion_recomendada || item.recomendacion}</p>
+      {!compact && <p style={{ margin: '5px 0 0', color: '#6b7280', fontSize: 13, lineHeight: 1.4 }}><strong>Por qué:</strong> {item.razon_recomendacion}</p>}
+      <ImpactChips impactos={item.impactos} />
       <p style={{ margin: '7px 0 0', color: '#9ca3af', fontSize: 12, fontWeight: 850 }}>
         {item.area} · {item.modulo} · Responsable: {item.responsable}
         {item.origen_regla === 'adn_emporio' ? ' · ADN Emporio' : ' · Regla automática'}
@@ -309,6 +384,38 @@ const ExceptionRow = ({ item, compact = false }) => (
     )}
   </div>
 );
+
+const ResolutionColumn = ({ nivel, items = [] }) => {
+  const info = resolutionStyle[nivel] || resolutionStyle.resolver_area;
+  return (
+    <section style={{ background: '#fff', border: `1px solid ${info.border}`, borderTop: `5px solid ${info.accent}`, borderRadius: 24, padding: 18, boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, letterSpacing: -0.4 }}>{info.label}</h2>
+          <p style={{ margin: '6px 0 0', color: '#6b7280', fontSize: 13, lineHeight: 1.35 }}>
+            {nivel === 'criterio_direccion'
+              ? 'Solo lo que puede afectar liquidez, reputación o decisiones comerciales sensibles.'
+              : nivel === 'revisar_coordinacion'
+                ? 'Asuntos que el área puede resolver, pero conviene que un gerente supervise.'
+                : 'Pendientes operativos accionables sin intervención de Dirección.'}
+          </p>
+        </div>
+        <span style={{ background: info.bg, color: info.color, border: `1px solid ${info.border}`, borderRadius: 999, padding: '7px 11px', fontSize: 12, fontWeight: 950 }}>
+          {items.length}
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', color: '#047857', borderRadius: 16, padding: 14, fontWeight: 900, fontSize: 13 }}>
+          {info.empty}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {items.map((item) => <ExceptionRow key={item.id} item={item} compact />)}
+        </div>
+      )}
+    </section>
+  );
+};
 
 const ExceptionSection = ({ title, subtitle, items = [], empty = 'Sin excepciones relevantes.' }) => (
   <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 24, padding: 22, boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)' }}>
@@ -393,15 +500,18 @@ export default function CentroInteligencia() {
   const cajaVsResultado = data?.caja_vs_resultado || null;
   const excepciones = data?.excepciones || {};
   const atencionInmediata = excepciones?.atencion_inmediata || [];
+  const porResolucion = excepciones?.por_resolucion || {};
   const resumenExcepciones = excepciones?.resumen_excepciones || {};
 
   const fraseEjecutiva = useMemo(() => {
     if (!data) return 'Cargando lectura ejecutiva consolidada.';
-    const p0 = Number(resumenExcepciones.p0 || 0);
-    const p1 = Number(resumenExcepciones.p1 || 0);
-    if (p0 || p1) return `Hoy hay ${p0} prioridad${p0 === 1 ? '' : 'es'} crítica${p0 === 1 ? '' : 's'} y ${p1} asunto${p1 === 1 ? '' : 's'} importante${p1 === 1 ? '' : 's'} para dirigir antes de revisar números.`;
-    return 'No hay excepciones críticas detectadas; la salud financiera queda como contexto para dirección.';
-  }, [data, resumenExcepciones.p0, resumenExcepciones.p1]);
+    const direccion = Number(resumenExcepciones.criterio_direccion || resumenExcepciones.por_resolucion?.criterio_direccion || 0);
+    const coordinacion = Number(resumenExcepciones.revisar_coordinacion || resumenExcepciones.por_resolucion?.revisar_coordinacion || 0);
+    const area = Number(resumenExcepciones.resolver_area || resumenExcepciones.por_resolucion?.resolver_area || 0);
+    if (direccion) return `Hoy hay ${direccion} asunto${direccion === 1 ? '' : 's'} que sí requiere${direccion === 1 ? '' : 'n'} criterio de Dirección. Coordinación revisa ${coordinacion} y las áreas resuelven ${area}.`;
+    if (coordinacion || area) return `No hay asuntos críticos de Dirección. Coordinación debe supervisar ${coordinacion} y las áreas tienen ${area} pendiente${area === 1 ? '' : 's'} operativo${area === 1 ? '' : 's'}.`;
+    return 'Todo en orden por ahora. El sistema no detecta excepciones que cambien decisiones relevantes.';
+  }, [data, resumenExcepciones]);
 
   if (authLoading) {
     return (
@@ -430,7 +540,7 @@ export default function CentroInteligencia() {
               Última actualización: {fmtDateTime(data?.generated_at)}
             </p>
             <p style={{ margin: '8px 0 0', color: '#6b7280', fontSize: 13, fontWeight: 800 }}>
-              V1: reglas automáticas explicables. Preparado para incorporar ADN Emporio después.
+              V2 MDE: detectar, priorizar, asignar responsable, recomendar acción y escalar solo cuando Dirección agrega valor.
             </p>
           </div>
 
@@ -463,36 +573,56 @@ export default function CentroInteligencia() {
               <p style={{ margin: '0 0 8px', color: '#c4b5fd', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 1 }}>
                 Director de Operaciones Digital
               </p>
-              <h2 style={{ margin: 0, fontSize: 31, letterSpacing: -0.8 }}>Atención inmediata</h2>
+              <h2 style={{ margin: 0, fontSize: 31, letterSpacing: -0.8 }}>Filtro operativo del día</h2>
               <p style={{ margin: '8px 0 0', color: '#cbd5e1', maxWidth: 860, lineHeight: 1.45 }}>
-                Solo aparecen excepciones que pueden perder dinero, retrasar una operación, afectar un cliente o perder una oportunidad.
+                El Centro separa lo que debe resolver el área, lo que debe revisar coordinación y lo que realmente requiere criterio de Dirección.
               </p>
             </div>
             <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-              <DarkMetric label="P0 críticas" value={resumenExcepciones.p0 || 0} tone="red" />
-              <DarkMetric label="P1 importantes" value={resumenExcepciones.p1 || 0} tone="default" />
+              <DarkMetric label="Dirección" value={resumenExcepciones.criterio_direccion || resumenExcepciones.por_resolucion?.criterio_direccion || 0} tone="red" />
+              <DarkMetric label="Coordinación" value={resumenExcepciones.revisar_coordinacion || resumenExcepciones.por_resolucion?.revisar_coordinacion || 0} tone="default" />
               <DarkMetric label="Total excepciones" value={resumenExcepciones.total || 0} tone="green" />
             </div>
           </div>
-          {atencionInmediata.length === 0 ? (
-            <div style={{ background: 'rgba(16,185,129,0.14)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: 18, padding: 18, color: '#bbf7d0', fontWeight: 950 }}>
-              Todo en orden por ahora. No hay excepciones críticas detectadas.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {atencionInmediata.map((item) => (
-                <div key={item.id} style={{ background: 'rgba(255,255,255,0.96)', borderRadius: 18 }}>
-                  <ExceptionRow item={item} />
-                </div>
-              ))}
-            </div>
-          )}
+          <div style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 18, padding: 16 }}>
+            <p style={{ margin: 0, color: '#c4b5fd', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+              Lectura MDE
+            </p>
+            <p style={{ margin: '7px 0 0', color: '#fff', fontSize: 18, fontWeight: 850, lineHeight: 1.45 }}>
+              {fraseEjecutiva}
+            </p>
+          </div>
           {(data?.fuentes_excepciones_con_error || []).length > 0 && (
             <p style={{ margin: '12px 0 0', color: '#fcd34d', fontSize: 12, fontWeight: 850 }}>
               Algunas fuentes no pudieron consultarse: {data.fuentes_excepciones_con_error.map((item) => item.fuente).join(', ')}.
             </p>
           )}
         </section>
+
+        <section style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 1fr', gap: 16, marginBottom: 28 }}>
+          <ResolutionColumn nivel="criterio_direccion" items={porResolucion.criterio_direccion || []} />
+          <ResolutionColumn nivel="revisar_coordinacion" items={porResolucion.revisar_coordinacion || []} />
+          <ResolutionColumn nivel="resolver_area" items={porResolucion.resolver_area || []} />
+        </section>
+
+        {atencionInmediata.length > 0 && (
+          <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 24, padding: 22, boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)', marginBottom: 22 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 25, letterSpacing: -0.5 }}>Top 10 por impacto</h2>
+                <p style={{ margin: '6px 0 0', color: '#6b7280', fontSize: 14 }}>
+                  Ordenado por dinero, reputación, tiempo, oportunidad, riesgo y dependencia de Dirección.
+                </p>
+              </div>
+              <span style={{ background: '#f3f4f6', color: '#374151', borderRadius: 999, padding: '6px 10px', fontSize: 12, fontWeight: 950 }}>
+                {atencionInmediata.length}
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {atencionInmediata.map((item) => <ExceptionRow key={item.id} item={item} />)}
+            </div>
+          </section>
+        )}
 
         <section style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16, marginBottom: 28 }}>
           <ExceptionSection
