@@ -74,6 +74,8 @@ export default function Cobranza() {
   const [payments, setPayments] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [properties, setProperties] = useState([]);
+  const [rentReceipts, setRentReceipts] = useState([]);
+  const [generatingReceiptId, setGeneratingReceiptId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -119,10 +121,79 @@ export default function Cobranza() {
     setPayments(pay.data || []);
     setContracts(c.data || []);
     setProperties(p.data || []);
+    await loadRentReceipts(pay.data || []);
     setLoading(false);
   };
 
   useEffect(() => { if (session) loadData(); }, [session]);
+
+  const getAccessToken = async () => {
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    return currentSession?.access_token || session?.access_token || null;
+  };
+
+  const loadRentReceipts = async (paymentList = payments) => {
+    const ids = (paymentList || []).map(p => p.id).filter(Boolean);
+    if (!ids.length) { setRentReceipts([]); return; }
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/rent-receipts?payment_ids=${encodeURIComponent(ids.join(","))}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) setRentReceipts(data.receipts || []);
+    } catch (e) {
+      console.warn("No se pudieron cargar recibos de renta", e);
+    }
+  };
+
+  const receiptFor = (paymentId) => rentReceipts.find(r => r.payment_id === paymentId && r.status !== "cancelado");
+
+  const marcarReciboCobrado = async (paymentId) => {
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      await fetch("/api/rent-receipts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "mark_collected", payment_id: paymentId }),
+      });
+    } catch (e) {
+      console.warn("No se pudo marcar recibo como cobrado", e);
+    }
+  };
+
+  const emitirReciboRenta = async (p) => {
+    const existing = receiptFor(p.id);
+    if (existing?.pdf_url) {
+      window.open(existing.pdf_url, "_blank");
+      return;
+    }
+
+    setGeneratingReceiptId(p.id);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("Sesión no disponible");
+      const res = await fetch("/api/rent-receipts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "emit", payment_id: p.id, variant: "impreso" }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo generar el recibo");
+      if (data.receipt?.pdf_url) window.open(data.receipt.pdf_url, "_blank");
+      setRentReceipts(prev => {
+        const filtered = prev.filter(r => r.id !== data.receipt.id && r.payment_id !== data.receipt.payment_id);
+        return [data.receipt, ...filtered];
+      });
+      showToast("Recibo emitido");
+    } catch (e) {
+      showToast("Error: " + e.message, false);
+    } finally {
+      setGeneratingReceiptId(null);
+    }
+  };
 
   const updateStatus = async (id, status) => {
     const pago = payments.find(p => p.id === id);
@@ -149,6 +220,7 @@ export default function Cobranza() {
         created_by: profile?.email, created_at: new Date().toISOString()
       }]);
     }
+    if (status === "pagado" && pago) await marcarReciboCobrado(pago.id);
     showToast("Actualizado");
     loadData();
   };
@@ -169,6 +241,7 @@ export default function Cobranza() {
     } else {
       showToast("Pagado — directo a cuenta del propietario");
     }
+    await marcarReciboCobrado(pago.id);
     setModalRecibido(null);
     loadData();
   };
@@ -311,7 +384,7 @@ export default function Cobranza() {
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 750 }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["Inquilino", "Propiedad", "Monto", "Fechas", "Estado", "Comprobante", "Actualizar", "Acciones"].map(h => (
+                  {["Inquilino", "Propiedad", "Monto", "Fechas", "Estado", "Comprobantes", "Actualizar", "Acciones"].map(h => (
                     <th key={h} style={{ padding: "11px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                   ))}
                 </tr>
@@ -319,6 +392,7 @@ export default function Cobranza() {
               <tbody>
                 {filtrados.map(p => {
                   const contrato = contracts.find(c => c.id === p.contract_id);
+                  const reciboRenta = receiptFor(p.id);
                   return (
                     <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", background: p.status === "atrasado" ? "#fff5f5" : "#fff" }}>
                       <td style={{ padding: "11px 14px", fontWeight: 600, fontSize: 14 }}>{p.tenant_name || "-"}</td>
@@ -337,9 +411,34 @@ export default function Cobranza() {
                       </td>
                       <td style={{ padding: "11px 14px" }}><StatusBadge status={p.status} /></td>
                       <td style={{ padding: "11px 14px" }}>
-                        {p.receipt_url
-                          ? <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#065f46", textDecoration: "none", background: "#d1fae5", padding: "4px 10px", borderRadius: 6, fontWeight: 600 }}>📄 Ver</a>
-                          : <span style={{ fontSize: 12, color: "#d1d5db" }}>—</span>}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                          {p.receipt_url
+                            ? <a href={p.receipt_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#065f46", textDecoration: "none", background: "#d1fae5", padding: "4px 10px", borderRadius: 6, fontWeight: 600 }}>📎 Pago</a>
+                            : <span style={{ fontSize: 12, color: "#d1d5db" }}>Sin comprobante</span>}
+                          <button
+                            onClick={() => emitirReciboRenta(p)}
+                            disabled={generatingReceiptId === p.id || !puedeEditar}
+                            style={{
+                              fontSize: 12,
+                              color: reciboRenta ? "#1e40af" : "#9f1239",
+                              background: reciboRenta ? "#dbeafe" : "#fff1f2",
+                              border: "none",
+                              padding: "4px 10px",
+                              borderRadius: 6,
+                              fontWeight: 700,
+                              cursor: generatingReceiptId === p.id || !puedeEditar ? "not-allowed" : "pointer",
+                              opacity: generatingReceiptId === p.id || !puedeEditar ? 0.6 : 1,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {generatingReceiptId === p.id ? "Generando..." : reciboRenta ? "🧾 Recibo" : "🧾 Emitir recibo"}
+                          </button>
+                          {reciboRenta && (
+                            <span style={{ fontSize: 10, color: reciboRenta.status === "cobrado" ? "#065f46" : "#9ca3af", fontWeight: 700 }}>
+                              {reciboRenta.status === "cobrado" ? "Cobrado" : "Emitido"}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: "11px 14px" }}>
                         <select key={p.status} onChange={e => updateStatus(p.id, e.target.value)} value={p.status}
