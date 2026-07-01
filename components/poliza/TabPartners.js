@@ -13,6 +13,7 @@ const commissionFilters = [
 
 export default function TabPartners({ operaciones, agencias = [], onReload }) {
   const [selected, setSelected] = useState(null)
+  const [selectedAgency, setSelectedAgency] = useState(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('todos')
@@ -132,6 +133,7 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
       approved_at: status === 'activo' ? new Date().toISOString() : null,
       updated_at: new Date().toISOString(),
     }).eq('id', agencia.id)
+    setSelectedAgency(null)
     onReload()
   }
 
@@ -159,11 +161,7 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
             {pendientes.map(ag => (
               <div key={ag.id} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
-                  {ag.logo_url ? (
-                    <img src={ag.logo_url} alt={ag.nombre_comercial} style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'contain', border: `1px solid ${C.border}` }} />
-                  ) : (
-                    <div style={{ width: 44, height: 44, borderRadius: 8, background: ag.brand_color || C.gold, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 900 }}>{ag.nombre_comercial?.[0] || 'P'}</div>
-                  )}
+                  <PartnerLogo agency={ag} size={44} />
                   <div style={{ minWidth: 0 }}>
                     <p style={{ margin: 0, color: C.text, fontWeight: 850 }}>{ag.nombre_comercial}</p>
                     <p style={{ margin: '3px 0 0', color: C.muted, fontSize: 12 }}>{ag.email_contacto || '-'} · {ag.telefono || '-'} · {ag.ciudad || '-'}</p>
@@ -171,6 +169,7 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setSelectedAgency(ag)} style={{ ...st.btn, ...st.btnGhost, padding: '7px 12px', fontSize: 12 }}>Revisar</button>
                   <button onClick={() => actualizarAgencia(ag, 'activo')} style={{ ...st.btn, ...st.btnGreen, padding: '7px 12px', fontSize: 12 }}>Aprobar</button>
                   <button onClick={() => actualizarAgencia(ag, 'suspendido')} style={{ ...st.btn, background: C.red, color: '#fff', padding: '7px 12px', fontSize: 12 }}>Rechazar</button>
                 </div>
@@ -190,11 +189,7 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
               return (
                 <div key={ag.id} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
                   <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
-                    {ag.logo_url ? (
-                      <img src={ag.logo_url} alt={ag.nombre_comercial} style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'contain', border: `1px solid ${C.border}` }} />
-                    ) : (
-                      <div style={{ width: 46, height: 46, borderRadius: 8, background: ag.brand_color || C.gold, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 900 }}>{ag.nombre_comercial?.[0] || 'P'}</div>
-                    )}
+                    <PartnerLogo agency={ag} size={46} />
                     <div style={{ minWidth: 0 }}>
                       <p style={{ margin: 0, color: C.text, fontWeight: 850 }}>{ag.nombre_comercial}</p>
                       <p style={{ margin: '3px 0 0', color: C.muted, fontSize: 12 }}>{ag.email_contacto || '-'} · {ag.telefono || '-'}</p>
@@ -338,6 +333,74 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
           </div>
         </div>
       )}
+
+      {selectedAgency && (
+        <div style={st.modal} onClick={e => e.target === e.currentTarget && setSelectedAgency(null)}>
+          <div style={{ ...st.modalCard, maxWidth: 620 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 18 }}>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center', minWidth: 0 }}>
+                <PartnerLogo agency={selectedAgency} size={58} />
+                <div style={{ minWidth: 0 }}>
+                  <h2 style={{ margin: 0, color: C.text, fontSize: 20 }}>{selectedAgency.nombre_comercial}</h2>
+                  <p style={{ margin: '4px 0 0', color: C.muted, fontSize: 12 }}>Solicitud de acceso Partner</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedAgency(null)} style={{ ...st.btn, ...st.btnGhost }}>x</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+              <AgencyInfo label="Razon social" value={selectedAgency.razon_social} />
+              <AgencyInfo label="Contacto" value={selectedAgency.nombre_contacto || selectedAgency.nombre_comercial} />
+              <AgencyInfo label="Correo" value={selectedAgency.email_contacto} />
+              <AgencyInfo label="Telefono" value={selectedAgency.telefono} />
+              <AgencyInfo label="Ciudad / zona" value={selectedAgency.ciudad} />
+              <AgencyInfo label="Web / redes" value={selectedAgency.website} />
+            </div>
+
+            <div style={{ marginTop: 14, background: '#f9fafb', border: `1px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+              <p style={{ margin: 0, color: C.text, fontSize: 13, fontWeight: 850 }}>Antes de aprobar</p>
+              <p style={{ margin: '5px 0 0', color: C.muted, fontSize: 12, lineHeight: 1.5 }}>
+                Verifica que el correo y telefono sean correctos. Al aprobar, esta cuenta podra entrar al portal Partner y crear operaciones para Emporio Blindaje Legal.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
+              <button onClick={() => setSelectedAgency(null)} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
+              <button onClick={() => actualizarAgencia(selectedAgency, 'suspendido')} style={{ ...st.btn, background: C.red, color: '#fff' }}>Rechazar</button>
+              <button onClick={() => actualizarAgencia(selectedAgency, 'activo')} style={{ ...st.btn, ...st.btnGreen }}>Aprobar acceso</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PartnerLogo({ agency, size = 46 }) {
+  const [failed, setFailed] = useState(false)
+  const initial = agency?.nombre_comercial?.trim()?.[0]?.toUpperCase() || 'P'
+  if (agency?.logo_url && !failed) {
+    return (
+      <img
+        src={agency.logo_url}
+        alt={agency.nombre_comercial || 'Partner'}
+        onError={() => setFailed(true)}
+        style={{ width: size, height: size, borderRadius: 8, objectFit: 'contain', border: `1px solid ${C.border}`, background: '#fff', flex: '0 0 auto' }}
+      />
+    )
+  }
+  return (
+    <div style={{ width: size, height: size, borderRadius: 8, background: agency?.brand_color || C.gold, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 900, flex: '0 0 auto', fontSize: Math.max(16, size * .42) }}>
+      {initial}
+    </div>
+  )
+}
+
+function AgencyInfo({ label, value }) {
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 9, padding: 11, minWidth: 0 }}>
+      <p style={{ margin: '0 0 4px', color: C.muted, fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }}>{label}</p>
+      <p style={{ margin: 0, color: C.text, fontSize: 13, fontWeight: 750, overflowWrap: 'anywhere' }}>{value || '-'}</p>
     </div>
   )
 }

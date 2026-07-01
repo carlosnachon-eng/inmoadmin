@@ -2,8 +2,6 @@ import { useState } from 'react'
 import Head from 'next/head'
 import { Field, P, button, input } from '../../components/partners/PartnerLayout'
 
-const textArea = { ...input, minHeight: 70, resize: 'vertical', fontFamily: 'inherit' }
-
 export default function PartnerRegistro() {
   const [form, setForm] = useState({
     nombre_comercial: '',
@@ -17,20 +15,45 @@ export default function PartnerRegistro() {
     brand_color: '#b91c3c',
     password: '',
   })
+  const [logoFile, setLogoFile] = useState(null)
+  const [logoPreview, setLogoPreview] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  const readLogoFile = (file) => new Promise((resolve, reject) => {
+    if (!file) return resolve(null)
+    const reader = new FileReader()
+    reader.onload = () => resolve({
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      dataUrl: reader.result,
+    })
+    reader.onerror = () => reject(new Error('No se pudo leer el logo.'))
+    reader.readAsDataURL(file)
+  })
+
+  const onLogoChange = (file) => {
+    setLogoFile(file || null)
+    if (!file) {
+      setLogoPreview('')
+      return
+    }
+    setLogoPreview(URL.createObjectURL(file))
+  }
+
   const submit = async () => {
     setLoading(true)
     setError('')
     try {
+      const logo_file = await readLogoFile(logoFile)
       const res = await fetch('/api/partners/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, logo_file }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'No se pudo registrar la inmobiliaria.')
@@ -84,8 +107,18 @@ export default function PartnerRegistro() {
             <Field label="Sitio web o Instagram"><input value={form.website} onChange={e => set('website', e.target.value)} style={input} /></Field>
             <Field label="Color de marca"><input type="color" value={form.brand_color} onChange={e => set('brand_color', e.target.value)} style={{ ...input, height: 43, padding: 5 }} /></Field>
           </div>
-          <Field label="URL del logo" hint="Pega un link publico del logo. Despues podemos reemplazarlo por carga de archivo.">
-            <textarea value={form.logo_url} onChange={e => set('logo_url', e.target.value)} style={textArea} placeholder="https://..." />
+          <Field label="Logo" hint="Sube una imagen cuadrada o rectangular en PNG, JPG o WebP. Si no tienes logo, puedes dejarlo vacio.">
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={e => onLogoChange(e.target.files?.[0])}
+                style={{ ...input, flex: 1, minWidth: 220, padding: 8 }}
+              />
+              {logoPreview && (
+                <img src={logoPreview} alt="Vista previa del logo" style={{ width: 58, height: 58, objectFit: 'contain', border: `1px solid ${P.line}`, borderRadius: 10, background: '#fff' }} />
+              )}
+            </div>
           </Field>
           <Field label="Contrasena" required hint="Minimo 8 caracteres. Tu acceso quedara pendiente hasta aprobacion de Emporio.">
             <input type="password" value={form.password} onChange={e => set('password', e.target.value)} style={input} />

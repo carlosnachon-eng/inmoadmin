@@ -6,6 +6,7 @@ const supabase = supabaseUrl && serviceKey ? createClient(supabaseUrl, serviceKe
 
 const cleanHex = (value) => /^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#b91c3c'
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.emporioinmobiliario.com.mx'
+const allowedLogoTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
 const esc = (value) => String(value || '—')
   .replace(/&/g, '&amp;')
@@ -67,6 +68,27 @@ async function notifyPartnerRequest({ agencyId, values, email }) {
   if (!response.ok) throw new Error(await response.text())
 }
 
+async function uploadPartnerLogo(agencyId, logoFile) {
+  if (!logoFile?.dataUrl) return null
+  if (!allowedLogoTypes.has(logoFile.type)) throw new Error('El logo debe ser PNG, JPG o WebP.')
+  if (Number(logoFile.size || 0) > 2 * 1024 * 1024) throw new Error('El logo no debe pesar mas de 2 MB.')
+
+  const match = String(logoFile.dataUrl).match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/)
+  if (!match) throw new Error('El logo no tiene un formato valido.')
+
+  const ext = match[1] === 'image/jpeg' ? 'jpg' : match[1].split('/')[1]
+  const buffer = Buffer.from(match[2], 'base64')
+  const path = `partner-logos/${agencyId}.${ext}`
+
+  const { error } = await supabase.storage
+    .from('documentos')
+    .upload(path, buffer, { contentType: match[1], upsert: true })
+  if (error) throw error
+
+  const { data } = supabase.storage.from('documentos').getPublicUrl(path)
+  return data?.publicUrl || null
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   if (!supabase) return res.status(500).json({ error: 'Falta configuracion de Supabase' })
@@ -114,6 +136,15 @@ export default async function handler(req, res) {
       .select('id')
       .single()
     if (agencyInsert.error) throw agencyInsert.error
+
+    const uploadedLogoUrl = await uploadPartnerLogo(agencyInsert.data.id, v.logo_file)
+    if (uploadedLogoUrl) {
+      const logoUpdate = await supabase
+        .from('partner_agencies')
+        .update({ logo_url: uploadedLogoUrl, updated_at: new Date().toISOString() })
+        .eq('id', agencyInsert.data.id)
+      if (logoUpdate.error) throw logoUpdate.error
+    }
 
     const userInsert = await supabase
       .from('partner_users')
