@@ -15,6 +15,8 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
   const [selected, setSelected] = useState(null)
   const [selectedAgency, setSelectedAgency] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [logoSaving, setLogoSaving] = useState(false)
+  const [logoError, setLogoError] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('todos')
   const [agencyFilter, setAgencyFilter] = useState('todas')
@@ -135,6 +137,45 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
     }).eq('id', agencia.id)
     setSelectedAgency(null)
     onReload()
+  }
+
+  const readLogoFile = (file) => new Promise((resolve, reject) => {
+    if (!file) return resolve(null)
+    const reader = new FileReader()
+    reader.onload = () => resolve({
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      dataUrl: reader.result,
+    })
+    reader.onerror = () => reject(new Error('No se pudo leer el logo.'))
+    reader.readAsDataURL(file)
+  })
+
+  const uploadAgencyLogo = async (file) => {
+    if (!selectedAgency || !file) return
+    setLogoSaving(true)
+    setLogoError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const logo_file = await readLogoFile(file)
+      const res = await fetch('/api/partners/logo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({ agency_id: selectedAgency.id, logo_file }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo subir el logo.')
+      setSelectedAgency(ag => ({ ...ag, logo_url: data.logo_url }))
+      onReload()
+    } catch (e) {
+      setLogoError(e.message)
+    } finally {
+      setLogoSaving(false)
+    }
   }
 
   if (!operaciones?.length && !pendientes.length && !agenciasActivas.length) return (
@@ -355,6 +396,23 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
               <AgencyInfo label="Telefono" value={selectedAgency.telefono} />
               <AgencyInfo label="Ciudad / zona" value={selectedAgency.ciudad} />
               <AgencyInfo label="Web / redes" value={selectedAgency.website} />
+            </div>
+
+            <div style={{ marginTop: 14, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+              <label style={st.label}>Logo del partner</label>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <PartnerLogo agency={selectedAgency} size={52} />
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={logoSaving}
+                  onChange={e => uploadAgencyLogo(e.target.files?.[0])}
+                  style={{ ...st.input, flex: 1, minWidth: 220, padding: 8 }}
+                />
+              </div>
+              <p style={{ margin: '6px 0 0', color: C.muted, fontSize: 11 }}>PNG, JPG o WebP. Maximo 2 MB.</p>
+              {logoSaving && <p style={{ margin: '6px 0 0', color: C.blueText, fontSize: 12, fontWeight: 800 }}>Subiendo logo...</p>}
+              {logoError && <p style={{ margin: '6px 0 0', color: C.redText, fontSize: 12, fontWeight: 800 }}>{logoError}</p>}
             </div>
 
             <div style={{ marginTop: 14, background: '#f9fafb', border: `1px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
