@@ -25,13 +25,14 @@ const monthName = (month) => {
   return months[idx] || "";
 };
 
-const buildPeriodLabel = (payment) => {
-  if (payment.period_month && payment.period_year) return `${monthName(payment.period_month)} ${payment.period_year}`;
+const buildPeriodLabel = (payment, issuedAt = new Date()) => {
   if (payment.due_date) {
     const d = new Date(`${payment.due_date}T12:00:00`);
     return `${monthName(d.getMonth() + 1)} ${d.getFullYear()}`;
   }
-  return "periodo de renta correspondiente";
+  if (payment.period_month && payment.period_year) return `${monthName(payment.period_month)} ${payment.period_year}`;
+  const d = issuedAt instanceof Date ? issuedAt : new Date(issuedAt);
+  return `${monthName(d.getMonth() + 1)} ${d.getFullYear()}`;
 };
 
 async function autenticar(req, requiereEditar = false) {
@@ -90,7 +91,7 @@ function generarPdf({ receipt, payment, contract }) {
   const propertyName = safeText(receipt.property_name || payment.property_name);
   const ownerName = safeText(receipt.owner_name || contract?.owner_name);
   const amount = Number(receipt.amount || payment.amount || 0);
-  const period = safeText(receipt.period_label || buildPeriodLabel(payment));
+  const period = safeText(receipt.period_label || buildPeriodLabel(payment, issuedAt));
 
   doc.setFillColor(190, 18, 60);
   doc.rect(0, 0, 612, 86, "F");
@@ -210,6 +211,7 @@ async function emitirRecibo(req, res, auth) {
   }
 
   const folio = `RR-${new Date().getFullYear()}-${Date.now().toString().slice(-7)}`;
+  const issuedAt = new Date().toISOString();
   const draft = {
     folio,
     payment_id,
@@ -218,12 +220,12 @@ async function emitirRecibo(req, res, auth) {
     tenant_name: payment.tenant_name || contract?.tenant_name || "",
     tenant_email: payment.tenant_email || contract?.tenant_email || "",
     owner_name: contract?.owner_name || "",
-    period_label: buildPeriodLabel(payment),
+    period_label: buildPeriodLabel(payment, issuedAt),
     amount: Number(payment.amount || 0),
     status: "emitido",
     variant,
     issued_by: auth.perfil?.email || auth.user?.email || "",
-    issued_at: new Date().toISOString(),
+    issued_at: issuedAt,
   };
 
   const pdfBuffer = generarPdf({ receipt: draft, payment, contract });
