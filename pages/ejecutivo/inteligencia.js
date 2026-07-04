@@ -228,9 +228,32 @@ const DarkMetric = ({ label, value, tone = 'default' }) => {
   );
 };
 
+const ProgressBar = ({ value }) => {
+  const pct = Math.max(0, Math.min(120, Number(value || 0)));
+  const visualPct = Math.min(100, pct);
+  const color = pct >= 100 ? '#34d399' : pct >= 85 ? '#fbbf24' : '#f87171';
+  return (
+    <div>
+      <div style={{ height: 14, background: 'rgba(255,255,255,0.12)', borderRadius: 999, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.10)' }}>
+        <div style={{ width: `${visualPct}%`, height: '100%', background: color, borderRadius: 999 }} />
+      </div>
+      <p style={{ margin: '7px 0 0', color: '#dbeafe', fontSize: 12, fontWeight: 900 }}>
+        {value === null || value === undefined ? 'Meta por definir' : `${Number(value || 0).toFixed(1)}% de cumplimiento esperado`}
+      </p>
+    </div>
+  );
+};
+
 const ProyeccionAnual = ({ proyeccion }) => {
   if (!proyeccion) return null;
   const generadoTotal = proyeccion.generado_total_2026 || {};
+  const meta = generadoTotal.meta || {};
+  const estadoPalette = {
+    en_ruta: { icon: '🟢', bg: 'rgba(16,185,129,0.16)', color: '#bbf7d0', border: 'rgba(16,185,129,0.34)' },
+    riesgo_moderado: { icon: '🟡', bg: 'rgba(251,191,36,0.16)', color: '#fde68a', border: 'rgba(251,191,36,0.34)' },
+    fuera_de_meta: { icon: '🔴', bg: 'rgba(248,113,113,0.16)', color: '#fecaca', border: 'rgba(248,113,113,0.34)' },
+    meta_por_definir: { icon: '⚪', bg: 'rgba(255,255,255,0.10)', color: '#e5e7eb', border: 'rgba(255,255,255,0.18)' },
+  }[meta.estado] || { icon: '⚪', bg: 'rgba(255,255,255,0.10)', color: '#e5e7eb', border: 'rgba(255,255,255,0.18)' };
 
   return (
     <section style={{ background: '#172554', color: '#fff', borderRadius: 26, padding: 24, marginBottom: 22, boxShadow: '0 16px 38px rgba(30, 64, 175, 0.18)' }}>
@@ -254,6 +277,9 @@ const ProyeccionAnual = ({ proyeccion }) => {
       <div style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 22, padding: 18, marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: estadoPalette.bg, color: estadoPalette.color, border: `1px solid ${estadoPalette.border}`, borderRadius: 999, padding: '7px 12px', fontSize: 13, fontWeight: 950, marginBottom: 12 }}>
+              {estadoPalette.icon} {meta.estado_label || 'Meta por definir'}
+            </span>
             <p style={{ margin: 0, color: '#bfdbfe', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.6 }}>
               Generado proyectado {proyeccion.year}
             </p>
@@ -261,7 +287,7 @@ const ProyeccionAnual = ({ proyeccion }) => {
               {fmtMoney(generadoTotal.total_proyectado)}
             </p>
             <p style={{ margin: '9px 0 0', color: '#dbeafe', maxWidth: 760, fontSize: 13, lineHeight: 1.45, fontWeight: 800 }}>
-              Estimación de producción bruta esperada. No representa flujo de caja, cobro ni utilidad.
+              {meta.lectura || 'Estimación de producción bruta esperada. No representa flujo de caja, cobro ni utilidad.'}
             </p>
           </div>
           <span style={{ background: 'rgba(255,255,255,0.12)', color: '#dbeafe', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 999, padding: '8px 12px', fontSize: 12, fontWeight: 950 }}>
@@ -269,10 +295,35 @@ const ProyeccionAnual = ({ proyeccion }) => {
           </span>
         </div>
 
+        <div style={{ marginTop: 16, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 18, padding: 15 }}>
+          <div className="ci-grid ci-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 14 }}>
+            <DarkMetric label="Meta anual" value={meta.meta_anual > 0 ? fmtMoney(meta.meta_anual) : 'Por definir'} />
+            <DarkMetric label="Proyección actual" value={fmtMoney(generadoTotal.total_proyectado)} tone={meta.estado === 'en_ruta' ? 'green' : 'default'} />
+            <DarkMetric label="Faltante contra meta" value={fmtMoney(meta.faltante_meta)} tone={Number(meta.faltante_meta || 0) > 0 ? 'red' : 'green'} />
+            <DarkMetric label="Cumplimiento esperado" value={meta.cumplimiento_porcentaje !== null && meta.cumplimiento_porcentaje !== undefined ? `${meta.cumplimiento_porcentaje}%` : '—'} tone={meta.estado === 'en_ruta' ? 'green' : meta.estado === 'fuera_de_meta' ? 'red' : 'default'} />
+          </div>
+          <ProgressBar value={meta.cumplimiento_porcentaje} />
+        </div>
+
         <div className="ci-grid ci-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginTop: 16 }}>
           <DarkMetric label="Confirmado generado" value={fmtMoney(generadoTotal.confirmado)} tone="green" />
           <DarkMetric label="Comprometido" value={fmtMoney(generadoTotal.comprometido)} />
           <DarkMetric label="Probable por ritmo" value={fmtMoney(generadoTotal.probable)} />
+        </div>
+
+        <div style={{ marginTop: 14, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 18, padding: 15 }}>
+          <p style={{ margin: 0, color: '#bfdbfe', fontSize: 11, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Recomendación del Centro de Inteligencia
+          </p>
+          <p style={{ margin: '7px 0 0', color: '#fff', fontSize: 17, lineHeight: 1.45, fontWeight: 900 }}>
+            {meta.recomendacion || 'Definir una meta anual permitirá convertir esta proyección en una recomendación accionable.'}
+          </p>
+          <div className="ci-grid ci-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginTop: 13 }}>
+            <DarkMetric label="Necesario mensual" value={fmtMoney(meta.ritmo_mensual_necesario)} />
+            <DarkMetric label="Necesario semanal" value={fmtMoney(meta.ritmo_semanal_necesario)} />
+            <DarkMetric label="Necesario diario" value={fmtMoney(meta.ritmo_diario_necesario)} />
+            <DarkMetric label="Ops. equivalentes" value={meta.operaciones_equivalentes || 0} />
+          </div>
         </div>
 
         {(generadoTotal.items_comprometidos || []).length > 0 && (
@@ -307,12 +358,14 @@ const ProyeccionAnual = ({ proyeccion }) => {
           <p style={{ margin: '7px 0 0', fontSize: 19, fontWeight: 950 }}>{fmtMoney(proyeccion.promedio_mensual_cobrado)}</p>
         </div>
         <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.11)', borderRadius: 16, padding: 14 }}>
-          <p style={{ margin: 0, color: '#bfdbfe', fontSize: 11, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>Resultado proyectado</p>
+          <p style={{ margin: 0, color: '#bfdbfe', fontSize: 11, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>Utilidad operativa proyectada</p>
           <p style={{ margin: '7px 0 0', fontSize: 19, fontWeight: 950 }}>{fmtMoney(proyeccion.proyeccion_resultado_anual)}</p>
         </div>
         <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.11)', borderRadius: 16, padding: 14 }}>
-          <p style={{ margin: 0, color: '#bfdbfe', fontSize: 11, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>Método</p>
-          <p style={{ margin: '7px 0 0', color: '#dbeafe', fontSize: 13, lineHeight: 1.35, fontWeight: 800 }}>{proyeccion.metodo}</p>
+          <p style={{ margin: 0, color: '#bfdbfe', fontSize: 11, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>Cómo leerlo</p>
+          <p style={{ margin: '7px 0 0', color: '#dbeafe', fontSize: 13, lineHeight: 1.35, fontWeight: 800 }}>
+            Se calcula con el ritmo real observado y operaciones ya registradas; no incluye oportunidades futuras sin evidencia en el sistema.
+          </p>
         </div>
       </div>
     </section>

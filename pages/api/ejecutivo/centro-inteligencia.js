@@ -331,6 +331,11 @@ const resolverPeriodoAnual = (periodo) => {
   });
 };
 
+const resolverPeriodoAnioCompleto = (year) => resolverPeriodo({
+  start: `${year}-01-01`,
+  end: `${year}-12-31`,
+});
+
 const construirUnidadFinanciera = ({ periodo, datosCierres, datosAdmin, datosPoliza, datosMantenimiento }) => {
   const resumenCierres = resumirCierres(datosCierres);
   const resumenAdmin = resumirAdministracion(datosAdmin);
@@ -405,11 +410,25 @@ export default async function handler(req, res) {
       datosMantenimiento,
     });
 
-    const [datosCierresAnual, datosAdminAnual, datosPolizaAnual, datosMantenimientoAnual] = await Promise.all([
+    const periodoAnioAnterior = resolverPeriodoAnioCompleto(periodoAnual.year - 1);
+    const [
+      datosCierresAnual,
+      datosAdminAnual,
+      datosPolizaAnual,
+      datosMantenimientoAnual,
+      datosCierresAnioAnterior,
+      datosAdminAnioAnterior,
+      datosPolizaAnioAnterior,
+      datosMantenimientoAnioAnterior,
+    ] = await Promise.all([
       cargarCierres(periodoAnual, metrics),
       cargarAdministracionAnual(periodoAnual, metrics),
       cargarPolizaPeriodo(supabase, periodoAnual, metrics),
       cargarMantenimientoPeriodo(supabase, periodoAnual, metrics),
+      cargarCierres(periodoAnioAnterior, metrics),
+      cargarAdministracionAnual(periodoAnioAnterior, metrics),
+      cargarPolizaPeriodo(supabase, periodoAnioAnterior, metrics),
+      cargarMantenimientoPeriodo(supabase, periodoAnioAnterior, metrics),
     ]);
     const centroAnual = construirUnidadFinanciera({
       periodo: periodoAnual,
@@ -418,11 +437,21 @@ export default async function handler(req, res) {
       datosPoliza: datosPolizaAnual,
       datosMantenimiento: datosMantenimientoAnual,
     });
+    const centroAnioAnterior = construirUnidadFinanciera({
+      periodo: periodoAnioAnterior,
+      datosCierres: datosCierresAnioAnterior,
+      datosAdmin: datosAdminAnioAnterior,
+      datosPoliza: datosPolizaAnioAnterior,
+      datosMantenimiento: datosMantenimientoAnioAnterior,
+    });
+    const generadoAnioAnterior = roundMoney(centroAnioAnterior.resumen_general?.total_generado || 0);
+    const metaGeneradoAnual = generadoAnioAnterior > 0 ? roundMoney(generadoAnioAnterior + 1) : 0;
     const proyeccionAnual = construirProyeccionAnual({
       periodoAnual,
       resumenAnual: centroAnual.resumen_general,
       resumenPeriodo: centroBase.resumen_general,
       datosOperativos,
+      metaGeneradoAnual,
     });
 
     const diagnosticoCaja = construirDiagnosticoCaja({
