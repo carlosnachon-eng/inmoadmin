@@ -31,6 +31,10 @@ async function generarPDF(data) {
   const RED = [185, 28, 60], DARK = [26, 26, 46], GRAY = [120, 120, 120];
   const LGRAY = [247, 247, 247], LRED = [253, 240, 241], LINE = [220, 220, 220];
   const fmtMXN = (n) => "$" + Number(n).toLocaleString("es-MX", {minimumFractionDigits:2});
+  const totalAcordado = toNumber(data.monto_total_acordado || data.monto);
+  const recibidoHoy = toNumber(data.monto);
+  const saldoPendiente = Math.max(0, totalAcordado - recibidoHoy);
+  const modoCompacto = saldoPendiente > 0 || String(data.condiciones_especiales || "").length > 160;
 
   const wrapText = (text, x, y, maxW, lh, size) => {
     doc.setFontSize(size);
@@ -49,7 +53,7 @@ async function generarPDF(data) {
   doc.setFillColor(...RED); doc.rect(0, 0, W, 6, "F");
 
   // LOGO
-  const logoW = 110, logoH = Math.round(110*(959/1801));
+  const logoW = modoCompacto ? 94 : 110, logoH = Math.round(logoW*(959/1801));
   try {
     const res = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
     const blob = await res.blob();
@@ -91,7 +95,8 @@ async function generarPDF(data) {
   y += 30;
 
   // BLOQUE RECEPTOR
-  doc.setFillColor(...RED); doc.rect(M, y, 4, 58, "F");
+  const altoReceptor = modoCompacto ? 52 : 58;
+  doc.setFillColor(...RED); doc.rect(M, y, 4, altoReceptor, "F");
   doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
   doc.text("Recibí de:", M+12, y+12);
   doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...DARK);
@@ -106,13 +111,11 @@ async function generarPDF(data) {
   doc.text("APARTADO para la posible "+(data.tipo==="compraventa"?"compraventa":"arrendamiento")+" del inmueble ubicado en:", M+78, y+40);
   doc.setFont("helvetica","bold"); doc.setFontSize(8);
   doc.text(data.inmueble, M+12, y+54);
-  y += 68;
+  y += modoCompacto ? 58 : 68;
 
-  const totalAcordado = toNumber(data.monto_total_acordado || data.monto);
-  const recibidoHoy = toNumber(data.monto);
-  const saldoPendiente = Math.max(0, totalAcordado - recibidoHoy);
   if (totalAcordado > recibidoHoy || data.fecha_compromiso_liquidacion) {
-    doc.setFillColor(...LGRAY); doc.roundedRect(M, y, W-2*M, 44, 6, 6, "F");
+    const altoResumen = modoCompacto ? 38 : 44;
+    doc.setFillColor(...LGRAY); doc.roundedRect(M, y, W-2*M, altoResumen, 6, 6, "F");
     doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...GRAY);
     doc.text("Total acordado:", M+10, y+14);
     doc.setTextColor(...DARK); doc.text(fmtMXN(totalAcordado), M+76, y+14);
@@ -124,11 +127,11 @@ async function generarPDF(data) {
     if (data.fecha_compromiso_liquidacion) {
       const compromiso = new Date(data.fecha_compromiso_liquidacion + "T12:00:00").toLocaleDateString("es-MX",{day:"numeric",month:"long",year:"numeric"});
       doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
-      doc.text("Fecha compromiso para liquidar saldo:", M+10, y+31);
+      doc.text("Fecha compromiso para liquidar saldo:", M+10, y+(modoCompacto ? 29 : 31));
       doc.setFont("helvetica","bold"); doc.setTextColor(...DARK);
-      doc.text(compromiso, M+164, y+31);
+      doc.text(compromiso, M+164, y+(modoCompacto ? 29 : 31));
     }
-    y += 56;
+    y += modoCompacto ? 46 : 56;
   }
 
   // SEPARADOR
@@ -136,7 +139,7 @@ async function generarPDF(data) {
 
   // CONDICIONES TÍTULO
   doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...RED);
-  doc.text("CONDICIONES DEL APARTADO", M, y); y += 16;
+  doc.text("CONDICIONES DEL APARTADO", M, y); y += modoCompacto ? 12 : 16;
 
   const fechaLimite = data.fecha_limite_firma
     ? new Date(data.fecha_limite_firma + "T12:00:00").toLocaleDateString("es-MX",{day:"numeric",month:"long",year:"numeric"})
@@ -165,26 +168,30 @@ async function generarPDF(data) {
     ["9. Declaración de licitud.","El cliente declara que los recursos utilizados provienen de actividades lícitas y no están relacionados con operaciones de procedencia ilícita."],
   ];
 
-  const maxW = W-2*M-8, lh = 12.5;
+  const maxW = W-2*M-8;
+  const lh = modoCompacto ? 9.6 : 12.5;
+  const titleSize = modoCompacto ? 7.4 : 8.5;
+  const bodySize = modoCompacto ? 7.25 : 8.5;
+  const gapAfterClause = modoCompacto ? 2.6 : 6;
   for (const [titulo, texto] of clausulas) {
-    doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(...DARK);
+    doc.setFont("helvetica","bold"); doc.setFontSize(titleSize); doc.setTextColor(...DARK);
     doc.text(titulo, M+4, y); y += lh;
     doc.setFont("helvetica","normal"); doc.setTextColor(...GRAY);
-    y = wrapText(texto, M+4, y, maxW, lh, 8.5);
-    y += 6;
+    y = wrapText(texto, M+4, y, maxW, lh, bodySize);
+    y += gapAfterClause;
   }
 
   if (data.condiciones_especiales?.trim()) {
-    y += 4;
-    doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(...RED);
+    y += modoCompacto ? 1 : 4;
+    doc.setFont("helvetica","bold"); doc.setFontSize(titleSize); doc.setTextColor(...RED);
     doc.text("Condiciones especiales acordadas:", M+4, y); y += lh;
     doc.setFont("helvetica","normal"); doc.setTextColor(...DARK);
-    y = wrapText(data.condiciones_especiales.trim(), M+4, y, maxW, lh, 8.5);
+    y = wrapText(data.condiciones_especiales.trim(), M+4, y, maxW, lh, bodySize);
   }
 
   // SEPARADOR FIRMAS
-  y += 6;
-  doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W-M, y); y += 12;
+  y += modoCompacto ? 4 : 6;
+  doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W-M, y); y += modoCompacto ? 7 : 12;
 
   // FIRMAS
   const mid = W/2, sigW = 180;
@@ -193,25 +200,26 @@ async function generarPDF(data) {
 
   // Firma de Carlos
   try {
-    doc.addImage(FIRMA_CARLOS_B64, "PNG", M, y+2, 90, 50);
+    doc.addImage(FIRMA_CARLOS_B64, "PNG", M, y+2, modoCompacto ? 72 : 90, modoCompacto ? 38 : 50);
   } catch(_) {}
 
   doc.setDrawColor(204,204,204); doc.setLineWidth(0.8);
-  doc.line(M, y+54, M+sigW, y+54);
+  const firmaLineaY = y + (modoCompacto ? 42 : 54);
+  doc.line(M, firmaLineaY, M+sigW, firmaLineaY);
   doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
-  doc.text("Carlos Alejandro Nachón Saldivar", M, y+64);
+  doc.text("Carlos Alejandro Nachón Saldivar", M, y+(modoCompacto ? 51 : 64));
   doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-  doc.text("Recibido por: "+data.recibido_por, M, y+74);
-  doc.text("Fecha: "+data.fecha, M, y+83);
+  doc.text("Recibido por: "+data.recibido_por, M, y+(modoCompacto ? 60 : 74));
+  doc.text("Fecha: "+data.fecha, M, y+(modoCompacto ? 68 : 83));
 
   doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
   doc.text(data.tipo==="compraventa"?"Nombre y firma del comprador":"Nombre y firma del cliente", mid+20, y);
   doc.setDrawColor(204,204,204);
-  doc.line(mid+20, y+28, mid+20+sigW, y+28);
+  doc.line(mid+20, y+(modoCompacto ? 24 : 28), mid+20+sigW, y+(modoCompacto ? 24 : 28));
   doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
-  doc.text(data.cliente_nombre, mid+20, y+38);
+  doc.text(data.cliente_nombre, mid+20, y+(modoCompacto ? 34 : 38));
   doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-  doc.text("Fecha: ___________________________", mid+20, y+48);
+  doc.text("Fecha: ___________________________", mid+20, y+(modoCompacto ? 43 : 48));
 
   // QR de verificación
   try {
@@ -219,7 +227,8 @@ async function generarPDF(data) {
     const qrRes = await fetch(qrUrl);
     const qrBlob = await qrRes.blob();
     const qrB64 = await new Promise(r => { const fr = new FileReader(); fr.onloadend = () => r(fr.result); fr.readAsDataURL(qrBlob); });
-    doc.addImage(qrB64, "PNG", W - M - 58, H - 70, 58, 58);
+    const qrSize = modoCompacto ? 48 : 58;
+    doc.addImage(qrB64, "PNG", W - M - qrSize, H - (modoCompacto ? 60 : 70), qrSize, qrSize);
     doc.setFont("helvetica","normal"); doc.setFontSize(6); doc.setTextColor(...GRAY);
     doc.text("Escanea para", W - M - 29, H - 10, {align:"center"});
     doc.text("verificar", W - M - 29, H - 4, {align:"center"});
