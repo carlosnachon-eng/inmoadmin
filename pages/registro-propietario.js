@@ -78,6 +78,9 @@ export default function RegistroPropietario() {
   const [reglamento, setReglamento] = useState('no')
   const [contratoAdmin, setContratoAdmin] = useState(false)
   const [tipoPersonaPropietario, setTipoPersonaPropietario] = useState('fisica')
+  const [recurrente, setRecurrente] = useState(null)
+  const [buscandoRecurrente, setBuscandoRecurrente] = useState(false)
+  const [recurrenteAplicado, setRecurrenteAplicado] = useState(false)
   const [files, setFiles] = useState({
     doc_identificacion: null,
     doc_comprobante_domicilio: null,
@@ -94,6 +97,14 @@ export default function RegistroPropietario() {
     if (formRef.current) formRef.current.querySelectorAll('input[name], textarea[name]').forEach(el => { data[el.name] = el.value })
     return data
   }
+  const setFormValues = (values = {}) => {
+    savedValues.current = { ...savedValues.current, ...values }
+    if (!formRef.current) return
+    Object.entries(values).forEach(([name, value]) => {
+      const field = formRef.current.querySelector(`[name="${name}"]`)
+      if (field) field.value = value || ''
+    })
+  }
   const saveCurrentStep = () => { if (!formRef.current) return; formRef.current.querySelectorAll('input[name], textarea[name]').forEach(el => { savedValues.current[el.name] = el.value }) }
   const handleFile = (field, file) => { setFiles(f => ({ ...f, [field]: file })); setErrors(e => ({ ...e, [field]: undefined })) }
 
@@ -106,15 +117,63 @@ export default function RegistroPropietario() {
       .then(data => {
         if (!data) return
         setPartnerBranding(data)
-        savedValues.current = {
-          ...savedValues.current,
+        setFormValues({
           nombre_propietario: savedValues.current.nombre_propietario || data.operation?.nombre_propietario || '',
           direccion_inmueble: savedValues.current.direccion_inmueble || data.operation?.direccion_inmueble || '',
           monto_renta: savedValues.current.monto_renta || (data.operation?.monto_renta ? String(data.operation.monto_renta) : ''),
-        }
+        })
       })
       .catch(() => {})
   }, [router.isReady, router.query])
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setFormValues(savedValues.current), 0)
+    return () => clearTimeout(timeout)
+  }, [step, tipoPersonaPropietario])
+
+  const buscarPropietarioRecurrente = async () => {
+    saveCurrentStep()
+    const v = getValues()
+    const rfc = v.rfc_propietario?.trim()
+    const correo = v.correo_propietario?.trim()
+    const telefono = v.telefono_propietario?.trim()
+    if (!rfc || (!correo && !telefono)) {
+      setErrors(e => ({ ...e, recurrente: 'Para buscar datos previos captura RFC y correo o telefono.' }))
+      setRecurrente(null)
+      return
+    }
+
+    setBuscandoRecurrente(true)
+    setErrors(e => ({ ...e, recurrente: undefined }))
+    setRecurrente(null)
+    setRecurrenteAplicado(false)
+    try {
+      const res = await fetch('/api/propietarios/recurrente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rfc, correo, telefono }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'No se pudo buscar propietario recurrente')
+      if (!data.found) {
+        setErrors(e => ({ ...e, recurrente: 'No encontramos datos previos con esa combinacion.' }))
+        return
+      }
+      setRecurrente(data)
+    } catch (err) {
+      setErrors(e => ({ ...e, recurrente: err.message || 'No se pudo buscar propietario recurrente' }))
+    } finally {
+      setBuscandoRecurrente(false)
+    }
+  }
+
+  const aplicarPropietarioRecurrente = () => {
+    if (!recurrente?.values) return
+    const nextTipo = recurrente.values.tipo_persona_propietario || 'fisica'
+    setTipoPersonaPropietario(nextTipo)
+    setTimeout(() => setFormValues(recurrente.values), 0)
+    setRecurrenteAplicado(true)
+  }
 
   const validateStep1 = () => {
     const v = getValues(); const e = {}
@@ -286,6 +345,31 @@ export default function RegistroPropietario() {
               {errors.domicilio_propietario && <p style={{ color: '#b91c3c', fontSize: 12, margin: '6px 0 0', fontWeight: 600 }}>{errors.domicilio_propietario}</p>}
             </Field>
             <Field label="RFC" required={tipoPersonaPropietario === 'moral'} error={errors.rfc_propietario}><Input name="rfc_propietario" placeholder={tipoPersonaPropietario === 'moral' ? 'RFC de la empresa' : 'XXXX000000XXX'} error={errors.rfc_propietario} /></Field>
+            <div style={{ margin: '-6px 0 18px' }}>
+              <button type="button" onClick={buscarPropietarioRecurrente} disabled={buscandoRecurrente}
+                style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#f8f8f8', color: '#374151', fontSize: 12, fontWeight: 800, cursor: buscandoRecurrente ? 'not-allowed' : 'pointer', opacity: buscandoRecurrente ? 0.7 : 1 }}>
+                {buscandoRecurrente ? 'Buscando...' : 'Buscar datos previos'}
+              </button>
+              <p style={{ margin: '8px 0 0', fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
+                Por seguridad solo buscamos con RFC y correo o telefono. No mostramos documentos ni datos bancarios previos.
+              </p>
+              {errors.recurrente && <p style={{ margin: '8px 0 0', color: errors.recurrente.includes('No encontramos') ? '#6b7280' : '#b91c3c', fontSize: 12, fontWeight: 700 }}>{errors.recurrente}</p>}
+              {recurrente?.found && (
+                <div style={{ marginTop: 12, border: '1px solid #bbf7d0', background: '#f0fdf4', borderRadius: 10, padding: '12px 14px' }}>
+                  <p style={{ margin: 0, color: '#065f46', fontSize: 13, fontWeight: 900 }}>Encontramos datos previos de este propietario.</p>
+                  <p style={{ margin: '6px 0 0', color: '#374151', fontSize: 12, lineHeight: 1.5 }}>
+                    Coincidencia: {recurrente.summary?.nombre || 'propietario'} · RFC {recurrente.summary?.rfc || 'confirmado'} · {recurrente.summary?.correo || recurrente.summary?.telefono || 'contacto confirmado'}.
+                  </p>
+                  <p style={{ margin: '6px 0 10px', color: '#6b7280', fontSize: 11, lineHeight: 1.5 }}>
+                    Puedes precargar datos de contacto y domicilio. Documentos, datos bancarios y claves oficiales no se reutilizan aqui.
+                  </p>
+                  <button type="button" onClick={aplicarPropietarioRecurrente}
+                    style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: '#065f46', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                    {recurrenteAplicado ? 'Datos precargados' : 'Usar datos anteriores'}
+                  </button>
+                </div>
+              )}
+            </div>
             <Field label={tipoPersonaPropietario === 'moral' ? 'Clave de elector del representante' : 'Clave de elector (INE)'}><Input name="clave_elector_propietario" placeholder="Clave de elector" /></Field>
             <SectionTitle title="Datos para recibir su renta" />
             <Field label="Forma de pago preferida">
