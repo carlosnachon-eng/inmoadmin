@@ -19,7 +19,30 @@ import ModalRenovacion from '../../components/poliza/ModalRenovacion'
 import ModalVendedorCV from '../../components/poliza/ModalVendedorCV'
 import ModalCompradorCV from '../../components/poliza/ModalCompradorCV'
 
+const EXPEDIENTES_LIST_SELECT = [
+  'id', 'created_at', 'updated_at', 'status', 'status_expediente', 'tipo_contrato',
+  'nombre_arrendatario', 'nombre_arrendador', 'direccion_inmueble',
+  'renta_mensual', 'fecha_inicio', 'fecha_vigencia', 'fecha_termino',
+  'duracion_contrato_meses', 'expediente_anterior_id',
+  'telefono_arrendatario', 'telefono_arrendador', 'correo_arrendatario', 'correo_arrendador',
+  'fecha_ultimo_recordatorio', 'propietario_id', 'inquilino_id',
+  'propietarios_inmuebles:propietario_id(tipo_persona_propietario, razon_social_propietario, nombre_propietario)',
+].join(', ')
+
+const EXPEDIENTE_FULL_SELECT = '*, propietarios_inmuebles:propietario_id(tipo_persona_propietario, razon_social_propietario, nombre_propietario)'
+
 const PROPIETARIOS_SELECT = 'id, nombre_propietario, telefono_propietario, correo_propietario, domicilio_propietario, rfc_propietario, direccion_inmueble, tipo_inmueble, monto_renta, precio_venta, tipo_operacion, tipo_persona_propietario, razon_social_propietario, status, notas_internas, created_at, contrato_administracion, forma_pago, banco, clabe, cuenta_bancaria, libre_gravamen, descripcion_inmueble, clave_elector_propietario, mascotas_permitidas, detalle_mascotas, institucion_gravamen'
+
+const SOLICITUDES_LIST_SELECT = [
+  'id', 'created_at', 'updated_at', 'status',
+  'tipo_solicitante', 'nombre_completo', 'razon_social', 'nombre_representante',
+  'telefono', 'correo',
+  'inmueble_interes', 'ingresos_mensuales', 'ingresos_empresa', 'tipo_ingresos',
+  'rfc', 'rfc_empresa', 'domicilio_actual', 'domicilio_fiscal',
+  'clave_elector', 'empresa_labora', 'giro_empresa', 'giro_comercial',
+  'notas_juridico', 'cobro_investigacion',
+  'pre_viabilidad', 'pre_viabilidad_detalle_interno', 'ingreso_detectado_ia',
+].join(', ')
 
 export default function PolizaPanel() {
   const router = useRouter()
@@ -37,6 +60,7 @@ export default function PolizaPanel() {
   const [partnerOps, setPartnerOps] = useState([])
   const [partnerAgencies, setPartnerAgencies] = useState([])
   const [subTabCV, setSubTabCV] = useState('vendedores')
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     if (!permisoCargando && puedeVer) {
@@ -46,61 +70,86 @@ export default function PolizaPanel() {
 
   const loadTab = async (tabId) => {
     setLoading(true)
-    if (tabId === 'expedientes') {
-      const { data } = await supabase
-        .from('poliza_expedientes')
-        .select('*, propietarios_inmuebles:propietario_id(tipo_persona_propietario, razon_social_propietario, nombre_propietario)')
-        .order('created_at', { ascending: false })
-      setExpedientes(data || [])
-    }
-    if (tabId === 'propietarios' && propietarios.length === 0) {
-      const { data } = await supabase.from('propietarios_inmuebles')
-        .select(PROPIETARIOS_SELECT)
-        .order('created_at', { ascending: false })
-      setPropietarios(data || [])
-    }
-    if (tabId === 'solicitudes' && solicitudes.length === 0) {
-      const { data } = await supabase.from('solicitudes_inquilino').select('*').order('created_at', { ascending: false })
-      setSolicitudes(data || [])
-    }
-    if (tabId === 'caja' || tabId === 'kpis') {
-      if (caja.length === 0) {
-        const { data } = await supabase.from('poliza_caja').select('*').order('fecha', { ascending: false })
-        setCaja(data || [])
+    setLoadError('')
+    try {
+      if (tabId === 'expedientes') {
+        const { data, error } = await supabase
+          .from('poliza_expedientes')
+          .select(EXPEDIENTES_LIST_SELECT)
+          .order('created_at', { ascending: false })
+          .limit(250)
+        if (error) throw error
+        setExpedientes(data || [])
       }
-    }
-    if (tabId === 'kpis' && expedientes.length === 0) {
-      const { data } = await supabase
-        .from('poliza_expedientes')
-        .select('*, propietarios_inmuebles:propietario_id(tipo_persona_propietario, razon_social_propietario, nombre_propietario)')
-        .order('created_at', { ascending: false })
-      setExpedientes(data || [])
-    }
-    if (tabId === 'compraventa' && propietarios.length === 0) {
-      const [{ data: prop }, { data: comp }] = await Promise.all([
-        supabase.from('propietarios_inmuebles').select(PROPIETARIOS_SELECT).order('created_at', { ascending: false }),
-        supabase.from('compradores').select('*').order('created_at', { ascending: false }),
-      ])
-      setPropietarios(prop || [])
-      setCompradores(comp || [])
-    }
-    if (tabId === 'compraventa' && compradores.length === 0) {
-      const { data } = await supabase.from('compradores').select('*').order('created_at', { ascending: false })
-      setCompradores(data || [])
-    }
-    if (tabId === 'partners') {
-      const [{ data }, { data: agencies }] = await Promise.all([
-        supabase
-          .from('partner_operations')
-          .select('*, partner_agencies:partner_agency_id(nombre_comercial), poliza_expedientes:poliza_expediente_id(id, status, saldo_pagado)')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('partner_agencies')
-          .select('*')
-          .order('created_at', { ascending: false }),
-      ])
-      setPartnerOps(data || [])
-      setPartnerAgencies(agencies || [])
+      if (tabId === 'propietarios' && propietarios.length === 0) {
+        const { data, error } = await supabase.from('propietarios_inmuebles')
+          .select(PROPIETARIOS_SELECT)
+          .order('created_at', { ascending: false })
+          .limit(300)
+        if (error) throw error
+        setPropietarios(data || [])
+      }
+      if (tabId === 'solicitudes' && solicitudes.length === 0) {
+        const { data, error } = await supabase
+          .from('solicitudes_inquilino')
+          .select(SOLICITUDES_LIST_SELECT)
+          .order('created_at', { ascending: false })
+          .limit(250)
+        if (error) throw error
+        setSolicitudes(data || [])
+      }
+      if (tabId === 'caja' || tabId === 'kpis') {
+        if (caja.length === 0) {
+          const { data, error } = await supabase.from('poliza_caja').select('*').order('fecha', { ascending: false }).limit(300)
+          if (error) throw error
+          setCaja(data || [])
+        }
+      }
+      if (tabId === 'kpis' && expedientes.length === 0) {
+        const { data, error } = await supabase
+          .from('poliza_expedientes')
+          .select(EXPEDIENTES_LIST_SELECT)
+          .order('created_at', { ascending: false })
+          .limit(250)
+        if (error) throw error
+        setExpedientes(data || [])
+      }
+      if (tabId === 'compraventa' && propietarios.length === 0) {
+        const [{ data: prop, error: propError }, { data: comp, error: compError }] = await Promise.all([
+          supabase.from('propietarios_inmuebles').select(PROPIETARIOS_SELECT).order('created_at', { ascending: false }).limit(300),
+          supabase.from('compradores').select('*').order('created_at', { ascending: false }).limit(250),
+        ])
+        if (propError) throw propError
+        if (compError) throw compError
+        setPropietarios(prop || [])
+        setCompradores(comp || [])
+      }
+      if (tabId === 'compraventa' && compradores.length === 0) {
+        const { data, error } = await supabase.from('compradores').select('*').order('created_at', { ascending: false }).limit(250)
+        if (error) throw error
+        setCompradores(data || [])
+      }
+      if (tabId === 'partners') {
+        const [{ data, error: opsError }, { data: agencies, error: agenciesError }] = await Promise.all([
+          supabase
+            .from('partner_operations')
+            .select('*, partner_agencies:partner_agency_id(nombre_comercial), poliza_expedientes:poliza_expediente_id(id, status, saldo_pagado)')
+            .order('created_at', { ascending: false })
+            .limit(250),
+          supabase
+            .from('partner_agencies')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(250),
+        ])
+        if (opsError) throw opsError
+        if (agenciesError) throw agenciesError
+        setPartnerOps(data || [])
+        setPartnerAgencies(agencies || [])
+      }
+    } catch (error) {
+      console.error('Error cargando poliza:', error)
+      setLoadError(error.message || 'No se pudieron cargar los datos de Poliza.')
     }
     setLoading(false)
   }
@@ -136,6 +185,63 @@ export default function PolizaPanel() {
 
   const closeModal = () => { setModal(null); setSelected(null); setNuevoPrefill({ solicitud: null, propietario: null }) }
   const closeAndReload = () => { closeModal(); loadTab(tab) }
+
+  const cargarExpedienteCompleto = async (expediente) => {
+    setLoading(true)
+    setLoadError('')
+    const { data, error } = await supabase
+      .from('poliza_expedientes')
+      .select(EXPEDIENTE_FULL_SELECT)
+      .eq('id', expediente.id)
+      .maybeSingle()
+    setLoading(false)
+    if (error) {
+      setLoadError(error.message)
+      return expediente
+    }
+    return data || expediente
+  }
+
+  const cargarSolicitudCompleta = async (solicitud) => {
+    setLoading(true)
+    setLoadError('')
+    const { data, error } = await supabase
+      .from('solicitudes_inquilino')
+      .select('*')
+      .eq('id', solicitud.id)
+      .maybeSingle()
+    setLoading(false)
+    if (error) {
+      setLoadError(error.message)
+      return solicitud
+    }
+    return data || solicitud
+  }
+
+  const seleccionarExpediente = async (expediente) => {
+    const completo = await cargarExpedienteCompleto(expediente)
+    setSelected(completo)
+    setModal('expediente')
+  }
+
+  const renovarExpediente = async (expediente) => {
+    const completo = await cargarExpedienteCompleto(expediente)
+    setSelected(completo)
+    setModal('renovar')
+  }
+
+  const seleccionarSolicitud = async (solicitud) => {
+    const completa = await cargarSolicitudCompleta(solicitud)
+    setSelected(completa)
+    setModal('solicitud')
+  }
+
+  const nuevoDesdeSolicitud = async (solicitud) => {
+    const completa = await cargarSolicitudCompleta(solicitud)
+    setSelected(null)
+    setNuevoPrefill({ solicitud: completa, propietario: null })
+    setModal('nuevo')
+  }
 
   const cambiarTab = (tabId) => {
     setTab(tabId)
@@ -191,13 +297,18 @@ export default function PolizaPanel() {
       )}
 
       <main style={st.main}>
+        {loadError && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 13, fontWeight: 700 }}>
+            No se pudieron cargar todos los datos: {loadError}
+          </div>
+        )}
         {loading ? (
           <div style={st.emptyState}><p>Cargando...</p></div>
         ) : (
           <>
-            {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={e => { setSelected(e); setModal('expediente') }} onReload={loadAll} onRenovar={e => { setSelected(e); setModal('renovar') }} />}
+            {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={seleccionarExpediente} onReload={loadAll} onRenovar={renovarExpediente} />}
             {tab === 'propietarios' && <TabPropietarios propietarios={propietariosFiltrados} onSelect={p => { setSelected(p); setModal('propietario') }} />}
-            {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={s => { setSelected(s); setModal('solicitud') }} onNuevoExp={sol => { setSelected(null); setNuevoPrefill({ solicitud: sol, propietario: null }); setModal('nuevo') }} />}
+            {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={seleccionarSolicitud} onNuevoExp={nuevoDesdeSolicitud} />}
             {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} esAdmin={esAdmin} />}
             {tab === 'partners' && <TabPartners operaciones={partnerOps} agencias={partnerAgencies} onReload={loadAll} />}
             {tab === 'compraventa' && (
