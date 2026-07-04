@@ -230,6 +230,7 @@ const DarkMetric = ({ label, value, tone = 'default' }) => {
 
 const ProyeccionAnual = ({ proyeccion }) => {
   if (!proyeccion) return null;
+  const generadoTotal = proyeccion.generado_total_2026 || {};
 
   return (
     <section style={{ background: '#172554', color: '#fff', borderRadius: 26, padding: 24, marginBottom: 22, boxShadow: '0 16px 38px rgba(30, 64, 175, 0.18)' }}>
@@ -242,12 +243,55 @@ const ProyeccionAnual = ({ proyeccion }) => {
             Rumbo de ingresos {proyeccion.year}
           </h2>
           <p style={{ margin: '8px 0 0', color: '#dbeafe', maxWidth: 850, lineHeight: 1.45 }}>
-            {proyeccion.lectura}
+            {generadoTotal.lectura || proyeccion.lectura}
           </p>
         </div>
         <span style={{ border: '1px solid rgba(255,255,255,0.20)', background: 'rgba(255,255,255,0.10)', borderRadius: 999, padding: '8px 12px', fontSize: 12, fontWeight: 950 }}>
           Corte: {fmtDate(proyeccion.corte)} · {proyeccion.avance_anio_porcentaje}% del año
         </span>
+      </div>
+
+      <div style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 22, padding: 18, marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div>
+            <p style={{ margin: 0, color: '#bfdbfe', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+              Generado proyectado {proyeccion.year}
+            </p>
+            <p style={{ margin: '9px 0 0', fontSize: 40, lineHeight: 1, fontWeight: 950, letterSpacing: -1.2 }}>
+              {fmtMoney(generadoTotal.total_proyectado)}
+            </p>
+            <p style={{ margin: '9px 0 0', color: '#dbeafe', maxWidth: 760, fontSize: 13, lineHeight: 1.45, fontWeight: 800 }}>
+              Estimación de producción bruta esperada. No representa flujo de caja, cobro ni utilidad.
+            </p>
+          </div>
+          <span style={{ background: 'rgba(255,255,255,0.12)', color: '#dbeafe', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 999, padding: '8px 12px', fontSize: 12, fontWeight: 950 }}>
+            {generadoTotal.conteo_comprometidos || 0} operaciones comprometidas
+          </span>
+        </div>
+
+        <div className="ci-grid ci-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginTop: 16 }}>
+          <DarkMetric label="Confirmado generado" value={fmtMoney(generadoTotal.confirmado)} tone="green" />
+          <DarkMetric label="Comprometido" value={fmtMoney(generadoTotal.comprometido)} />
+          <DarkMetric label="Probable por ritmo" value={fmtMoney(generadoTotal.probable)} />
+        </div>
+
+        {(generadoTotal.items_comprometidos || []).length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <p style={{ margin: '0 0 8px', color: '#bfdbfe', fontSize: 11, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Principales operaciones comprometidas
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {(generadoTotal.items_comprometidos || []).slice(0, 4).map((item) => (
+                <div key={`${item.fuente}-${item.id}`} className="ci-committed-row" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 14, padding: 10 }}>
+                  <p style={{ margin: 0, color: '#eff6ff', fontSize: 13, fontWeight: 850, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.folio ? `${item.folio} · ` : ''}{item.concepto}
+                  </p>
+                  <p style={{ margin: 0, color: '#fff', fontSize: 13, fontWeight: 950 }}>{fmtMoney(item.monto)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="ci-grid ci-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 14 }}>
@@ -603,9 +647,14 @@ export default function CentroInteligencia() {
           }
 
           .ci-category-row,
-          .ci-quality-row {
+          .ci-quality-row,
+          .ci-committed-row {
             grid-template-columns: 1fr !important;
             align-items: flex-start !important;
+          }
+
+          .ci-committed-row p {
+            white-space: normal !important;
           }
         }
 

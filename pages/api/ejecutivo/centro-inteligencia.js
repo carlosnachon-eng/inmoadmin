@@ -422,6 +422,7 @@ export default async function handler(req, res) {
       periodoAnual,
       resumenAnual: centroAnual.resumen_general,
       resumenPeriodo: centroBase.resumen_general,
+      datosOperativos,
     });
 
     const diagnosticoCaja = construirDiagnosticoCaja({
