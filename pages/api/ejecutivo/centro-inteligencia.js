@@ -9,6 +9,7 @@ import {
 import {
   construirDiagnosticoCaja,
   construirCentroInteligencia,
+  construirProyeccionAnual,
   resumirMantenimientoCentro,
   resumirPolizaCentro,
   unidadDesdeLecturaBi,
@@ -110,6 +111,36 @@ async function cargarAdministracion(periodo, metrics) {
   if (periodoError) throw periodoError;
 
   const { data: comisionesCobradasPeriodo, error: cobroError } = await measure('comisiones_admin.cobradas_periodo', () => supabase
+    .from('comisiones_admin')
+    .select('id, contract_id, periodo, monto, tipo, status, fecha_cobro')
+    .eq('status', 'cobrada')
+    .gte('fecha_cobro', periodo.startDate)
+    .lt('fecha_cobro', periodo.endExclusive)
+    .order('fecha_cobro', { ascending: true }));
+
+  if (cobroError) throw cobroError;
+
+  return {
+    comisionesPeriodo: comisionesPeriodo || [],
+    comisionesCobradasPeriodo: comisionesCobradasPeriodo || [],
+  };
+}
+
+async function cargarAdministracionAnual(periodo, metrics) {
+  const measure = metrics?.measure?.bind(metrics) || ((label, promiseFactory) => promiseFactory());
+  const desdePeriodo = `${periodo.year}-01`;
+  const hastaPeriodo = periodo.endDate.slice(0, 7);
+
+  const { data: comisionesPeriodo, error: periodoError } = await measure('comisiones_admin.ytd', () => supabase
+    .from('comisiones_admin')
+    .select('id, contract_id, periodo, monto, tipo, status, fecha_cobro')
+    .gte('periodo', desdePeriodo)
+    .lte('periodo', hastaPeriodo)
+    .order('periodo', { ascending: true }));
+
+  if (periodoError) throw periodoError;
+
+  const { data: comisionesCobradasPeriodo, error: cobroError } = await measure('comisiones_admin.cobradas_ytd', () => supabase
     .from('comisiones_admin')
     .select('id, contract_id, periodo, monto, tipo, status, fecha_cobro')
     .eq('status', 'cobrada')
@@ -287,6 +318,56 @@ async function cargarDatosOperativos(metrics) {
   };
 }
 
+const resolverPeriodoAnual = (periodo) => {
+  const hoy = new Date();
+  const selectedYear = Number(periodo.year || hoy.getFullYear());
+  const currentYear = hoy.getFullYear();
+  const corte = selectedYear === currentYear
+    ? hoy.toISOString().slice(0, 10)
+    : `${selectedYear}-12-31`;
+  return resolverPeriodo({
+    start: `${selectedYear}-01-01`,
+    end: corte,
+  });
+};
+
+const construirUnidadFinanciera = ({ periodo, datosCierres, datosAdmin, datosPoliza, datosMantenimiento }) => {
+  const resumenCierres = resumirCierres(datosCierres);
+  const resumenAdmin = resumirAdministracion(datosAdmin);
+  const resumenPoliza = resumirPolizaCentro({ periodo, ...datosPoliza });
+  const resumenMantenimiento = resumirMantenimientoCentro({ periodo, ...datosMantenimiento });
+  const resultadoCierres = roundMoney(
+    (datosCierres.cierres || []).reduce((acc, cierre) => (
+      acc + Math.max(0, toNumber(cierre.comision_inmobiliaria) - toNumber(cierre.monto_gerente))
+    ), 0),
+  );
+  const costosCierres = roundMoney(
+    (datosCierres.cierres || []).reduce((acc, cierre) => (
+      acc + Math.max(0, toNumber(cierre.comision) - toNumber(cierre.comision_inmobiliaria)) + toNumber(cierre.monto_gerente)
+    ), 0),
+  );
+
+  return construirCentroInteligencia({
+    periodo,
+    cierres: unidadDesdeLecturaBi({
+      key: 'cierres',
+      label: 'Ventas y rentas',
+      unidad: resumenCierres,
+      resultado: resultadoCierres,
+      costosDirectos: costosCierres,
+    }),
+    administracion: unidadDesdeLecturaBi({
+      key: 'administracion',
+      label: 'Administración',
+      unidad: resumenAdmin,
+      resultado: resumenAdmin.metricas.cobrado,
+      costosDirectos: 0,
+    }),
+    poliza: resumenPoliza,
+    mantenimiento: resumenMantenimiento,
+  });
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Método no permitido' });
 
@@ -306,6 +387,7 @@ export default async function handler(req, res) {
 
   try {
     const metrics = createQueryMetrics();
+    const periodoAnual = resolverPeriodoAnual(periodo);
     const [datosCierres, datosAdmin, datosPoliza, datosMantenimiento, datosCaja, datosOperativos] = await Promise.all([
       cargarCierres(periodo, metrics),
       cargarAdministracion(periodo, metrics),
@@ -315,40 +397,33 @@ export default async function handler(req, res) {
       cargarDatosOperativos(metrics),
     ]);
 
-    const resumenCierres = resumirCierres(datosCierres);
-    const resumenAdmin = resumirAdministracion(datosAdmin);
-    const resumenPoliza = resumirPolizaCentro({ periodo, ...datosPoliza });
-    const resumenMantenimiento = resumirMantenimientoCentro({ periodo, ...datosMantenimiento });
-    const resultadoCierres = roundMoney(
-      (datosCierres.cierres || []).reduce((acc, cierre) => (
-        acc + Math.max(0, toNumber(cierre.comision_inmobiliaria) - toNumber(cierre.monto_gerente))
-      ), 0),
-    );
-    const costosCierres = roundMoney(
-      (datosCierres.cierres || []).reduce((acc, cierre) => (
-        acc + Math.max(0, toNumber(cierre.comision) - toNumber(cierre.comision_inmobiliaria)) + toNumber(cierre.monto_gerente)
-      ), 0),
-    );
-
-    const centroBase = construirCentroInteligencia({
+    const centroBase = construirUnidadFinanciera({
       periodo,
-      cierres: unidadDesdeLecturaBi({
-        key: 'cierres',
-        label: 'Ventas y rentas',
-        unidad: resumenCierres,
-        resultado: resultadoCierres,
-        costosDirectos: costosCierres,
-      }),
-      administracion: unidadDesdeLecturaBi({
-        key: 'administracion',
-        label: 'Administración',
-        unidad: resumenAdmin,
-        resultado: resumenAdmin.metricas.cobrado,
-        costosDirectos: 0,
-      }),
-      poliza: resumenPoliza,
-      mantenimiento: resumenMantenimiento,
+      datosCierres,
+      datosAdmin,
+      datosPoliza,
+      datosMantenimiento,
     });
+
+    const [datosCierresAnual, datosAdminAnual, datosPolizaAnual, datosMantenimientoAnual] = await Promise.all([
+      cargarCierres(periodoAnual, metrics),
+      cargarAdministracionAnual(periodoAnual, metrics),
+      cargarPolizaPeriodo(supabase, periodoAnual, metrics),
+      cargarMantenimientoPeriodo(supabase, periodoAnual, metrics),
+    ]);
+    const centroAnual = construirUnidadFinanciera({
+      periodo: periodoAnual,
+      datosCierres: datosCierresAnual,
+      datosAdmin: datosAdminAnual,
+      datosPoliza: datosPolizaAnual,
+      datosMantenimiento: datosMantenimientoAnual,
+    });
+    const proyeccionAnual = construirProyeccionAnual({
+      periodoAnual,
+      resumenAnual: centroAnual.resumen_general,
+      resumenPeriodo: centroBase.resumen_general,
+    });
+
     const diagnosticoCaja = construirDiagnosticoCaja({
       periodo,
       cashMovements: datosCaja.cashMovements,
@@ -358,6 +433,7 @@ export default async function handler(req, res) {
     const centro = {
       ...centroBase,
       caja_vs_resultado: diagnosticoCaja,
+      proyeccion_anual: proyeccionAnual,
       excepciones: construirCentroExcepciones({
         ahora: new Date(),
         datos: datosOperativos,

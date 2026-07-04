@@ -17,6 +17,13 @@ const fmtDateTime = (value) => {
   return date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
+const fmtDate = (value) => {
+  if (!value) return '—';
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('es-MX', { dateStyle: 'medium' });
+};
+
 const monthValue = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -61,7 +68,7 @@ const KpiCard = ({ label, value, hint, tone = 'default' }) => {
   }[tone] || ['#fff', '#111827'];
 
   return (
-    <div style={{
+    <div className="ci-exception-row" style={{
       background: palette[0],
       color: palette[1],
       border: tone === 'dark' ? '1px solid #111827' : '1px solid #e5e7eb',
@@ -114,7 +121,7 @@ const UnidadCard = ({ unidad }) => (
       <Badge estado={unidad.estado_confianza} />
     </div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
+    <div className="ci-grid ci-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
       <Metric label="Generado" value={fmtMoney(unidad.metricas?.generado)} />
       <Metric label="Cobrado" value={fmtMoney(unidad.metricas?.cobrado)} positive />
       <Metric label="Pendiente" value={fmtMoney(unidad.metricas?.pendiente)} warning={Number(unidad.metricas?.pendiente || 0) > 0} />
@@ -155,7 +162,7 @@ const CajaVsResultado = ({ diagnostico }) => {
         </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 18 }}>
+      <div className="ci-grid ci-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 18 }}>
         <DarkMetric label="Entradas caja" value={fmtMoney(diagnostico.entradas)} tone="green" />
         <DarkMetric label="Salidas caja" value={fmtMoney(diagnostico.salidas)} tone="red" />
         <DarkMetric label="Movimiento neto del mes" value={fmtMoney(diagnostico.flujo_neto_caja)} tone={flujoNeto >= 0 ? 'green' : 'red'} />
@@ -170,12 +177,12 @@ const CajaVsResultado = ({ diagnostico }) => {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div className="ci-grid ci-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
           <h3 style={{ margin: '0 0 10px', fontSize: 16 }}>Lectura por categoría</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {categorias.map((categoria) => (
-              <div key={categoria.key} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 14, padding: 12 }}>
+                <div key={categoria.key} className="ci-category-row" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 14, padding: 12 }}>
                 <div>
                   <p style={{ margin: 0, fontWeight: 950 }}>{categoria.label}</p>
                   <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: 12 }}>
@@ -218,6 +225,53 @@ const DarkMetric = ({ label, value, tone = 'default' }) => {
       <p style={{ margin: 0, color: '#94a3b8', fontSize: 11, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</p>
       <p style={{ margin: '8px 0 0', color, fontSize: 22, fontWeight: 950 }}>{value}</p>
     </div>
+  );
+};
+
+const ProyeccionAnual = ({ proyeccion }) => {
+  if (!proyeccion) return null;
+
+  return (
+    <section style={{ background: '#172554', color: '#fff', borderRadius: 26, padding: 24, marginBottom: 22, boxShadow: '0 16px 38px rgba(30, 64, 175, 0.18)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 18 }}>
+        <div>
+          <p style={{ margin: '0 0 8px', color: '#bfdbfe', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.9 }}>
+            Proyección anual
+          </p>
+          <h2 style={{ margin: 0, fontSize: 28, letterSpacing: -0.7 }}>
+            Rumbo de ingresos {proyeccion.year}
+          </h2>
+          <p style={{ margin: '8px 0 0', color: '#dbeafe', maxWidth: 850, lineHeight: 1.45 }}>
+            {proyeccion.lectura}
+          </p>
+        </div>
+        <span style={{ border: '1px solid rgba(255,255,255,0.20)', background: 'rgba(255,255,255,0.10)', borderRadius: 999, padding: '8px 12px', fontSize: 12, fontWeight: 950 }}>
+          Corte: {fmtDate(proyeccion.corte)} · {proyeccion.avance_anio_porcentaje}% del año
+        </span>
+      </div>
+
+      <div className="ci-grid ci-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 14 }}>
+        <DarkMetric label="Cobrado acumulado" value={fmtMoney(proyeccion.cobrado_ytd)} tone="green" />
+        <DarkMetric label="Proyección cobrada anual" value={fmtMoney(proyeccion.proyeccion_cobrado_anual)} tone="green" />
+        <DarkMetric label="Generado acumulado" value={fmtMoney(proyeccion.generado_ytd)} />
+        <DarkMetric label="Pendiente acumulado" value={fmtMoney(proyeccion.pendiente_ytd)} tone={Number(proyeccion.pendiente_ytd || 0) > 0 ? 'red' : 'green'} />
+      </div>
+
+      <div className="ci-grid ci-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+        <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.11)', borderRadius: 16, padding: 14 }}>
+          <p style={{ margin: 0, color: '#bfdbfe', fontSize: 11, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>Promedio mensual cobrado</p>
+          <p style={{ margin: '7px 0 0', fontSize: 19, fontWeight: 950 }}>{fmtMoney(proyeccion.promedio_mensual_cobrado)}</p>
+        </div>
+        <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.11)', borderRadius: 16, padding: 14 }}>
+          <p style={{ margin: 0, color: '#bfdbfe', fontSize: 11, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>Resultado proyectado</p>
+          <p style={{ margin: '7px 0 0', fontSize: 19, fontWeight: 950 }}>{fmtMoney(proyeccion.proyeccion_resultado_anual)}</p>
+        </div>
+        <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.11)', borderRadius: 16, padding: 14 }}>
+          <p style={{ margin: 0, color: '#bfdbfe', fontSize: 11, fontWeight: 950, textTransform: 'uppercase', letterSpacing: 0.4 }}>Método</p>
+          <p style={{ margin: '7px 0 0', color: '#dbeafe', fontSize: 13, lineHeight: 1.35, fontWeight: 800 }}>{proyeccion.metodo}</p>
+        </div>
+      </div>
+    </section>
   );
 };
 
@@ -498,6 +552,7 @@ export default function CentroInteligencia() {
   const unidades = data?.unidades || [];
   const acciones = data?.acciones_pendientes || [];
   const cajaVsResultado = data?.caja_vs_resultado || null;
+  const proyeccionAnual = data?.proyeccion_anual || null;
   const excepciones = data?.excepciones || {};
   const atencionInmediata = excepciones?.atencion_inmediata || [];
   const porResolucion = excepciones?.por_resolucion || {};
@@ -528,14 +583,68 @@ export default function CentroInteligencia() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f7f3ed', fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', color: '#111827' }}>
-      <div style={{ maxWidth: 1440, margin: '0 auto', padding: '42px 26px 72px' }}>
+      <style jsx global>{`
+        @media (max-width: 980px) {
+          .ci-grid,
+          .ci-resolution-grid,
+          .ci-grid-2,
+          .ci-grid-3,
+          .ci-grid-4 {
+            grid-template-columns: 1fr !important;
+          }
+
+          .ci-exception-row {
+            grid-template-columns: 1fr !important;
+          }
+
+          .ci-exception-row a {
+            justify-self: stretch !important;
+            text-align: center !important;
+          }
+
+          .ci-category-row,
+          .ci-quality-row {
+            grid-template-columns: 1fr !important;
+            align-items: flex-start !important;
+          }
+        }
+
+        @media (max-width: 640px) {
+          body {
+            overflow-x: hidden;
+          }
+
+          .ci-page {
+            padding: 22px 14px 46px !important;
+          }
+
+          .ci-title {
+            font-size: 34px !important;
+            letter-spacing: -1px !important;
+          }
+
+          .ci-subtitle {
+            font-size: 16px !important;
+          }
+
+          .ci-header-actions {
+            width: 100% !important;
+          }
+
+          .ci-header-actions input,
+          .ci-header-actions button {
+            width: 100% !important;
+          }
+        }
+      `}</style>
+      <div className="ci-page" style={{ maxWidth: 1440, margin: '0 auto', padding: '42px 26px 72px' }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 28 }}>
           <div>
             <div style={{ display: 'inline-flex', background: '#111827', color: '#fff', borderRadius: 999, padding: '7px 13px', fontSize: 12, fontWeight: 950, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 14 }}>
               Centro de Inteligencia Empresarial
             </div>
-            <h1 style={{ margin: 0, fontSize: 46, letterSpacing: -1.6, lineHeight: 1.02 }}>¿Qué necesita mi atención hoy?</h1>
-            <p style={{ margin: '14px 0 0', maxWidth: 920, color: '#4b5563', fontSize: 20, lineHeight: 1.35 }}>{fraseEjecutiva}</p>
+            <h1 className="ci-title" style={{ margin: 0, fontSize: 46, letterSpacing: -1.6, lineHeight: 1.02 }}>¿Qué necesita mi atención hoy?</h1>
+            <p className="ci-subtitle" style={{ margin: '14px 0 0', maxWidth: 920, color: '#4b5563', fontSize: 20, lineHeight: 1.35 }}>{fraseEjecutiva}</p>
             <p style={{ margin: '10px 0 0', color: '#9ca3af', fontSize: 14, fontWeight: 800 }}>
               Última actualización: {fmtDateTime(data?.generated_at)}
             </p>
@@ -544,7 +653,7 @@ export default function CentroInteligencia() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="ci-header-actions" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               type="month"
               value={periodoInput}
@@ -599,7 +708,7 @@ export default function CentroInteligencia() {
           )}
         </section>
 
-        <section style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 1fr', gap: 16, marginBottom: 28 }}>
+        <section className="ci-grid ci-resolution-grid" style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 1fr', gap: 16, marginBottom: 28 }}>
           <ResolutionColumn nivel="criterio_direccion" items={porResolucion.criterio_direccion || []} />
           <ResolutionColumn nivel="revisar_coordinacion" items={porResolucion.revisar_coordinacion || []} />
           <ResolutionColumn nivel="resolver_area" items={porResolucion.resolver_area || []} />
@@ -624,7 +733,7 @@ export default function CentroInteligencia() {
           </section>
         )}
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16, marginBottom: 28 }}>
+        <section className="ci-grid ci-grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16, marginBottom: 28 }}>
           <ExceptionSection
             title="Propiedades que necesitan atención"
             subtitle="Inventario publicado/reservado con señales de bajo desempeño o riesgo operativo."
@@ -655,7 +764,7 @@ export default function CentroInteligencia() {
           <div style={{ height: 1, background: '#d1d5db', flex: 1 }} />
         </div>
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 16, marginBottom: 22 }}>
+        <section className="ci-grid ci-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 16, marginBottom: 22 }}>
           <KpiCard label="Total generado" value={fmtMoney(resumen.total_generado)} hint="Cierres + Administración + Póliza + Mantenimiento" />
           <KpiCard label="Total cobrado" value={fmtMoney(resumen.total_cobrado)} hint="Cobros trazables, sin caja no vinculada" tone="green" />
           <KpiCard label="Total pendiente" value={fmtMoney(resumen.total_pendiente)} hint="Por cobrar reconstruido por unidad" tone={Number(resumen.total_pendiente || 0) > 0 ? 'yellow' : 'green'} />
@@ -666,6 +775,8 @@ export default function CentroInteligencia() {
             tone="dark"
           />
         </section>
+
+        <ProyeccionAnual proyeccion={proyeccionAnual} />
 
         <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 24, padding: 22, marginBottom: 22, boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -682,20 +793,20 @@ export default function CentroInteligencia() {
 
         <section style={{ marginBottom: 22 }}>
           <h2 style={{ margin: '0 0 14px', fontSize: 28, letterSpacing: -0.7 }}>Desglose por unidad</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
+          <div className="ci-grid ci-grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
             {unidades.map((unidad) => <UnidadCard key={unidad.key} unidad={unidad} />)}
           </div>
         </section>
 
         <CajaVsResultado diagnostico={cajaVsResultado} />
 
-        <section style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 16 }}>
+        <section className="ci-grid ci-grid-2" style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 16 }}>
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 24, padding: 22, boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)' }}>
             <h2 style={{ margin: 0, fontSize: 26, letterSpacing: -0.6 }}>Calidad de información</h2>
             <p style={{ margin: '7px 0 18px', color: '#6b7280', fontSize: 15 }}>Conciliación por unidad antes de tomar decisiones finas.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {(calidad.unidades || []).map((unidad) => (
-                <div key={unidad.key} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 12, background: '#f9fafb', borderRadius: 16, padding: 14 }}>
+                <div key={unidad.key} className="ci-quality-row" style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 12, background: '#f9fafb', borderRadius: 16, padding: 14 }}>
                   <div>
                     <p style={{ margin: 0, fontWeight: 950 }}>{unidad.label}</p>
                     <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: 13 }}>
