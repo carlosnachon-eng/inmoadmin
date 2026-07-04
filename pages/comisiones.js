@@ -26,6 +26,11 @@ const periodoLabel = (p) => {
     .toLocaleDateString("es-MX", { month: "long", year: "numeric" });
 };
 
+const normalizeText = (value = "") => String(value)
+  .toLowerCase()
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "");
+
 const Btn = ({ children, onClick, color = "#1a1a2e", disabled, small }) => (
   <button onClick={onClick} disabled={disabled} style={{
     background: color, color: "#fff", border: "none",
@@ -56,6 +61,10 @@ export default function Comisiones() {
   const [saving, setSaving] = useState(false);
   const [periodo, setPeriodo] = useState(periodoActual());
   const [tab, setTab] = useState("mes");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("todos");
+  const [tipoFilter, setTipoFilter] = useState("todos");
+  const [receiverFilter, setReceiverFilter] = useState("todos");
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
   const today = new Date().toISOString().split("T")[0];
@@ -177,6 +186,31 @@ export default function Comisiones() {
 
   // ── Cálculos del periodo seleccionado ─────────────────────────────────────
   const comisionesPeriodo = comisiones.filter(c => c.periodo === periodo);
+  const searchTerm = normalizeText(search.trim());
+  const matchesSearch = (item = {}) => {
+    if (!searchTerm) return true;
+    const text = normalizeText([
+      item.property_name,
+      item.tenant_name,
+      item.owner_name,
+      item.contracts?.property_name,
+      item.contracts?.tenant_name,
+      item.contracts?.owner_name,
+    ].filter(Boolean).join(" "));
+    return text.includes(searchTerm);
+  };
+  const matchesTipo = (com) => tipoFilter === "todos" || com.tipo === tipoFilter;
+  const matchesStatus = (com) => statusFilter === "todos" || com.status === statusFilter;
+  const matchesReceiver = (item) => receiverFilter === "todos" || (item.rent_receiver || item.contracts?.rent_receiver) === receiverFilter;
+  const comisionesPeriodoFiltradas = comisionesPeriodo
+    .filter(com => com.monto > 0)
+    .filter(com => matchesSearch(com))
+    .filter(com => matchesTipo(com))
+    .filter(com => matchesStatus(com))
+    .filter(com => matchesReceiver(com));
+  const contratosFiltrados = contracts
+    .filter(c => matchesSearch(c))
+    .filter(c => matchesReceiver(c));
   const totalEsperado     = comisionesPeriodo.reduce((a, c) => a + (c.monto || 0), 0);
   const totalCobrado      = comisionesPeriodo.filter(c => c.status === "cobrada").reduce((a, c) => a + (c.monto || 0), 0);
   const totalPendiente    = comisionesPeriodo.filter(c => c.status === "pendiente").reduce((a, c) => a + (c.monto || 0), 0);
@@ -186,6 +220,13 @@ export default function Comisiones() {
   // ── Totales globales ──────────────────────────────────────────────────────
   const totalMensualContratos = contracts.reduce((a, c) => a + calcComision(c), 0);
   const periodos = [...new Set(comisiones.map(c => c.periodo))].sort().reverse();
+  const clearFilters = () => {
+    setSearch("");
+    setStatusFilter("todos");
+    setTipoFilter("todos");
+    setReceiverFilter("todos");
+  };
+  const filterInputStyle = { padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff", color: "#374151", minHeight: 38 };
 
   return (
     <div style={{ minHeight: "100vh", background: brand.bg, fontFamily: "system-ui, sans-serif" }}>
@@ -236,6 +277,41 @@ export default function Comisiones() {
           ))}
         </div>
 
+        {(tab === "mes" || tab === "contratos") && (
+          <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, marginBottom: 16, display: "grid", gridTemplateColumns: "minmax(220px, 1fr) 150px 150px 170px auto", gap: 10, alignItems: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar propiedad, inquilino o propietario..."
+              style={{ ...filterInputStyle, width: "100%", boxSizing: "border-box" }}
+            />
+            {tab === "mes" && (
+              <>
+                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={filterInputStyle}>
+                  <option value="todos">Todos los estados</option>
+                  <option value="pendiente">Pendientes</option>
+                  <option value="cobrada">Cobradas</option>
+                </select>
+                <select value={tipoFilter} onChange={e => setTipoFilter(e.target.value)} style={filterInputStyle}>
+                  <option value="todos">Todos los tipos</option>
+                  <option value="automatica">Automática</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </>
+            )}
+            {tab === "contratos" && <div />}
+            {tab === "contratos" && <div />}
+            <select value={receiverFilter} onChange={e => setReceiverFilter(e.target.value)} style={filterInputStyle}>
+              <option value="todos">Todos los cobros</option>
+              <option value="inmobiliaria">Renta a Emporio</option>
+              <option value="propietario">Renta al propietario</option>
+            </select>
+            <button onClick={clearFilters} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: "#f3f4f6", color: "#6b7280", fontSize: 12, fontWeight: 800, cursor: "pointer", minHeight: 38 }}>
+              Limpiar
+            </button>
+          </div>
+        )}
+
         {/* ── TAB: POR PERIODO ── */}
         {tab === "mes" && (
           <div style={{ background: "#fff", borderRadius: "0 12px 12px 12px", padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
@@ -279,7 +355,7 @@ export default function Comisiones() {
                     </tr>
                   </thead>
                   <tbody>
-                    {comisionesPeriodo.filter(com => com.monto > 0).map(com => (
+                    {comisionesPeriodoFiltradas.map(com => (
                       <tr key={com.id} style={{ borderTop: "1px solid #f3f4f6", background: com.tipo === "manual" && com.status === "pendiente" ? "#fffdf0" : "#fff" }}>
                         <td style={{ padding: "10px 12px", fontWeight: 600, fontSize: 13 }}>{com.contracts?.property_name || "—"}</td>
                         <td style={{ padding: "10px 12px", fontSize: 13, color: "#6b7280" }}>{com.contracts?.tenant_name || "—"}</td>
@@ -308,6 +384,13 @@ export default function Comisiones() {
                         </td>
                       </tr>
                     ))}
+                    {comisionesPeriodoFiltradas.length === 0 && (
+                      <tr>
+                        <td colSpan={9} style={{ padding: 28, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+                          Sin comisiones con esos filtros.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
 
@@ -342,7 +425,7 @@ export default function Comisiones() {
                   </tr>
                 </thead>
                 <tbody>
-                  {contracts.map(c => {
+                  {contratosFiltrados.map(c => {
                     const comisionMonto = calcComision(c);
                     const cobradas = comisiones.filter(com => com.contract_id === c.id && com.status === "cobrada").length;
                     const totalHistorico = comisiones.filter(com => com.contract_id === c.id && com.status === "cobrada").reduce((a, com) => a + (com.monto || 0), 0);
@@ -368,6 +451,13 @@ export default function Comisiones() {
                       </tr>
                     );
                   })}
+                  {contratosFiltrados.length === 0 && (
+                    <tr>
+                      <td colSpan={8} style={{ padding: 28, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+                        Sin contratos con esos filtros.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

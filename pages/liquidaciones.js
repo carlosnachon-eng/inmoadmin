@@ -383,11 +383,18 @@ export default function Liquidaciones() {
     );
   };
 
-  const cargarComisionesPendientesOwnerPeriodo = async ({ ownerEmail, propertyName, periodDescription }) => {
+  const cargarComisionesPendientesOwnerPeriodo = async ({ ownerEmail, propertyName, periodDescription, soloRentasPagadas = false }) => {
     const periodo = periodoKeyDesdeDescripcion(periodDescription);
     if (!periodo) return { periodo: null, contratosProp: [], comisionesPendientes: [], totalComision: 0 };
 
-    const contratosProp = getContratosAdministracionOwner(ownerEmail, propertyName);
+    let contratosProp = getContratosAdministracionOwner(ownerEmail, propertyName);
+    if (soloRentasPagadas) {
+      contratosProp = contratosProp.filter(c => payments.some(p =>
+        p.contract_id === c.id &&
+        p.status === "pagado" &&
+        (p.due_date || "").startsWith(periodo)
+      ));
+    }
     const contractIds = contratosProp.map(c => c.id);
     if (contractIds.length === 0) return { periodo, contratosProp, comisionesPendientes: [], totalComision: 0 };
 
@@ -403,8 +410,8 @@ export default function Liquidaciones() {
     return { periodo, contratosProp, comisionesPendientes, totalComision };
   };
 
-  const sincronizarComisionesAdminCobradas = async ({ ownerEmail, propertyName, periodDescription, paymentDate }) => {
-    const { periodo, comisionesPendientes } = await cargarComisionesPendientesOwnerPeriodo({ ownerEmail, propertyName, periodDescription });
+  const sincronizarComisionesAdminCobradas = async ({ ownerEmail, propertyName, periodDescription, paymentDate, soloRentasPagadas = false }) => {
+    const { periodo, comisionesPendientes } = await cargarComisionesPendientesOwnerPeriodo({ ownerEmail, propertyName, periodDescription, soloRentasPagadas });
     if (!periodo || comisionesPendientes.length === 0) return { periodo, totalComision: 0, actualizadas: 0 };
 
     const ids = comisionesPendientes.map(c => c.id);
@@ -579,11 +586,13 @@ export default function Liquidaciones() {
 
     const statusLiquidacion = formPago.concepto === "total" ? "pagado" : "pagado_parcial";
     const montoPagoPropietario = parseFloat(formPago.monto) || 0;
-    const datosComisionRapida = formPago.concepto === "total"
+    const sincronizaComisionRapida = formPago.concepto === "total" || formPago.concepto === "parcial";
+    const datosComisionRapida = sincronizaComisionRapida
       ? await cargarComisionesPendientesOwnerPeriodo({
         ownerEmail: propietarioPago.email,
         propertyName: formPago.property_name,
         periodDescription: formPago.periodo,
+        soloRentasPagadas: formPago.concepto === "parcial",
       })
       : { totalComision: 0 };
 
@@ -616,7 +625,7 @@ export default function Liquidaciones() {
         created_at: new Date().toISOString(),
       }]);
 
-      if (formPago.concepto === "total" && (datosComisionRapida.totalComision || 0) > 0) {
+      if (sincronizaComisionRapida && (datosComisionRapida.totalComision || 0) > 0) {
         await supabase.from("cash_movements").insert([{
           type: "entrada",
           category: "comision_cobrada",
@@ -624,7 +633,7 @@ export default function Liquidaciones() {
           amount: datosComisionRapida.totalComision,
           payment_method: formPago.forma_pago,
           date: formPago.fecha || today,
-          notes: `Retenida de liquidación rápida. Recibo: ${recibo.id.slice(0,8).toUpperCase()}${formPago.property_name ? ` · Propiedad: ${formPago.property_name}` : ""}`,
+          notes: `Retenida de ${formPago.concepto === "total" ? "liquidación total" : "pago parcial de rentas cobradas"}. Recibo: ${recibo.id.slice(0,8).toUpperCase()}${formPago.property_name ? ` · Propiedad: ${formPago.property_name}` : ""}`,
           created_by: profile?.email || session.user.email,
           created_at: new Date().toISOString(),
         }]);
@@ -634,6 +643,7 @@ export default function Liquidaciones() {
           propertyName: formPago.property_name,
           periodDescription: formPago.periodo,
           paymentDate: formPago.fecha,
+          soloRentasPagadas: formPago.concepto === "parcial",
         });
       }
     }
