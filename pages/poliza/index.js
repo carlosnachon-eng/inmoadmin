@@ -33,6 +33,29 @@ const EXPEDIENTE_FULL_SELECT = '*, propietarios_inmuebles:propietario_id(tipo_pe
 
 const PROPIETARIOS_SELECT = 'id, nombre_propietario, telefono_propietario, correo_propietario, domicilio_propietario, rfc_propietario, direccion_inmueble, tipo_inmueble, monto_renta, precio_venta, tipo_operacion, tipo_persona_propietario, razon_social_propietario, status, notas_internas, created_at, contrato_administracion, forma_pago, banco, clabe, cuenta_bancaria, libre_gravamen, descripcion_inmueble, clave_elector_propietario, mascotas_permitidas, detalle_mascotas, institucion_gravamen'
 
+const COMPRAVENTA_VENDEDORES_SELECT = [
+  'id',
+  'created_at',
+  'nombre_propietario',
+  'telefono_propietario',
+  'direccion_inmueble',
+  'precio_venta',
+  'libre_gravamen',
+  'tipo_copropiedad',
+  'tipo_operacion',
+].join(', ')
+
+const COMPRAVENTA_COMPRADORES_SELECT = [
+  'id',
+  'created_at',
+  'nombre_comprador',
+  'celular_comprador',
+  'inmueble_interes',
+  'precio_pactado',
+  'forma_pago_compra',
+  'tiene_conyuge',
+].join(', ')
+
 const SOLICITUDES_LIST_SELECT = [
   'id', 'created_at', 'updated_at', 'status',
   'tipo_solicitante', 'nombre_completo', 'razon_social', 'nombre_representante',
@@ -56,6 +79,7 @@ export default function PolizaPanel() {
   const [selected, setSelected] = useState(null)
   const [nuevoPrefill, setNuevoPrefill] = useState({ solicitud: null, propietario: null })
   const [caja, setCaja] = useState([])
+  const [vendedoresCV, setVendedoresCV] = useState([])
   const [compradores, setCompradores] = useState([])
   const [partnerOps, setPartnerOps] = useState([])
   const [partnerAgencies, setPartnerAgencies] = useState([])
@@ -68,7 +92,7 @@ export default function PolizaPanel() {
     }
   }, [permisoCargando, puedeVer])
 
-  const loadTab = async (tabId) => {
+  const loadTab = async (tabId, force = false) => {
     setLoading(true)
     setLoadError('')
     try {
@@ -81,7 +105,7 @@ export default function PolizaPanel() {
         if (error) throw error
         setExpedientes(data || [])
       }
-      if (tabId === 'propietarios' && propietarios.length === 0) {
+      if (tabId === 'propietarios' && (force || propietarios.length === 0)) {
         const { data, error } = await supabase.from('propietarios_inmuebles')
           .select(PROPIETARIOS_SELECT)
           .order('created_at', { ascending: false })
@@ -89,7 +113,7 @@ export default function PolizaPanel() {
         if (error) throw error
         setPropietarios(data || [])
       }
-      if (tabId === 'solicitudes' && solicitudes.length === 0) {
+      if (tabId === 'solicitudes' && (force || solicitudes.length === 0)) {
         const { data, error } = await supabase
           .from('solicitudes_inquilino')
           .select(SOLICITUDES_LIST_SELECT)
@@ -99,13 +123,13 @@ export default function PolizaPanel() {
         setSolicitudes(data || [])
       }
       if (tabId === 'caja' || tabId === 'kpis') {
-        if (caja.length === 0) {
+        if (force || caja.length === 0) {
           const { data, error } = await supabase.from('poliza_caja').select('*').order('fecha', { ascending: false }).limit(300)
           if (error) throw error
           setCaja(data || [])
         }
       }
-      if (tabId === 'kpis' && expedientes.length === 0) {
+      if (tabId === 'kpis' && (force || expedientes.length === 0)) {
         const { data, error } = await supabase
           .from('poliza_expedientes')
           .select(EXPEDIENTES_LIST_SELECT)
@@ -114,20 +138,28 @@ export default function PolizaPanel() {
         if (error) throw error
         setExpedientes(data || [])
       }
-      if (tabId === 'compraventa' && propietarios.length === 0) {
+      if (tabId === 'compraventa' && (force || vendedoresCV.length === 0 || compradores.length === 0)) {
         const [{ data: prop, error: propError }, { data: comp, error: compError }] = await Promise.all([
-          supabase.from('propietarios_inmuebles').select(PROPIETARIOS_SELECT).order('created_at', { ascending: false }).limit(300),
-          supabase.from('compradores').select('*').order('created_at', { ascending: false }).limit(250),
+          force || vendedoresCV.length === 0
+            ? supabase
+                .from('propietarios_inmuebles')
+                .select(COMPRAVENTA_VENDEDORES_SELECT)
+                .eq('tipo_operacion', 'venta')
+                .order('created_at', { ascending: false })
+                .limit(250)
+            : Promise.resolve({ data: vendedoresCV, error: null }),
+          force || compradores.length === 0
+            ? supabase
+                .from('compradores')
+                .select(COMPRAVENTA_COMPRADORES_SELECT)
+                .order('created_at', { ascending: false })
+                .limit(250)
+            : Promise.resolve({ data: compradores, error: null }),
         ])
         if (propError) throw propError
         if (compError) throw compError
-        setPropietarios(prop || [])
+        setVendedoresCV(prop || [])
         setCompradores(comp || [])
-      }
-      if (tabId === 'compraventa' && compradores.length === 0) {
-        const { data, error } = await supabase.from('compradores').select('*').order('created_at', { ascending: false }).limit(250)
-        if (error) throw error
-        setCompradores(data || [])
       }
       if (tabId === 'partners') {
         const [{ data, error: opsError }, { data: agencies, error: agenciesError }] = await Promise.all([
@@ -155,11 +187,10 @@ export default function PolizaPanel() {
   }
 
   const loadAll = async () => {
-    await loadTab(tab)
+    await loadTab(tab, true)
   }
 
   const propietariosFiltrados = propietarios.filter(p => !p.tipo_operacion || p.tipo_operacion === 'renta')
-  const vendedoresFiltrados = propietarios.filter(p => p.tipo_operacion === 'venta')
 
   const hoy = new Date()
   const stats = {
@@ -313,7 +344,7 @@ export default function PolizaPanel() {
             {tab === 'partners' && <TabPartners operaciones={partnerOps} agencias={partnerAgencies} onReload={loadAll} />}
             {tab === 'compraventa' && (
               <TabCompraventa
-                vendedores={vendedoresFiltrados}
+                vendedores={vendedoresCV}
                 compradores={compradores}
                 subTab={subTabCV}
                 onSubTab={setSubTabCV}
