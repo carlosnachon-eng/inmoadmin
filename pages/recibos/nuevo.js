@@ -22,6 +22,8 @@ const Sel = ({ children, ...props }) => (
 
 const fmt = (n) => "$" + Number(n).toLocaleString("es-MX", { minimumFractionDigits: 2 });
 
+const toNumber = (value) => Number(value || 0);
+
 // ── Generador PDF ──────────────────────────────────────────────────────────
 async function generarPDF(data) {
   const doc = new jsPDF({ unit: "pt", format: "letter" });
@@ -105,6 +107,29 @@ async function generarPDF(data) {
   doc.setFont("helvetica","bold"); doc.setFontSize(8);
   doc.text(data.inmueble, M+12, y+54);
   y += 68;
+
+  const totalAcordado = toNumber(data.monto_total_acordado || data.monto);
+  const recibidoHoy = toNumber(data.monto);
+  const saldoPendiente = Math.max(0, totalAcordado - recibidoHoy);
+  if (totalAcordado > recibidoHoy || data.fecha_compromiso_liquidacion) {
+    doc.setFillColor(...LGRAY); doc.roundedRect(M, y, W-2*M, 44, 6, 6, "F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...GRAY);
+    doc.text("Total acordado:", M+10, y+14);
+    doc.setTextColor(...DARK); doc.text(fmtMXN(totalAcordado), M+76, y+14);
+    doc.setTextColor(...GRAY); doc.text("Recibido hoy:", M+185, y+14);
+    doc.setTextColor(...DARK); doc.text(fmtMXN(recibidoHoy), M+246, y+14);
+    doc.setTextColor(...GRAY); doc.text("Saldo pendiente:", M+350, y+14);
+    doc.setTextColor(saldoPendiente > 0 ? 194 : 6, saldoPendiente > 0 ? 65 : 95, saldoPendiente > 0 ? 12 : 70);
+    doc.text(fmtMXN(saldoPendiente), M+425, y+14);
+    if (data.fecha_compromiso_liquidacion) {
+      const compromiso = new Date(data.fecha_compromiso_liquidacion + "T12:00:00").toLocaleDateString("es-MX",{day:"numeric",month:"long",year:"numeric"});
+      doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
+      doc.text("Fecha compromiso para liquidar saldo:", M+10, y+31);
+      doc.setFont("helvetica","bold"); doc.setTextColor(...DARK);
+      doc.text(compromiso, M+164, y+31);
+    }
+    y += 56;
+  }
 
   // SEPARADOR
   doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W-M, y); y += 14;
@@ -222,7 +247,8 @@ export default function NuevoRecibo() {
   const [asesores, setAsesores] = useState([]);
   const [form, setForm] = useState({
     cliente_nombre: "", cliente_tel: "", cliente_email: "",
-    propiedad_id: "", asesor_id: "", inmueble: "", monto: "", monto_previo: "",
+    propiedad_id: "", asesor_id: "", inmueble: "",
+    monto_total_acordado: "", monto_recibido: "", fecha_compromiso_liquidacion: "",
     fecha: new Date().toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" }),
     vigencia_dias: 7, fecha_limite_firma: "",
     forma_pago: "Transferencia",
@@ -279,8 +305,15 @@ export default function NuevoRecibo() {
     setInmuebleActivo(data || null);
   };
 
+  const totalAcordado = toNumber(form.monto_total_acordado);
+  const recibidoHoy = toNumber(form.monto_recibido);
+  const saldoPendiente = Math.max(0, totalAcordado - recibidoHoy);
+
   const handleSubmit = async () => {
-    if (!form.cliente_nombre || !form.propiedad_id || !form.inmueble || !form.monto) { showToast("Completa cliente, propiedad y monto", false); return; }
+    if (!form.cliente_nombre || !form.propiedad_id || !form.inmueble || !form.monto_total_acordado || !form.monto_recibido) { showToast("Completa cliente, propiedad, total acordado y recibido hoy", false); return; }
+    if (recibidoHoy <= 0) { showToast("El monto recibido hoy debe ser mayor a cero", false); return; }
+    if (totalAcordado < recibidoHoy) { showToast("El recibido hoy no puede ser mayor al total acordado", false); return; }
+    if (saldoPendiente > 0 && !form.fecha_compromiso_liquidacion) { showToast("Captura la fecha compromiso para liquidar el saldo pendiente", false); return; }
     setLoading(true);
     try {
       // Folio
@@ -299,7 +332,23 @@ export default function NuevoRecibo() {
       }
 
       // Generar PDF
-      const pdfData = { ...form, tipo, folio, monto: parseFloat(form.monto), monto_previo: parseFloat(form.monto_previo) || 0 };
+      const fechaCompromisoTexto = form.fecha_compromiso_liquidacion
+        ? new Date(form.fecha_compromiso_liquidacion + "T12:00:00").toLocaleDateString("es-MX",{day:"numeric",month:"long",year:"numeric"})
+        : "";
+      const condicionesConCompromiso = [
+        form.condiciones_especiales,
+        saldoPendiente > 0 && form.fecha_compromiso_liquidacion
+          ? `Saldo pendiente por ${fmt(saldoPendiente)} a liquidar a más tardar el ${fechaCompromisoTexto}. En caso de que el saldo no sea cubierto íntegramente en la fecha compromiso, el apartado perderá su vigencia, el monto previamente entregado quedará como no reembolsable por causa imputable al cliente y Emporio Inmobiliario podrá liberar la propiedad para continuar su promoción o negociación con otros prospectos, sin que ello se considere incumplimiento imputable al propietario ni a Emporio Inmobiliario.`
+          : null,
+      ].filter(Boolean).join("\n");
+      const pdfData = {
+        ...form,
+        tipo,
+        folio,
+        monto: recibidoHoy,
+        monto_total_acordado: totalAcordado,
+        condiciones_especiales: condicionesConCompromiso,
+      };
       const doc = await generarPDF(pdfData);
 
       // Subir PDF
@@ -329,8 +378,9 @@ export default function NuevoRecibo() {
         cliente_tel: form.cliente_tel || null,
         cliente_email: form.cliente_email || null,
         inmueble: form.inmueble,
-        monto: parseFloat(form.monto),
-        monto_previo: parseFloat(form.monto_previo) || 0,
+        monto: recibidoHoy,
+        monto_total_acordado: totalAcordado,
+        monto_previo: 0,
         fecha: new Date().toISOString().split("T")[0],
         vigencia_dias: parseInt(form.vigencia_dias),
         fecha_limite_firma: form.fecha_limite_firma || null,
@@ -338,7 +388,7 @@ export default function NuevoRecibo() {
         recibido_por: form.recibido_por,
         efectivo: form.efectivo,
         comprobante_url,
-        condiciones_especiales: form.condiciones_especiales || null,
+        condiciones_especiales: condicionesConCompromiso || null,
         es_urgente: form.es_urgente,
         es_contado: form.es_contado,
         pdf_url,
@@ -355,7 +405,7 @@ export default function NuevoRecibo() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           folio, tipo, cliente: form.cliente_nombre, inmueble: form.inmueble,
-          monto: fmt(form.monto), recibido_por: form.recibido_por,
+          monto: fmt(recibidoHoy), recibido_por: form.recibido_por,
           forma_pago: form.forma_pago, tiene_comprobante: !!comprobante_url,
           generado_por: profile?.email,
         }),
@@ -483,16 +533,39 @@ export default function NuevoRecibo() {
           <p style={{ ...sectionLabel, marginTop: 16 }}>Monto del apartado</p>
           <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
             <div style={{ flex: 1 }}>
-              <label style={labelSt}>Monto *</label>
-              <input style={inputSt} type="number" value={form.monto} onChange={e => set("monto", e.target.value)} placeholder="10000" />
+              <label style={labelSt}>Total acordado *</label>
+              <input style={inputSt} type="number" value={form.monto_total_acordado} onChange={e => set("monto_total_acordado", e.target.value)} placeholder="9500" />
             </div>
-            {tipo === "arrendamiento" && (
-              <div style={{ flex: 1 }}>
-                <label style={labelSt}>Abono previo (si aplica)</label>
-                <input style={inputSt} type="number" value={form.monto_previo} onChange={e => set("monto_previo", e.target.value)} placeholder="1000" />
-              </div>
-            )}
+            <div style={{ flex: 1 }}>
+              <label style={labelSt}>Recibido hoy *</label>
+              <input style={inputSt} type="number" value={form.monto_recibido} onChange={e => set("monto_recibido", e.target.value)} placeholder="8500" />
+            </div>
           </div>
+          {(totalAcordado > 0 || recibidoHoy > 0) && (
+            <div style={{
+              background: saldoPendiente > 0 ? "#fff7ed" : "#f0fdf4",
+              border: `1px solid ${saldoPendiente > 0 ? "#fed7aa" : "#bbf7d0"}`,
+              borderRadius: 10,
+              padding: "10px 12px",
+              marginBottom: 14,
+              fontSize: 13,
+              color: saldoPendiente > 0 ? "#9a3412" : "#065f46",
+              fontWeight: 600,
+            }}>
+              {saldoPendiente > 0
+                ? `Saldo pendiente: ${fmt(saldoPendiente)}`
+                : "El apartado quedará liquidado con este pago."}
+            </div>
+          )}
+          {saldoPendiente > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelSt}>Fecha compromiso de liquidación *</label>
+              <input style={inputSt} type="date" value={form.fecha_compromiso_liquidacion} onChange={e => set("fecha_compromiso_liquidacion", e.target.value)} />
+              <p style={{ margin: "5px 0 0", color: "#9ca3af", fontSize: 11 }}>
+                Si el saldo no se liquida en esta fecha, el apartado pierde vigencia, el cliente pierde lo entregado y la propiedad podrá liberarse.
+              </p>
+            </div>
+          )}
 
           {/* Forma de pago y comprobante */}
           <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
@@ -580,7 +653,7 @@ export default function NuevoRecibo() {
             <button onClick={() => router.push("/recibos")} style={{ flex: 1, background: "#f9fafb", color: brand.gray, border: `1px solid ${brand.border}`, borderRadius: 10, padding: "12px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
               Cancelar
             </button>
-            <button onClick={handleSubmit} disabled={loading || !form.cliente_nombre || !form.inmueble || !form.monto}
+            <button onClick={handleSubmit} disabled={loading || !form.cliente_nombre || !form.inmueble || !form.monto_total_acordado || !form.monto_recibido}
               style={{ flex: 2, background: loading ? "#9ca3af" : brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontSize: 14 }}>
               {loading ? "Generando recibo…" : "✓ Generar y descargar PDF"}
             </button>
