@@ -14,20 +14,33 @@ const calcComision = (c) => {
   return c.commission_value;
 };
 
+const parseDateLocal = (value) => {
+  const [year, month, day] = String(value || "").split("-").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1, 12, 0, 0);
+};
+
 const generarPagos = (contrato) => {
   const pagos = [];
-  const inicio = new Date(contrato.start_date);
-  const fin = new Date(contrato.end_date);
+  const inicio = parseDateLocal(contrato.start_date);
+  const fin = parseDateLocal(contrato.end_date);
   const diaCorte = parseInt(contrato.payment_day);
-  const finMenosUnMes = new Date(fin);
-  finMenosUnMes.setMonth(finMenosUnMes.getMonth() - 1);
-  let fecha = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
-  while (fecha <= finMenosUnMes) {
+
+  let fecha = new Date(inicio.getFullYear(), inicio.getMonth(), 1, 12, 0, 0);
+  const ultimoMes = new Date(fin.getFullYear(), fin.getMonth(), 1, 12, 0, 0);
+
+  while (fecha <= ultimoMes) {
     const year = fecha.getFullYear();
     const month = fecha.getMonth() + 1;
     const diasEnMes = new Date(year, month, 0).getDate();
     const diaReal = Math.min(diaCorte, diasEnMes);
     const vencimiento = `${year}-${String(month).padStart(2, "0")}-${String(diaReal).padStart(2, "0")}`;
+
+    const fechaVencimiento = parseDateLocal(vencimiento);
+    if (fechaVencimiento < inicio || fechaVencimiento > fin) {
+      fecha.setMonth(fecha.getMonth() + 1);
+      continue;
+    }
+
     pagos.push({
       contract_id: contrato.id, tenant_name: contrato.tenant_name,
       tenant_email: contrato.tenant_email || null, property_name: contrato.property_name,
