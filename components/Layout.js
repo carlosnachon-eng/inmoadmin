@@ -29,6 +29,7 @@ export const nav = [
   { id: "payments",      label: "Cobranza",           icon: "💰",  link: "/cobranza",           modulo: "cobranza" },
   { id: "owner_payments",label: "Liquidaciones",      icon: "🏦",  link: "/liquidaciones",      modulo: "liquidaciones" },
   { id: "tickets",       label: "Mantenimiento",      icon: "🔧",  link: "/mantenimiento",      modulo: "mantenimiento" },
+  { id: "inspecciones",  label: "Inspecciones",       icon: "🔎",  link: "/inspecciones",       modulo: "inspecciones" },
   { id: "reports",       label: "Reportes",           icon: "📈",  link: "/reportes",           modulo: "reportes" },
   { id: "commissions",   label: "Comisiones",         icon: "💼",  link: "/comisiones",         modulo: "comisiones" },
   { id: "cierres",       label: "Cierres",            icon: "📊",  link: "/cierres",            modulo: "cierres" },
