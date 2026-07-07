@@ -75,8 +75,8 @@ export default function Inspecciones() {
   async function loadData() {
     setLoading(true);
     const [i, p, c, t] = await Promise.all([
-      supabase.from("inspecciones").select("*, properties:inmueble_id(id,name,owner_name), contracts:contrato_id(id,tenant_name,property_name,status)").order("created_at", { ascending: false }),
-      supabase.from("properties").select("id,name,owner_name,rent_amount,status").order("name"),
+      supabase.from("inspecciones").select("*, properties:inmueble_id(id,name,owner_email), contracts:contrato_id(id,tenant_name,property_name,status)").order("created_at", { ascending: false }),
+      supabase.from("properties").select("id,name,owner_email,rent_amount,status").order("name"),
       supabase.from("contracts").select("id,tenant_name,property_name,status,end_date").order("created_at", { ascending: false }),
       supabase.from("plantillas_inspeccion").select("*").eq("activo", true).order("tipo_inmueble"),
     ]);
@@ -205,7 +205,7 @@ export default function Inspecciones() {
           <Field label="Inmueble administrado">
             <select value={form.inmueble_id} onChange={(e) => setForm({ ...form, inmueble_id: e.target.value })} style={input}>
               <option value="">Selecciona inmueble</option>
-              {properties.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.owner_name || "sin propietario"}</option>)}
+              {properties.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.owner_email || "sin propietario"}</option>)}
             </select>
           </Field>
           <Field label="Tipo de inmueble">
