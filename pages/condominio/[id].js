@@ -198,6 +198,38 @@ export default function CondominioDetalle() {
     loadData();
   };
 
+  // ── Generar cuotas del periodo seleccionado ──────────────────────────────
+  const generarCuotasPeriodo = async () => {
+    if (!cond || !periodoVer) return;
+    if (unidades.length === 0) { showToast("Primero agrega unidades al condominio", false); return; }
+
+    const unidadesConCuota = cuotasPeriodo.map(q => q.unidad_id);
+    const sinCuota = unidades.filter(u => !unidadesConCuota.includes(u.id));
+    if (sinCuota.length === 0) {
+      showToast(`Ya existen cuotas para ${periodoLabel(periodoVer)}`, false);
+      return;
+    }
+
+    setSaving(true);
+    const nuevas = sinCuota.map(u => ({
+      condominio_id: id,
+      unidad_id: u.id,
+      periodo: periodoVer,
+      monto: cond.cuota_mensual || 0,
+      status: "pendiente",
+      fecha_vencimiento: `${periodoVer}-10`,
+    }));
+
+    const { error } = await supabase.from("cuotas_condominio").insert(nuevas);
+    setSaving(false);
+    if (error) {
+      showToast("Error al generar cuotas: " + error.message, false);
+      return;
+    }
+    showToast(`${nuevas.length} cuota${nuevas.length !== 1 ? "s" : ""} generada${nuevas.length !== 1 ? "s" : ""} para ${periodoLabel(periodoVer)}`);
+    loadData();
+  };
+
   // ── Registrar pago de cuota + generar recibo PDF + enviar email ──────────
   const registrarPagoCuota = async () => {
     if (!modalCuota) return;
@@ -728,6 +760,9 @@ export default function CondominioDetalle() {
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Cobranza</h2>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 <input type="month" value={periodoVer} onChange={e => setPeriodoVer(e.target.value)} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }} />
+                <Btn small color="#1a1a2e" onClick={generarCuotasPeriodo} disabled={saving}>
+                  {saving ? "Generando…" : `Generar cuotas de ${periodoLabel(periodoVer)}`}
+                </Btn>
               </div>
             </div>
 
@@ -825,15 +860,17 @@ export default function CondominioDetalle() {
             <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>Cuotas de {periodoLabel(periodoVer)}</h3>
             {cuotasPeriodo.length === 0 ? (
               <div style={{ background: "#fff", borderRadius: 12, padding: 32, textAlign: "center" }}>
-                <p style={{ color: "#9ca3af" }}>No hay cuotas generadas para {periodoLabel(periodoVer)}</p>
-                <p style={{ color: "#9ca3af", fontSize: 12 }}>Ve a la pantalla principal de condominios y usa "Generar cuotas del mes"</p>
+                <p style={{ color: "#9ca3af", margin: "0 0 14px" }}>No hay cuotas generadas para {periodoLabel(periodoVer)}</p>
+                <Btn color="#1a1a2e" onClick={generarCuotasPeriodo} disabled={saving}>
+                  {saving ? "Generando…" : `Generar cuotas de ${periodoLabel(periodoVer)}`}
+                </Btn>
               </div>
             ) : (
               <div style={{ background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#f9fafb" }}>
-                      {["Unidad", "Propietario", "Monto", "Vencimiento", "Estatus", "Fecha pago", "Comprobante", ""].map(h => (
+                      {["Unidad", "Propietario", "Monto", "Vencimiento", "Estatus", "Fecha pago", "Comprobante", "Recibo", ""].map(h => (
                         <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>{h}</th>
                       ))}
                     </tr>
@@ -868,6 +905,12 @@ export default function CondominioDetalle() {
                                   <span style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, cursor: "pointer" }}>📎 Agregar</span>
                                 </label>
                               : <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>
+                          }
+                        </td>
+                        <td style={{ padding: "10px 12px" }}>
+                          {q.recibo_url
+                            ? <a href={q.recibo_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#065f46", fontWeight: 700 }}>Recibo</a>
+                            : <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>
                           }
                         </td>
                         <td style={{ padding: "10px 12px" }}>
