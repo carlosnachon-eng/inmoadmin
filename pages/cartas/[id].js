@@ -376,6 +376,84 @@ async function generarRespuesta(carta, logoB64, qrB64) {
   return doc;
 }
 
+// ── PDF 4: Constancia interna de aceptación del propietario ────────────────
+async function generarConstanciaAceptacion(carta, aceptacion, logoB64, qrB64) {
+  const { doc, W, H, M, RED, DARK, GRAY, LGRAY, LINE } = baseDoc(logoB64);
+  const logoH = Math.round(110*(959/1801));
+  const precioAceptado = carta.precio_contraoferta || carta.precio_oferta;
+
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
+  doc.text("San Andrés Cholula, Puebla", W-M-155, 22);
+  doc.text(fmtFecha(aceptacion.fecha), W-M-155, 33);
+
+  const divY = 10 + logoH + 8;
+  doc.setDrawColor(...RED); doc.setLineWidth(2); doc.line(M, divY, W-M, divY);
+  let y = divY + 22;
+
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(...DARK);
+  doc.text("CONSTANCIA DE ACEPTACIÓN DE OFERTA", W/2, y, {align:"center"});
+  y += 13;
+  doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(...GRAY);
+  doc.text(`Registro interno de aceptación — ${carta.folio}`, W/2, y, {align:"center"});
+  y += 16;
+  doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W-M, y); y += 18;
+
+  doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(...DARK);
+  y = wrapText(doc, "Por medio de la presente se deja constancia de que Emporio Inmobiliario registró la aceptación de la oferta indicada por parte del propietario o propietarios del inmueble.", M, y, W-2*M, 12, 9);
+  y += 14;
+
+  const rows = [
+    ["Propietario(s):", carta.propietarios],
+    ["Aceptó:", aceptacion.aceptado_por || carta.propietarios],
+    ["Medio de aceptación:", aceptacion.medio],
+    ["Fecha de aceptación:", fmtFecha(aceptacion.fecha)],
+    ["Comprador/ofertante:", carta.cliente_nombre],
+    ["Inmueble:", carta.inmueble],
+    ["Precio aceptado:", fmt(precioAceptado)],
+    ["Apartado:", fmt(carta.apartado)],
+    ["Forma de pago:", carta.forma_pago || "—"],
+  ];
+
+  rows.forEach(([label, value], i) => {
+    const rowH = label === "Inmueble:" ? 34 : 20;
+    doc.setFillColor(...(i%2===0 ? LGRAY : [255,255,255]));
+    doc.rect(M, y - 12, W - 2*M, rowH, "F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...GRAY);
+    doc.text(label, M + 6, y);
+    doc.setFont("helvetica","normal"); doc.setTextColor(...DARK);
+    if (label === "Inmueble:") {
+      wrapText(doc, String(value || "—"), M + 120, y, W - 2*M - 130, 10, 8);
+    } else {
+      doc.text(String(value || "—"), M + 120, y);
+    }
+    y += rowH;
+  });
+  y += 12;
+
+  if (aceptacion.notas) {
+    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(...RED);
+    doc.text("OBSERVACIONES / EVIDENCIA", M, y); y += 12;
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(...DARK);
+    y = wrapText(doc, aceptacion.notas, M, y, W-2*M, 12, 8.5);
+    y += 14;
+  }
+
+  doc.setDrawColor(...RED); doc.setLineWidth(1.5); doc.line(M, y, W-M, y); y += 14;
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
+  doc.text("Registró:", M, y); y += 12;
+  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...DARK);
+  doc.text("Emporio Inmobiliario", M, y); y += 20;
+  addFirma(doc, M, y, FIRMA_CARLOS_B64);
+
+  if (qrB64) {
+    doc.addImage(qrB64, "PNG", W-M-58, H-70, 55, 55);
+    doc.setFont("helvetica","normal"); doc.setFontSize(6); doc.setTextColor(...GRAY);
+    doc.text("Verificar registro", W-M-29, H-12, {align:"center"});
+  }
+
+  return doc;
+}
+
 // ── Componente principal ──────────────────────────────────────
 export default function CartaDetalle() {
   const router = useRouter();
@@ -389,6 +467,10 @@ export default function CartaDetalle() {
   const [editando, setEditando] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [guardando, setGuardando] = useState(false);
+  const [modalAceptacion, setModalAceptacion] = useState(false);
+  const [aceptacionForm, setAceptacionForm] = useState({ fecha: new Date().toISOString().slice(0, 10), aceptado_por: "", medio: "WhatsApp", notas: "" });
+  const [aceptacionUrl, setAceptacionUrl] = useState(null);
+  const [archivoEvidencia, setArchivoEvidencia] = useState(null);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000); };
 
@@ -406,6 +488,11 @@ export default function CartaDetalle() {
     setLoading(true);
     const { data } = await supabase.from("cartas_oferta").select("*").eq("id", id).single();
     setCarta(data);
+    if (data?.folio) {
+      const filename = `${data.folio}_Aceptacion_Propietario.pdf`;
+      const { data: signed } = await supabase.storage.from("cartas-oferta").createSignedUrl(filename, 60*60*24*365);
+      setAceptacionUrl(signed?.signedUrl || null);
+    }
     setLoading(false);
   };
 
@@ -465,6 +552,73 @@ export default function CartaDetalle() {
     }).eq("id", id);
     setGuardando(false);
     if (!error) { setEditando(false); loadCarta(); showToast("Guardado"); }
+  };
+
+  const abrirAceptacion = () => {
+    setAceptacionForm({
+      fecha: new Date().toISOString().slice(0, 10),
+      aceptado_por: carta.propietarios || "",
+      medio: "WhatsApp",
+      notas: "",
+    });
+    setArchivoEvidencia(null);
+    setModalAceptacion(true);
+  };
+
+  const registrarAceptacion = async () => {
+    if (!aceptacionForm.aceptado_por?.trim()) {
+      showToast("Indica quién aceptó la oferta", false);
+      return;
+    }
+    setGuardando(true);
+    try {
+      let evidenciaUrl = "";
+      if (archivoEvidencia) {
+        const ext = archivoEvidencia.name.split(".").pop();
+        const evidenciaName = `${carta.folio}_Evidencia_Aceptacion_${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from("cartas-oferta").upload(evidenciaName, archivoEvidencia, { contentType: archivoEvidencia.type || "application/octet-stream", upsert: true });
+        if (!upErr) {
+          const { data: signedEv } = await supabase.storage.from("cartas-oferta").createSignedUrl(evidenciaName, 60*60*24*365);
+          evidenciaUrl = signedEv?.signedUrl || "";
+        }
+      }
+
+      const logoB64 = await getLogoB64();
+      const qrB64 = await getQRB64(`https://www.emporioinmobiliario.com.mx/verificar-carta/${carta.folio}-aceptacion`);
+      const doc = await generarConstanciaAceptacion(carta, aceptacionForm, logoB64, qrB64);
+      const filename = `${carta.folio}_Aceptacion_Propietario.pdf`;
+      const pdfBlob = doc.output("blob");
+      const { error: pdfErr } = await supabase.storage.from("cartas-oferta").upload(filename, pdfBlob, { contentType: "application/pdf", upsert: true });
+      if (pdfErr) throw pdfErr;
+      const { data: signed } = await supabase.storage.from("cartas-oferta").createSignedUrl(filename, 60*60*24*365);
+
+      const registro = [
+        "",
+        "=== ACEPTACIÓN DE OFERTA POR PROPIETARIO ===",
+        `Fecha: ${aceptacionForm.fecha}`,
+        `Aceptó: ${aceptacionForm.aceptado_por}`,
+        `Medio: ${aceptacionForm.medio}`,
+        `Precio aceptado: ${fmt(carta.precio_contraoferta || carta.precio_oferta)}`,
+        aceptacionForm.notas ? `Notas: ${aceptacionForm.notas}` : "",
+        signed?.signedUrl ? `Constancia PDF: ${signed.signedUrl}` : "",
+        evidenciaUrl ? `Evidencia adjunta: ${evidenciaUrl}` : "",
+      ].filter(Boolean).join("\n");
+
+      const { error } = await supabase.from("cartas_oferta").update({
+        estatus: "aceptado",
+        notas: `${carta.notas || ""}${registro}`,
+      }).eq("id", id);
+      if (error) throw error;
+
+      setAceptacionUrl(signed?.signedUrl || null);
+      setModalAceptacion(false);
+      showToast("Aceptación registrada");
+      loadCarta();
+    } catch (e) {
+      showToast("Error al registrar aceptación: " + e.message, false);
+    } finally {
+      setGuardando(false);
+    }
   };
 
   if (authLoading || loading) return <div style={{ minHeight: "100vh", background: brand.bg, display: "flex", alignItems: "center", justifyContent: "center" }}><img src="https://www.emporioinmobiliario.com.mx/logo.png" style={{ height: 48, opacity: 0.4 }} /></div>;
@@ -557,6 +711,33 @@ export default function CartaDetalle() {
           )}
         </div>
 
+        {/* Aceptación del propietario */}
+        <div style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <h3 style={{ fontSize: 14, fontWeight: 800, color: brand.gray, margin: "0 0 6px" }}>Aceptación del propietario</h3>
+              <p style={{ margin: 0, fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                Registra cuando el propietario acepta la oferta para dejar evidencia interna antes de responder al cliente.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {aceptacionUrl && (
+                <a href={aceptacionUrl} target="_blank" rel="noreferrer" style={{ background: "#d1fae5", color: "#065f46", padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+                  Ver constancia
+                </a>
+              )}
+              <button onClick={abrirAceptacion} style={{ background: "#1a3c5e", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                Registrar aceptación
+              </button>
+            </div>
+          </div>
+          {carta.estatus === "aceptado" && (
+            <div style={{ marginTop: 12, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#065f46", borderRadius: 10, padding: "10px 12px", fontSize: 12, fontWeight: 700 }}>
+              Oferta marcada como aceptada por propietario.
+            </div>
+          )}
+        </div>
+
         {/* Generar PDFs */}
         <div style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
           <h3 style={{ fontSize: 14, fontWeight: 700, color: brand.gray, margin: "0 0 16px" }}>Generar documentos</h3>
@@ -586,6 +767,66 @@ export default function CartaDetalle() {
           </div>
         </div>
       </div>
+
+      {modalAceptacion && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2500, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 520, boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 18 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#1a1a2e" }}>Registrar aceptación</h3>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>{carta.folio} · {carta.propietarios}</p>
+              </div>
+              <button onClick={() => setModalAceptacion(false)} style={{ background: "#f3f4f6", color: "#6b7280", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer" }}>✕</button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4 }}>Fecha de aceptación</label>
+                <input type="date" value={aceptacionForm.fecha} onChange={e => setAceptacionForm(f => ({ ...f, fecha: e.target.value }))} style={inp} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4 }}>Medio</label>
+                <select value={aceptacionForm.medio} onChange={e => setAceptacionForm(f => ({ ...f, medio: e.target.value }))} style={inp}>
+                  <option>WhatsApp</option>
+                  <option>Correo electrónico</option>
+                  <option>Llamada</option>
+                  <option>Presencial</option>
+                  <option>Otro</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4 }}>Quién aceptó</label>
+              <input value={aceptacionForm.aceptado_por} onChange={e => setAceptacionForm(f => ({ ...f, aceptado_por: e.target.value }))} placeholder="Nombre del propietario o representante" style={inp} />
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4 }}>Notas / texto de evidencia</label>
+              <textarea value={aceptacionForm.notas} onChange={e => setAceptacionForm(f => ({ ...f, notas: e.target.value }))} rows={4} placeholder="Ej: Confirmó por WhatsApp: 'Acepto la oferta en esos términos'." style={{ ...inp, resize: "vertical", fontFamily: "inherit" }} />
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4 }}>Evidencia adjunta opcional</label>
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => setArchivoEvidencia(e.target.files?.[0] || null)} style={{ ...inp, padding: 8 }} />
+              <p style={{ margin: "5px 0 0", fontSize: 11, color: "#9ca3af" }}>Puede ser captura de WhatsApp, correo o PDF.</p>
+            </div>
+
+            <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, marginBottom: 18 }}>
+              <p style={{ margin: 0, fontSize: 12, color: "#374151" }}>
+                Al confirmar se marcará la carta como <strong>Aceptado</strong> y se generará una constancia PDF del registro.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setModalAceptacion(false)} disabled={guardando} style={{ background: "#f3f4f6", color: "#6b7280", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
+              <button onClick={registrarAceptacion} disabled={guardando} style={{ background: guardando ? "#9ca3af" : brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 800, cursor: guardando ? "not-allowed" : "pointer" }}>
+                {guardando ? "Registrando..." : "Confirmar aceptación"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
