@@ -470,6 +470,7 @@ export default function CartaDetalle() {
   const [modalAceptacion, setModalAceptacion] = useState(false);
   const [aceptacionForm, setAceptacionForm] = useState({ fecha: new Date().toISOString().slice(0, 10), aceptado_por: "", medio: "WhatsApp", notas: "" });
   const [aceptacionUrl, setAceptacionUrl] = useState(null);
+  const [acceptanceLink, setAcceptanceLink] = useState("");
   const [archivoEvidencia, setArchivoEvidencia] = useState(null);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000); };
@@ -488,12 +489,21 @@ export default function CartaDetalle() {
     setLoading(true);
     const { data } = await supabase.from("cartas_oferta").select("*").eq("id", id).single();
     setCarta(data);
+    if (data?.id && session?.access_token) loadAcceptanceLink(data.id, session.access_token);
     if (data?.folio) {
       const filename = `${data.folio}_Aceptacion_Propietario.pdf`;
       const { data: signed } = await supabase.storage.from("cartas-oferta").createSignedUrl(filename, 60*60*24*365);
       setAceptacionUrl(signed?.signedUrl || null);
     }
     setLoading(false);
+  };
+
+  const loadAcceptanceLink = async (cartaId, accessToken) => {
+    const res = await fetch(`/api/cartas/aceptacion-link?id=${encodeURIComponent(cartaId)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const data = await res.json();
+    if (res.ok && data.url) setAcceptanceLink(data.url);
   };
 
   const generarPDF = async (tipo) => {
@@ -621,6 +631,19 @@ export default function CartaDetalle() {
     }
   };
 
+  const copiarAcceptanceLink = async () => {
+    if (!acceptanceLink) {
+      showToast("Aún no se generó el link", false);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(acceptanceLink);
+      showToast("Link copiado");
+    } catch {
+      showToast("No se pudo copiar el link", false);
+    }
+  };
+
   if (authLoading || loading) return <div style={{ minHeight: "100vh", background: brand.bg, display: "flex", alignItems: "center", justifyContent: "center" }}><img src="https://www.emporioinmobiliario.com.mx/logo.png" style={{ height: 48, opacity: 0.4 }} /></div>;
   if (!session) { if (typeof window !== "undefined") window.location.href = "/"; return null; }
   if (!carta) return <div style={{ padding: 32 }}>No encontrado</div>;
@@ -721,6 +744,11 @@ export default function CartaDetalle() {
               </p>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {acceptanceLink && (
+                <button onClick={copiarAcceptanceLink} style={{ background: "#f5f3ff", color: "#7c3aed", border: "1px solid #c4b5fd", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                  Copiar link
+                </button>
+              )}
               {aceptacionUrl && (
                 <a href={aceptacionUrl} target="_blank" rel="noreferrer" style={{ background: "#d1fae5", color: "#065f46", padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
                   Ver constancia
