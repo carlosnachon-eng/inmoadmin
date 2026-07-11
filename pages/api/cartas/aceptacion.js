@@ -51,6 +51,11 @@ export default async function handler(req, res) {
 
   const aceptadoPor = String(req.body?.aceptado_por || carta.propietarios || "").trim();
   if (!aceptadoPor) return res.status(400).json({ error: "Indica quién acepta" });
+  const correo = String(req.body?.correo || "").trim();
+  const telefono = String(req.body?.telefono || "").trim();
+  if (!correo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    return res.status(400).json({ error: "Captura un correo válido" });
+  }
 
   const fecha = new Date().toISOString();
   const registro = [
@@ -58,6 +63,8 @@ export default async function handler(req, res) {
     "=== ACEPTACIÓN DIGITAL DE OFERTA POR PROPIETARIO ===",
     `Fecha/hora: ${fecha}`,
     `Aceptó: ${aceptadoPor}`,
+    `Correo: ${correo}`,
+    telefono ? `Teléfono: ${telefono}` : "",
     `Medio: Link público de aceptación`,
     `Precio aceptado: ${fmt(carta.precio_contraoferta || carta.precio_oferta)}`,
     req.body?.notas ? `Notas del propietario: ${String(req.body.notas).trim()}` : "",

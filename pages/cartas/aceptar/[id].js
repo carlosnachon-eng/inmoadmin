@@ -10,6 +10,8 @@ export default function AceptarCartaOferta() {
   const [carta, setCarta] = useState(null);
   const [error, setError] = useState("");
   const [aceptadoPor, setAceptadoPor] = useState("");
+  const [correo, setCorreo] = useState("");
+  const [telefono, setTelefono] = useState("");
   const [notas, setNotas] = useState("");
   const [confirmado, setConfirmado] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -36,12 +38,16 @@ export default function AceptarCartaOferta() {
       setError("Confirma que aceptas la oferta para continuar.");
       return;
     }
+    if (!correo.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim())) {
+      setError("Captura un correo válido para registrar la aceptación.");
+      return;
+    }
     setSaving(true);
     setError("");
     const res = await fetch("/api/cartas/aceptacion", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, token, aceptado_por: aceptadoPor, notas }),
+      body: JSON.stringify({ id, token, aceptado_por: aceptadoPor, correo, telefono, notas }),
     });
     const data = await res.json();
     setSaving(false);
@@ -110,6 +116,17 @@ export default function AceptarCartaOferta() {
                 <input value={aceptadoPor} onChange={e => setAceptadoPor(e.target.value)} style={input} />
               </div>
 
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: 5, color: "#374151", fontSize: 12, fontWeight: 800 }}>Correo electrónico</label>
+                  <input type="email" value={correo} onChange={e => setCorreo(e.target.value)} style={input} placeholder="correo@ejemplo.com" />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: 5, color: "#374151", fontSize: 12, fontWeight: 800 }}>Teléfono</label>
+                  <input type="tel" value={telefono} onChange={e => setTelefono(e.target.value)} style={input} placeholder="10 dígitos" />
+                </div>
+              </div>
+
               <div style={{ marginTop: 12 }}>
                 <label style={{ display: "block", marginBottom: 5, color: "#374151", fontSize: 12, fontWeight: 800 }}>Comentarios opcionales</label>
                 <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={3} style={{ ...input, resize: "vertical", fontFamily: "inherit" }} placeholder="Puede agregar alguna observación si lo desea." />
@@ -122,7 +139,7 @@ export default function AceptarCartaOferta() {
 
               {error && <p style={{ color: "#b91c3c", fontSize: 13, fontWeight: 700 }}>{error}</p>}
 
-              <button onClick={aceptar} disabled={saving || !confirmado || !aceptadoPor.trim()} style={{ width: "100%", background: saving || !confirmado || !aceptadoPor.trim() ? "#9ca3af" : "#b91c3c", color: "#fff", border: "none", borderRadius: 10, padding: "13px 18px", fontSize: 15, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
+              <button onClick={aceptar} disabled={saving || !confirmado || !aceptadoPor.trim() || !correo.trim()} style={{ width: "100%", background: saving || !confirmado || !aceptadoPor.trim() || !correo.trim() ? "#9ca3af" : "#b91c3c", color: "#fff", border: "none", borderRadius: 10, padding: "13px 18px", fontSize: 15, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
                 {saving ? "Registrando..." : "Acepto la oferta"}
               </button>
             </>
