@@ -70,7 +70,7 @@ export default function RegistroVendedor() {
     { nombre: '', telefono: '', correo: '', rfc: '', tipo_id: 'INE' },
     { nombre: '', telefono: '', correo: '', rfc: '', tipo_id: 'INE' },
   ])
-  const [files, setFiles] = useState({ doc_identificacion: null, doc_comprobante_domicilio: null, doc_predial: null, doc_escritura: null })
+  const [files, setFiles] = useState({ doc_identificacion: null, doc_comprobante_domicilio: null, doc_predial: null, doc_escritura: null, doc_certificado_libertad_gravamen: null })
   const formRef = useRef(null)
   const saved = useRef({})
 
@@ -106,6 +106,7 @@ export default function RegistroVendedor() {
     if (!files.doc_comprobante_domicilio) e.doc_comprobante_domicilio = 'Requerido'
     if (!files.doc_predial) e.doc_predial = 'Requerido'
     if (!files.doc_escritura) e.doc_escritura = 'Requerido'
+    if (!files.doc_certificado_libertad_gravamen) e.doc_certificado_libertad_gravamen = 'Requerido'
     setErrors(e); return Object.keys(e).length === 0
   }
 
@@ -144,6 +145,7 @@ export default function RegistroVendedor() {
         files.doc_comprobante_domicilio ? uploadDoc(files.doc_comprobante_domicilio, folder, 'comprobante_domicilio') : Promise.resolve(null),
         files.doc_predial ? uploadDoc(files.doc_predial, folder, 'predial') : Promise.resolve(null),
         files.doc_escritura ? uploadDoc(files.doc_escritura, folder, 'escritura') : Promise.resolve(null),
+        files.doc_certificado_libertad_gravamen ? uploadDoc(files.doc_certificado_libertad_gravamen, folder, 'certificado_libertad_gravamen') : Promise.resolve(null),
       ])
       if (pathId) docUpdates.doc_identificacion_b64 = pathId
       if (pathComp) docUpdates.doc_comprobante_domicilio_b64 = pathComp
@@ -310,6 +312,10 @@ export default function RegistroVendedor() {
               <FileBox label="Comprobante de domicilio del inmueble (reciente)" hint="Toca para subir comprobante" file={files.doc_comprobante_domicilio} error={errors.doc_comprobante_domicilio} onFile={f => setFiles(p => ({ ...p, doc_comprobante_domicilio: f }))} />
               <FileBox label="Última boleta de predial (año en curso)" hint="Toca para subir predial" file={files.doc_predial} error={errors.doc_predial} onFile={f => setFiles(p => ({ ...p, doc_predial: f }))} />
               <FileBox label="Copia de escritura" hint="Toca para subir escritura" file={files.doc_escritura} error={errors.doc_escritura} onFile={f => setFiles(p => ({ ...p, doc_escritura: f }))} />
+              <FileBox label="Certificado de libertad de gravamen" hint="Toca para subir certificado" file={files.doc_certificado_libertad_gravamen} error={errors.doc_certificado_libertad_gravamen} onFile={f => setFiles(p => ({ ...p, doc_certificado_libertad_gravamen: f }))} />
+              <p style={{ margin: '-6px 0 18px', fontSize: 12, color: '#6b7280', lineHeight: 1.5 }}>
+                Aunque el inmueble tenga hipoteca o algún gravamen, este documento nos ayuda a revisar el estado actual de la propiedad.
+              </p>
               <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.6, marginTop: 20, padding: '14px', background: '#f8f8f8', borderRadius: 8, border: '1px solid #e5e7eb' }}>
                 🔒 Al enviar este formulario, acepta nuestro{' '}
                 <a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: '#b91c3c' }}>Aviso de Privacidad</a>. Su información es confidencial.

@@ -31,6 +31,7 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
   const [resultadosPropiedad, setResultadosPropiedad] = useState([])
   const [propiedadVinculada, setPropiedadVinculada] = useState(null)
   const [vinculando, setVinculando] = useState(false)
+  const [certificadoGravamenPath, setCertificadoGravamenPath] = useState(null)
 
   useEffect(() => {
     const cargarDetalle = async () => {
@@ -46,6 +47,9 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
         const { data: prop } = await supabase.from('propiedades').select('id, titulo, direccion, public_id').eq('id', data.propiedad_id).maybeSingle()
         setPropiedadVinculada(prop)
       }
+      const { data: docs } = await supabase.storage.from('poliza-docs').list(`vendedores/${v.id}`, { limit: 50 })
+      const certificado = (docs || []).find(d => d.name?.startsWith('certificado_libertad_gravamen.'))
+      setCertificadoGravamenPath(certificado ? `vendedores/${v.id}/${certificado.name}` : null)
     }
     cargarDetalle()
   }, [v.id])
@@ -131,7 +135,7 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
   // URL para Veridada con datos prellenados (solo Emporio)
   const urlVeridada = `https://veridada.mx/inmobiliaria?source=emporio&key=emporio2026&direccion=${encodeURIComponent(vend.direccion_inmueble || '')}&municipio=${encodeURIComponent(vend.municipio || '')}&precio=${vend.precio_venta || ''}&operacion=venta&tipo=casa`
 
-  const tieneDocs = vend.doc_identificacion_b64 || vend.doc_comprobante_domicilio_b64 || vend.doc_predial_b64 || vend.doc_escritura_b64
+  const tieneDocs = vend.doc_identificacion_b64 || vend.doc_comprobante_domicilio_b64 || vend.doc_predial_b64 || vend.doc_escritura_b64 || certificadoGravamenPath
 
   return (
     <div style={st.modal} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -230,6 +234,7 @@ export default function ModalVendedorCV({ vendedor: v, onClose, onSaved, comprad
             {vend.doc_comprobante_domicilio_b64 && <DocChip label="Comprobante domicilio" data={vend.doc_comprobante_domicilio_b64.startsWith('data:') ? vend.doc_comprobante_domicilio_b64 : null} path={!vend.doc_comprobante_domicilio_b64.startsWith('data:') ? vend.doc_comprobante_domicilio_b64 : null} />}
             {vend.doc_predial_b64 && <DocChip label="Predial" data={vend.doc_predial_b64.startsWith('data:') ? vend.doc_predial_b64 : null} path={!vend.doc_predial_b64.startsWith('data:') ? vend.doc_predial_b64 : null} />}
             {vend.doc_escritura_b64 && <DocChip label={vend.tipo_persona_propietario === 'moral' ? 'Documentos persona moral' : 'Escritura'} data={vend.doc_escritura_b64.startsWith('data:') ? vend.doc_escritura_b64 : null} path={!vend.doc_escritura_b64.startsWith('data:') ? vend.doc_escritura_b64 : null} />}
+            {certificadoGravamenPath && <DocChip label="Certificado libertad de gravamen" path={certificadoGravamenPath} />}
           </div>
         ) : (
           <p style={{ fontSize: 12, color: C.faint }}>Sin documentos adjuntos</p>
