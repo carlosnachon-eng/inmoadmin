@@ -35,6 +35,24 @@ const filenameSafe = (value) =>
     .replace(/^-|-$/g, "")
     .slice(0, 56) || "cierre";
 
+const compactText = (value) => String(value || "").replace(/\s+/g, " ").trim();
+
+const direccionTexto = (propiedad, recibo, firma) =>
+  [
+    compactText(propiedad?.direccion),
+    compactText(propiedad?.colonia),
+    compactText(propiedad?.ciudad),
+    compactText(propiedad?.estado),
+  ].filter(Boolean).join(", ")
+  || compactText(firma?.direccion)
+  || compactText(recibo?.inmueble);
+
+const terminoBusquedaDireccion = (value) => {
+  const limpio = compactText(value);
+  if (!limpio) return "";
+  return limpio.split(",")[0].trim().slice(0, 80);
+};
+
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -71,6 +89,8 @@ export default async function handler(req, res) {
     let propiedad = null;
     let propietario = null;
     let recibo = null;
+    let firma = null;
+    let poliza = null;
 
     if (cierre.propiedad_id) {
       const { data: propiedadData, error: propiedadError } = await supabase
@@ -93,11 +113,41 @@ export default async function handler(req, res) {
     if (cierre.recibo_id) {
       const { data: reciboData, error: reciboError } = await supabase
         .from("recibos_apartado")
-        .select("id, inmueble, propiedad_id")
+        .select("id, inmueble, propiedad_id, firma_id, cliente_nombre")
         .eq("id", cierre.recibo_id)
         .maybeSingle();
       if (reciboError) throw reciboError;
       recibo = reciboData || null;
+    }
+
+    const firmaId = cierre.firma_id || recibo?.firma_id;
+    if (firmaId) {
+      const { data: firmaData, error: firmaError } = await supabase
+        .from("firmas")
+        .select("id, nombre_vendedor, direccion, propiedad_id, recibo_id")
+        .eq("id", firmaId)
+        .maybeSingle();
+      if (firmaError) throw firmaError;
+      firma = firmaData || null;
+    }
+
+    if (direccionTexto(propiedad, recibo, firma) || recibo?.cliente_nombre || cierre.prospecto_nombre) {
+      let query = supabase
+        .from("poliza_expedientes")
+        .select("id, nombre_arrendador, nombre_arrendatario, direccion_inmueble, propietario_id, propietarios_inmuebles:propietario_id(tipo_persona_propietario, razon_social_propietario, nombre_propietario)")
+        .order("updated_at", { ascending: false })
+        .limit(1);
+
+      const direccion = direccionTexto(propiedad, recibo, firma);
+      if (direccion) {
+        query = query.ilike("direccion_inmueble", `%${terminoBusquedaDireccion(direccion)}%`);
+      } else if (recibo?.cliente_nombre || cierre.prospecto_nombre) {
+        query = query.ilike("nombre_arrendatario", `%${recibo?.cliente_nombre || cierre.prospecto_nombre}%`);
+      }
+
+      const { data: polizasData, error: polizaError } = await query;
+      if (polizaError) throw polizaError;
+      poliza = polizasData?.[0] || null;
     }
 
     const buffer = generarReciboComisionPdf({
@@ -107,6 +157,8 @@ export default async function handler(req, res) {
       propiedad,
       propietario,
       recibo,
+      firma,
+      poliza,
     });
 
     const filename = `recibo-comision-${filenameSafe(propiedad?.titulo || cierre.propiedad)}.pdf`;
