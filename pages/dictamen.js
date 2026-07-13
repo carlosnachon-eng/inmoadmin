@@ -12,6 +12,59 @@ const inp = {
 const sel = { ...inp, cursor: "pointer" };
 const txta = { ...inp, minHeight: 80, resize: "vertical" };
 
+const AUTO_REFERENCIAS_APROBADO = "Se revisaron referencias e historial de arrendamiento, no detectandose alertas relevantes para el propietario.";
+const AUTO_REFERENCIAS_CONDICIONES = "Se revisaron referencias e historial de arrendamiento. La informacion recabada permite continuar el proceso, sujeto a las condiciones u observaciones indicadas en el dictamen final.";
+const AUTO_REFERENCIAS_NO_APROBADO = "Se revisaron referencias e historial disponible. La informacion recabada y/o documentada no permite sostener una recomendacion favorable para continuar con la operacion en este momento.";
+
+const AUTO_REVISION_LEGAL_APROBADO = "Se realizo verificacion de identidad y consulta de antecedentes juridicos en plataforma BuroMexico. No se detectaron impedimentos legales, inconsistencias relevantes ni riesgos juridicos.";
+const AUTO_REVISION_LEGAL_CONDICIONES = "Se realizo verificacion de identidad y consulta de antecedentes juridicos. No se detectaron impedimentos legales definitivos; sin embargo, el avance de la operacion queda sujeto a las condiciones y observaciones indicadas en el dictamen final.";
+const AUTO_REVISION_LEGAL_NO_APROBADO = "Se realizo verificacion de identidad y consulta de antecedentes juridicos. El dictamen final considera el analisis integral del perfil, documentacion, ingresos, referencias y congruencia de la operacion, por lo que no se recomienda avanzar en este momento.";
+const AUTO_REVISION_LEGAL_CON_ANTECEDENTES = "La consulta de antecedentes juridicos arrojo observaciones que deben ser consideradas por el propietario antes de continuar con la operacion. Ver observaciones legales y dictamen final.";
+
+const AUTO_CONCLUSION_APROBADO = "Derivado de la investigacion realizada, el perfil de los solicitantes resulta congruente con el inmueble y el monto de renta.";
+const AUTO_CONCLUSION_CONDICIONES = "Derivado de la investigacion realizada, el perfil puede continuar sujeto al cumplimiento de las condiciones establecidas por el area juridica.";
+const AUTO_CONCLUSION_NO_APROBADO = "Derivado de la investigacion realizada, no se recomienda continuar con la firma del contrato bajo las condiciones presentadas.";
+
+const AUTO_REFERENCIAS_VALUES = new Set([
+  AUTO_REFERENCIAS_APROBADO,
+  AUTO_REFERENCIAS_CONDICIONES,
+  AUTO_REFERENCIAS_NO_APROBADO,
+]);
+const AUTO_REVISION_VALUES = new Set([
+  AUTO_REVISION_LEGAL_APROBADO,
+  AUTO_REVISION_LEGAL_CONDICIONES,
+  AUTO_REVISION_LEGAL_NO_APROBADO,
+  AUTO_REVISION_LEGAL_CON_ANTECEDENTES,
+]);
+const AUTO_CONCLUSION_VALUES = new Set([
+  AUTO_CONCLUSION_APROBADO,
+  AUTO_CONCLUSION_CONDICIONES,
+  AUTO_CONCLUSION_NO_APROBADO,
+]);
+
+const autoTextosDictamen = (dictamen, resultadoLegal) => {
+  const conAntecedentes = resultadoLegal === "Con antecedentes";
+  if (dictamen === "NO APROBADO") {
+    return {
+      referencias: AUTO_REFERENCIAS_NO_APROBADO,
+      revision_legal: conAntecedentes ? AUTO_REVISION_LEGAL_CON_ANTECEDENTES : AUTO_REVISION_LEGAL_NO_APROBADO,
+      conclusion: AUTO_CONCLUSION_NO_APROBADO,
+    };
+  }
+  if (dictamen === "APROBADO CON CONDICIONES") {
+    return {
+      referencias: AUTO_REFERENCIAS_CONDICIONES,
+      revision_legal: conAntecedentes ? AUTO_REVISION_LEGAL_CON_ANTECEDENTES : AUTO_REVISION_LEGAL_CONDICIONES,
+      conclusion: AUTO_CONCLUSION_CONDICIONES,
+    };
+  }
+  return {
+    referencias: AUTO_REFERENCIAS_APROBADO,
+    revision_legal: conAntecedentes ? AUTO_REVISION_LEGAL_CON_ANTECEDENTES : AUTO_REVISION_LEGAL_APROBADO,
+    conclusion: AUTO_CONCLUSION_APROBADO,
+  };
+};
+
 function Campo({ label, children, required }) {
   return (
     <div style={{ marginBottom: 16 }}>
@@ -74,6 +127,16 @@ async function generarPDF(data, sb) {
   const scoreColor = score >= 75 ? "#065f46" : score >= 55 ? "#92400e" : "#991b1b";
 
   const sinA = data.resultado_legal === "Sin antecedentes";
+  const autoTextos = autoTextosDictamen(dict, data.resultado_legal);
+  const referenciasTexto = !data.referencias || AUTO_REFERENCIAS_VALUES.has(data.referencias)
+    ? autoTextos.referencias
+    : data.referencias;
+  const revisionLegalTexto = !data.revision_legal || AUTO_REVISION_VALUES.has(data.revision_legal)
+    ? autoTextos.revision_legal
+    : data.revision_legal;
+  const conclusionTexto = !data.conclusion || AUTO_CONCLUSION_VALUES.has(data.conclusion)
+    ? autoTextos.conclusion
+    : data.conclusion;
 
   // ── Helpers HTML ──────────────────────────────────────
   const campo = (label, value) => `
@@ -314,11 +377,11 @@ async function generarPDF(data, sb) {
       ${data.observaciones_legales ? cajaTexto("Observaciones", data.observaciones_legales) : ""}
 
       ${seccion(6, "Referencias e Historial / Revisión Legal")}
-      ${cajaTexto("Historial de referencias", data.referencias)}
-      ${cajaTexto("Revisión legal", data.revision_legal)}
+      ${cajaTexto("Historial de referencias", referenciasTexto)}
+      ${cajaTexto("Revisión legal", revisionLegalTexto)}
 
       ${seccion(7, "Conclusión y Recomendación")}
-      ${cajaTexto("Conclusión", data.conclusion)}
+      ${cajaTexto("Conclusión", conclusionTexto)}
       ${data.observaciones_analista ? `
         <div style="background:#eff6ff;border:1px solid #bfdbfe;border-left:4px solid #1e40af;border-radius:8px;padding:12px 16px;margin-bottom:10px">
           <div style="font-size:9px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Observaciones del analista</div>
@@ -501,9 +564,9 @@ export default function Dictamen() {
     ref1_nombre: "", ref1_telefono: "", ref1_relacion: "",
     ref2_nombre: "", ref2_telefono: "", ref2_relacion: "",
     resultado_legal: "Sin antecedentes", observaciones_legales: "",
-    referencias: "Se revisaron referencias e historial de arrendamiento, no detectandose alertas relevantes para el propietario.",
-    revision_legal: "Se realizo verificacion de identidad y consulta de antecedentes juridicos en plataforma BuroMexico. No se detectaron impedimentos legales, inconsistencias relevantes ni riesgos juridicos.",
-    conclusion: "Derivado de la investigacion realizada, el perfil de los solicitantes resulta congruente con el inmueble y el monto de renta.",
+    referencias: AUTO_REFERENCIAS_APROBADO,
+    revision_legal: AUTO_REVISION_LEGAL_APROBADO,
+    conclusion: AUTO_CONCLUSION_APROBADO,
     observaciones_analista: "",
     dictamen: "APROBADO", condiciones: "", score_manual: "", motivo_cambio_domicilio: "",
     analista: "LIC. ZAYETZY MONTES LUNA",
@@ -511,6 +574,28 @@ export default function Dictamen() {
     _solicitud_id: "",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const cambiarDictamen = (dictamen) => {
+    setForm(f => {
+      const autoTextos = autoTextosDictamen(dictamen, f.resultado_legal);
+      return {
+        ...f,
+        dictamen,
+        referencias: !f.referencias || AUTO_REFERENCIAS_VALUES.has(f.referencias) ? autoTextos.referencias : f.referencias,
+        revision_legal: !f.revision_legal || AUTO_REVISION_VALUES.has(f.revision_legal) ? autoTextos.revision_legal : f.revision_legal,
+        conclusion: !f.conclusion || AUTO_CONCLUSION_VALUES.has(f.conclusion) ? autoTextos.conclusion : f.conclusion,
+      };
+    });
+  };
+  const cambiarResultadoLegal = (resultado_legal) => {
+    setForm(f => {
+      const autoTextos = autoTextosDictamen(f.dictamen, resultado_legal);
+      return {
+        ...f,
+        resultado_legal,
+        revision_legal: !f.revision_legal || AUTO_REVISION_VALUES.has(f.revision_legal) ? autoTextos.revision_legal : f.revision_legal,
+      };
+    });
+  };
 
   // Pre-llenar desde solicitud si viene el query param
   useEffect(() => {
@@ -634,7 +719,7 @@ export default function Dictamen() {
           <p style={{ margin: "0 0 20px", fontSize: 11, fontWeight: 800, color: "#C8102E", letterSpacing: "0.15em", textTransform: "uppercase" }}>Dictamen Final</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
             {DOPTS.map(opt => (
-              <button key={opt.value} onClick={() => set("dictamen", opt.value)} style={{
+              <button key={opt.value} onClick={() => cambiarDictamen(opt.value)} style={{
                 padding: "20px 12px", borderRadius: 14, cursor: "pointer", textAlign: "center",
                 border: form.dictamen === opt.value ? `2.5px solid ${opt.color}` : "2px solid #f3f4f6",
                 background: form.dictamen === opt.value ? opt.bg : "#fafafa", transition: "all 0.2s",
@@ -831,7 +916,7 @@ export default function Dictamen() {
           <SecTitle>V. Antecedentes Legales — BuroMexico</SecTitle>
           <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
             {["Sin antecedentes", "Con antecedentes"].map(opt => (
-              <button key={opt} onClick={() => set("resultado_legal", opt)} style={{
+              <button key={opt} onClick={() => cambiarResultadoLegal(opt)} style={{
                 flex: 1, padding: "14px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 14,
                 fontFamily: "'Montserrat',sans-serif", border: "2px solid", transition: "all 0.15s",
                 borderColor: form.resultado_legal === opt ? (opt === "Sin antecedentes" ? "#22c55e" : "#ef4444") : "#e5e7eb",
