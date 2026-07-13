@@ -68,13 +68,48 @@ export default async function handler(req, res) {
 
     if (pagosError) throw pagosError;
 
+    let propiedad = null;
+    let propietario = null;
+    let recibo = null;
+
+    if (cierre.propiedad_id) {
+      const { data: propiedadData, error: propiedadError } = await supabase
+        .from("propiedades")
+        .select("id, titulo, direccion, colonia, ciudad, estado")
+        .eq("id", cierre.propiedad_id)
+        .maybeSingle();
+      if (propiedadError) throw propiedadError;
+      propiedad = propiedadData || null;
+
+      const { data: propietarioData, error: propietarioError } = await supabase
+        .from("propietarios_inmuebles")
+        .select("id, propiedad_id, nombre_propietario, razon_social_propietario")
+        .eq("propiedad_id", cierre.propiedad_id)
+        .maybeSingle();
+      if (propietarioError) throw propietarioError;
+      propietario = propietarioData || null;
+    }
+
+    if (cierre.recibo_id) {
+      const { data: reciboData, error: reciboError } = await supabase
+        .from("recibos_apartado")
+        .select("id, inmueble, propiedad_id")
+        .eq("id", cierre.recibo_id)
+        .maybeSingle();
+      if (reciboError) throw reciboError;
+      recibo = reciboData || null;
+    }
+
     const buffer = generarReciboComisionPdf({
       cierre,
       pagos: pagos || [],
       emitidoPor: auth.perfil.full_name || auth.perfil.email,
+      propiedad,
+      propietario,
+      recibo,
     });
 
-    const filename = `recibo-comision-${filenameSafe(cierre.propiedad)}.pdf`;
+    const filename = `recibo-comision-${filenameSafe(propiedad?.titulo || cierre.propiedad)}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Cache-Control", "no-store");
