@@ -603,11 +603,41 @@ export default function Cierres() {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       const token = currentSession?.access_token;
       if (!token) throw new Error("Sesión requerida");
-      const res = await fetch(`/api/cierres/recibo-comision?id=${encodeURIComponent(cierre.id)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+
+      const pedirPdf = (propietarioManual = "") => {
+        const params = new URLSearchParams({ id: cierre.id });
+        if (propietarioManual) params.set("propietario_manual", propietarioManual);
+        return fetch(`/api/cierres/recibo-comision?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      };
+
+      let res = await pedirPdf();
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
+        if (res.status === 409 && error.requiere_propietario) {
+          const propietarioManual = window.prompt("No encontré el nombre del propietario. Captúralo para generar el recibo:");
+          if (!propietarioManual?.trim()) {
+            showToast("Recibo cancelado: falta nombre de propietario", false);
+            return;
+          }
+          res = await pedirPdf(propietarioManual.trim());
+          if (res.ok) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `recibo-comision-${(cierre.propiedad || "cierre").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50)}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showToast("Recibo de comisión generado");
+            return;
+          }
+          const retryError = await res.json().catch(() => ({}));
+          throw new Error(retryError.error || "No se pudo generar el recibo");
+        }
         throw new Error(error.error || "No se pudo generar el recibo");
       }
       const blob = await res.blob();

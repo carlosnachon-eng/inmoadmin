@@ -53,6 +53,15 @@ const terminoBusquedaDireccion = (value) => {
   return limpio.split(",")[0].trim().slice(0, 80);
 };
 
+const nombrePropietarioDetectado = ({ propietario, firma, poliza, manual }) =>
+  compactText(propietario?.razon_social_propietario)
+  || compactText(propietario?.nombre_propietario)
+  || compactText(firma?.nombre_vendedor)
+  || compactText(poliza?.propietarios_inmuebles?.razon_social_propietario)
+  || compactText(poliza?.propietarios_inmuebles?.nombre_propietario)
+  || compactText(poliza?.nombre_arrendador)
+  || compactText(manual);
+
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -64,6 +73,7 @@ export default async function handler(req, res) {
 
   const cierreId = req.query.id;
   if (!cierreId) return res.status(400).json({ error: "Falta id de cierre" });
+  const propietarioManual = compactText(req.query.propietario_manual);
 
   try {
     const { data: cierre, error: cierreError } = await supabase
@@ -150,6 +160,14 @@ export default async function handler(req, res) {
       poliza = polizasData?.[0] || null;
     }
 
+    if (!nombrePropietarioDetectado({ propietario, firma, poliza, manual: propietarioManual })) {
+      return res.status(409).json({
+        error: "No se encontró nombre de propietario",
+        requiere_propietario: true,
+        mensaje: "Captura el nombre del propietario para generar este recibo.",
+      });
+    }
+
     const buffer = generarReciboComisionPdf({
       cierre,
       pagos: pagos || [],
@@ -159,6 +177,7 @@ export default async function handler(req, res) {
       recibo,
       firma,
       poliza,
+      propietarioManual,
     });
 
     const filename = `recibo-comision-${filenameSafe(propiedad?.titulo || cierre.propiedad)}.pdf`;
