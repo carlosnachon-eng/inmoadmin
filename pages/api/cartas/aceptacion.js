@@ -49,34 +49,49 @@ export default async function handler(req, res) {
 
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
+  const accion = req.body?.accion === "contraoferta" ? "contraoferta" : "aceptar";
   const aceptadoPor = String(req.body?.aceptado_por || carta.propietarios || "").trim();
-  if (!aceptadoPor) return res.status(400).json({ error: "Indica quién acepta" });
+  if (!aceptadoPor) return res.status(400).json({ error: "Indica quién responde" });
   const correo = String(req.body?.correo || "").trim();
   const telefono = String(req.body?.telefono || "").trim();
   if (!correo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
     return res.status(400).json({ error: "Captura un correo válido" });
   }
+  const montoContraoferta = Number(req.body?.precio_contraoferta || 0);
+  if (accion === "contraoferta" && (!montoContraoferta || montoContraoferta <= 0)) {
+    return res.status(400).json({ error: "Captura el monto de la contraoferta" });
+  }
 
   const fecha = new Date().toISOString();
   const registro = [
     "",
-    "=== ACEPTACIÓN DIGITAL DE OFERTA POR PROPIETARIO ===",
+    accion === "contraoferta"
+      ? "=== CONTRAOFERTA DIGITAL DEL PROPIETARIO ==="
+      : "=== ACEPTACIÓN DIGITAL DE OFERTA POR PROPIETARIO ===",
     `Fecha/hora: ${fecha}`,
-    `Aceptó: ${aceptadoPor}`,
+    `${accion === "contraoferta" ? "Contraofertó" : "Aceptó"}: ${aceptadoPor}`,
     `Correo: ${correo}`,
     telefono ? `Teléfono: ${telefono}` : "",
     `Medio: Link público de aceptación`,
-    `Precio aceptado: ${fmt(carta.precio_contraoferta || carta.precio_oferta)}`,
+    accion === "contraoferta"
+      ? `Monto contraofertado: ${fmt(montoContraoferta)}`
+      : `Precio aceptado: ${fmt(carta.precio_contraoferta || carta.precio_oferta)}`,
     req.body?.notas ? `Notas del propietario: ${String(req.body.notas).trim()}` : "",
     `IP: ${getIp(req)}`,
     `User-Agent: ${req.headers["user-agent"] || ""}`,
   ].filter(Boolean).join("\n");
 
-  const { error: updateError } = await supabase.from("cartas_oferta").update({
+  const updatePayload = accion === "contraoferta" ? {
+    estatus: "contraoferta",
+    precio_contraoferta: montoContraoferta,
+    notas: `${carta.notas || ""}${registro}`,
+  } : {
     estatus: "aceptado",
     notas: `${carta.notas || ""}${registro}`,
-  }).eq("id", id);
+  };
+
+  const { error: updateError } = await supabase.from("cartas_oferta").update(updatePayload).eq("id", id);
   if (updateError) return res.status(500).json({ error: updateError.message });
 
-  return res.status(200).json({ ok: true, fecha });
+  return res.status(200).json({ ok: true, fecha, accion });
 }

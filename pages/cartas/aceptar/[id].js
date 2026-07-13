@@ -9,9 +9,11 @@ export default function AceptarCartaOferta() {
   const [loading, setLoading] = useState(true);
   const [carta, setCarta] = useState(null);
   const [error, setError] = useState("");
+  const [accion, setAccion] = useState("aceptar");
   const [aceptadoPor, setAceptadoPor] = useState("");
   const [correo, setCorreo] = useState("");
   const [telefono, setTelefono] = useState("");
+  const [precioContraoferta, setPrecioContraoferta] = useState("");
   const [notas, setNotas] = useState("");
   const [confirmado, setConfirmado] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,12 +44,16 @@ export default function AceptarCartaOferta() {
       setError("Captura un correo válido para registrar la aceptación.");
       return;
     }
+    if (accion === "contraoferta" && (!Number(precioContraoferta) || Number(precioContraoferta) <= 0)) {
+      setError("Captura el monto de la contraoferta.");
+      return;
+    }
     setSaving(true);
     setError("");
     const res = await fetch("/api/cartas/aceptacion", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, token, aceptado_por: aceptadoPor, correo, telefono, notas }),
+      body: JSON.stringify({ id, token, accion, aceptado_por: aceptadoPor, correo, telefono, precio_contraoferta: precioContraoferta, notas }),
     });
     const data = await res.json();
     setSaving(false);
@@ -55,7 +61,7 @@ export default function AceptarCartaOferta() {
       setError(data.error || "No pudimos registrar la aceptación.");
       return;
     }
-    setCarta(c => ({ ...c, estatus: "aceptado" }));
+    setCarta(c => ({ ...c, estatus: data.accion === "contraoferta" ? "contraoferta" : "aceptado", precio_contraoferta: Number(precioContraoferta) || c.precio_contraoferta }));
   };
 
   const input = { width: "100%", padding: "11px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" };
@@ -79,11 +85,13 @@ export default function AceptarCartaOferta() {
               <h1 style={{ margin: "0 0 8px", fontSize: 22, color: "#1a1a2e" }}>Link no disponible</h1>
               <p style={{ margin: 0, color: "#6b7280" }}>{error}</p>
             </div>
-          ) : carta?.estatus === "aceptado" ? (
+          ) : carta?.estatus === "aceptado" || carta?.estatus === "contraoferta" ? (
             <div style={{ textAlign: "center", padding: "18px 0" }}>
-              <div style={{ width: 62, height: 62, borderRadius: "50%", background: "#d1fae5", color: "#065f46", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 28, fontWeight: 800 }}>✓</div>
-              <h1 style={{ margin: "0 0 8px", fontSize: 23, color: "#1a1a2e" }}>Oferta aceptada</h1>
-              <p style={{ margin: 0, color: "#6b7280", lineHeight: 1.5 }}>Gracias. Emporio Inmobiliario recibió su aceptación y continuará con el proceso.</p>
+              <div style={{ width: 62, height: 62, borderRadius: "50%", background: carta.estatus === "aceptado" ? "#d1fae5" : "#fef3c7", color: carta.estatus === "aceptado" ? "#065f46" : "#92400e", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 28, fontWeight: 800 }}>✓</div>
+              <h1 style={{ margin: "0 0 8px", fontSize: 23, color: "#1a1a2e" }}>{carta.estatus === "aceptado" ? "Oferta aceptada" : "Contraoferta enviada"}</h1>
+              <p style={{ margin: 0, color: "#6b7280", lineHeight: 1.5 }}>
+                Gracias. Emporio Inmobiliario recibió {carta.estatus === "aceptado" ? "su aceptación" : "su contraoferta"} y continuará con el proceso.
+              </p>
             </div>
           ) : (
             <>
@@ -92,7 +100,7 @@ export default function AceptarCartaOferta() {
               <p style={{ margin: "0 0 18px", color: "#6b7280", lineHeight: 1.5 }}>Revise los datos de la oferta. Al confirmar, quedará registrada su aceptación.</p>
 
               <div style={{ background: "#fff0f3", border: "1px solid #f9c8d3", borderRadius: 12, padding: 16, marginBottom: 18 }}>
-                <p style={{ margin: "0 0 4px", fontSize: 12, color: "#9f1239", fontWeight: 800 }}>Precio aceptado</p>
+                <p style={{ margin: "0 0 4px", fontSize: 12, color: "#9f1239", fontWeight: 800 }}>Precio ofertado</p>
                 <p style={{ margin: 0, fontSize: 30, color: "#b91c3c", fontWeight: 900 }}>{fmt(carta.precio_aceptar)}</p>
               </div>
 
@@ -112,7 +120,26 @@ export default function AceptarCartaOferta() {
               ))}
 
               <div style={{ marginTop: 16 }}>
-                <label style={{ display: "block", marginBottom: 5, color: "#374151", fontSize: 12, fontWeight: 800 }}>Nombre de quien acepta</label>
+                <label style={{ display: "block", marginBottom: 8, color: "#374151", fontSize: 12, fontWeight: 800 }}>Respuesta del propietario</label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <button type="button" onClick={() => setAccion("aceptar")} style={{ border: accion === "aceptar" ? "2px solid #065f46" : "1px solid #e5e7eb", background: accion === "aceptar" ? "#f0fdf4" : "#fff", color: accion === "aceptar" ? "#065f46" : "#374151", borderRadius: 10, padding: "10px 12px", fontWeight: 900, cursor: "pointer" }}>
+                    Acepto la oferta
+                  </button>
+                  <button type="button" onClick={() => setAccion("contraoferta")} style={{ border: accion === "contraoferta" ? "2px solid #92400e" : "1px solid #e5e7eb", background: accion === "contraoferta" ? "#fffbeb" : "#fff", color: accion === "contraoferta" ? "#92400e" : "#374151", borderRadius: 10, padding: "10px 12px", fontWeight: 900, cursor: "pointer" }}>
+                    Quiero contraofertar
+                  </button>
+                </div>
+              </div>
+
+              {accion === "contraoferta" && (
+                <div style={{ marginTop: 12, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, padding: 14 }}>
+                  <label style={{ display: "block", marginBottom: 5, color: "#92400e", fontSize: 12, fontWeight: 900 }}>Monto de contraoferta</label>
+                  <input type="number" value={precioContraoferta} onChange={e => setPrecioContraoferta(e.target.value)} style={input} placeholder="Ej. 2950000" />
+                </div>
+              )}
+
+              <div style={{ marginTop: 16 }}>
+                <label style={{ display: "block", marginBottom: 5, color: "#374151", fontSize: 12, fontWeight: 800 }}>Nombre de quien responde</label>
                 <input value={aceptadoPor} onChange={e => setAceptadoPor(e.target.value)} style={input} />
               </div>
 
@@ -134,13 +161,15 @@ export default function AceptarCartaOferta() {
 
               <label style={{ display: "flex", alignItems: "flex-start", gap: 10, margin: "18px 0", color: "#374151", fontSize: 13, lineHeight: 1.5 }}>
                 <input type="checkbox" checked={confirmado} onChange={e => setConfirmado(e.target.checked)} style={{ marginTop: 3, width: 17, height: 17, accentColor: "#b91c3c" }} />
-                Confirmo que acepto la oferta presentada sobre el inmueble y autorizo a Emporio Inmobiliario a continuar el proceso con el cliente.
+                {accion === "aceptar"
+                  ? "Confirmo que acepto la oferta presentada sobre el inmueble y autorizo a Emporio Inmobiliario a continuar el proceso con el cliente."
+                  : "Confirmo que deseo presentar esta contraoferta y autorizo a Emporio Inmobiliario a comunicarla al cliente."}
               </label>
 
               {error && <p style={{ color: "#b91c3c", fontSize: 13, fontWeight: 700 }}>{error}</p>}
 
-              <button onClick={aceptar} disabled={saving || !confirmado || !aceptadoPor.trim() || !correo.trim()} style={{ width: "100%", background: saving || !confirmado || !aceptadoPor.trim() || !correo.trim() ? "#9ca3af" : "#b91c3c", color: "#fff", border: "none", borderRadius: 10, padding: "13px 18px", fontSize: 15, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
-                {saving ? "Registrando..." : "Acepto la oferta"}
+              <button onClick={aceptar} disabled={saving || !confirmado || !aceptadoPor.trim() || !correo.trim() || (accion === "contraoferta" && !precioContraoferta)} style={{ width: "100%", background: saving || !confirmado || !aceptadoPor.trim() || !correo.trim() || (accion === "contraoferta" && !precioContraoferta) ? "#9ca3af" : "#b91c3c", color: "#fff", border: "none", borderRadius: 10, padding: "13px 18px", fontSize: 15, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
+                {saving ? "Registrando..." : accion === "aceptar" ? "Acepto la oferta" : "Enviar contraoferta"}
               </button>
             </>
           )}
