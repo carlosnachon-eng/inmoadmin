@@ -596,6 +596,35 @@ export default function Cierres() {
     loadCierres();
   };
 
+  const descargarReciboComision = async (cierre) => {
+    if (profile?.role_id !== "admin") { showToast("Solo Admin puede generar recibos", false); return; }
+    if (!cierre?.id) return;
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      const token = currentSession?.access_token;
+      if (!token) throw new Error("Sesión requerida");
+      const res = await fetch(`/api/cierres/recibo-comision?id=${encodeURIComponent(cierre.id)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "No se pudo generar el recibo");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `recibo-comision-${(cierre.propiedad || "cierre").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast("Recibo de comisión generado");
+    } catch (error) {
+      showToast("Error: " + error.message, false);
+    }
+  };
+
   // Filtrado
   const cieresFiltrados = cierres.filter(c => {
     if (filtroAnio && c.anio !== filtroAnio) return false;
@@ -901,6 +930,11 @@ export default function Cierres() {
                           {esAdmin && <button onClick={() => openPago(c)} style={{ width: "100%", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#065f46" }}>
                             + Registrar pago
                           </button>}
+                          {esAdmin && c.comision > 0 && c.cobrado > 0 && (
+                            <button onClick={() => descargarReciboComision(c)} style={{ width: "100%", marginTop: 6, background: "#fff0f2", border: "1px solid #fecdd3", borderRadius: 8, padding: "8px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#C8102E" }}>
+                              🧾 Recibo comisión
+                            </button>
+                          )}
                         </div>
                       );
                     })()}
@@ -967,6 +1001,9 @@ export default function Cierres() {
                             <td style={{ padding: "9px 10px" }}>
                               <div style={{ display: "flex", gap: 4 }}>
                                 {esAdmin && <button onClick={() => openPago(c)} style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#065f46" }}>+ Pago</button>}
+                                {esAdmin && c.comision > 0 && c.cobrado > 0 && (
+                                  <button onClick={() => descargarReciboComision(c)} style={{ background: "#fff0f2", border: "1px solid #fecdd3", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#C8102E" }}>Recibo</button>
+                                )}
                                 <button onClick={() => setExpandedId(expandedId === c.id ? null : c.id)} style={{ background: "#f3f4f6", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>···</button>
                                 {esAdmin && <button onClick={() => deleteCierre(c.id, c.propiedad)} style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#991b1b" }}>X</button>}
                               </div>
@@ -996,6 +1033,9 @@ export default function Cierres() {
                                       </div>
                                     ))}
                                     {esAdmin && <button onClick={() => openPago(c)} style={{ marginTop: 4, background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#065f46" }}>+ Registrar pago</button>}
+                                    {esAdmin && c.comision > 0 && c.cobrado > 0 && (
+                                      <button onClick={() => descargarReciboComision(c)} style={{ marginTop: 4, marginLeft: 6, background: "#fff0f2", border: "1px solid #fecdd3", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#C8102E" }}>🧾 Recibo comisión</button>
+                                    )}
                                   </div>
                                   <div style={{ minWidth: 240 }}>
                                     <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>Fechas cobro comisiones</p>
