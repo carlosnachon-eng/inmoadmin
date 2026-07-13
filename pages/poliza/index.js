@@ -201,7 +201,7 @@ export default function PolizaPanel() {
       const dias = Math.ceil((new Date(e.fecha_vigencia + 'T12:00:00') - hoy) / (1000 * 60 * 60 * 24))
       return dias <= 60 && dias >= 0
     }).length,
-    sinDictamen: solicitudes.filter(s => s.status === 'pendiente').length,
+    sinDictamen: solicitudes.filter(s => ['pendiente', 'en_revision'].includes(s.status)).length,
   }
 
   const tabs = [
@@ -274,6 +274,23 @@ export default function PolizaPanel() {
     setModal('nuevo')
   }
 
+  const eliminarSolicitud = async (solicitud) => {
+    const nombre = solicitud.nombre_completo || solicitud.razon_social || 'esta solicitud'
+    if (!window.confirm(`¿Eliminar definitivamente la solicitud de ${nombre}? Esta acción no se puede deshacer.`)) return
+    setLoading(true)
+    setLoadError('')
+    const { error } = await supabase
+      .from('solicitudes_inquilino')
+      .delete()
+      .eq('id', solicitud.id)
+    setLoading(false)
+    if (error) {
+      setLoadError(error.message || 'No se pudo eliminar la solicitud.')
+      return
+    }
+    await loadTab('solicitudes', true)
+  }
+
   const cambiarTab = (tabId) => {
     setTab(tabId)
     loadTab(tabId)
@@ -339,7 +356,7 @@ export default function PolizaPanel() {
           <>
             {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={seleccionarExpediente} onReload={loadAll} onRenovar={renovarExpediente} />}
             {tab === 'propietarios' && <TabPropietarios propietarios={propietariosFiltrados} onSelect={p => { setSelected(p); setModal('propietario') }} />}
-            {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={seleccionarSolicitud} onNuevoExp={nuevoDesdeSolicitud} />}
+            {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={seleccionarSolicitud} onNuevoExp={nuevoDesdeSolicitud} onDelete={eliminarSolicitud} />}
             {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} esAdmin={esAdmin} />}
             {tab === 'partners' && <TabPartners operaciones={partnerOps} agencias={partnerAgencies} onReload={loadAll} />}
             {tab === 'compraventa' && (

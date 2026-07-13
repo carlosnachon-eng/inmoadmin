@@ -1,6 +1,6 @@
 import { C, st, Badge, fmt, fmtDate } from '../../lib/polizaUtils'
 
-export default function TabSolicitudes({ solicitudes, onSelect, onNuevoExp }) {
+export default function TabSolicitudes({ solicitudes, onSelect, onNuevoExp, onDelete }) {
   if (solicitudes.length === 0) return (
     <div style={st.emptyState}>
       <p style={{ fontSize: 40, margin: '0 0 12px' }}>📋</p>
@@ -41,11 +41,16 @@ export default function TabSolicitudes({ solicitudes, onSelect, onNuevoExp }) {
                 <td style={st.td} onClick={() => onSelect(sol)}><span style={{ fontSize: 11, color: C.muted }}>{fmtDate(sol.created_at?.split('T')[0])}</span></td>
                 <td style={st.td} onClick={() => onSelect(sol)}><Badge status={sol.status} /></td>
                 <td style={st.td}>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                   {sol.status === 'aprobado' && (
                     <button onClick={() => onNuevoExp(sol)} style={{ ...st.btn, ...st.btnGold, padding: '6px 12px', fontSize: 11 }}>
                       + Expediente
                     </button>
                   )}
+                  <button onClick={() => onDelete(sol)} style={{ ...st.btn, background: C.redBg, color: C.redText, padding: '6px 10px', fontSize: 11 }}>
+                    Eliminar
+                  </button>
+                  </div>
                 </td>
               </tr>
             ))}
