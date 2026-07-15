@@ -49,6 +49,11 @@ export default function ReportePropietario() {
   const [generandoPdf, setGenerandoPdf] = useState(false);
   const [toast, setToast] = useState(null);
   const [asesorNombre, setAsesorNombre] = useState("");
+  const [adminProperties, setAdminProperties] = useState([]);
+  const [adminContracts, setAdminContracts] = useState([]);
+  const [adminLiquidaciones, setAdminLiquidaciones] = useState([]);
+  const [adminBusqueda, setAdminBusqueda] = useState("");
+  const [ownerSeleccionado, setOwnerSeleccionado] = useState(null);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
 
@@ -59,6 +64,60 @@ export default function ReportePropietario() {
       supabase.from("profiles").select("*").eq("id", session.user.id).single().then(({ data }) => setProfile(data));
     });
   }, []);
+
+  useEffect(() => {
+    if (session) cargarPropietariosAdministracion();
+  }, [session]);
+
+  const cargarPropietariosAdministracion = async () => {
+    const [{ data: props }, { data: contracts }, { data: liquidaciones }] = await Promise.all([
+      supabase.from("properties").select("*").order("name"),
+      supabase.from("contracts").select("id, property_name, owner_name, tenant_name, monthly_rent, status, end_date").order("created_at", { ascending: false }),
+      supabase.from("owner_payments").select("id, owner_name, owner_email, period_description, total_liquid, amount_paid, status, payment_date, created_at").order("created_at", { ascending: false }),
+    ]);
+    setAdminProperties((props || []).filter((p) => p.owner_email));
+    setAdminContracts(contracts || []);
+    setAdminLiquidaciones(liquidaciones || []);
+  };
+
+  const propietariosAdministracion = (() => {
+    const mapa = new Map();
+    adminProperties.forEach((prop) => {
+      const email = (prop.owner_email || "").trim().toLowerCase();
+      if (!email) return;
+      const contratosProp = adminContracts.filter((c) => c.property_name === prop.name);
+      const contratoActivo = contratosProp.find((c) => c.status === "activo") || contratosProp[0];
+      if (!mapa.has(email)) {
+        mapa.set(email, {
+          email,
+          nombre: contratoActivo?.owner_name || email.split("@")[0],
+          telefono: prop.owner_phone || "",
+          propiedades: [],
+          rentaTotal: 0,
+          contratosActivos: 0,
+          liquidaciones: adminLiquidaciones.filter((l) => (l.owner_email || "").toLowerCase() === email),
+        });
+      }
+      const owner = mapa.get(email);
+      if (!owner.telefono && prop.owner_phone) owner.telefono = prop.owner_phone;
+      if ((!owner.nombre || owner.nombre === email.split("@")[0]) && contratoActivo?.owner_name) owner.nombre = contratoActivo.owner_name;
+      owner.propiedades.push({ ...prop, contratoActivo });
+      owner.rentaTotal += Number(prop.rent_amount || contratoActivo?.monthly_rent || 0);
+      if (contratoActivo?.status === "activo") owner.contratosActivos += 1;
+    });
+    return [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  })();
+
+  const propietariosFiltrados = propietariosAdministracion.filter((owner) => {
+    const q = adminBusqueda.trim().toLowerCase();
+    if (!q) return true;
+    return [
+      owner.nombre,
+      owner.email,
+      owner.telefono,
+      ...owner.propiedades.flatMap((p) => [p.name, p.address]),
+    ].some((v) => String(v || "").toLowerCase().includes(q));
+  });
 
   useEffect(() => {
     const buscar = async () => {
@@ -196,6 +255,101 @@ export default function ReportePropietario() {
         <p style={{ margin: "0 0 20px", fontSize: 13, color: "#9ca3af" }}>
           Elige una propiedad y un periodo para ver su actividad y generar el reporte para el propietario.
         </p>
+
+        <div style={{ background: "#fff", borderRadius: 14, padding: 18, marginBottom: 18, border: "1px solid #f0f0f0", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 14 }}>
+            <div>
+              <p style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 800, color: brand.gray }}>Propietarios de inmuebles administrados</p>
+              <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>
+                Dueños agrupados por correo para no capturar los mismos datos por cada casa o departamento.
+              </p>
+            </div>
+            <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "8px 12px", minWidth: 130 }}>
+              <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: brand.red }}>{propietariosAdministracion.length}</p>
+              <p style={{ margin: 0, fontSize: 11, color: "#9ca3af", fontWeight: 700 }}>propietarios</p>
+            </div>
+          </div>
+
+          <input
+            value={adminBusqueda}
+            onChange={(e) => setAdminBusqueda(e.target.value)}
+            placeholder="Buscar propietario, correo, teléfono o propiedad administrada…"
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: "1px solid #e5e7eb", fontSize: 13, boxSizing: "border-box", marginBottom: 12 }}
+          />
+
+          {propietariosFiltrados.length === 0 ? (
+            <div style={{ background: "#f9fafb", borderRadius: 10, padding: 16, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+              No encontré propietarios de administración con esa búsqueda.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+              {propietariosFiltrados.slice(0, 12).map((owner) => {
+                const ultimaLiquidacion = owner.liquidaciones[0];
+                const pendientes = owner.liquidaciones.filter((l) => l.status !== "pagado").length;
+                return (
+                  <button key={owner.email} onClick={() => setOwnerSeleccionado(owner)} style={{ background: ownerSeleccionado?.email === owner.email ? "#fff5f7" : "#fff", border: `1.5px solid ${ownerSeleccionado?.email === owner.email ? brand.red : "#e5e7eb"}`, borderRadius: 12, padding: 14, textAlign: "left", cursor: "pointer" }}>
+                    <p style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 800, color: brand.gray }}>{owner.nombre}</p>
+                    <p style={{ margin: "0 0 2px", fontSize: 12, color: "#6b7280" }}>{owner.email}</p>
+                    {owner.telefono && <p style={{ margin: "0 0 8px", fontSize: 12, color: "#6b7280" }}>{owner.telefono}</p>}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                      <div style={{ background: "#f9fafb", borderRadius: 8, padding: "8px 10px" }}>
+                        <p style={{ margin: 0, fontSize: 16, fontWeight: 900, color: brand.gray }}>{owner.propiedades.length}</p>
+                        <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", fontWeight: 700 }}>propiedades</p>
+                      </div>
+                      <div style={{ background: pendientes > 0 ? "#fffbeb" : "#f0fdf4", borderRadius: 8, padding: "8px 10px" }}>
+                        <p style={{ margin: 0, fontSize: 16, fontWeight: 900, color: pendientes > 0 ? "#92400e" : "#065f46" }}>{pendientes}</p>
+                        <p style={{ margin: 0, fontSize: 10, color: pendientes > 0 ? "#92400e" : "#065f46", fontWeight: 700 }}>pendientes</p>
+                      </div>
+                    </div>
+                    <p style={{ margin: "8px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                      Renta total: <strong>{fmt(owner.rentaTotal)}</strong>{ultimaLiquidacion ? ` · Última liquidación: ${ultimaLiquidacion.period_description || "registrada"}` : ""}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {propietariosFiltrados.length > 12 && (
+            <p style={{ margin: "10px 0 0", fontSize: 11, color: "#9ca3af" }}>
+              Mostrando 12 de {propietariosFiltrados.length}. Usa la búsqueda para acotar resultados.
+            </p>
+          )}
+
+          {ownerSeleccionado && (
+            <div style={{ marginTop: 14, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: brand.gray }}>{ownerSeleccionado.nombre}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>{ownerSeleccionado.propiedades.length} inmueble{ownerSeleccionado.propiedades.length !== 1 ? "s" : ""} en administración</p>
+                </div>
+                <button onClick={() => setOwnerSeleccionado(null)} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#6b7280" }}>
+                  Cerrar
+                </button>
+              </div>
+              {ownerSeleccionado.propiedades.map((prop) => (
+                <div key={prop.id} style={{ background: "#fff", border: "1px solid #eef2f7", borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: brand.gray }}>{prop.name}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>{prop.address || "Sin dirección capturada"}</p>
+                      {prop.contratoActivo?.tenant_name && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>Inquilino: {prop.contratoActivo.tenant_name}</p>}
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 900, color: brand.gray }}>{fmt(prop.rent_amount || prop.contratoActivo?.monthly_rent)}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 11, color: prop.contratoActivo?.status === "activo" ? "#065f46" : "#9ca3af", fontWeight: 700 }}>
+                        {prop.contratoActivo?.status === "activo" ? "Contrato activo" : prop.status || "Sin contrato activo"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <p style={{ margin: "8px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                Esta ficha se arma con propiedades, contratos y liquidaciones. Después podemos pasarla a una ficha única de propietario para guardar RFC, dirección fiscal y datos bancarios una sola vez.
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* Selector de propiedad */}
         <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, border: "1px solid #f0f0f0" }}>
