@@ -51,9 +51,10 @@ export default function ReportePropietario() {
   const [asesorNombre, setAsesorNombre] = useState("");
   const [adminProperties, setAdminProperties] = useState([]);
   const [adminContracts, setAdminContracts] = useState([]);
-  const [adminLiquidaciones, setAdminLiquidaciones] = useState([]);
   const [adminBusqueda, setAdminBusqueda] = useState("");
   const [ownerSeleccionado, setOwnerSeleccionado] = useState(null);
+  const [busquedaInmuebleAdmin, setBusquedaInmuebleAdmin] = useState("");
+  const [vinculandoAdmin, setVinculandoAdmin] = useState(false);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
 
@@ -70,14 +71,12 @@ export default function ReportePropietario() {
   }, [session]);
 
   const cargarPropietariosAdministracion = async () => {
-    const [{ data: props }, { data: contracts }, { data: liquidaciones }] = await Promise.all([
+    const [{ data: props }, { data: contracts }] = await Promise.all([
       supabase.from("properties").select("*").order("name"),
       supabase.from("contracts").select("id, property_name, owner_name, tenant_name, monthly_rent, status, end_date").order("created_at", { ascending: false }),
-      supabase.from("owner_payments").select("id, owner_name, owner_email, period_description, total_liquid, amount_paid, status, payment_date, created_at").order("created_at", { ascending: false }),
     ]);
     setAdminProperties((props || []).filter((p) => p.owner_email));
     setAdminContracts(contracts || []);
-    setAdminLiquidaciones(liquidaciones || []);
   };
 
   const propietariosAdministracion = (() => {
@@ -95,7 +94,6 @@ export default function ReportePropietario() {
           propiedades: [],
           rentaTotal: 0,
           contratosActivos: 0,
-          liquidaciones: adminLiquidaciones.filter((l) => (l.owner_email || "").toLowerCase() === email),
         });
       }
       const owner = mapa.get(email);
@@ -119,12 +117,40 @@ export default function ReportePropietario() {
     ].some((v) => String(v || "").toLowerCase().includes(q));
   });
 
+  const contratoActivoDe = (propertyName) => {
+    const contratosProp = adminContracts.filter((c) => c.property_name === propertyName);
+    return contratosProp.find((c) => c.status === "activo") || contratosProp[0] || null;
+  };
+
+  const propietarioDesdeInmuebleAdmin = (adminProperty) => {
+    if (!adminProperty) return null;
+    const contratoActivo = contratoActivoDe(adminProperty.name);
+    return {
+      fuente: "administracion",
+      nombre_propietario: contratoActivo?.owner_name || adminProperty.owner_name || adminProperty.owner_email?.split("@")[0] || "Propietario",
+      correo_propietario: adminProperty.owner_email || "",
+      telefono_propietario: adminProperty.owner_phone || "",
+      inmueble_admin: adminProperty,
+      contrato_activo: contratoActivo,
+    };
+  };
+
+  const buscarInmuebleAdmin = (adminPropertyId) => adminProperties.find((p) => p.id === adminPropertyId) || null;
+
+  const resultadosInmuebleAdmin = adminProperties
+    .filter((p) => {
+      const q = busquedaInmuebleAdmin.trim().toLowerCase();
+      if (!q) return false;
+      return [p.name, p.address, p.owner_email, p.owner_phone].some((v) => String(v || "").toLowerCase().includes(q));
+    })
+    .slice(0, 8);
+
   useEffect(() => {
     const buscar = async () => {
       if (!busqueda || busqueda.length < 3) { setPropiedades([]); return; }
       const { data } = await supabase
         .from("propiedades")
-        .select("id, titulo, direccion, colonia, ciudad, public_id, operacion, precio, status, apartado_fecha, apartado_vigencia_hasta, en_marketplace, vistas_tiktok, vistas_instagram, vistas_facebook")
+        .select("*")
         .or(`titulo.ilike.%${busqueda}%,direccion.ilike.%${busqueda}%`)
         .limit(8);
       setPropiedades(data || []);
@@ -138,12 +164,53 @@ export default function ReportePropietario() {
     setBusqueda("");
     setPropiedades([]);
     setDatos(null);
+    setBusquedaInmuebleAdmin("");
+    const inmuebleAdmin = buscarInmuebleAdmin(p.admin_property_id);
+    if (inmuebleAdmin) {
+      setPropietario(propietarioDesdeInmuebleAdmin(inmuebleAdmin));
+      return;
+    }
     const { data: prop } = await supabase
       .from("propietarios_inmuebles")
       .select("*")
       .eq("propiedad_id", p.id)
       .maybeSingle();
     setPropietario(prop);
+  };
+
+  const vincularInmuebleAdmin = async (adminProperty) => {
+    if (!propiedadSel || !adminProperty) return;
+    setVinculandoAdmin(true);
+    const { error } = await supabase
+      .from("propiedades")
+      .update({ admin_property_id: adminProperty.id })
+      .eq("id", propiedadSel.id);
+    setVinculandoAdmin(false);
+    if (error) {
+      showToast("No se pudo vincular. Falta ejecutar el SQL de admin_property_id o revisar permisos.", false);
+      return;
+    }
+    setPropiedadSel({ ...propiedadSel, admin_property_id: adminProperty.id });
+    setPropietario(propietarioDesdeInmuebleAdmin(adminProperty));
+    setBusquedaInmuebleAdmin("");
+    showToast("Ficha vinculada al inmueble administrado");
+  };
+
+  const desvincularInmuebleAdmin = async () => {
+    if (!propiedadSel?.admin_property_id) return;
+    setVinculandoAdmin(true);
+    const { error } = await supabase
+      .from("propiedades")
+      .update({ admin_property_id: null })
+      .eq("id", propiedadSel.id);
+    setVinculandoAdmin(false);
+    if (error) {
+      showToast("No se pudo quitar el vínculo.", false);
+      return;
+    }
+    setPropiedadSel({ ...propiedadSel, admin_property_id: null });
+    setPropietario(null);
+    showToast("Vínculo removido");
   };
 
   const aplicarRango = (tipo) => {
@@ -284,8 +351,6 @@ export default function ReportePropietario() {
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
               {propietariosFiltrados.slice(0, 12).map((owner) => {
-                const ultimaLiquidacion = owner.liquidaciones[0];
-                const pendientes = owner.liquidaciones.filter((l) => l.status !== "pagado").length;
                 return (
                   <button key={owner.email} onClick={() => setOwnerSeleccionado(owner)} style={{ background: ownerSeleccionado?.email === owner.email ? "#fff5f7" : "#fff", border: `1.5px solid ${ownerSeleccionado?.email === owner.email ? brand.red : "#e5e7eb"}`, borderRadius: 12, padding: 14, textAlign: "left", cursor: "pointer" }}>
                     <p style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 800, color: brand.gray }}>{owner.nombre}</p>
@@ -296,13 +361,13 @@ export default function ReportePropietario() {
                         <p style={{ margin: 0, fontSize: 16, fontWeight: 900, color: brand.gray }}>{owner.propiedades.length}</p>
                         <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", fontWeight: 700 }}>propiedades</p>
                       </div>
-                      <div style={{ background: pendientes > 0 ? "#fffbeb" : "#f0fdf4", borderRadius: 8, padding: "8px 10px" }}>
-                        <p style={{ margin: 0, fontSize: 16, fontWeight: 900, color: pendientes > 0 ? "#92400e" : "#065f46" }}>{pendientes}</p>
-                        <p style={{ margin: 0, fontSize: 10, color: pendientes > 0 ? "#92400e" : "#065f46", fontWeight: 700 }}>pendientes</p>
+                      <div style={{ background: "#f0fdf4", borderRadius: 8, padding: "8px 10px" }}>
+                        <p style={{ margin: 0, fontSize: 16, fontWeight: 900, color: "#065f46" }}>{owner.contratosActivos}</p>
+                        <p style={{ margin: 0, fontSize: 10, color: "#065f46", fontWeight: 700 }}>activos</p>
                       </div>
                     </div>
                     <p style={{ margin: "8px 0 0", fontSize: 11, color: "#9ca3af" }}>
-                      Renta total: <strong>{fmt(owner.rentaTotal)}</strong>{ultimaLiquidacion ? ` · Última liquidación: ${ultimaLiquidacion.period_description || "registrada"}` : ""}
+                      Renta total: <strong>{fmt(owner.rentaTotal)}</strong>
                     </p>
                   </button>
                 );
@@ -345,7 +410,7 @@ export default function ReportePropietario() {
                 </div>
               ))}
               <p style={{ margin: "8px 0 0", fontSize: 11, color: "#9ca3af" }}>
-                Esta ficha se arma con propiedades, contratos y liquidaciones. Después podemos pasarla a una ficha única de propietario para guardar RFC, dirección fiscal y datos bancarios una sola vez.
+                Esta ficha se arma con inmuebles administrados y contratos activos. Después podemos pasarla a una ficha única de propietario para guardar RFC, dirección fiscal y datos bancarios una sola vez.
               </p>
             </div>
           )}
@@ -389,7 +454,41 @@ export default function ReportePropietario() {
           <>
             {!propietario && (
               <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#92400e" }}>
-                Esta propiedad no tiene un propietario vinculado todavía. Ve al expediente del propietario en el módulo de Póliza y vincúlalo ahí para poder enviarle el reporte directamente.
+                <p style={{ margin: "0 0 8px", fontWeight: 700 }}>Esta ficha publicada no está vinculada a un inmueble administrado.</p>
+                <p style={{ margin: "0 0 10px" }}>Busca el inmueble interno correspondiente, por ejemplo “central dep 102”, para que el reporte quede ligado al propietario correcto.</p>
+                <input
+                  value={busquedaInmuebleAdmin}
+                  onChange={(e) => setBusquedaInmuebleAdmin(e.target.value)}
+                  placeholder="Buscar inmueble administrado por nombre, dirección, propietario o teléfono…"
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #fcd34d", fontSize: 13, boxSizing: "border-box", background: "#fff" }}
+                />
+                {resultadosInmuebleAdmin.length > 0 && (
+                  <div style={{ marginTop: 8, border: "1px solid #fcd34d", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+                    {resultadosInmuebleAdmin.map((p) => {
+                      const contrato = contratoActivoDe(p.name);
+                      return (
+                        <button key={p.id} onClick={() => vincularInmuebleAdmin(p)} disabled={vinculandoAdmin} style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", background: "#fff", border: "none", borderBottom: "1px solid #fef3c7", cursor: "pointer", fontSize: 12 }}>
+                          <strong>{p.name}</strong> · {fmt(p.rent_amount || contrato?.monthly_rent)}<br />
+                          <span style={{ color: "#6b7280" }}>{p.address || "Sin dirección"} · {contrato?.owner_name || p.owner_email || "Sin propietario"}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {propietario?.fuente === "administracion" && (
+              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#065f46" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div>
+                    <p style={{ margin: "0 0 3px", fontWeight: 800 }}>Vinculada a inmueble administrado</p>
+                    <p style={{ margin: 0 }}>{propietario.inmueble_admin?.name} · {propietario.nombre_propietario}</p>
+                  </div>
+                  <button onClick={desvincularInmuebleAdmin} disabled={vinculandoAdmin} style={{ background: "#fff", border: "1px solid #bbf7d0", color: "#065f46", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    Quitar vínculo
+                  </button>
+                </div>
               </div>
             )}
 

@@ -19,11 +19,40 @@ export default async function handler(req, res) {
     .single();
   if (errorPropiedad || !propiedad) return res.status(404).json({ error: "Propiedad no encontrada" });
 
-  const { data: propietario } = await supabaseAdmin
-    .from("propietarios_inmuebles")
-    .select("*")
-    .eq("propiedad_id", propiedad_id)
-    .maybeSingle();
+  let propietario = null;
+  if (propiedad.admin_property_id) {
+    const { data: inmuebleAdmin } = await supabaseAdmin
+      .from("properties")
+      .select("*")
+      .eq("id", propiedad.admin_property_id)
+      .maybeSingle();
+
+    if (inmuebleAdmin) {
+      const { data: contratoActivo } = await supabaseAdmin
+        .from("contracts")
+        .select("owner_name, tenant_name, property_name, monthly_rent, status")
+        .eq("property_name", inmuebleAdmin.name)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      propietario = {
+        nombre_propietario: contratoActivo?.owner_name || inmuebleAdmin.owner_name || inmuebleAdmin.owner_email?.split("@")[0] || "",
+        correo_propietario: inmuebleAdmin.owner_email || "",
+        telefono_propietario: inmuebleAdmin.owner_phone || "",
+        direccion_inmueble: inmuebleAdmin.address || inmuebleAdmin.name || "",
+      };
+    }
+  }
+
+  if (!propietario) {
+    const { data } = await supabaseAdmin
+      .from("propietarios_inmuebles")
+      .select("*")
+      .eq("propiedad_id", propiedad_id)
+      .maybeSingle();
+    propietario = data;
+  }
 
   try {
     const filtroFecha = (query) => {
