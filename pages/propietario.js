@@ -162,7 +162,7 @@ const verReciboEntrega = async (recibo) => {
   const { default: jsPDF } = await import("jspdf");
   const doc = new jsPDF({ format: "a5" });
   const hoy = new Date(recibo.fecha).toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
-  const concepto = { adelanto: "Adelanto de renta", parcial: "Pago parcial de liquidación", total: "Liquidación total" }[recibo.concepto] || recibo.concepto;
+  const concepto = { adelanto: "Adelanto de renta", parcial: "Pago parcial de liquidación", total: "Liquidación total", mantenimiento: "Pago de mantenimiento" }[recibo.concepto] || recibo.concepto;
   const folio = recibo.id.slice(0, 8).toUpperCase();
   let logoDataUrl = null;
   try {
@@ -362,7 +362,7 @@ export default function PropietarioPortal() {
   const totalCobrado = payments.filter(p => p.status === "pagado").reduce((a, p) => a + (p.amount || 0), 0);
   const totalLiquidado = liquidaciones.filter(l => l.status === "pagado").reduce((a, l) => a + (l.amount_paid || 0), 0);
   const hoy = new Date();
-  const conceptoLabel = { adelanto: "Adelanto", parcial: "Pago parcial", total: "Liquidación total" };
+  const conceptoLabel = { adelanto: "Adelanto", parcial: "Pago parcial", total: "Liquidación total", mantenimiento: "Mantenimiento" };
 
   // Cotizaciones pendientes de respuesta
   const cotizacionesPendientes = quotes.filter(q => q.status === "pendiente");

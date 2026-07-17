@@ -505,6 +505,8 @@ export default function Liquidaciones() {
   };
 
   const guardarPago = async () => {
+    const esDescuentoMantenimiento = formPago.concepto === "descuento_mantenimiento";
+    const esMantenimiento = formPago.concepto === "mantenimiento" || esDescuentoMantenimiento;
     if (!formPago.monto || parseFloat(formPago.monto) <= 0) {
       showToast("Ingresa un monto válido", false); return;
     }
@@ -513,17 +515,49 @@ export default function Liquidaciones() {
     if (formPago.concepto === "total" && parseFloat(formPago.monto) > pendienteActual + 1) {
       showToast(`⚠️ El monto ($${parseFloat(formPago.monto).toLocaleString()}) excede el pendiente del mes ($${pendienteActual.toLocaleString()}). Verifica el monto.`, false); return;
     }
-    if (formPago.concepto === "mantenimiento" && !formPago.ticket_id) {
+    if (esMantenimiento && !formPago.ticket_id) {
       showToast("Selecciona qué mantenimiento se está cobrando", false); return;
     }
-    if (formPago.forma_pago === "efectivo" && !firmaTrazada) {
+    if (!esDescuentoMantenimiento && formPago.forma_pago === "efectivo" && !firmaTrazada) {
       showToast("El propietario debe firmar de recibido", false); return;
     }
-    if (formPago.forma_pago === "transferencia" && !archivoComprobante) {
+    if (!esDescuentoMantenimiento && formPago.forma_pago === "transferencia" && !archivoComprobante) {
       showToast("Sube el comprobante de transferencia", false); return;
     }
 
     setSavingPago(true);
+
+    if (esDescuentoMantenimiento) {
+      const { error: descErr } = await supabase.from("maintenance_tickets")
+        .update({
+          descontado_de_liquidacion: true,
+          fecha_cobro_propietario: formPago.fecha,
+          forma_cobro_propietario: "descuento_liquidacion",
+          recibo_cobro_id: null,
+        })
+        .eq("id", formPago.ticket_id);
+
+      if (descErr) {
+        setSavingPago(false);
+        showToast("Error al aplicar descuento: " + descErr.message, false);
+        return;
+      }
+
+      setTickets(prev => prev.map(t => t.id === formPago.ticket_id ? {
+        ...t,
+        descontado_de_liquidacion: true,
+        fecha_cobro_propietario: formPago.fecha,
+        forma_cobro_propietario: "descuento_liquidacion",
+        recibo_cobro_id: null,
+      } : t));
+      setSavingPago(false);
+      setShowModalPago(false);
+      setFormPago(emptyFormPago);
+      setFirmaTrazada(false);
+      setArchivoComprobante(null);
+      showToast("Mantenimiento marcado para descontarse en la liquidación");
+      return;
+    }
 
     let firma_url = null;
     let firmaBase64 = null;
@@ -1637,7 +1671,7 @@ export default function Liquidaciones() {
             <Field label="Concepto">
               <Sel value={formPago.concepto} onChange={e => {
                 const nuevoConcepto = e.target.value;
-                if (nuevoConcepto === "mantenimiento") {
+                if (nuevoConcepto === "mantenimiento" || nuevoConcepto === "descuento_mantenimiento") {
                   setFormPago({ ...formPago, concepto: nuevoConcepto, monto: "", ticket_id: "" });
                 } else {
                   setFormPago({ ...formPago, concepto: nuevoConcepto });
@@ -1646,15 +1680,15 @@ export default function Liquidaciones() {
                 <option value="adelanto">Adelanto</option>
                 <option value="parcial">Pago parcial</option>
                 <option value="total">Liquidación total</option>
-                <option value="mantenimiento">🔧 Pago de mantenimiento</option>
+                <option value="descuento_mantenimiento">🔧 Descontar mantenimiento de liquidación</option>
               </Sel>
             </Field>
-            <Field label="Monto a entregar">
-              <Input type="number" value={formPago.monto} onChange={e => setFormPago({ ...formPago, monto: e.target.value })} placeholder="0" disabled={formPago.concepto === "mantenimiento" && !!formPago.ticket_id} />
+            <Field label={formPago.concepto === "descuento_mantenimiento" ? "Monto a descontar" : "Monto a entregar"}>
+              <Input type="number" value={formPago.monto} onChange={e => setFormPago({ ...formPago, monto: e.target.value })} placeholder="0" disabled={(formPago.concepto === "mantenimiento" || formPago.concepto === "descuento_mantenimiento") && !!formPago.ticket_id} />
             </Field>
           </div>
 
-          {formPago.concepto === "mantenimiento" && (() => {
+          {["mantenimiento", "descuento_mantenimiento"].includes(formPago.concepto) && (() => {
             const ticketsPendientesProp = tickets.filter(t =>
               t.payer === "propietario" &&
               properties.some(p => p.owner_email === propietarioPago.email && p.name === t.property_name) &&
@@ -1662,7 +1696,7 @@ export default function Liquidaciones() {
               !t.descontado_de_liquidacion
             );
             return (
-              <Field label="¿Qué mantenimiento se está cobrando?">
+              <Field label={formPago.concepto === "descuento_mantenimiento" ? "¿Qué mantenimiento se descontará de la liquidación?" : "¿Qué mantenimiento se está cobrando?"}>
                 <Sel value={formPago.ticket_id} onChange={e => {
                   const tk = ticketsPendientesProp.find(t => t.id === e.target.value);
                   const saldo = tk ? (tk.charged_amount || 0) - (tk.advance_paid ? (tk.advance_amount || 0) : 0) : "";
@@ -1676,6 +1710,11 @@ export default function Liquidaciones() {
                 </Sel>
                 {ticketsPendientesProp.length === 0 && (
                   <p style={{ margin: "6px 0 0", fontSize: 12, color: "#9ca3af" }}>Este propietario no tiene mantenimientos pendientes de cobro.</p>
+                )}
+                {formPago.concepto === "descuento_mantenimiento" && (
+                  <p style={{ margin: "8px 0 0", fontSize: 12, color: "#92400e", fontWeight: 600 }}>
+                    Este movimiento no entrega dinero ni genera recibo. Solo marca el mantenimiento para restarlo del próximo corte/liquidación.
+                  </p>
                 )}
               </Field>
             );
@@ -1699,18 +1738,20 @@ export default function Liquidaciones() {
             </Field>
           </div>
 
-          <Field label="Forma de pago">
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setFormPago({ ...formPago, forma_pago: "efectivo" })} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, border: `2px solid ${formPago.forma_pago === "efectivo" ? "#b45309" : "#e5e7eb"}`, background: formPago.forma_pago === "efectivo" ? "#fffbeb" : "#fff", color: formPago.forma_pago === "efectivo" ? "#b45309" : "#6b7280", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
-                💵 Efectivo
-              </button>
-              <button onClick={() => setFormPago({ ...formPago, forma_pago: "transferencia" })} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, border: `2px solid ${formPago.forma_pago === "transferencia" ? "#1e40af" : "#e5e7eb"}`, background: formPago.forma_pago === "transferencia" ? "#eff6ff" : "#fff", color: formPago.forma_pago === "transferencia" ? "#1e40af" : "#6b7280", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
-                🏦 Transferencia
-              </button>
-            </div>
-          </Field>
+          {formPago.concepto !== "descuento_mantenimiento" && (
+            <Field label="Forma de pago">
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setFormPago({ ...formPago, forma_pago: "efectivo" })} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, border: `2px solid ${formPago.forma_pago === "efectivo" ? "#b45309" : "#e5e7eb"}`, background: formPago.forma_pago === "efectivo" ? "#fffbeb" : "#fff", color: formPago.forma_pago === "efectivo" ? "#b45309" : "#6b7280", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                  💵 Efectivo
+                </button>
+                <button onClick={() => setFormPago({ ...formPago, forma_pago: "transferencia" })} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, border: `2px solid ${formPago.forma_pago === "transferencia" ? "#1e40af" : "#e5e7eb"}`, background: formPago.forma_pago === "transferencia" ? "#eff6ff" : "#fff", color: formPago.forma_pago === "transferencia" ? "#1e40af" : "#6b7280", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                  🏦 Transferencia
+                </button>
+              </div>
+            </Field>
+          )}
 
-          {formPago.forma_pago === "efectivo" && (
+          {formPago.concepto !== "descuento_mantenimiento" && formPago.forma_pago === "efectivo" && (
             <Field label="Firma de recibido — propietario">
               <FirmaCanvas canvasRef={canvasRef} onFirma={setFirmaTrazada} />
               {firmaTrazada && (
@@ -1724,7 +1765,7 @@ export default function Liquidaciones() {
             </Field>
           )}
 
-          {formPago.forma_pago === "transferencia" && (
+          {formPago.concepto !== "descuento_mantenimiento" && formPago.forma_pago === "transferencia" && (
             <Field label="Comprobante de transferencia">
               <div style={{ border: "2px dashed #d1d5db", borderRadius: 8, padding: "16px", textAlign: "center", background: "#fafafa" }}>
                 <input type="file" accept="image/*,application/pdf" onChange={e => setArchivoComprobante(e.target.files[0] || null)} style={{ display: "none" }} id="comprobante-input" />
@@ -1753,8 +1794,8 @@ export default function Liquidaciones() {
             <button onClick={() => { setShowModalPago(false); setFormPago(emptyFormPago); setFirmaTrazada(false); setArchivoComprobante(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>
               Cancelar
             </button>
-            <Btn onClick={guardarPago} disabled={savingPago || !formPago.monto || (formPago.concepto === "mantenimiento" && !formPago.ticket_id) || (formPago.forma_pago === "efectivo" && !firmaTrazada) || (formPago.forma_pago === "transferencia" && !archivoComprobante)} color="#b45309">
-              {savingPago ? "Guardando…" : "Registrar pago y generar recibo"}
+            <Btn onClick={guardarPago} disabled={savingPago || !formPago.monto || ((formPago.concepto === "mantenimiento" || formPago.concepto === "descuento_mantenimiento") && !formPago.ticket_id) || (formPago.concepto !== "descuento_mantenimiento" && formPago.forma_pago === "efectivo" && !firmaTrazada) || (formPago.concepto !== "descuento_mantenimiento" && formPago.forma_pago === "transferencia" && !archivoComprobante)} color="#b45309">
+              {savingPago ? "Guardando…" : formPago.concepto === "descuento_mantenimiento" ? "Aplicar descuento a liquidación" : "Registrar pago y generar recibo"}
             </Btn>
           </div>
         </Modal>
