@@ -70,11 +70,14 @@ async function autenticar(req) {
 
   const { data: perfil, error: perfilError } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role_id")
+    .select("id, email, full_name, role_id, active, roles:role_id(es_externo)")
     .eq("id", user.id)
     .maybeSingle();
 
   if (perfilError || !perfil) return { error: "Perfil no encontrado", status: 403 };
+  if (perfil.active === false || perfil.roles?.es_externo) {
+    return { error: "Perfil sin acceso interno", status: 403 };
+  }
   return { user, perfil };
 }
 

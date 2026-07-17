@@ -270,6 +270,30 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!session?.user?.id || permisosCargando) return;
+
+    const perfilInternoActivo = perfil?.role_id && perfil.active !== false && !perfil.roles?.es_externo;
+    if (perfilInternoActivo) return;
+
+    let activo = true;
+    const redirigirPartner = async () => {
+      const { data: partnerUser } = await supabase
+        .from("partner_users")
+        .select("id, partner_agencies:partner_agency_id(status)")
+        .eq("auth_user_id", session.user.id)
+        .eq("active", true)
+        .maybeSingle();
+
+      if (!activo || !partnerUser || typeof window === "undefined") return;
+      const destino = partnerUser.partner_agencies?.status === "activo" ? "/partners/dashboard" : "/partners/pendiente";
+      if (window.location.pathname !== destino) window.location.replace(destino);
+    };
+
+    redirigirPartner();
+    return () => { activo = false; };
+  }, [session?.user?.id, permisosCargando, perfil?.id, perfil?.role_id, perfil?.active, perfil?.roles?.es_externo]);
+
   const cargarPrioridades = async (forzar = false) => {
     if (!session?.access_token || !perfil?.id) return;
     const cacheKey = `prioridades-hoy:${perfil.id}`;
@@ -321,6 +345,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!session || permisosCargando || !perfil?.id) return;
+    if (perfil.active === false || perfil.roles?.es_externo) return;
     cargarPrioridades(false);
     // La sesión y el perfil son las únicas dependencias que deben iniciar la carga.
     // eslint-disable-next-line react-hooks/exhaustive-deps
