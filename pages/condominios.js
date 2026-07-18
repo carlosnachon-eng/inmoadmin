@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
+import DemoBadge from "../components/condominios/DemoBadge";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import { condominiosApi } from "../lib/condominiosApi";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -98,7 +100,7 @@ export default function Condominios() {
   const [importando, setImportando] = useState(false);
   const fileRef = useRef(null);
 
-  const emptyForm = { nombre: "", direccion: "", total_unidades: "6", cuota_mensual: "800", honorarios_emporio: "1500", notas: "" };
+  const emptyForm = { nombre: "", direccion: "", total_unidades: "", cuota_mensual: "", honorarios_emporio: "", notas: "" };
   const [form, setForm] = useState(emptyForm);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
@@ -162,99 +164,93 @@ export default function Condominios() {
   const crearCondominio = async () => {
     if (!form.nombre.trim()) { showToast("El nombre es requerido", false); return; }
     setSaving(true);
-    const { data: cond, error } = await supabase.from("condominios").insert([{
-      nombre: form.nombre,
-      direccion: form.direccion,
-      total_unidades: parseInt(form.total_unidades) || 1,
-      cuota_mensual: parseFloat(form.cuota_mensual) || 0,
-      honorarios_emporio: parseFloat(form.honorarios_emporio) || 1500,
-      notas: form.notas,
-    }]).select().single();
-    if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
-
-    // Generar unidades vacías automáticamente
-    const unidadesVacias = Array.from({ length: parseInt(form.total_unidades) || 1 }, (_, i) => ({
-      condominio_id: cond.id,
-      numero: `${i + 1}`,
-      propietario_nombre: `Propietario ${i + 1}`,
-      propietario_email: null,
-      residente_es_propietario: true,
-    }));
-    await supabase.from("unidades_condominio").insert(unidadesVacias);
-
-    setSaving(false);
-    setModalNuevo(false);
-    setForm(emptyForm);
-    showToast("Condominio creado");
-    loadCondominios();
+    try {
+      await condominiosApi("/api/condominios", { method: "POST", body: JSON.stringify(form) });
+      setModalNuevo(false);
+      setForm(emptyForm);
+      showToast("Condominio creado. Agrega las unidades manualmente o mediante CSV.");
+      await loadCondominios();
+    } catch (error) {
+      showToast(error.message, false);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // ── Importar desde Excel (CSV) ────────────────────────────────────────────
+  // ── Importar CSV con vista previa validada ────────────────────────────────
   const handleFileImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { showToast("El CSV debe pesar como máximo 2 MB", false); return; }
+    setImportando(true);
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target.result;
-      const lines = text.split("\n").filter(l => l.trim());
-      const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
-      const rows = lines.slice(1).map(line => {
-        const vals = line.split(",").map(v => v.trim().replace(/^"|"$/g, ""));
-        return Object.fromEntries(headers.map((h, i) => [h, vals[i] || ""]));
-      });
-      setImportData(rows);
+    reader.onload = async (ev) => {
+      try {
+        const preview = await condominiosApi(`/api/condominios/${modalImport.id}/importacion`, {
+          method: "POST",
+          body: JSON.stringify({ action: "preview", csv: ev.target.result }),
+        });
+        setImportData(preview);
+      } catch (error) {
+        setImportData(null);
+        showToast(error.message, false);
+      } finally {
+        setImportando(false);
+      }
     };
+    reader.onerror = () => { setImportando(false); showToast("No fue posible leer el CSV", false); };
     reader.readAsText(file);
   };
 
   const confirmarImport = async () => {
     if (!importData || !modalImport) return;
     setImportando(true);
-    // Eliminar unidades vacías previas
-    await supabase.from("unidades_condominio").delete().eq("condominio_id", modalImport.id);
-    // Insertar desde CSV
-    const unidades = importData.map((row, i) => ({
-      condominio_id: modalImport.id,
-      numero: row.numero || row.unidad || row.depa || `${i + 1}`,
-      piso: parseInt(row.piso) || null,
-      propietario_nombre: row.propietario || row.nombre || `Propietario ${i + 1}`,
-      propietario_email: row.email || row.correo || null,
-      propietario_telefono: row.telefono || row.tel || null,
-      residente_nombre: row.residente || null,
-      residente_email: row.email_residente || null,
-      residente_es_propietario: !row.residente,
-    }));
-    const { error } = await supabase.from("unidades_condominio").insert(unidades);
-    setImportando(false);
-    setModalImport(null);
-    setImportData(null);
-    if (error) { showToast("Error al importar: " + error.message, false); return; }
-    showToast(`${unidades.length} unidades importadas`);
-    loadCondominios();
+    try {
+      if (importData.errores?.length) throw new Error("Corrige los errores del CSV antes de confirmar");
+      const result = await condominiosApi(`/api/condominios/${modalImport.id}/importacion`, {
+        method: "POST",
+        body: JSON.stringify({ action: "commit", batch_id: importData.id }),
+      });
+      if (result.resultado_csv) {
+        const blob = new Blob([`\uFEFF${result.resultado_csv}`], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `resultado-importacion-${modalImport.id}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+      setModalImport(null);
+      setImportData(null);
+      showToast(`${result.filas_aplicadas} unidades importadas sin borrar las existentes`);
+      await loadCondominios();
+    } catch (error) {
+      showToast(error.message, false);
+    } finally {
+      setImportando(false);
+    }
   };
 
   // ── Generar cuotas del mes ────────────────────────────────────────────────
   const generarCuotasMes = async (cond) => {
     const periodo = periodoActual();
-    const ya = cond.cuotasMes || [];
-    const unidadesConCuota = ya.map(q => q.unidad_id);
-    const sinCuota = (cond.unidades || []).filter(u => !unidadesConCuota.includes(u.id));
-    if (sinCuota.length === 0) { showToast("Ya existen cuotas para este mes", false); return; }
-
     const hoy = new Date();
     const fechaVenc = new Date(hoy.getFullYear(), hoy.getMonth(), 10); // vence día 10
-    const nuevas = sinCuota.map(u => ({
-      condominio_id: cond.id,
-      unidad_id: u.id,
-      periodo,
-      monto: cond.cuota_mensual,
-      status: "pendiente",
-      fecha_vencimiento: fechaVenc.toISOString().split("T")[0],
-    }));
-    const { error } = await supabase.from("cuotas_condominio").insert(nuevas);
-    if (error) { showToast("Error: " + error.message, false); return; }
-    showToast(`${nuevas.length} cuotas generadas para ${periodoLabel(periodo)}`);
-    loadCondominios();
+    try {
+      const result = await condominiosApi(`/api/condominios/${cond.id}/operaciones`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "generar_cuotas",
+          periodo,
+          monto: cond.cuota_mensual,
+          fecha_vencimiento: fechaVenc.toISOString().split("T")[0],
+        }),
+      });
+      showToast(`${result.creadas} cuotas generadas para ${periodoLabel(periodo)}`);
+      await loadCondominios();
+    } catch (error) {
+      showToast(error.message, false);
+    }
   };
 
   if (authLoading || permisoCargando) return (
@@ -277,7 +273,10 @@ export default function Condominios() {
         title="Condominios"
         icon="🏢"
         actions={
-          <Btn color={brand.red} onClick={() => { setForm(emptyForm); setModalNuevo(true); }}>+ Nuevo condominio</Btn>
+          <>
+            <DemoBadge />
+            {puedeEditar ? <Btn color={brand.red} onClick={() => { setForm(emptyForm); setModalNuevo(true); }}>+ Nuevo condominio</Btn> : null}
+          </>
         }
       />
 
@@ -290,7 +289,7 @@ export default function Condominios() {
             <p style={{ fontSize: 40, margin: "0 0 12px" }}>🏢</p>
             <h3 style={{ margin: "0 0 8px", color: "#1a1a2e" }}>Sin condominios aún</h3>
             <p style={{ color: "#9ca3af", margin: "0 0 20px" }}>Registra tu primer condominio para empezar</p>
-            <Btn color={brand.red} onClick={() => { setForm(emptyForm); setModalNuevo(true); }}>+ Nuevo condominio</Btn>
+            {puedeEditar && <Btn color={brand.red} onClick={() => { setForm(emptyForm); setModalNuevo(true); }}>+ Nuevo condominio</Btn>}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -349,11 +348,11 @@ export default function Condominios() {
                   })()}
 
                   {/* Acciones */}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {puedeEditar && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <Btn small color="#065f46" onClick={() => generarCuotasMes(cond)}>📋 Generar cuotas del mes</Btn>
-                    <Btn small color="#1e40af" onClick={() => { setModalImport(cond); setImportData(null); if (fileRef.current) fileRef.current.value = ""; }}>📥 Importar Excel</Btn>
+                    <Btn small color="#1e40af" onClick={() => { setModalImport(cond); setImportData(null); if (fileRef.current) fileRef.current.value = ""; }}>📥 Importar CSV</Btn>
                     <Btn small color="#1a1a2e" onClick={() => router.push(`/condominio/${cond.id}`)}>⚙️ Administrar</Btn>
-                  </div>
+                  </div>}
                 </div>
               </div>
             ))}
@@ -362,7 +361,7 @@ export default function Condominios() {
       </div>
 
       {/* ── Modal nuevo condominio ── */}
-      {modalNuevo && (
+      {modalNuevo && puedeEditar && (
         <Modal title="Nuevo condominio" onClose={() => setModalNuevo(false)}>
           <Field label="Nombre del condominio *">
             <Input placeholder="Ej: Residencial Ángelus, Edificio Central…" value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} />
@@ -385,7 +384,7 @@ export default function Condominios() {
             <Input placeholder="Observaciones generales" value={form.notas} onChange={e => setForm({ ...form, notas: e.target.value })} />
           </Field>
           <div style={{ background: "#eff6ff", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "#1e40af" }}>Se crearán <strong>{form.total_unidades || 0} unidades vacías</strong> automáticamente. Puedes editar los datos de cada propietario desde el detalle del condominio o importarlos desde Excel.</p>
+            <p style={{ margin: 0, fontSize: 12, color: "#1e40af" }}>El total declarado será <strong>{form.total_unidades || 0}</strong>. Las unidades se agregan después, manualmente o mediante CSV; no se crearán propietarios ficticios.</p>
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <button onClick={() => setModalNuevo(false)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
@@ -396,13 +395,13 @@ export default function Condominios() {
         </Modal>
       )}
 
-      {/* ── Modal importar Excel ── */}
-      {modalImport && (
+      {/* ── Modal importar CSV ── */}
+      {modalImport && puedeEditar && (
         <Modal title={`Importar unidades — ${modalImport.nombre}`} onClose={() => { setModalImport(null); setImportData(null); }} wide>
           <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
             <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: "#92400e" }}>Formato del CSV</p>
             <p style={{ margin: 0, fontSize: 12, color: "#92400e", fontFamily: "monospace" }}>
-              numero, propietario, email, telefono, residente, email_residente, piso
+              numero,piso,propietario_nombre,propietario_email,propietario_telefono,residente_nombre,residente_email,residente_telefono,residente_es_propietario,notas
             </p>
             <p style={{ margin: "6px 0 0", fontSize: 11, color: "#92400e" }}>Exporta tu Excel como CSV (UTF-8) antes de subir. La primera fila debe ser el encabezado.</p>
           </div>
@@ -413,7 +412,7 @@ export default function Condominios() {
               {importData ? (
                 <div>
                   <p style={{ margin: 0, fontSize: 24 }}>✅</p>
-                  <p style={{ margin: "6px 0 0", fontWeight: 700, color: "#065f46" }}>{importData.length} unidades listas para importar</p>
+                  <p style={{ margin: "6px 0 0", fontWeight: 700, color: importData.errores?.length ? "#991b1b" : "#065f46" }}>{importData.filas?.length || 0} filas · {importData.errores?.length || 0} errores</p>
                   <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>Clic para cambiar el archivo</p>
                 </div>
               ) : (
@@ -426,7 +425,7 @@ export default function Condominios() {
             </label>
           </div>
 
-          {importData && importData.length > 0 && (
+          {importData?.filas?.length > 0 && (
             <div style={{ background: "#f9fafb", borderRadius: 8, padding: 12, marginBottom: 16, maxHeight: 200, overflowY: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
@@ -438,12 +437,12 @@ export default function Condominios() {
                   </tr>
                 </thead>
                 <tbody>
-                  {importData.map((row, i) => (
+                  {importData.filas.map((row, i) => (
                     <tr key={i} style={{ borderTop: "1px solid #e5e7eb" }}>
-                      <td style={{ padding: "6px 8px", fontWeight: 700 }}>{row.numero || row.unidad || row.depa || i + 1}</td>
-                      <td style={{ padding: "6px 8px" }}>{row.propietario || row.nombre || "—"}</td>
-                      <td style={{ padding: "6px 8px", color: "#6b7280" }}>{row.email || row.correo || "—"}</td>
-                      <td style={{ padding: "6px 8px", color: "#6b7280" }}>{row.telefono || row.tel || "—"}</td>
+                      <td style={{ padding: "6px 8px", fontWeight: 700 }}>{row.numero}</td>
+                      <td style={{ padding: "6px 8px" }}>{row.propietario_nombre || "—"}</td>
+                      <td style={{ padding: "6px 8px", color: "#6b7280" }}>{row.propietario_email || "—"}</td>
+                      <td style={{ padding: "6px 8px", color: "#6b7280" }}>{row.propietario_telefono || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -451,14 +450,21 @@ export default function Condominios() {
             </div>
           )}
 
-          <div style={{ background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "#dc2626", fontWeight: 600 }}>⚠️ Esto reemplazará las unidades actuales del condominio</p>
-          </div>
+          {importData?.errores?.length > 0 && <div style={{ background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
+            <p style={{ margin: "0 0 6px", fontSize: 12, color: "#dc2626", fontWeight: 700 }}>El archivo no puede confirmarse:</p>
+            {importData.errores.slice(0, 20).map((error, index) => <p key={index} style={{ margin: "3px 0", fontSize: 12, color: "#991b1b" }}>Fila {error.fila}: {error.campo} — {error.mensaje}</p>)}
+          </div>}
+          {importData && !importData.errores?.length && <div style={{ background: "#ecfdf5", border: "1px solid #6ee7b7", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "#065f46", fontWeight: 600 }}>La confirmación hará upsert por número de unidad y conservará las unidades no incluidas.</p>
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: "#065f46" }}>
+              Altas: {importData.resumen?.altas || 0} · Cambios: {importData.resumen?.cambios || 0} · Sin cambios: {importData.resumen?.sin_cambios || 0} · Omitidas y conservadas: {importData.resumen?.omisiones || 0}
+            </p>
+          </div>}
 
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <button onClick={() => { setModalImport(null); setImportData(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={confirmarImport} disabled={!importData || importando} color="#1e40af">
-              {importando ? "Importando…" : `Importar ${importData?.length || 0} unidades`}
+            <Btn onClick={confirmarImport} disabled={!importData || importData.errores?.length > 0 || importando} color="#1e40af">
+              {importando ? "Procesando…" : `Confirmar ${importData?.filas?.length || 0} unidades`}
             </Btn>
           </div>
         </Modal>
