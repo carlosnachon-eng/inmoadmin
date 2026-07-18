@@ -259,6 +259,8 @@ export default function Home() {
   const [prioridadesLoading, setPrioridadesLoading] = useState(false);
   const [prioridades, setPrioridades] = useState(null);
   const [prioridadesError, setPrioridadesError] = useState("");
+  const [accesoDenegado, setAccesoDenegado] = useState(false);
+  const [entradaCargando, setEntradaCargando] = useState(true);
   const { cargando: permisosCargando, modulosPermitidos, esAdmin, perfil } = useModulosPermitidos();
 
   useEffect(() => {
@@ -273,11 +275,25 @@ export default function Home() {
   useEffect(() => {
     if (!session?.user?.id || permisosCargando) return;
 
-    const perfilInternoActivo = perfil?.role_id && perfil.active !== false && !perfil.roles?.es_externo;
-    if (perfilInternoActivo) return;
-
     let activo = true;
-    const redirigirPartner = async () => {
+    const resolverEntrada = async () => {
+      setAccesoDenegado(false);
+      setEntradaCargando(true);
+      const response = await fetch("/api/condominios/entrada", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "No fue posible validar el acceso");
+      if (!activo || typeof window === "undefined") return;
+      if (payload.data?.destination === "internal") {
+        setEntradaCargando(false);
+        return;
+      }
+      if (payload.data?.destination === "portal") {
+        window.location.replace(`${window.location.origin}/condomino`);
+        return;
+      }
+
       const { data: partnerUser } = await supabase
         .from("partner_users")
         .select("id, partner_agencies:partner_agency_id(status)")
@@ -285,14 +301,24 @@ export default function Home() {
         .eq("active", true)
         .maybeSingle();
 
-      if (!activo || !partnerUser || typeof window === "undefined") return;
-      const destino = partnerUser.partner_agencies?.status === "activo" ? "/partners/dashboard" : "/partners/pendiente";
-      if (window.location.pathname !== destino) window.location.replace(destino);
+      if (!activo || typeof window === "undefined") return;
+      if (partnerUser) {
+        const destino = partnerUser.partner_agencies?.status === "activo" ? "/partners/dashboard" : "/partners/pendiente";
+        if (window.location.pathname !== destino) window.location.replace(destino);
+        return;
+      }
+      setAccesoDenegado(true);
+      setEntradaCargando(false);
     };
 
-    redirigirPartner();
+    resolverEntrada().catch(() => {
+      if (activo) {
+        setAccesoDenegado(true);
+        setEntradaCargando(false);
+      }
+    });
     return () => { activo = false; };
-  }, [session?.user?.id, permisosCargando, perfil?.id, perfil?.role_id, perfil?.active, perfil?.roles?.es_externo]);
+  }, [session?.user?.id, session?.access_token, permisosCargando]);
 
   const cargarPrioridades = async (forzar = false) => {
     if (!session?.access_token || !perfil?.id) return;
@@ -651,7 +677,7 @@ export default function Home() {
     setSession(null);
   };
 
-  if (checkingSession || (session && permisosCargando)) {
+  if (checkingSession || (session && (permisosCargando || entradaCargando))) {
     return (
       <div style={{ minHeight: "100vh", background: "#f4f5f7", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 60, opacity: 0.5 }} />
@@ -660,6 +686,19 @@ export default function Home() {
   }
 
   if (!session) return <LoginScreen onLogin={() => {}} />;
+
+  if (accesoDenegado) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f4f5f7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 20 }}>
+        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 18, padding: 36, maxWidth: 420, textAlign: "center" }}>
+          <p style={{ fontSize: 42, margin: "0 0 12px" }}>🔒</p>
+          <h1 style={{ margin: "0 0 8px", fontSize: 20, color: brand.gray }}>Acceso no asignado</h1>
+          <p style={{ margin: "0 0 20px", color: brand.grayLight, fontSize: 14 }}>Tu cuenta no tiene un perfil interno ni una unidad de condominio autorizada.</p>
+          <button onClick={logout} style={{ background: brand.red, color: "#fff", border: 0, borderRadius: 10, padding: "11px 18px", fontWeight: 700, cursor: "pointer" }}>Cerrar sesión</button>
+        </div>
+      </div>
+    );
+  }
 
   const navConModulo = nav.filter(n => n.modulo && (!n.soloAdmin || esAdmin));
   const navAccesible = esAdmin ? navConModulo : navConModulo.filter(n => modulosPermitidos.includes(n.modulo));

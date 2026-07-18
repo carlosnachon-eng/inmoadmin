@@ -42,7 +42,10 @@ const CondominoLogin = () => {
   const [error, setError] = useState("");
   const send = async () => {
     setLoading(true); setError("");
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false, data: { rol_pretendido: "condomino" }, emailRedirectTo: "https://app.emporioinmobiliario.com.mx/condomino" } });
+    const emailRedirectTo = typeof window === "undefined"
+      ? undefined
+      : `${window.location.origin}/condomino`;
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false, data: { rol_pretendido: "condomino" }, emailRedirectTo } });
     setLoading(false);
     if (error) { setError("No encontramos tu email. Contacta a Emporio Inmobiliario."); return; }
     setSent(true);

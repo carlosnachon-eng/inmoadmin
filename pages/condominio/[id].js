@@ -4,7 +4,11 @@ import { supabase } from "../../lib/supabase";
 import { brand } from "../../components/Layout";
 import DemoBadge from "../../components/condominios/DemoBadge";
 import { usePermiso, SinAcceso } from "../../lib/permisos";
-import { condominiosApi, uploadCondominioDocument } from "../../lib/condominiosApi";
+import {
+  condominiosApi,
+  uploadCondominioDocument,
+} from "../../lib/condominiosApi";
+import { validateCondominioUploadFile } from "../../lib/condominiosFiles";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -207,14 +211,6 @@ export default function CondominioDetalle() {
 
     setSaving(true);
     try {
-      let documento = null;
-      if (archivoComprobante) {
-        documento = await uploadCondominioDocument({
-          condominioId: id,
-          categoria: "gasto",
-          file: archivoComprobante,
-        });
-      }
       const result = await condominiosApi(`/api/condominios/${id}/operaciones`, {
         method: "POST",
         body: JSON.stringify({
@@ -289,6 +285,15 @@ export default function CondominioDetalle() {
     if (!formGasto.concepto.trim() || !formGasto.monto) { showToast("Concepto y monto son requeridos", false); return; }
     setSaving(true);
     try {
+      let documento = null;
+      if (archivoComprobante) {
+        validateCondominioUploadFile(archivoComprobante);
+        documento = await uploadCondominioDocument({
+          condominioId: id,
+          categoria: "gasto",
+          file: archivoComprobante,
+        });
+      }
       const result = await condominiosApi(`/api/condominios/${id}/operaciones`, {
         method: "POST",
         body: JSON.stringify({
@@ -311,6 +316,18 @@ export default function CondominioDetalle() {
       showToast(error.message, false);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const seleccionarComprobanteGasto = (event) => {
+    const file = event.target.files[0] || null;
+    try {
+      validateCondominioUploadFile(file);
+      setArchivoComprobante(file);
+    } catch (error) {
+      event.target.value = "";
+      setArchivoComprobante(null);
+      showToast(error.message, false);
     }
   };
 
@@ -1019,7 +1036,7 @@ export default function CondominioDetalle() {
           <Field label="Fecha"><Input type="date" value={formGasto.fecha} onChange={e => setFormGasto({ ...formGasto, fecha: e.target.value })} /></Field>
           <Field label="Comprobante (opcional)">
             <div style={{ border: "2px dashed #d1d5db", borderRadius: 8, padding: 14, textAlign: "center", background: "#fafafa" }}>
-              <input type="file" accept="image/*,application/pdf" id="comp-gasto" style={{ display: "none" }} onChange={e => setArchivoComprobante(e.target.files[0] || null)} />
+              <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" id="comp-gasto" style={{ display: "none" }} onChange={seleccionarComprobanteGasto} />
               <label htmlFor="comp-gasto" style={{ cursor: "pointer" }}>
                 {archivoComprobante
                   ? <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#065f46" }}>✓ {archivoComprobante.name}</p>
