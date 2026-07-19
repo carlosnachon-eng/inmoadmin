@@ -251,6 +251,69 @@ const PrioridadesHoy = ({ data, loading, error, onRefresh }) => {
   );
 };
 
+const tipoNoticia = {
+  created: { label: "Nueva", color: "#065f46", bg: "#ecfdf5", border: "#a7f3d0" },
+  price_drop: { label: "Bajó precio", color: "#991b1b", bg: "#fef2f2", border: "#fecaca" },
+  status_changed: { label: "Estatus", color: "#92400e", bg: "#fffbeb", border: "#fde68a" },
+  updated: { label: "Actualizada", color: "#1e40af", bg: "#eff6ff", border: "#bfdbfe" },
+};
+
+const fmtFechaCorta = (value) => {
+  if (!value) return "";
+  return new Date(value).toLocaleDateString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+};
+
+const InventoryNews = ({ news, loading, error, onRefresh }) => (
+  <section style={{ marginBottom: 34 }}>
+    <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
+      <div>
+        <p style={{ margin: "0 0 3px", fontSize: 11, fontWeight: 900, color: brand.red, textTransform: "uppercase", letterSpacing: 1 }}>Inventario comercial</p>
+        <h3 style={{ margin: 0, fontSize: 20, color: brand.gray }}>Novedades de propiedades</h3>
+      </div>
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={loading}
+        style={{ border: "1px solid #fee2e2", background: "#fff", color: brand.red, borderRadius: 9, padding: "9px 13px", fontSize: 12, fontWeight: 800, cursor: loading ? "wait" : "pointer", opacity: loading ? 0.65 : 1 }}
+      >
+        {loading ? "Actualizando..." : "Actualizar"}
+      </button>
+    </div>
+
+    <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+      {loading && !news.length ? (
+        <p style={{ margin: 0, padding: 18, color: "#9ca3af", fontSize: 13 }}>Cargando novedades de inventario...</p>
+      ) : error ? (
+        <p style={{ margin: 0, padding: 18, color: "#9ca3af", fontSize: 13 }}>Las novedades se activan al crear la tabla de inventario.</p>
+      ) : news.length === 0 ? (
+        <p style={{ margin: 0, padding: 18, color: "#9ca3af", fontSize: 13 }}>Todavía no hay novedades recientes de propiedades.</p>
+      ) : (
+        news.map((item, index) => {
+          const tipo = tipoNoticia[item.type] || tipoNoticia.updated;
+          return (
+            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderTop: index ? "1px solid #f3f4f6" : "none", flexWrap: "wrap" }}>
+              <span style={{ background: tipo.bg, border: `1px solid ${tipo.border}`, color: tipo.color, borderRadius: 99, padding: "4px 9px", fontSize: 10, fontWeight: 900, whiteSpace: "nowrap" }}>
+                {tipo.label}
+              </span>
+              <div style={{ flex: "1 1 420px", minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 850, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</p>
+                <p style={{ margin: "3px 0 0", fontSize: 11, color: "#6b7280", lineHeight: 1.35 }}>
+                  {item.description || "Actualizacion de inventario"}{item.created_at ? ` · ${fmtFechaCorta(item.created_at)}` : ""}
+                </p>
+              </div>
+              {item.property_id && (
+                <a href={`/propiedades-admin?propiedad=${encodeURIComponent(item.property_id)}`} style={{ color: brand.red, textDecoration: "none", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" }}>
+                  Ver propiedad
+                </a>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  </section>
+);
+
 export default function Home() {
   const [session, setSession] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -259,6 +322,11 @@ export default function Home() {
   const [prioridadesLoading, setPrioridadesLoading] = useState(false);
   const [prioridades, setPrioridades] = useState(null);
   const [prioridadesError, setPrioridadesError] = useState("");
+  const [inventoryNews, setInventoryNews] = useState([]);
+  const [inventoryNewsLoading, setInventoryNewsLoading] = useState(false);
+  const [inventoryNewsError, setInventoryNewsError] = useState("");
+  const [accesoDenegado, setAccesoDenegado] = useState(false);
+  const [entradaCargando, setEntradaCargando] = useState(true);
   const { cargando: permisosCargando, modulosPermitidos, esAdmin, perfil } = useModulosPermitidos();
 
   useEffect(() => {
@@ -273,11 +341,25 @@ export default function Home() {
   useEffect(() => {
     if (!session?.user?.id || permisosCargando) return;
 
-    const perfilInternoActivo = perfil?.role_id && perfil.active !== false && !perfil.roles?.es_externo;
-    if (perfilInternoActivo) return;
-
     let activo = true;
-    const redirigirPartner = async () => {
+    const resolverEntrada = async () => {
+      setAccesoDenegado(false);
+      setEntradaCargando(true);
+      const response = await fetch("/api/condominios/entrada", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "No fue posible validar el acceso");
+      if (!activo || typeof window === "undefined") return;
+      if (payload.data?.destination === "internal") {
+        setEntradaCargando(false);
+        return;
+      }
+      if (payload.data?.destination === "portal") {
+        window.location.replace(`${window.location.origin}/condomino`);
+        return;
+      }
+
       const { data: partnerUser } = await supabase
         .from("partner_users")
         .select("id, partner_agencies:partner_agency_id(status)")
@@ -285,14 +367,24 @@ export default function Home() {
         .eq("active", true)
         .maybeSingle();
 
-      if (!activo || !partnerUser || typeof window === "undefined") return;
-      const destino = partnerUser.partner_agencies?.status === "activo" ? "/partners/dashboard" : "/partners/pendiente";
-      if (window.location.pathname !== destino) window.location.replace(destino);
+      if (!activo || typeof window === "undefined") return;
+      if (partnerUser) {
+        const destino = partnerUser.partner_agencies?.status === "activo" ? "/partners/dashboard" : "/partners/pendiente";
+        if (window.location.pathname !== destino) window.location.replace(destino);
+        return;
+      }
+      setAccesoDenegado(true);
+      setEntradaCargando(false);
     };
 
-    redirigirPartner();
+    resolverEntrada().catch(() => {
+      if (activo) {
+        setAccesoDenegado(true);
+        setEntradaCargando(false);
+      }
+    });
     return () => { activo = false; };
-  }, [session?.user?.id, permisosCargando, perfil?.id, perfil?.role_id, perfil?.active, perfil?.roles?.es_externo]);
+  }, [session?.user?.id, session?.access_token, permisosCargando]);
 
   const cargarPrioridades = async (forzar = false) => {
     if (!session?.access_token || !perfil?.id) return;
@@ -348,6 +440,31 @@ export default function Home() {
     if (perfil.active === false || perfil.roles?.es_externo) return;
     cargarPrioridades(false);
     // La sesión y el perfil son las únicas dependencias que deben iniciar la carga.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token, permisosCargando, perfil?.id]);
+
+  const cargarInventoryNews = async () => {
+    if (!session || !perfil?.id) return;
+    setInventoryNewsLoading(true);
+    setInventoryNewsError("");
+    const { data, error } = await supabase
+      .from("property_news")
+      .select("id,type,title,description,property_id,property_public_id,priority,created_at")
+      .order("created_at", { ascending: false })
+      .limit(8);
+    if (error) {
+      setInventoryNewsError(error.message);
+      setInventoryNews([]);
+    } else {
+      setInventoryNews(data || []);
+    }
+    setInventoryNewsLoading(false);
+  };
+
+  useEffect(() => {
+    if (!session || permisosCargando || !perfil?.id) return;
+    if (perfil.active === false || perfil.roles?.es_externo) return;
+    cargarInventoryNews();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token, permisosCargando, perfil?.id]);
 
@@ -651,7 +768,7 @@ export default function Home() {
     setSession(null);
   };
 
-  if (checkingSession || (session && permisosCargando)) {
+  if (checkingSession || (session && (permisosCargando || entradaCargando))) {
     return (
       <div style={{ minHeight: "100vh", background: "#f4f5f7", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 60, opacity: 0.5 }} />
@@ -660,6 +777,19 @@ export default function Home() {
   }
 
   if (!session) return <LoginScreen onLogin={() => {}} />;
+
+  if (accesoDenegado) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f4f5f7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 20 }}>
+        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 18, padding: 36, maxWidth: 420, textAlign: "center" }}>
+          <p style={{ fontSize: 42, margin: "0 0 12px" }}>🔒</p>
+          <h1 style={{ margin: "0 0 8px", fontSize: 20, color: brand.gray }}>Acceso no asignado</h1>
+          <p style={{ margin: "0 0 20px", color: brand.grayLight, fontSize: 14 }}>Tu cuenta no tiene un perfil interno ni una unidad de condominio autorizada.</p>
+          <button onClick={logout} style={{ background: brand.red, color: "#fff", border: 0, borderRadius: 10, padding: "11px 18px", fontWeight: 700, cursor: "pointer" }}>Cerrar sesión</button>
+        </div>
+      </div>
+    );
+  }
 
   const navConModulo = nav.filter(n => n.modulo && (!n.soloAdmin || esAdmin));
   const navAccesible = esAdmin ? navConModulo : navConModulo.filter(n => modulosPermitidos.includes(n.modulo));
@@ -699,6 +829,13 @@ export default function Home() {
           loading={prioridadesLoading}
           error={prioridadesError}
           onRefresh={() => cargarPrioridades(true)}
+        />
+
+        <InventoryNews
+          news={inventoryNews}
+          loading={inventoryNewsLoading}
+          error={inventoryNewsError}
+          onRefresh={cargarInventoryNews}
         />
 
         {esAdmin && <section style={{ marginBottom: 34 }}>

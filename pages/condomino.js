@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { condominiosApi, uploadCondominioDocument } from "../lib/condominiosApi";
+import DemoBadge from "../components/condominios/DemoBadge";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -40,7 +42,10 @@ const CondominoLogin = () => {
   const [error, setError] = useState("");
   const send = async () => {
     setLoading(true); setError("");
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false, data: { rol_pretendido: "condomino" }, emailRedirectTo: "https://app.emporioinmobiliario.com.mx/condomino" } });
+    const emailRedirectTo = typeof window === "undefined"
+      ? undefined
+      : `${window.location.origin}/condomino`;
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false, data: { rol_pretendido: "condomino" }, emailRedirectTo } });
     setLoading(false);
     if (error) { setError("No encontramos tu email. Contacta a Emporio Inmobiliario."); return; }
     setSent(true);
@@ -80,10 +85,10 @@ export default function CondominoPortal() {
   const [authLoading, setAuthLoading] = useState(true);
   const [tab, setTab] = useState("inicio");
   const [unidad, setUnidad] = useState(null);
+  const [unidadesPortal, setUnidadesPortal] = useState([]);
   const [condominio, setCondominio] = useState(null);
   const [cuotas, setCuotas] = useState([]);
   const [gastos, setGastos] = useState([]);
-  const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [uploadingComp, setUploadingComp] = useState(false);
@@ -100,54 +105,51 @@ export default function CondominoPortal() {
 
   const loadData = async () => {
     setLoading(true);
-    const email = session.user.email;
+    try {
+      const data = await condominiosApi("/api/condominios/portal");
+      const records = data.unidades || [];
+      setUnidadesPortal(records);
+      if (records.length) seleccionarUnidad(records.find(record => record.unidad.id === unidad?.id) || records[0]);
+      else setUnidad(null);
+    } catch (error) {
+      showToast(error.message, false);
+      setUnidad(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    // Buscar por email de propietario o residente
-    const { data: unidades } = await supabase
-      .from("unidades_condominio")
-      .select("*, condominios(*)")
-      .or(`propietario_email.eq.${email},residente_email.eq.${email}`)
-      .eq("activo", true)
-      .limit(1);
-
-    if (!unidades || unidades.length === 0) { setLoading(false); return; }
-
-    const u = unidades[0];
-    setUnidad(u);
-    setCondominio(u.condominios);
-
-    const [
-      { data: cuotasData },
-      { data: gastosData },
-      { data: ticketsData },
-    ] = await Promise.all([
-      supabase.from("cuotas_condominio").select("id, periodo, monto, status, fecha_vencimiento, fecha_pago, comprobante_url, recibo_url, unidad_id").eq("unidad_id", u.id).order("periodo", { ascending: false }),
-      supabase.from("gastos_condominio").select("*").eq("condominio_id", u.condominio_id).order("fecha", { ascending: false }).limit(20),
-      supabase.from("maintenance_tickets").select("*").eq("condominio_id", u.condominio_id).order("created_at", { ascending: false }),
-    ]);
-
-    setCuotas(cuotasData || []);
-    setGastos(gastosData || []);
-    setTickets(ticketsData || []);
-    setLoading(false);
+  const seleccionarUnidad = (record) => {
+    setUnidad(record.unidad);
+    setCondominio(record.condominio);
+    setCuotas(record.cuotas || []);
+    setGastos(record.gastos || []);
+    setTab("inicio");
   };
 
   const subirComprobante = async (cuota, file) => {
     setUploadingComp(true);
     try {
-      const ext = file.name.split(".").pop();
-      const fileName = `cuotas-condominio/${cuota.id}_${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("documentos").upload(fileName, file, { upsert: true });
-      if (upErr) throw upErr;
-      const { data: urlData } = supabase.storage.from("documentos").getPublicUrl(fileName);
-      await supabase.from("cuotas_condominio").update({
-        comprobante_url: urlData.publicUrl,
-        status: "pendiente", // queda pendiente hasta que Emporio confirme
-      }).eq("id", cuota.id);
+      await uploadCondominioDocument({
+        condominioId: unidad.condominio_id,
+        unidadId: unidad.id,
+        cuotaId: cuota.id,
+        categoria: "comprobante_pago",
+        file,
+      });
       showToast("Comprobante enviado, Emporio lo revisará pronto");
-      loadData();
+      await loadData();
     } catch (e) { showToast("Error al subir: " + e.message, false); }
     setUploadingComp(false);
+  };
+
+  const abrirDocumento = async (documentoId) => {
+    try {
+      const data = await condominiosApi(`/api/condominios/${unidad.condominio_id}/documentos?documento_id=${encodeURIComponent(documentoId)}`);
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      showToast(error.message, false);
+    }
   };
 
   const logout = async () => { await supabase.auth.signOut(); setSession(null); };
@@ -177,7 +179,6 @@ export default function CondominoPortal() {
     { id: "cuotas",   label: "💰 Mis cuotas" },
     { id: "recibos",  label: "🧾 Mis recibos" },
     { id: "gastos",   label: "📤 Gastos comunes" },
-    { id: "tickets",  label: "🔧 Mantenimiento" },
   ];
 
   return (
@@ -193,8 +194,23 @@ export default function CondominoPortal() {
         <div style={{ maxWidth: 680, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 34, objectFit: "contain" }} />
           <div style={{ textAlign: "right" }}>
+            <DemoBadge />
             <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Portal Condómino</p>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a1a2e" }}>{unidad.propietario_nombre}</p>
+            {unidadesPortal.length > 1 && (
+              <select
+                aria-label="Seleccionar unidad"
+                value={unidad.id}
+                onChange={(event) => seleccionarUnidad(unidadesPortal.find(record => record.unidad.id === event.target.value))}
+                style={{ marginTop: 5, maxWidth: 220, fontSize: 12 }}
+              >
+                {unidadesPortal.map(record => (
+                  <option key={record.unidad.id} value={record.unidad.id}>
+                    {record.condominio.nombre} · Unidad {record.unidad.numero}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
       </div>
@@ -244,7 +260,7 @@ export default function CondominoPortal() {
                 <p style={{ margin: "0 0 10px", fontSize: 14, color: cuotaMesActual.status === "atrasado" ? "#991b1b" : "#92400e" }}>
                   {fmt(cuotaMesActual.monto)} · Vence: {cuotaMesActual.fecha_vencimiento || "día 10"}
                 </p>
-                {!cuotaMesActual.comprobante_url && (
+                {!cuotaMesActual.comprobante_documento_id && (
                   <div>
                     <input type="file" accept="image/*,application/pdf" id="comp-mes" style={{ display: "none" }} onChange={e => e.target.files[0] && subirComprobante(cuotaMesActual, e.target.files[0])} disabled={uploadingComp} />
                     <label htmlFor="comp-mes" style={{ display: "inline-block", background: "#1a1a2e", color: "#fff", borderRadius: 8, padding: "8px 16px", cursor: uploadingComp ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700 }}>
@@ -252,7 +268,7 @@ export default function CondominoPortal() {
                     </label>
                   </div>
                 )}
-                {cuotaMesActual.comprobante_url && (
+                {cuotaMesActual.comprobante_documento_id && (
                   <p style={{ margin: "6px 0 0", fontSize: 12, color: "#065f46", fontWeight: 600 }}>✓ Comprobante enviado — pendiente confirmación de Emporio</p>
                 )}
               </div>
@@ -313,10 +329,10 @@ export default function CondominoPortal() {
                 {q.status === "pagado" && q.fecha_pago && (
                   <p style={{ margin: "6px 0 0", fontSize: 12, color: "#065f46" }}>✓ Pagado el {q.fecha_pago}</p>
                 )}
-                {q.comprobante_url && (
-                  <a href={q.comprobante_url} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 6, fontSize: 12, color: "#1e40af", fontWeight: 600 }}>📄 Ver comprobante</a>
+                {q.comprobante_documento_id && (
+                  <button onClick={() => abrirDocumento(q.comprobante_documento_id)} style={{ display: "inline-block", marginTop: 6, fontSize: 12, color: "#1e40af", fontWeight: 600, background: "none", border: 0, padding: 0, cursor: "pointer" }}>📄 Ver comprobante</button>
                 )}
-                {q.status !== "pagado" && !q.comprobante_url && (
+                {q.status !== "pagado" && !q.comprobante_documento_id && (
                   <div style={{ marginTop: 8 }}>
                     <input type="file" accept="image/*,application/pdf" id={`comp-${q.id}`} style={{ display: "none" }} onChange={e => e.target.files[0] && subirComprobante(q, e.target.files[0])} disabled={uploadingComp} />
                     <label htmlFor={`comp-${q.id}`} style={{ display: "inline-block", background: "#1a1a2e", color: "#fff", borderRadius: 6, padding: "6px 12px", cursor: uploadingComp ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700 }}>
@@ -324,7 +340,7 @@ export default function CondominoPortal() {
                     </label>
                   </div>
                 )}
-                {q.status !== "pagado" && q.comprobante_url && (
+                {q.status !== "pagado" && q.comprobante_documento_id && (
                   <p style={{ margin: "6px 0 0", fontSize: 12, color: "#b45309", fontWeight: 600 }}>⏳ Comprobante enviado — pendiente confirmación</p>
                 )}
               </div>
@@ -337,22 +353,22 @@ export default function CondominoPortal() {
           <div>
             <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Mis recibos de pago</h3>
             <p style={{ margin: "0 0 16px", fontSize: 13, color: "#9ca3af" }}>Recibos oficiales generados por Emporio Inmobiliario al confirmar tu pago</p>
-            {cuotas.filter(q => q.recibo_url).length === 0 ? (
+            {cuotas.filter(q => q.recibo_documento_id).length === 0 ? (
               <div style={{ background: "#fff", borderRadius: 12, padding: 48, textAlign: "center" }}>
                 <p style={{ fontSize: 32, margin: "0 0 8px" }}>🧾</p>
                 <p style={{ color: "#9ca3af" }}>Sin recibos generados aún</p>
                 <p style={{ color: "#9ca3af", fontSize: 12 }}>Los recibos aparecen aquí cuando Emporio confirma tu pago</p>
               </div>
             ) : (
-              cuotas.filter(q => q.recibo_url).sort((a, b) => b.periodo.localeCompare(a.periodo)).map(q => (
+              cuotas.filter(q => q.recibo_documento_id).sort((a, b) => b.periodo.localeCompare(a.periodo)).map(q => (
                 <div key={q.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", marginBottom: 10, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{periodoLabel(q.periodo)}</p>
                     <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>Pagado el {q.fecha_pago || "—"} · {fmt(q.monto)}</p>
                   </div>
-                  <a href={q.recibo_url} target="_blank" rel="noreferrer" style={{ background: "#b91c3c", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+                  <button onClick={() => abrirDocumento(q.recibo_documento_id)} style={{ background: "#b91c3c", color: "#fff", border: 0, borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                     📄 Descargar recibo
-                  </a>
+                  </button>
                 </div>
               ))
             )}
@@ -374,8 +390,8 @@ export default function CondominoPortal() {
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#7c3aed" }}>{fmt(g.monto)}</p>
-                    {g.comprobante_url && (
-                      <a href={g.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#1e40af", fontWeight: 600 }}>📄 Ver</a>
+                    {g.documento_id && (
+                      <button onClick={() => abrirDocumento(g.documento_id)} style={{ border: 0, background: "none", padding: 0, cursor: "pointer", fontSize: 11, color: "#1e40af", fontWeight: 600 }}>📄 Ver</button>
                     )}
                   </div>
                 </div>
@@ -384,31 +400,6 @@ export default function CondominoPortal() {
           </div>
         )}
 
-        {/* TAB: MANTENIMIENTO */}
-        {tab === "tickets" && (
-          <div>
-            <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Mantenimiento del condominio</h3>
-            {tickets.length === 0 && (
-              <div style={{ background: "#fff", borderRadius: 12, padding: 48, textAlign: "center" }}>
-                <p style={{ fontSize: 32, margin: "0 0 8px" }}>✅</p>
-                <p style={{ color: "#9ca3af" }}>Sin reportes de mantenimiento</p>
-              </div>
-            )}
-            {tickets.map(t => (
-              <div key={t.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", marginBottom: 10, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", borderLeft: `4px solid ${t.status === "resuelto" ? "#065f46" : t.status === "en_proceso" ? "#1e40af" : "#fcd34d"}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1a1a2e" }}>{t.title}</p>
-                  <StatusBadge status={t.status} />
-                </div>
-                {t.description && <p style={{ margin: "0 0 6px", fontSize: 13, color: "#374151" }}>{t.description}</p>}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {t.charged_amount > 0 && <span style={{ fontSize: 11, color: "#7c3aed", background: "#faf5ff", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>Costo: {fmt(t.charged_amount)}</span>}
-                  <span style={{ fontSize: 11, color: "#9ca3af" }}>{new Date(t.created_at).toLocaleDateString("es-MX")}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

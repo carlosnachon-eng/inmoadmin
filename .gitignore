@@ -8,6 +8,7 @@ out/
 # Variables locales y secretos
 .env*
 !.env.example
+!.env.demo.example
 
 # Vercel local
 .vercel/
