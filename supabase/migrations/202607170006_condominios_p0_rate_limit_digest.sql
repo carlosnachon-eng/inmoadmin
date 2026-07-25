@@ -33,3 +33,4 @@ grant execute on function public.condominio_consume_rate_limit(text,integer,inte
   to service_role;
 
 commit;
+

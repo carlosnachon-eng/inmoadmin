@@ -18,3 +18,4 @@ alter default privileges in schema public
   grant usage, select on sequences to service_role;
 
 commit;
+

@@ -36,3 +36,4 @@ update public.profiles
  );
 
 commit;
+

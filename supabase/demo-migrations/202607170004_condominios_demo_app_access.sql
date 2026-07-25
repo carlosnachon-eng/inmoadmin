@@ -30,3 +30,4 @@ revoke insert, update, delete, truncate, references, trigger
   on public.profiles, public.roles, public.permisos_modulo from authenticated;
 
 commit;
+

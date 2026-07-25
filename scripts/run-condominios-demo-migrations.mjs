@@ -1,8 +1,11 @@
-import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import { validateDemoEnvironment } from "./lib/demo-environment-guard.mjs";
+import {
+  assertAppliedMigrationUnchanged,
+  migrationSha256,
+} from "./lib/demo-migration-integrity.mjs";
 
 const config = validateDemoEnvironment(process.env, {
   operation: "migraciones P0.5",
@@ -64,15 +67,17 @@ try {
   for (const relativePath of migrationFiles) {
     const absolutePath = path.resolve(relativePath);
     const sql = await fs.readFile(absolutePath, "utf8");
-    const sha256 = crypto.createHash("sha256").update(sql).digest("hex");
+    const sha256 = migrationSha256(sql);
     const existing = await client.query(
       "select sha256 from public.p05_demo_migration_history where filename=$1",
       [relativePath],
     );
     if (existing.rowCount) {
-      if (existing.rows[0].sha256 !== sha256) {
-        throw new Error(`La migración aplicada cambió: ${relativePath}`);
-      }
+      assertAppliedMigrationUnchanged({
+        filename: relativePath,
+        appliedHash: existing.rows[0].sha256,
+        currentSql: sql,
+      });
       console.log(`[DEMO MIGRATION] ya aplicada ${relativePath}`);
       continue;
     }
