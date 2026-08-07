@@ -6,7 +6,21 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:p0": "node --test test/condominios/*.test.mjs",
+    "demo:condominios:validate": "node --env-file=.env.demo.local scripts/validate-condominios-demo-target.mjs",
+    "demo:condominios:migrate": "node --env-file=.env.demo.local scripts/run-condominios-demo-migrations.mjs",
+    "demo:condominios:seed": "node --env-file=.env.demo.local scripts/seed-condominios-demo.mjs",
+    "demo:condominios:test-rls": "node --env-file=.env.demo.local scripts/test-condominios-demo-rls.mjs",
+    "demo:condominios:test-storage": "node --env-file=.env.demo.local scripts/test-condominios-demo-storage.mjs",
+    "demo:condominios:test-import": "node --env-file=.env.demo.local scripts/test-condominios-demo-import.mjs",
+    "demo:condominios:test-export": "node --env-file=.env.demo.local scripts/test-condominios-demo-export.mjs",
+    "demo:condominios:test-legacy": "node --env-file=.env.demo.local scripts/test-condominios-demo-legacy-migration.mjs",
+    "demo:condominios:test-receipt": "node --env-file=.env.demo.local scripts/test-condominios-demo-receipt.mjs",
+    "demo:condominios:inspect": "node --env-file=.env.demo.local scripts/inspect-condominios-demo-state.mjs",
+    "demo:condominios:prepare-runtime": "node --env-file=.env.demo.local scripts/prepare-condominios-demo-runtime.mjs",
+    "demo:condominios:reset-schema": "node --env-file=.env.demo.local scripts/reset-condominios-demo-schema.mjs",
+    "demo:condominios:clear": "node --env-file=.env.demo.local scripts/clear-condominios-demo.mjs"
   },
   "dependencies": {
     "next": "15.5.20",
@@ -21,5 +35,8 @@
     "docx": "^9.6.1",
     "pdf-parse": "^1.1.1",
     "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "pg": "^8.16.3"
   }
 }

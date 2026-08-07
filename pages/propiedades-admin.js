@@ -3,6 +3,12 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import {
+  buildPropertyChangeNews,
+  buildPropertyCreatedNews,
+  buildPropertyStatusNews,
+  registerPropertyNews,
+} from "../lib/propertyNews";
 import JSZip from "jszip";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
@@ -764,6 +770,8 @@ export default function PropiedadesAdmin() {
     if (!form.precio) { showToast("Falta el precio", false); return; }
 
     setSaving(true);
+    const esNueva = modalForm === "nueva";
+    const propiedadAntes = esNueva ? null : modalForm;
     const payload = {
       ...form,
       precio: Number(form.precio) || 0,
@@ -785,18 +793,25 @@ export default function PropiedadesAdmin() {
     delete payload.updated_at;
 
     let error;
-    if (modalForm === "nueva") {
+    let propiedadGuardada = null;
+    if (esNueva) {
       payload.public_id = payload.public_id || `EMP-${Date.now().toString(36).toUpperCase()}`;
       payload.origen = "manual";
       payload.status_motivo = payload.status === "draft" ? "Propiedad creada como borrador" : "Propiedad creada y publicada";
       payload.status_actualizado_en = new Date().toISOString();
       payload.status_actualizado_por = profile?.id || null;
-      ({ error } = await supabase.from("propiedades").insert(payload));
+      ({ data: propiedadGuardada, error } = await supabase.from("propiedades").insert(payload).select("*").single());
     } else {
-      ({ error } = await supabase.from("propiedades").update(payload).eq("id", modalForm.id));
+      ({ data: propiedadGuardada, error } = await supabase.from("propiedades").update(payload).eq("id", modalForm.id).select("*").single());
     }
     setSaving(false);
     if (error) { showToast("Error al guardar: " + error.message, false); return; }
+    if (propiedadGuardada) {
+      const noticias = esNueva
+        ? [buildPropertyCreatedNews(propiedadGuardada, profile?.id)]
+        : buildPropertyChangeNews(propiedadAntes, propiedadGuardada, profile?.id);
+      registerPropertyNews(supabase, noticias);
+    }
     showToast(modalForm === "nueva" ? "Propiedad creada ✅" : "Propiedad actualizada ✅");
     setModalForm(null);
     loadPropiedades();
@@ -843,8 +858,9 @@ export default function PropiedadesAdmin() {
       status: nuevoStatus,
       ...auditoriaStatus(motivo || `Cambio a ${STATUS_STYLE[nuevoStatus]?.label || nuevoStatus}`),
     };
-    const { error } = await supabase.from("propiedades").update(payload).eq("id", p.id);
+    const { data: propiedadActualizada, error } = await supabase.from("propiedades").update(payload).eq("id", p.id).select("*").single();
     if (error) { showToast("Error al actualizar estatus", false); return; }
+    registerPropertyNews(supabase, buildPropertyStatusNews(p, propiedadActualizada, profile?.id, motivo));
     showToast("Estatus actualizado");
     loadPropiedades();
   };
@@ -871,7 +887,7 @@ export default function PropiedadesAdmin() {
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from("propiedades").update({
+    const { data: propiedadActualizada, error } = await supabase.from("propiedades").update({
       status: "reserved",
       apartado_por_nombre: apartado.apartado_por_nombre.trim(),
       apartado_asesor_id: apartado.apartado_asesor_id || profile?.id || null,
@@ -880,9 +896,10 @@ export default function PropiedadesAdmin() {
       apartado_vigencia_hasta: apartado.apartado_vigencia_hasta,
       apartado_notas: apartado.apartado_notas || null,
       ...auditoriaStatus("Propiedad apartada / reservada"),
-    }).eq("id", modalApartado.id);
+    }).eq("id", modalApartado.id).select("*").single();
     setSaving(false);
     if (error) { showToast("Error al apartar: " + error.message, false); return; }
+    registerPropertyNews(supabase, buildPropertyStatusNews(modalApartado, propiedadActualizada, profile?.id, "Propiedad apartada / reservada"));
     setModalApartado(null);
     showToast("Propiedad reservada");
     setSeleccionadas(prev => prev.filter(id => id !== modalApartado.id));
@@ -893,12 +910,13 @@ export default function PropiedadesAdmin() {
     const motivo = motivoArchivo === "Otro" ? motivoArchivoOtro.trim() : motivoArchivo;
     if (!motivo) { showToast("Selecciona o captura el motivo", false); return; }
     setSaving(true);
-    const { error } = await supabase.from("propiedades").update({
+    const { data: propiedadActualizada, error } = await supabase.from("propiedades").update({
       status: "archived",
       ...auditoriaStatus(motivo),
-    }).eq("id", modalArchivar.id);
+    }).eq("id", modalArchivar.id).select("*").single();
     setSaving(false);
     if (error) { showToast("Error al archivar: " + error.message, false); return; }
+    registerPropertyNews(supabase, buildPropertyStatusNews(modalArchivar, propiedadActualizada, profile?.id, motivo));
     setSeleccionadas(prev => prev.filter(id => id !== modalArchivar.id));
     setModalArchivar(null);
     setMotivoArchivo("");

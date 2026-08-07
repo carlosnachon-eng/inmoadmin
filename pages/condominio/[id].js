@@ -2,6 +2,13 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabase";
 import { brand } from "../../components/Layout";
+import DemoBadge from "../../components/condominios/DemoBadge";
+import { usePermiso, SinAcceso } from "../../lib/permisos";
+import {
+  condominiosApi,
+  uploadCondominioDocument,
+} from "../../lib/condominiosApi";
+import { validateCondominioUploadFile } from "../../lib/condominiosFiles";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -93,6 +100,7 @@ const StatusBadge = ({ status }) => {
 export default function CondominioDetalle() {
   const router = useRouter();
   const { id } = router.query;
+  const { cargando: permisoCargando, puedeVer, puedeEditar } = usePermiso("condominios");
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [tab, setTab] = useState("unidades");
@@ -100,16 +108,15 @@ export default function CondominioDetalle() {
   const [unidades, setUnidades] = useState([]);
   const [cuotas, setCuotas] = useState([]);
   const [gastos, setGastos] = useState([]);
-  const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [acciones, setAcciones] = useState([]);
   const [periodoVer, setPeriodoVer] = useState(periodoActual());
 
   // Modales
   const [modalUnidad, setModalUnidad] = useState(null); // null | unidad
   const [modalGasto, setModalGasto] = useState(false);
-  const [modalTicket, setModalTicket] = useState(false);
   const [modalCuota, setModalCuota] = useState(null); // cuota seleccionada
   const [archivoComprobante, setArchivoComprobante] = useState(null);
   const [fechaPagoCuota, setFechaPagoCuota] = useState(new Date().toISOString().split("T")[0]);
@@ -119,9 +126,6 @@ export default function CondominioDetalle() {
 
   const emptyGasto = { concepto: "", categoria: "mantenimiento", monto: "", fecha: new Date().toISOString().split("T")[0], notas: "" };
   const [formGasto, setFormGasto] = useState(emptyGasto);
-
-  const emptyTicket = { title: "", description: "", status: "abierto", payer: "condominio", charged_amount: "" };
-  const [formTicket, setFormTicket] = useState(emptyTicket);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
 
@@ -141,23 +145,27 @@ export default function CondominioDetalle() {
       { data: unidadesData },
       { data: cuotasData },
       { data: gastosData },
-      { data: ticketsData },
     ] = await Promise.all([
       supabase.from("condominios").select("*").eq("id", id).single(),
       supabase.from("unidades_condominio").select("*").eq("condominio_id", id).eq("activo", true).order("numero"),
       supabase.from("cuotas_condominio").select("*, unidades_condominio(numero, propietario_nombre, propietario_email, propietario_telefono)").eq("condominio_id", id).order("periodo", { ascending: false }),
       supabase.from("gastos_condominio").select("*").eq("condominio_id", id).order("fecha", { ascending: false }),
-      supabase.from("maintenance_tickets").select("*").eq("condominio_id", id).order("created_at", { ascending: false }),
     ]);
     setCond(condData);
     setUnidades(unidadesData || []);
     setCuotas(cuotasData || []);
     setGastos(gastosData || []);
-    setTickets(ticketsData || []);
     setLoading(false);
   };
 
   useEffect(() => { if (session && id) loadData(); }, [session, id]);
+  useEffect(() => {
+    if (!session || !id) return;
+    condominiosApi(`/api/condominios/${id}/permisos`)
+      .then(data => setAcciones(data.acciones || []))
+      .catch(() => setAcciones([]));
+  }, [session, id]);
+  const puede = (accion) => puedeEditar && acciones.includes(accion);
 
   // ── Cálculos financieros ──────────────────────────────────────────────────
   const cuotasPeriodo = cuotas.filter(q => q.periodo === periodoVer);
@@ -174,28 +182,26 @@ export default function CondominioDetalle() {
   const guardarUnidad = async () => {
     if (!formUnidad.propietario_nombre.trim()) { showToast("El nombre del propietario es requerido", false); return; }
     setSaving(true);
-    const data = {
-      condominio_id: id,
-      numero: formUnidad.numero,
-      piso: parseInt(formUnidad.piso) || null,
-      propietario_nombre: formUnidad.propietario_nombre,
-      propietario_email: formUnidad.propietario_email || null,
-      propietario_telefono: formUnidad.propietario_telefono || null,
-      residente_nombre: formUnidad.residente_es_propietario ? null : formUnidad.residente_nombre || null,
-      residente_email: formUnidad.residente_es_propietario ? null : formUnidad.residente_email || null,
-      residente_telefono: formUnidad.residente_es_propietario ? null : formUnidad.residente_telefono || null,
-      residente_es_propietario: formUnidad.residente_es_propietario,
-      notas: formUnidad.notas || null,
-    };
-    if (modalUnidad?.id) {
-      await supabase.from("unidades_condominio").update(data).eq("id", modalUnidad.id);
-    } else {
-      await supabase.from("unidades_condominio").insert([data]);
+    try {
+      await condominiosApi(`/api/condominios/${id}/recursos`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "upsert_unidad",
+          id: modalUnidad?.id || null,
+          ...formUnidad,
+          residente_nombre: formUnidad.residente_es_propietario ? null : formUnidad.residente_nombre,
+          residente_email: formUnidad.residente_es_propietario ? null : formUnidad.residente_email,
+          residente_telefono: formUnidad.residente_es_propietario ? null : formUnidad.residente_telefono,
+        }),
+      });
+      setModalUnidad(null);
+      showToast(modalUnidad?.id ? "Unidad actualizada" : "Unidad creada");
+      await loadData();
+    } catch (error) {
+      showToast(error.message, false);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setModalUnidad(null);
-    showToast(modalUnidad?.id ? "Unidad actualizada" : "Unidad creada");
-    loadData();
   };
 
   // ── Generar cuotas del periodo seleccionado ──────────────────────────────
@@ -203,324 +209,150 @@ export default function CondominioDetalle() {
     if (!cond || !periodoVer) return;
     if (unidades.length === 0) { showToast("Primero agrega unidades al condominio", false); return; }
 
-    const unidadesConCuota = cuotasPeriodo.map(q => q.unidad_id);
-    const sinCuota = unidades.filter(u => !unidadesConCuota.includes(u.id));
-    if (sinCuota.length === 0) {
-      showToast(`Ya existen cuotas para ${periodoLabel(periodoVer)}`, false);
-      return;
-    }
-
     setSaving(true);
-    const nuevas = sinCuota.map(u => ({
-      condominio_id: id,
-      unidad_id: u.id,
-      periodo: periodoVer,
-      monto: cond.cuota_mensual || 0,
-      status: "pendiente",
-      fecha_vencimiento: `${periodoVer}-10`,
-    }));
-
-    const { error } = await supabase.from("cuotas_condominio").insert(nuevas);
-    setSaving(false);
-    if (error) {
-      showToast("Error al generar cuotas: " + error.message, false);
-      return;
+    try {
+      const result = await condominiosApi(`/api/condominios/${id}/operaciones`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "generar_cuotas",
+          periodo: periodoVer,
+          monto: cond.cuota_mensual,
+          fecha_vencimiento: `${periodoVer}-10`,
+        }),
+      });
+      showToast(`${result.creadas} cuotas generadas para ${periodoLabel(periodoVer)}`);
+      await loadData();
+    } catch (error) {
+      showToast(error.message, false);
+    } finally {
+      setSaving(false);
     }
-    showToast(`${nuevas.length} cuota${nuevas.length !== 1 ? "s" : ""} generada${nuevas.length !== 1 ? "s" : ""} para ${periodoLabel(periodoVer)}`);
-    loadData();
   };
 
-  // ── Registrar pago de cuota + generar recibo PDF + enviar email ──────────
-  const registrarPagoCuota = async () => {
+  const registrarPagoSeguro = async () => {
     if (!modalCuota) return;
     setSaving(true);
-    let comprobante_url = null;
-    if (archivoComprobante) {
-      const ext = archivoComprobante.name.split(".").pop();
-      const fileName = `cuotas-condominio/${id}_${modalCuota.id}_${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("documentos").upload(fileName, archivoComprobante, { upsert: true });
-      if (!upErr) {
-        const { data: urlData } = supabase.storage.from("documentos").getPublicUrl(fileName);
-        comprobante_url = urlData?.publicUrl || null;
-      }
-    }
-
-    // Generar folio
-    const folio = `TC-${new Date().getFullYear()}-${String(modalCuota.unidades_condominio?.numero || "").padStart(3, "0")}-${Date.now().toString().slice(-4)}`;
-
-    await supabase.from("cuotas_condominio").update({
-      status: "pagado",
-      fecha_pago: fechaPagoCuota,
-      comprobante_url,
-      pagado_por: modalCuota.unidades_condominio?.propietario_nombre || "—",
-    }).eq("id", modalCuota.id);
-
-    // Generar PDF con diseño igual al recibo de apartado
     try {
-      const { default: jsPDF } = await import("jspdf");
-      const doc = new jsPDF({ unit: "pt", format: "a5", orientation: "portrait" });
-      const W = 419, H = 595, M = 32;
-      const RED = [185, 28, 60], DARK = [26, 26, 46], GRAY = [120, 120, 120];
-      const LGRAY = [247, 247, 247], LINE = [220, 220, 220];
-      const fmtMXN = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 2 }).format(n || 0);
-      const periodoLbl = (p) => { if (!p) return "—"; const [y, m] = p.split("-"); return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" }); };
-
-      // TOP BAR
-      doc.setFillColor(...RED); doc.rect(0, 0, W, 5, "F");
-
-      // LOGO
-      try {
-        const logoRes = await fetch("https://www.emporioinmobiliario.com.mx/logo.png");
-        const logoBlob = await logoRes.blob();
-        const logoB64 = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.readAsDataURL(logoBlob); });
-        doc.addImage(logoB64, "PNG", M, 8, 70, Math.round(70 * (959 / 1801)));
-      } catch (e) { /* sin logo */ }
-
-      // TÍTULO
-      doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...DARK);
-      doc.text("RECIBO DE CUOTA", M + 78, 18);
-      doc.setTextColor(...RED); doc.setFontSize(8);
-      doc.text("MANTENIMIENTO DE CONDOMINIO", M + 78, 28);
-
-      // FECHA/FOLIO top right
-      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
-      doc.text("Fecha:", W - M - 100, 16);
-      doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK);
-      doc.text(fechaPagoCuota, W - M - 72, 16);
-      doc.setFont("helvetica", "normal"); doc.setTextColor(...GRAY);
-      doc.text("Folio:", W - M - 100, 26);
-      doc.setFont("helvetica", "bold"); doc.setTextColor(...RED);
-      doc.text(folio, W - M - 72, 26);
-
-      // LÍNEA ROJA
-      const divY = 46;
-      doc.setDrawColor(...RED); doc.setLineWidth(1.5); doc.line(M, divY, W - M, divY);
-
-      // BARRA FECHA/FOLIO
-      let y = divY + 8;
-      doc.setFillColor(...LGRAY); doc.rect(M, y, W - 2 * M, 18, "F");
-      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
-      doc.text("Fecha:", M + 6, y + 12); doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK); doc.text(fechaPagoCuota, M + 26, y + 12);
-      doc.setFont("helvetica", "normal"); doc.setTextColor(...GRAY); doc.text("Lugar:", M + 110, y + 12);
-      doc.setFont("helvetica", "bold"); doc.setTextColor(...DARK); doc.text("Puebla, Pue.", M + 132, y + 12);
-      doc.setFont("helvetica", "normal"); doc.setTextColor(...GRAY); doc.text("Folio:", W - M - 60, y + 12);
-      doc.setFont("helvetica", "bold"); doc.setTextColor(...RED); doc.text(folio, W - M - 38, y + 12);
-      y += 26;
-
-      // BLOQUE RECEPTOR
-      doc.setFillColor(...RED); doc.rect(M, y, 3, 52, "F");
-      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
-      doc.text("Condómino:", M + 8, y + 10);
-      doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...DARK);
-      doc.text(modalCuota.unidades_condominio?.propietario_nombre || "—", M + 52, y + 10);
-      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
-      doc.text("Condominio:", M + 8, y + 22);
-      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
-      doc.text(cond?.nombre || "—", M + 52, y + 22);
-      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
-      doc.text("Unidad:", M + 8, y + 34);
-      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...DARK);
-      doc.text(`Depto ${modalCuota.unidades_condominio?.numero || "—"}`, M + 52, y + 34);
-      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRAY);
-      doc.text("Periodo:", M + 8, y + 46);
-      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...RED);
-      doc.text(periodoLbl(modalCuota.periodo), M + 52, y + 46);
-      y += 62;
-
-      // SEPARADOR
-      doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 10;
-
-      // MONTO DESTACADO
-      doc.setFillColor(...RED); doc.rect(M, y, W - 2 * M, 20, "F");
-      doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
-      doc.text("MONTO PAGADO:", M + 8, y + 13);
-      doc.setFontSize(12);
-      doc.text(fmtMXN(modalCuota.monto), W - M - 8, y + 13, { align: "right" });
-      y += 30;
-
-      // DETALLES
-      doc.setDrawColor(...LINE); doc.setLineWidth(0.3);
-      const detalles = [
-        ["Concepto:", "Cuota de mantenimiento mensual"],
-        ["Periodo:", periodoLbl(modalCuota.periodo)],
-        ["Fecha de pago:", fechaPagoCuota],
-        ["Método de pago:", comprobante_url ? "Transferencia / Depósito bancario" : "Efectivo"],
-        ["Recibió:", "Emporio Inmobiliario"],
-      ];
-      detalles.forEach(([label, value], i) => {
-        const yy = y + i * 14;
-        if (i % 2 === 0) { doc.setFillColor(250, 250, 250); doc.rect(M, yy - 3, W - 2 * M, 14, "F"); }
-        doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-        doc.text(label, M + 6, yy + 8);
-        doc.setFont("helvetica", "normal"); doc.setTextColor(...DARK);
-        doc.text(value, M + 80, yy + 8);
-      });
-      y += detalles.length * 14 + 16;
-
-      // SEPARADOR FIRMAS
-      doc.setDrawColor(...LINE); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 10;
-
-      // FIRMAS
-      const sigW = 130;
-      doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(...RED);
-      doc.text("Por Emporio Inmobiliario", M, y);
-
-      // Firma de Carlos
-      try {
-        const { FIRMA_CARLOS_B64 } = await import("../../lib/firmaCarlos");
-        doc.addImage(FIRMA_CARLOS_B64, "PNG", M, y + 2, 65, 36);
-      } catch (e) { /* sin firma */ }
-
-      doc.setDrawColor(204, 204, 204); doc.setLineWidth(0.8);
-      doc.line(M, y + 40, M + sigW, y + 40);
-      doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(...DARK);
-      doc.text("Carlos Nachón — Emporio Inmobiliario", M, y + 48);
-
-      doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(...DARK);
-      doc.text("Firma y nombre del condómino", W / 2 + 10, y);
-      doc.setDrawColor(204, 204, 204);
-      doc.line(W / 2 + 10, y + 28, W / 2 + 10 + sigW, y + 28);
-      doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(...DARK);
-      doc.text(modalCuota.unidades_condominio?.propietario_nombre || "—", W / 2 + 10, y + 36);
-
-      // QR
-      try {
-        const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent("https://www.emporioinmobiliario.com.mx/verificar/" + folio)}&size=60&margin=1`;
-        const qrRes = await fetch(qrUrl);
-        const qrBlob = await qrRes.blob();
-        const qrB64 = await new Promise(r => { const fr = new FileReader(); fr.onloadend = () => r(fr.result); fr.readAsDataURL(qrBlob); });
-        doc.addImage(qrB64, "PNG", W - M - 44, H - 56, 44, 44);
-        doc.setFont("helvetica", "normal"); doc.setFontSize(5.5); doc.setTextColor(...GRAY);
-        doc.text("Verificar", W - M - 22, H - 8, { align: "center" });
-      } catch (e) { /* sin QR */ }
-
-      // BOTTOM BAR
-      doc.setFillColor(...RED); doc.rect(0, H - 5, W, 5, "F");
-      doc.setFont("helvetica", "normal"); doc.setFontSize(6); doc.setTextColor(...GRAY);
-      doc.text("Emporio Inmobiliario  —  Puebla, México  —  222 257 3237  |  emporioinmobiliario.com.mx", W / 2, H - 9, { align: "center" });
-
-      // Subir PDF al Storage
-      let recibo_url = null;
-      try {
-        const pdfBlob = doc.output("blob");
-        const fileName = `${folio}.pdf`;
-        const { error: upErr } = await supabase.storage.from("recibos-condominio").upload(fileName, pdfBlob, { contentType: "application/pdf", upsert: true });
-        if (!upErr) {
-          const { data: urlData } = supabase.storage.from("recibos-condominio").getPublicUrl(fileName);
-          recibo_url = urlData?.publicUrl || null;
-          // Guardar URL en la cuota
-          await supabase.from("cuotas_condominio").update({ recibo_url }).eq("id", modalCuota.id);
-        }
-      } catch (e) { console.error("Error subiendo PDF:", e); }
-
-      // Enviar por email si hay email registrado
-      const emailDestino = modalCuota.unidades_condominio?.propietario_email || modalCuota.unidades_condominio?.residente_email;
-      if (emailDestino) {
-        const pdfBase64 = doc.output("datauristring").split(",")[1];
-        await fetch("/api/enviar-recibo-condominio", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            emailDestino,
-            nombreCondómino: modalCuota.unidades_condominio?.propietario_nombre || "—",
-            numeroDepto: modalCuota.unidades_condominio?.numero || "—",
-            condominio: cond?.nombre || "Condominio",
-            periodo: periodoLbl(modalCuota.periodo),
-            monto: fmtMXN(modalCuota.monto),
-            fechaPago: fechaPagoCuota,
-            folio,
-            pdfBase64,
-          }),
+      let documento = null;
+      if (archivoComprobante) {
+        documento = await uploadCondominioDocument({
+          condominioId: id,
+          unidadId: modalCuota.unidad_id,
+          cuotaId: modalCuota.id,
+          categoria: "comprobante_pago",
+          file: archivoComprobante,
         });
-        showToast("Pago registrado y recibo enviado por email ✉️");
-      } else {
-        showToast("Pago registrado — sin email para enviar recibo");
       }
-
-      // Descargar PDF (Safari-safe)
-      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || /iPad|iPhone|iPod/.test(navigator.userAgent);
-      if (isSafari) {
-        const uri = doc.output("datauristring");
-        const win = window.open();
-        if (win) win.document.write(`<iframe src="${uri}" style="width:100%;height:100%;border:none;"></iframe>`);
-      } else {
-        doc.save(`Recibo_${folio}.pdf`);
+      await condominiosApi(`/api/condominios/${id}/operaciones`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "registrar_pago",
+          unidad_id: modalCuota.unidad_id,
+          cuota_id: modalCuota.id,
+          periodo: modalCuota.periodo,
+          monto: modalCuota.monto,
+          fecha_pago: fechaPagoCuota,
+          metodo: archivoComprobante ? "transferencia" : "efectivo",
+          documento_id: documento?.id || null,
+        }),
+      });
+      try {
+        const recibo = await condominiosApi("/api/enviar-recibo-condominio", {
+          method: "POST",
+          body: JSON.stringify({ cuota_id: modalCuota.id }),
+        });
+        showToast(
+          recibo?.email_enviado
+            ? "Pago registrado y recibo enviado por email ✉️"
+            : "Pago registrado y recibo generado de forma segura.",
+        );
+      } catch (receiptError) {
+        showToast(`Pago registrado. El recibo no se envió: ${receiptError.message}`, false);
       }
-
-    } catch (e) {
-      console.error("Error generando recibo:", e);
-      showToast("Pago registrado (error al generar recibo)", false);
+      setModalCuota(null);
+      setArchivoComprobante(null);
+      setFechaPagoCuota(new Date().toISOString().split("T")[0]);
+      await loadData();
+    } catch (error) {
+      showToast(error.message, false);
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
-    setModalCuota(null);
-    setArchivoComprobante(null);
-    setFechaPagoCuota(new Date().toISOString().split("T")[0]);
-    loadData();
   };
 
   // ── Registrar gasto ───────────────────────────────────────────────────────
   const guardarGasto = async () => {
     if (!formGasto.concepto.trim() || !formGasto.monto) { showToast("Concepto y monto son requeridos", false); return; }
     setSaving(true);
-    let comprobante_url = null;
-    if (archivoComprobante) {
-      const ext = archivoComprobante.name.split(".").pop();
-      const fileName = `gastos-condominio/${id}_${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("documentos").upload(fileName, archivoComprobante, { upsert: true });
-      if (!upErr) {
-        const { data: urlData } = supabase.storage.from("documentos").getPublicUrl(fileName);
-        comprobante_url = urlData?.publicUrl || null;
+    try {
+      let documento = null;
+      if (archivoComprobante) {
+        validateCondominioUploadFile(archivoComprobante);
+        documento = await uploadCondominioDocument({
+          condominioId: id,
+          categoria: "gasto",
+          file: archivoComprobante,
+        });
       }
+      const result = await condominiosApi(`/api/condominios/${id}/operaciones`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "registrar_gasto",
+          periodo: formGasto.fecha.slice(0, 7),
+          concepto: formGasto.concepto,
+          categoria: formGasto.categoria,
+          monto: formGasto.monto,
+          fecha: formGasto.fecha,
+          notas: formGasto.notas,
+          documento_id: documento?.id || null,
+        }),
+      });
+      setModalGasto(false);
+      setFormGasto(emptyGasto);
+      setArchivoComprobante(null);
+      showToast(`Gasto registrado${result?.id ? "" : ""}`);
+      await loadData();
+    } catch (error) {
+      showToast(error.message, false);
+    } finally {
+      setSaving(false);
     }
-    await supabase.from("gastos_condominio").insert([{
-      condominio_id: id,
-      concepto: formGasto.concepto,
-      categoria: formGasto.categoria,
-      monto: parseFloat(formGasto.monto),
-      fecha: formGasto.fecha,
-      comprobante_url,
-    }]);
-
-    // Si son honorarios de Emporio → registrar automáticamente en caja Klar
-    if (formGasto.categoria === "honorarios_emporio") {
-      await supabase.from("cash_movements").insert([{
-        type: "entrada",
-        category: "honorarios_condominio",
-        description: `${formGasto.concepto} — ${cond?.nombre || "Condominio"}`,
-        amount: parseFloat(formGasto.monto),
-        payment_method: "transferencia",
-        date: formGasto.fecha,
-        notes: `Honorarios de administración condominio ${cond?.nombre || ""}`,
-      }]);
-    }
-
-    setSaving(false);
-    setModalGasto(false);
-    setFormGasto(emptyGasto);
-    setArchivoComprobante(null);
-    showToast(formGasto.categoria === "honorarios_emporio" ? "Honorarios registrados y enviados a caja ✅" : "Gasto registrado");
-    loadData();
   };
 
-  // ── Registrar ticket ──────────────────────────────────────────────────────
-  const guardarTicket = async () => {
-    if (!formTicket.title.trim()) { showToast("El título es requerido", false); return; }
-    setSaving(true);
-    await supabase.from("maintenance_tickets").insert([{
-      condominio_id: id,
-      property_name: cond?.nombre || "",
-      title: formTicket.title,
-      description: formTicket.description,
-      status: formTicket.status,
-      payer: formTicket.payer,
-      charged_amount: parseFloat(formTicket.charged_amount) || 0,
-    }]);
-    setSaving(false);
-    setModalTicket(false);
-    setFormTicket(emptyTicket);
-    showToast("Ticket creado");
-    loadData();
+  const seleccionarComprobanteGasto = (event) => {
+    const file = event.target.files[0] || null;
+    try {
+      validateCondominioUploadFile(file);
+      setArchivoComprobante(file);
+    } catch (error) {
+      event.target.value = "";
+      setArchivoComprobante(null);
+      showToast(error.message, false);
+    }
+  };
+
+  const reversarGasto = async (gasto) => {
+    const motivo = window.prompt("Motivo de la reversa (mínimo 8 caracteres):");
+    if (!motivo) return;
+    try {
+      await condominiosApi(`/api/condominios/${id}/operaciones`, {
+        method: "POST",
+        body: JSON.stringify({ action: "reversar", tipo: "gasto", id: gasto.id, motivo }),
+      });
+      showToast("Gasto reversado; se conservó la trazabilidad");
+      await loadData();
+    } catch (error) {
+      showToast(error.message, false);
+    }
+  };
+
+  const abrirDocumento = async (documentoId) => {
+    try {
+      const data = await condominiosApi(`/api/condominios/${id}/documentos?documento_id=${encodeURIComponent(documentoId)}`);
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      showToast(error.message, false);
+    }
   };
 
   // ── PDF estado de cuenta ──────────────────────────────────────────────────
@@ -643,12 +475,13 @@ export default function CondominioDetalle() {
     savePDF(doc, `EstadoCuenta_${(cond?.nombre || "Condominio").replace(/\s+/g,"_")}_${new Date().toISOString().split("T")[0]}.pdf`);
   };
 
-  if (authLoading || loading) return (
+  if (authLoading || permisoCargando || loading) return (
     <div style={{ minHeight: "100vh", background: brand.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <p style={{ color: "#9ca3af" }}>{authLoading ? "" : "Cargando…"}</p>
     </div>
   );
   if (!session) { if (typeof window !== "undefined") window.location.href = "/"; return null; }
+  if (!puedeVer) return <SinAcceso />;
   if (!cond) return <div style={{ padding: 40, textAlign: "center", color: "#9ca3af" }}>Condominio no encontrado</div>;
 
   const TABS = [
@@ -656,7 +489,6 @@ export default function CondominioDetalle() {
     { id: "cobranza",       label: "💰 Cobranza" },
     { id: "gastos",         label: "📤 Gastos" },
     { id: "estado_cuenta",  label: "📊 Estado de cuenta" },
-    { id: "mantenimiento",  label: "🔧 Mantenimiento" },
   ];
 
   const morosos = cuotasPeriodo.filter(q => q.status === "atrasado").length;
@@ -679,6 +511,7 @@ export default function CondominioDetalle() {
               {cond.direccion && <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>📍 {cond.direccion}</p>}
             </div>
             <div style={{ textAlign: "right" }}>
+              <div style={{ marginBottom: 8 }}><DemoBadge /></div>
               {morosos > 0 && <span style={{ background: "#fee2e2", color: "#991b1b", fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 99, display: "block", marginBottom: 8 }}>⚠️ {morosos} moroso{morosos !== 1 ? "s" : ""}</span>}
               <div style={{ display: "flex", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.1)", borderRadius: 8, padding: "6px 12px" }}>
@@ -707,7 +540,7 @@ export default function CondominioDetalle() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>{unidades.length} unidades</h2>
-              <button onClick={() => { setFormUnidad(emptyUnidad); setModalUnidad({}); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>+ Agregar unidad</button>
+              {puede("editar") && <button onClick={() => { setFormUnidad(emptyUnidad); setModalUnidad({}); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>+ Agregar unidad</button>}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
               {unidades.map(u => {
@@ -721,7 +554,7 @@ export default function CondominioDetalle() {
                       </div>
                       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                         {cuotaMes && <StatusBadge status={cuotaMes.status} />}
-                        <button onClick={() => { setFormUnidad({ ...u, residente_es_propietario: u.residente_es_propietario ?? true }); setModalUnidad(u); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11 }}>✏️</button>
+                        {puede("editar") && <button onClick={() => { setFormUnidad({ ...u, residente_es_propietario: u.residente_es_propietario ?? true }); setModalUnidad(u); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11 }}>✏️</button>}
                       </div>
                     </div>
                     <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 700, color: "#374151" }}>👤 {u.propietario_nombre}</p>
@@ -736,13 +569,13 @@ export default function CondominioDetalle() {
                     {cuotaMes && (
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: "1px solid #f3f4f6" }}>
                         <span style={{ fontSize: 13, fontWeight: 800, color: "#1a1a2e" }}>{fmt(cuotaMes.monto)}</span>
-                        {cuotaMes.status !== "pagado" && (
+                        {puede("registrar_pago") && cuotaMes.status !== "pagado" && (
                           <button onClick={() => { setModalCuota(cuotaMes); setArchivoComprobante(null); }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
                             ✓ Registrar pago
                           </button>
                         )}
-                        {cuotaMes.status === "pagado" && cuotaMes.comprobante_url && (
-                          <a href={cuotaMes.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#1e40af", fontWeight: 600 }}>📄 Comprobante</a>
+                        {cuotaMes.status === "pagado" && cuotaMes.comprobante_documento_id && (
+                          <button onClick={() => abrirDocumento(cuotaMes.comprobante_documento_id)} style={{ border: 0, background: "none", padding: 0, cursor: "pointer", fontSize: 11, color: "#1e40af", fontWeight: 600 }}>📄 Comprobante</button>
                         )}
                       </div>
                     )}
@@ -760,9 +593,9 @@ export default function CondominioDetalle() {
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Cobranza</h2>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 <input type="month" value={periodoVer} onChange={e => setPeriodoVer(e.target.value)} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }} />
-                <Btn small color="#1a1a2e" onClick={generarCuotasPeriodo} disabled={saving}>
+                {puede("generar_cuotas") && <Btn small color="#1a1a2e" onClick={generarCuotasPeriodo} disabled={saving}>
                   {saving ? "Generando…" : `Generar cuotas de ${periodoLabel(periodoVer)}`}
-                </Btn>
+                </Btn>}
               </div>
             </div>
 
@@ -861,9 +694,9 @@ export default function CondominioDetalle() {
             {cuotasPeriodo.length === 0 ? (
               <div style={{ background: "#fff", borderRadius: 12, padding: 32, textAlign: "center" }}>
                 <p style={{ color: "#9ca3af", margin: "0 0 14px" }}>No hay cuotas generadas para {periodoLabel(periodoVer)}</p>
-                <Btn color="#1a1a2e" onClick={generarCuotasPeriodo} disabled={saving}>
+                {puede("generar_cuotas") && <Btn color="#1a1a2e" onClick={generarCuotasPeriodo} disabled={saving}>
                   {saving ? "Generando…" : `Generar cuotas de ${periodoLabel(periodoVer)}`}
-                </Btn>
+                </Btn>}
               </div>
             ) : (
               <div style={{ background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
@@ -885,22 +718,21 @@ export default function CondominioDetalle() {
                         <td style={{ padding: "10px 12px" }}><StatusBadge status={q.status} /></td>
                         <td style={{ padding: "10px 12px", fontSize: 12, color: "#6b7280" }}>{q.fecha_pago || "—"}</td>
                         <td style={{ padding: "10px 12px" }}>
-                          {q.comprobante_url
-                            ? <a href={q.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e40af", fontWeight: 600 }}>Ver</a>
-                            : q.status === "pagado"
+                          {q.comprobante_documento_id
+                            ? <button onClick={() => abrirDocumento(q.comprobante_documento_id)} style={{ border: 0, background: "none", padding: 0, cursor: "pointer", fontSize: 12, color: "#1e40af", fontWeight: 600 }}>Ver</button>
+                            : q.status === "pagado" && puede("subir_documento")
                               ? <label style={{ cursor: "pointer" }}>
                                   <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={async e => {
                                     const file = e.target.files[0];
                                     if (!file) return;
-                                    const ext = file.name.split(".").pop();
-                                    const fileName = `cuotas-condominio/${id}_${q.id}_${Date.now()}.${ext}`;
-                                    const { error: upErr } = await supabase.storage.from("documentos").upload(fileName, file, { upsert: true });
-                                    if (!upErr) {
-                                      const { data: urlData } = supabase.storage.from("documentos").getPublicUrl(fileName);
-                                      await supabase.from("cuotas_condominio").update({ comprobante_url: urlData.publicUrl }).eq("id", q.id);
+                                    try {
+                                      await uploadCondominioDocument({
+                                        condominioId: id, unidadId: q.unidad_id, cuotaId: q.id,
+                                        categoria: "comprobante_pago", file,
+                                      });
                                       showToast("Comprobante guardado");
-                                      loadData();
-                                    } else { showToast("Error al subir", false); }
+                                      await loadData();
+                                    } catch (error) { showToast(error.message, false); }
                                   }} />
                                   <span style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, cursor: "pointer" }}>📎 Agregar</span>
                                 </label>
@@ -908,8 +740,8 @@ export default function CondominioDetalle() {
                           }
                         </td>
                         <td style={{ padding: "10px 12px" }}>
-                          {q.recibo_url
-                            ? <a href={q.recibo_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#065f46", fontWeight: 700 }}>Recibo</a>
+                          {q.recibo_documento_id
+                            ? <button onClick={() => abrirDocumento(q.recibo_documento_id)} style={{ border: 0, background: "none", padding: 0, cursor: "pointer", fontSize: 12, color: "#065f46", fontWeight: 700 }}>Recibo</button>
                             : <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>
                           }
                         </td>
@@ -932,7 +764,7 @@ export default function CondominioDetalle() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Gastos comunes</h2>
-              <button onClick={() => { setFormGasto(emptyGasto); setArchivoComprobante(null); setModalGasto(true); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>+ Registrar gasto</button>
+              {puede("registrar_gasto") && <button onClick={() => { setFormGasto(emptyGasto); setArchivoComprobante(null); setModalGasto(true); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>+ Registrar gasto</button>}
             </div>
 
             {/* Saldo inicial separado */}
@@ -996,13 +828,13 @@ export default function CondominioDetalle() {
                           <td style={{ padding: "10px 12px", fontWeight: 700, color: "#7c3aed" }}>{fmt(g.monto)}</td>
                           <td style={{ padding: "10px 12px", fontSize: 12, color: "#6b7280" }}>{g.fecha}</td>
                           <td style={{ padding: "10px 12px" }}>
-                            {g.comprobante_url
-                              ? <a href={g.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e40af", fontWeight: 600 }}>📄 Ver</a>
+                            {g.documento_id
+                              ? <button onClick={() => abrirDocumento(g.documento_id)} style={{ border: 0, background: "none", padding: 0, cursor: "pointer", fontSize: 12, color: "#1e40af", fontWeight: 600 }}>📄 Ver</button>
                               : <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>
                             }
                           </td>
                           <td style={{ padding: "10px 12px" }}>
-                            <button onClick={async () => { if (confirm("¿Eliminar este gasto?")) { await supabase.from("gastos_condominio").delete().eq("id", g.id); showToast("Gasto eliminado"); loadData(); } }} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✕</button>
+                            {puede("reversar_gasto") && !g.reversed_at && <button onClick={() => reversarGasto(g)} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Reversar</button>}
                           </td>
                         </tr>
                       ))}
@@ -1045,15 +877,12 @@ export default function CondominioDetalle() {
             {(() => {
               const ingPeriodo = cuotas.filter(q => q.status === "pagado" && q.periodo === periodoVer).reduce((a, q) => a + (q.monto || 0), 0);
               const gastPeriodo = gastos.filter(g => !g.concepto?.toLowerCase().includes("saldo inicial") && g.fecha?.startsWith(periodoVer)).reduce((a, g) => a + (g.monto || 0), 0);
-              const ticketsPeriodo = tickets.filter(t => { if (!t.created_at) return false; const d = new Date(t.created_at); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}` === periodoVer; });
-              const costoMant = ticketsPeriodo.filter(t => t.charged_amount > 0).reduce((a, t) => a + (t.charged_amount || 0), 0);
               return (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 20 }}>
                   {[
                     { label: "Ingresos del mes",  value: fmt(ingPeriodo),   color: "#4ade80", show: true },
                     { label: "Gastos del mes",    value: fmt(gastPeriodo),  color: "#f87171", show: true },
-                    { label: "Mantenimiento",     value: fmt(costoMant),    color: "#fb923c", show: costoMant > 0 },
-                    { label: "Balance del mes",   value: fmt(ingPeriodo - gastPeriodo - costoMant), color: (ingPeriodo - gastPeriodo - costoMant) >= 0 ? "#4ade80" : "#f87171", show: true },
+                    { label: "Balance del mes",   value: fmt(ingPeriodo - gastPeriodo), color: (ingPeriodo - gastPeriodo) >= 0 ? "#4ade80" : "#f87171", show: true },
                   ].filter(s => s.show).map((s, i) => (
                     <div key={i} style={{ background: "rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 14px" }}>
                       <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>{s.label}</p>
@@ -1122,67 +951,10 @@ export default function CondominioDetalle() {
           </div>
         )}
 
-        {/* ── TAB: MANTENIMIENTO ── */}
-        {tab === "mantenimiento" && (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Tickets de mantenimiento</h2>
-              <button onClick={() => { setFormTicket(emptyTicket); setModalTicket(true); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>+ Nuevo ticket</button>
-            </div>
-            {(() => {
-              const ticketsFiltrados = tickets.filter(t => {
-                if (!t.created_at) return false;
-                const d = new Date(t.created_at);
-                const tp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-                return tp === periodoVer;
-              });
-              const hayFiltro = ticketsFiltrados.length !== tickets.length;
-              return (
-                <>
-                  {hayFiltro && tickets.length > 0 && (
-                    <p style={{ margin: "0 0 12px", fontSize: 12, color: "#9ca3af" }}>
-                      Mostrando {ticketsFiltrados.length} ticket{ticketsFiltrados.length !== 1 ? "s" : ""} de {periodoLabel(periodoVer)} · <button onClick={() => setPeriodoVer("")} style={{ background: "none", border: "none", color: "#1e40af", cursor: "pointer", fontSize: 12, padding: 0 }}>Ver todos</button>
-                    </p>
-                  )}
-                  {ticketsFiltrados.length === 0 ? (
-                    <div style={{ background: "#fff", borderRadius: 12, padding: 48, textAlign: "center" }}>
-                      <p style={{ fontSize: 32, margin: "0 0 8px" }}>✅</p>
-                      <p style={{ color: "#9ca3af" }}>Sin tickets en {periodoLabel(periodoVer)}</p>
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {ticketsFiltrados.map(t => (
-                        <div key={t.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", borderLeft: `4px solid ${t.status === "resuelto" ? "#065f46" : t.status === "en_proceso" ? "#1e40af" : "#b91c3c"}` }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                            <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>{t.title}</h4>
-                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                              <StatusBadge status={t.status} />
-                              <select value={t.status} onChange={async e => { await supabase.from("maintenance_tickets").update({ status: e.target.value }).eq("id", t.id); loadData(); }} style={{ fontSize: 11, padding: "3px 6px", borderRadius: 6, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>
-                                <option value="abierto">Abierto</option>
-                                <option value="en_proceso">En proceso</option>
-                                <option value="resuelto">Resuelto</option>
-                              </select>
-                            </div>
-                          </div>
-                          {t.description && <p style={{ margin: "0 0 6px", fontSize: 13, color: "#374151" }}>{t.description}</p>}
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "2px 8px", borderRadius: 6 }}>Paga: {t.payer}</span>
-                            {t.charged_amount > 0 && <span style={{ fontSize: 11, color: "#7c3aed", background: "#faf5ff", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>Costo: {fmt(t.charged_amount)}</span>}
-                            <span style={{ fontSize: 11, color: "#9ca3af" }}>{new Date(t.created_at).toLocaleDateString("es-MX")}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-        )}
       </div>
 
       {/* ── Modal editar unidad ── */}
-      {modalUnidad !== null && (
+      {modalUnidad !== null && puede("editar") && (
         <Modal title={modalUnidad?.id ? `Editar unidad ${modalUnidad.numero}` : "Nueva unidad"} onClose={() => setModalUnidad(null)} wide>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Número/ID unidad"><Input value={formUnidad.numero} onChange={e => setFormUnidad({ ...formUnidad, numero: e.target.value })} placeholder="101, A, Depa 1…" /></Field>
@@ -1221,7 +993,7 @@ export default function CondominioDetalle() {
       )}
 
       {/* ── Modal registrar pago de cuota ── */}
-      {modalCuota && (
+      {modalCuota && puede("registrar_pago") && (
         <Modal title={`Registrar pago — Unidad ${modalCuota.unidades_condominio?.numero || ""}`} onClose={() => { setModalCuota(null); setArchivoComprobante(null); setFechaPagoCuota(new Date().toISOString().split("T")[0]); }}>
           <p style={{ fontSize: 14, color: "#6b7280", marginTop: 0 }}>
             Propietario: <strong>{modalCuota.unidades_condominio?.propietario_nombre || "—"}</strong><br />
@@ -1244,13 +1016,13 @@ export default function CondominioDetalle() {
           </Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
             <button onClick={() => { setModalCuota(null); setArchivoComprobante(null); setFechaPagoCuota(new Date().toISOString().split("T")[0]); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={registrarPagoCuota} disabled={saving} color="#065f46">{saving ? "Guardando…" : "✓ Confirmar pago"}</Btn>
+            <Btn onClick={registrarPagoSeguro} disabled={saving} color="#065f46">{saving ? "Guardando…" : "✓ Confirmar pago"}</Btn>
           </div>
         </Modal>
       )}
 
       {/* ── Modal registrar gasto ── */}
-      {modalGasto && (
+      {modalGasto && puede("registrar_gasto") && (
         <Modal title="Registrar gasto común" onClose={() => { setModalGasto(false); setArchivoComprobante(null); }}>
           <Field label="Concepto *"><Input value={formGasto.concepto} onChange={e => setFormGasto({ ...formGasto, concepto: e.target.value })} placeholder="Ej: Pago de agua abril, Mantenimiento elevador…" /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -1264,7 +1036,7 @@ export default function CondominioDetalle() {
           <Field label="Fecha"><Input type="date" value={formGasto.fecha} onChange={e => setFormGasto({ ...formGasto, fecha: e.target.value })} /></Field>
           <Field label="Comprobante (opcional)">
             <div style={{ border: "2px dashed #d1d5db", borderRadius: 8, padding: 14, textAlign: "center", background: "#fafafa" }}>
-              <input type="file" accept="image/*,application/pdf" id="comp-gasto" style={{ display: "none" }} onChange={e => setArchivoComprobante(e.target.files[0] || null)} />
+              <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" id="comp-gasto" style={{ display: "none" }} onChange={seleccionarComprobanteGasto} />
               <label htmlFor="comp-gasto" style={{ cursor: "pointer" }}>
                 {archivoComprobante
                   ? <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#065f46" }}>✓ {archivoComprobante.name}</p>
@@ -1281,29 +1053,6 @@ export default function CondominioDetalle() {
         </Modal>
       )}
 
-      {/* ── Modal nuevo ticket ── */}
-      {modalTicket && (
-        <Modal title="Nuevo ticket de mantenimiento" onClose={() => setModalTicket(false)}>
-          <Field label="Título *"><Input value={formTicket.title} onChange={e => setFormTicket({ ...formTicket, title: e.target.value })} placeholder="Ej: Fuga de agua en área común, Falla en elevador…" /></Field>
-          <Field label="Descripción">
-            <textarea value={formTicket.description} onChange={e => setFormTicket({ ...formTicket, description: e.target.value })} rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", resize: "vertical" }} />
-          </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Quién paga">
-              <Sel value={formTicket.payer} onChange={e => setFormTicket({ ...formTicket, payer: e.target.value })}>
-                <option value="condominio">Fondo del condominio</option>
-                <option value="propietario">Propietario específico</option>
-                <option value="emporio">Emporio</option>
-              </Sel>
-            </Field>
-            <Field label="Costo estimado"><Input type="number" value={formTicket.charged_amount} onChange={e => setFormTicket({ ...formTicket, charged_amount: e.target.value })} placeholder="0" /></Field>
-          </div>
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
-            <button onClick={() => setModalTicket(false)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={guardarTicket} disabled={saving || !formTicket.title.trim()} color={brand.red}>{saving ? "Guardando…" : "Crear ticket"}</Btn>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }
