@@ -359,6 +359,10 @@ export default function Home() {
         window.location.replace(`${window.location.origin}/condomino`);
         return;
       }
+      if (payload.data?.destination === "tenant_portal") {
+        window.location.replace(`${window.location.origin}/inquilino`);
+        return;
+      }
 
       const { data: partnerUser } = await supabase
         .from("partner_users")
