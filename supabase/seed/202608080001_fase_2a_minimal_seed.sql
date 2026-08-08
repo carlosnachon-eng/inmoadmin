@@ -103,18 +103,20 @@ on conflict (id) do update set
   agente_id = excluded.agente_id,
   origen = excluded.origen;
 
-insert into public.citas (id, cliente_id, propiedad_id, asesor_id, fecha_hora, estado, notas)
+insert into public.citas (id, cliente_id, propiedad_id, asesor_id, fecha_hora, estado, notas, confirmacion_estado, confirmacion_actualizada_at)
 values
-  ('40000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '2026-08-05 17:00:00-06', 'efectiva', 'Cita sintetica efectiva'),
-  ('40000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '2026-08-08 12:00:00-06', 'agendada', 'Cita sintetica agendada'),
-  ('40000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000003', '30000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000014', '2026-08-06 11:00:00-06', 'efectiva', 'Cita sintetica calificada')
+  ('40000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '2026-08-05 17:00:00-06', 'efectiva', 'Cita sintetica efectiva', 'realizada', now()),
+  ('40000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '2026-08-08 12:00:00-06', 'agendada', 'Cita sintetica agendada', 'pendiente_confirmar', now()),
+  ('40000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000003', '30000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000014', '2026-08-06 11:00:00-06', 'efectiva', 'Cita sintetica calificada', 'realizada', now())
 on conflict (id) do update set
   cliente_id = excluded.cliente_id,
   propiedad_id = excluded.propiedad_id,
   asesor_id = excluded.asesor_id,
   fecha_hora = excluded.fecha_hora,
   estado = excluded.estado,
-  notas = excluded.notas;
+  notas = excluded.notas,
+  confirmacion_estado = excluded.confirmacion_estado,
+  confirmacion_actualizada_at = excluded.confirmacion_actualizada_at;
 
 insert into public.seguimientos_cliente (id, cliente_id, asesor_id, nota, tipo, created_at)
 values

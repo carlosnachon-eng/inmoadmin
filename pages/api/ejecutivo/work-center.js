@@ -81,7 +81,7 @@ export default async function handler(req, res) {
       scoped.from("gv_respond_contact_snapshots").select("*").order("respond_last_synced_at", { ascending: false }),
       admin
         .from("citas")
-        .select("id, cliente_id, propiedad_id, asesor_id, fecha_hora, estado, notas, clientes(nombre), propiedades(titulo)")
+        .select("id, cliente_id, propiedad_id, asesor_id, fecha_hora, estado, notas, confirmacion_estado, confirmacion_actualizada_at, confirmacion_actualizada_por, clientes(nombre), propiedades(titulo)")
         .gte("fecha_hora", start)
         .lte("fecha_hora", end),
       admin.from("seguimientos_cliente").select("id, cliente_id, asesor_id, tipo, created_at").gte("created_at", start),
@@ -173,7 +173,7 @@ export default async function handler(req, res) {
       metaEquipo: META_MENSUAL_NUEVA,
       cerradoNuevo: monthClosedNew,
       pipeline: scopedOpportunities.filter((opp) => opp.operation_type === "nueva" && !["cierre_ganado", "cierre_perdido"].includes(opp.stage)).reduce((sum, opp) => sum + Number(opp.estimated_commission || 0), 0),
-      citasEquipo: scopedCitas.filter((cita) => ["efectiva", "calificada"].includes(cita.estado)).length,
+      citasEquipo: scopedCitas.filter((cita) => cita.confirmacion_estado === "realizada").length,
       citasRequeridasDia: advisorRows.filter((row) => row.capacityWeight > 0).length * META_CITAS_DIARIAS,
       asesoresRequierenIntervencion: advisorRows.filter((row) => row.needsIntervention).length,
       clientesEsperandoRespuesta: summary.waitingResponses,
@@ -197,7 +197,7 @@ export default async function handler(req, res) {
         respondSnapshots: targetSnapshots,
       },
       limitations: {
-        citaConfirmacion: "La tabla citas no expone un campo formal de confirmacion; por ahora se infiere por estado.",
+        citaConfirmacion: null,
         respondMapping: "En DEV se usan aliases auditables para probar usuarios sinteticos cuando el email real de Respond.io no coincide con el Auth DEV.",
         respondMigration: snapshotsMissing ? "Pendiente ejecutar migracion 202608080004 para snapshots Respond.io." : null,
       },

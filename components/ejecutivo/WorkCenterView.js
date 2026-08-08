@@ -98,6 +98,10 @@ function consolidateWorkItems(items) {
       channel: unique([current.channel, item.channel]).join(" + "),
       conversationStatus: current.conversationStatus || item.conversationStatus,
       opportunityId: current.opportunityId || item.opportunityId,
+      respondContactId: current.respondContactId || item.respondContactId,
+      respondDeepLink: current.respondDeepLink || item.respondDeepLink,
+      confirmationStatus: current.confirmationStatus || item.confirmationStatus,
+      citaId: current.citaId || item.citaId,
       ownerId: current.ownerId || item.ownerId,
       ownerName: current.ownerName || item.ownerName,
       ids: unique([...(current.ids || []), item.id]),
@@ -139,7 +143,7 @@ function priorityGroups(items) {
     {
       key: "citas",
       variant: "alta",
-      count: count((item) => item.types?.includes("cita") && item.stage === "agendada"),
+      count: count((item) => item.types?.includes("cita") && item.confirmationStatus === "pendiente_confirmar"),
       label: "citas agendadas por confirmar",
       singular: "cita agendada por confirmar",
       filter: "citas",
@@ -461,8 +465,29 @@ function actionForItem(item, canAudit) {
   if (canAudit && item.opportunityId) return { label: "Intervenir", kind: "audit" };
   if (item.types?.includes("oportunidad")) return { label: "Actualizar", kind: "pending" };
   if (item.types?.includes("cita")) return { label: "Ver cita", kind: "pending" };
-  if (item.types?.includes("sin_respuesta") && item.respondDeepLink) return { label: "Abrir conversación", kind: "link" };
   return null;
+}
+
+function compactSignals(item) {
+  const labels = unique(item.signals || item.types || []).map((signal) => signalLabels[signal] || signal);
+  if (item.confirmationStatus && item.types?.includes("cita")) labels.push(item.confirmationStatus.replace(/_/g, " "));
+  return unique(labels);
+}
+
+function ChannelSignals({ item }) {
+  const signals = compactSignals(item);
+  const visible = signals.slice(0, 3);
+  const remaining = signals.length - visible.length;
+  return (
+    <div>
+      <div style={{ color: "#374151", fontWeight: 800 }}>{item.channel || "n/d"}{item.conversationStatus ? ` · ${item.conversationStatus}` : ""}</div>
+      {signals.length > 0 && (
+        <div title={signals.join(" · ")} style={{ marginTop: 5, color: "#6b7280", fontSize: 12, lineHeight: 1.35 }}>
+          {visible.join(" · ")}{remaining > 0 ? ` · +${remaining}` : ""}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function WorkTable({ items, onAudit, canAudit = false }) {
@@ -486,16 +511,13 @@ function WorkTable({ items, onAudit, canAudit = false }) {
                 <td style={td}>{item.dueAt ? new Date(item.dueAt).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }) : "Sin fecha"}</td>
                 <td style={td}>{item.nextAction}</td>
                 <td style={td}><Badge variant={item.risk === "critico" ? "critica" : item.risk === "alto" ? "alta" : "normal"}>{item.risk || "normal"}</Badge></td>
+                <td style={td}><ChannelSignals item={item} /></td>
                 <td style={td}>
-                  {item.channel || "n/d"}<div style={muted}>{item.conversationStatus || ""}</div>
-                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
-                    {(item.signals || item.types || []).map((signal) => <Badge key={signal}>{signalLabels[signal] || signal}</Badge>)}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {item.respondDeepLink && <a href={item.respondDeepLink} target="_blank" rel="noreferrer" style={{ ...secondaryButtonStyle, display: "inline-block", textDecoration: "none" }}>Abrir conversación</a>}
+                    {action?.kind === "audit" && <button onClick={() => onAudit(item)} style={secondaryButtonStyle}>{action.label}</button>}
+                    {action?.kind === "pending" && <button type="button" disabled style={{ ...secondaryButtonStyle, opacity: 0.55, cursor: "not-allowed" }}>{action.label}</button>}
                   </div>
-                </td>
-                <td style={td}>
-                  {action?.kind === "audit" && <button onClick={() => onAudit(item)} style={secondaryButtonStyle}>{action.label}</button>}
-                  {action?.kind === "pending" && <button type="button" disabled style={{ ...secondaryButtonStyle, opacity: 0.55, cursor: "not-allowed" }}>{action.label}</button>}
-                  {action?.kind === "link" && <a href={item.respondDeepLink} style={{ ...secondaryButtonStyle, display: "inline-block", textDecoration: "none" }}>{action.label}</a>}
                 </td>
               </tr>
             );
