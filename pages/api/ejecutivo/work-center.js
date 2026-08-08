@@ -30,6 +30,63 @@ function rejectInternal(res, err) {
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
+function dateRange(startDate, endDate) {
+  const dates = [];
+  const current = new Date(`${startDate}T12:00:00-06:00`);
+  const end = new Date(`${endDate}T12:00:00-06:00`);
+  while (current <= end) {
+    dates.push(current.toISOString().slice(0, 10));
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+}
+
+function capacityForDay(profileId, day, availability) {
+  const row = availability.find((item) => item.profile_id === profileId && item.starts_on <= day && (!item.ends_on || item.ends_on >= day));
+  return Number(row?.capacity_weight ?? 1);
+}
+
+function requiredCitasForAdvisor(profileId, availability, startDate, today) {
+  return dateRange(startDate, today).reduce((sum, day) => sum + (capacityForDay(profileId, day, availability) * META_CITAS_DIARIAS), 0);
+}
+
+function kpiPct(done, required) {
+  if (!required) return 100;
+  return Math.round((Number(done || 0) / Number(required || 0)) * 1000) / 10;
+}
+
+function priorityVariant(score) {
+  if (score >= 90) return "critica";
+  if (score >= 45) return "alta";
+  return "normal";
+}
+
+function advisorSignals(row) {
+  const signals = [];
+  const summary = row.summary || {};
+  if (row.capacityWeight <= 0) return signals;
+  if (row.kpiCitasPct < 60) signals.push({ key: "kpi_citas", label: `KPI citas ${row.kpiCitasPct}%`, action: "recuperar ritmo de citas", weight: 35 });
+  if (summary.waitingResponses > 0) signals.push({ key: "esperando_respuesta", label: `${summary.waitingResponses} clientes esperando respuesta`, action: "liberar clientes esperando respuesta", weight: Math.min(40, summary.waitingResponses * 4) });
+  if (summary.overdueActions > 0) signals.push({ key: "seguimientos_vencidos", label: `${summary.overdueActions} seguimiento${summary.overdueActions === 1 ? "" : "s"} vencido${summary.overdueActions === 1 ? "" : "s"}`, action: "actualizar próximas acciones", weight: summary.overdueActions * 15 });
+  if (summary.riskOpportunities > 0) signals.push({ key: "oportunidades_riesgo", label: `${summary.riskOpportunities} oportunidades en riesgo`, action: "revisar oportunidades en riesgo", weight: summary.riskOpportunities * 18 });
+  if (summary.appointmentStats?.pendingConfirmation > 0) signals.push({ key: "citas_confirmar", label: `${summary.appointmentStats.pendingConfirmation} citas por confirmar`, action: "confirmar citas", weight: summary.appointmentStats.pendingConfirmation * 10 });
+  return signals;
+}
+
+function recommendedAction(signals) {
+  const priority = ["esperando_respuesta", "seguimientos_vencidos", "oportunidades_riesgo", "kpi_citas", "citas_confirmar"];
+  const picked = priority.map((key) => signals.find((signal) => signal.key === key)).find(Boolean);
+  return picked?.action || "revisar cartera";
+}
+
+function stuckOperationReason(opp, today) {
+  if (["alto", "critico"].includes(opp.risk_level)) return opp.risk_reason || "Oportunidad marcada en riesgo.";
+  if (opp.next_action_at && String(opp.next_action_at).slice(0, 10) < today) return "Próxima acción vencida.";
+  const staleHours = opp.last_activity_at ? (Date.now() - new Date(opp.last_activity_at).getTime()) / 36e5 : 999;
+  if (staleHours > 96 && !["cierre_ganado", "cierre_perdido"].includes(opp.stage)) return "Sin actividad reciente suficiente.";
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
 
@@ -70,6 +127,7 @@ export default async function handler(req, res) {
       citasRes,
       seguimientosRes,
       cierresRes,
+      interventionsRes,
     ] = await Promise.all([
       scoped.from("profiles").select("id, email, full_name, role_id, active").eq("active", true),
       scoped.from("gv_supervision_edges").select("id, supervisor_profile_id, subordinate_profile_id, scope, active").eq("scope", "ventas").eq("active", true),
@@ -86,10 +144,12 @@ export default async function handler(req, res) {
         .lte("fecha_hora", end),
       admin.from("seguimientos_cliente").select("id, cliente_id, asesor_id, tipo, created_at").gte("created_at", start),
       admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured, vendedor").gte("fecha_cierre", today.slice(0, 7) + "-01"),
+      scoped.from("gv_management_interventions").select("*, advisor:advisor_profile_id(id, email, full_name), actor:actor_profile_id(id, email, full_name)").order("created_at", { ascending: false }).limit(30),
     ]);
 
     const snapshotsMissing = snapshotsRes.error?.code === "PGRST205" || /gv_respond_contact_snapshots/i.test(snapshotsRes.error?.message || "");
-    const firstError = [profilesRes, edgesRes, availabilityRes, opportunitiesRes, snapshotsMissing ? { error: null } : snapshotsRes, citasRes, seguimientosRes, cierresRes].find((r) => r.error)?.error;
+    const interventionsMissing = interventionsRes.error?.code === "PGRST205" || /gv_management_interventions/i.test(interventionsRes.error?.message || "");
+    const firstError = [profilesRes, edgesRes, availabilityRes, opportunitiesRes, snapshotsMissing ? { error: null } : snapshotsRes, citasRes, seguimientosRes, cierresRes, interventionsMissing ? { error: null } : interventionsRes].find((r) => r.error)?.error;
     if (firstError) throw firstError;
 
     const profiles = profilesRes.data || [];
@@ -101,6 +161,7 @@ export default async function handler(req, res) {
     const cierres = cierresRes.data || [];
     const availability = availabilityRes.data || [];
     const edges = edgesRes.data || [];
+    const interventions = interventionsMissing ? [] : (interventionsRes.data || []);
 
     const visibleAdvisorIds = new Set();
     if (profile.role_id === ADVISOR_ROLE) visibleAdvisorIds.add(profile.id);
@@ -154,17 +215,73 @@ export default async function handler(req, res) {
         const advisorCitas = scopedCitas.filter((cita) => cita.asesor_id === advisor.id);
         const advisorSummary = calculateSummary({ opportunities: advisorOpps, snapshots: advisorSnaps, citas: advisorCitas, profileId: advisor.id });
         const availabilityNow = availability.find((a) => a.profile_id === advisor.id && a.starts_on <= today && (!a.ends_on || a.ends_on >= today));
+        const citasRequired = requiredCitasForAdvisor(advisor.id, availability, start.slice(0, 10), today);
+        const citaPct = kpiPct(advisorSummary.effectiveCitas, citasRequired);
         return {
           id: advisor.id,
           name: safeName(advisor),
           email: advisor.email,
           availability: availabilityNow?.status || "sin_configurar",
           capacityWeight: Number(availabilityNow?.capacity_weight ?? 1),
+          citasEffective: advisorSummary.effectiveCitas,
+          citasRequired,
+          kpiCitasPct: citaPct,
           summary: advisorSummary,
-          needsIntervention: advisorSummary.waitingResponses > 0 || advisorSummary.overdueActions > 0 || advisorSummary.riskOpportunities > 0,
+          needsIntervention: Number(availabilityNow?.capacity_weight ?? 1) > 0 && (citaPct < 70 || advisorSummary.waitingResponses > 0 || advisorSummary.overdueActions > 0 || advisorSummary.riskOpportunities > 0),
         };
       })
-      .sort((a, b) => Number(b.needsIntervention) - Number(a.needsIntervention) || a.name.localeCompare(b.name));
+      .map((row) => {
+        const signals = advisorSignals(row);
+        const score = signals.reduce((sum, signal) => sum + signal.weight, 0);
+        return {
+          ...row,
+          interventionScore: score,
+          interventionSignals: signals,
+          recommendedAction: recommendedAction(signals),
+          priorityVariant: priorityVariant(score),
+        };
+      })
+      .sort((a, b) => b.interventionScore - a.interventionScore || a.name.localeCompare(b.name));
+
+    const peoplePriorities = advisorRows
+      .filter((row) => row.capacityWeight > 0 && row.interventionSignals.length > 0)
+      .map((row) => ({
+        advisorId: row.id,
+        advisorName: row.name,
+        variant: row.priorityVariant,
+        score: row.interventionScore,
+        why: row.interventionSignals.map((signal) => signal.label),
+        explanation: `${row.name} requiere intervención por ${row.interventionSignals.map((signal) => signal.label).join(" + ")}.`,
+        recommendedAction: row.recommendedAction,
+      }));
+
+    const suggestedInterventions = peoplePriorities.map((priority) => ({
+      advisorId: priority.advisorId,
+      advisorName: priority.advisorName,
+      reason: priority.why.join(" + "),
+      indicators: priority.why,
+      recommendedAction: priority.recommendedAction,
+      variant: priority.variant,
+    }));
+
+    const operationsAttention = scopedOpportunities
+      .filter((opp) => scopedAdvisorIds.has(opp.asesor_id))
+      .map((opp) => ({
+        id: opp.id,
+        advisorId: opp.asesor_id,
+        advisorName: safeName(profilesById.get(opp.asesor_id)),
+        client: opp.clientes?.nombre || opp.title,
+        property: opp.propiedades?.titulo || "",
+        stage: opp.stage,
+        risk: opp.risk_level,
+        reason: stuckOperationReason(opp, today),
+        nextAction: opp.next_action,
+        nextActionAt: opp.next_action_at,
+        respondDeepLink: opp.respond_contact_id ? `https://app.respond.io/space/411886/inbox/${encodeURIComponent(String(opp.respond_contact_id))}` : null,
+      }))
+      .filter((opp) => opp.reason)
+      .sort((a, b) => (a.risk === "critico" ? -1 : 0) - (b.risk === "critico" ? -1 : 0) || String(a.nextActionAt || "").localeCompare(String(b.nextActionAt || "")))
+      .slice(0, 8);
 
     const monthClosedNew = scopedCierres
       .filter((c) => normalize(c.operation_type_structured || "nueva") !== "renovacion")
@@ -190,6 +307,10 @@ export default async function handler(req, res) {
       summary,
       managementSummary,
       advisorRows,
+      peoplePriorities,
+      suggestedInterventions,
+      operationsAttention,
+      interventions,
       items,
       workList: items,
       data: {

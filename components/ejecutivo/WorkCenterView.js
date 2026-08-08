@@ -208,6 +208,31 @@ function LoginPanel() {
 const inputStyle = { width: "100%", boxSizing: "border-box", border: "1px solid #d1d5db", borderRadius: 10, padding: "10px 12px", fontSize: 14 };
 const buttonStyle = { border: "none", background: brand.red, color: "#fff", borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 900, cursor: "pointer" };
 const secondaryButtonStyle = { ...buttonStyle, background: "#f9fafb", color: "#374151", border: "1px solid #e5e7eb" };
+const ghostLinkStyle = { color: "#374151", textDecoration: "none", border: "1px solid #e5e7eb", background: "#fff", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontWeight: 900 };
+
+function fmtPct(value) {
+  return `${Number(value || 0).toFixed(1).replace(".0", "")}%`;
+}
+
+function kpiTone(value) {
+  if (value < 40) return "critica";
+  if (value < 70) return "alta";
+  return "bajo";
+}
+
+function reviewDefaultDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 2);
+  return date.toISOString().slice(0, 10);
+}
+
+const interventionStatusLabels = {
+  pendiente: "Pendiente",
+  en_seguimiento: "En seguimiento",
+  corregida: "Corregida",
+  sin_mejora: "Sin mejora",
+  cerrada_decision_tomada: "Cerrada / decisión tomada",
+};
 
 export default function WorkCenterView({ type = "advisor" }) {
   const [session, setSession] = useState(null);
@@ -219,6 +244,8 @@ export default function WorkCenterView({ type = "advisor" }) {
   const [selectedAdvisor, setSelectedAdvisor] = useState("");
   const [filter, setFilter] = useState("todos");
   const [auditNote, setAuditNote] = useState("");
+  const [interventionDraft, setInterventionDraft] = useState(null);
+  const [savingIntervention, setSavingIntervention] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: current } }) => setSession(current));
@@ -293,6 +320,59 @@ export default function WorkCenterView({ type = "advisor" }) {
   const prioritySummaries = useMemo(() => priorityGroups(consolidatedItems), [consolidatedItems]);
   const title = isManagerView ? "Mi Gerencia" : "Mi Trabajo";
   const targetName = data?.target?.full_name || data?.target?.email || "";
+  const advisorById = useMemo(() => new Map((data?.advisorRows || []).map((advisor) => [advisor.id, advisor])), [data?.advisorRows]);
+
+  const openIntervention = (payload) => {
+    const advisor = advisorById.get(payload.advisorId) || {};
+    setInterventionDraft({
+      advisorId: payload.advisorId,
+      advisorName: payload.advisorName || advisor.name || "Asesor",
+      reason: payload.reason || payload.indicators?.join(" + ") || payload.why?.join(" + ") || "Revisión gerencial",
+      agreedAction: payload.recommendedAction || "revisar cartera",
+      reviewOn: reviewDefaultDate(),
+      notes: "",
+      indicators: payload.indicators || payload.why || [],
+    });
+  };
+
+  const submitIntervention = async () => {
+    if (!interventionDraft || !session?.access_token) return;
+    setSavingIntervention(true);
+    setError("");
+    try {
+      const res = await fetch("/api/ejecutivo/management-intervention", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          advisorProfileId: interventionDraft.advisorId,
+          reason: interventionDraft.reason,
+          agreedAction: interventionDraft.agreedAction,
+          reviewOn: interventionDraft.reviewOn || null,
+          notes: interventionDraft.notes,
+          indicators: { labels: interventionDraft.indicators },
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "No se pudo registrar la intervención.");
+      setInterventionDraft(null);
+      await loadData();
+    } catch (err) {
+      setError(err.message || "No se pudo registrar la intervención.");
+    } finally {
+      setSavingIntervention(false);
+    }
+  };
+
+  const updateInterventionStatus = async (id, status) => {
+    if (!session?.access_token) return;
+    const res = await fetch("/api/ejecutivo/management-intervention", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ id, status }),
+    });
+    if (!res.ok) setError("No se pudo actualizar la intervención.");
+    else await loadData();
+  };
 
   if (!session) return <LoginPanel />;
   if (!profile || loading && !data) return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Cargando centro de trabajo DEV...</div>;
@@ -320,6 +400,7 @@ export default function WorkCenterView({ type = "advisor" }) {
               {mode === "supervise" && <p style={{ margin: "10px 0 0", color: brand.red, fontWeight: 900 }}>Modo Supervisión — viendo a {targetName}</p>}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {isManagerView && <a href="/ejecutivo/gerencia-ventas" style={ghostLinkStyle}>Ver análisis completo</a>}
               <button onClick={() => loadData({ sync: true })} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Actualizar conversaciones"}</button>
               <button onClick={() => loadData()} style={secondaryButtonStyle}>Actualizar vista</button>
             </div>
@@ -353,7 +434,7 @@ export default function WorkCenterView({ type = "advisor" }) {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                 <div>
                   <h2 style={h2}>Supervisar</h2>
-                  <p style={muted}>Guillermo ve solo scope ventas. Admin puede bajar jerarquicamente sin impersonar.</p>
+                  <p style={muted}>Desempeño operativo del equipo para decidir a quién intervenir hoy.</p>
                 </div>
                 <select value={selectedAdvisor} onChange={(e) => setSelectedAdvisor(e.target.value)} style={inputStyle}>
                   <option value="">Vista gerencial del equipo</option>
@@ -366,10 +447,24 @@ export default function WorkCenterView({ type = "advisor" }) {
             </Panel>
           )}
 
+          {isManagerView && !selectedAdvisor && (
+            <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, .9fr)", gap: 16, marginBottom: 16 }}>
+              <PeoplePriorities priorities={data?.peoplePriorities || []} onSupervise={setSelectedAdvisor} onIntervene={openIntervention} />
+              <SuggestedInterventions items={data?.suggestedInterventions || []} onSupervise={setSelectedAdvisor} onIntervene={openIntervention} />
+            </section>
+          )}
+
+          {isManagerView && !selectedAdvisor && (
+            <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, .9fr)", gap: 16, marginBottom: 16 }}>
+              <OperationsAttention items={data?.operationsAttention || []} onSupervise={setSelectedAdvisor} />
+              <InterventionsTable items={data?.interventions || []} onStatusChange={updateInterventionStatus} />
+            </section>
+          )}
+
           <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.95fr) minmax(320px, 1.05fr)", gap: 16 }}>
             <Panel>
-              <h2 style={h2}>{isManagerView && !selectedAdvisor ? "Prioridades de Gerencia" : "Prioridades de hoy"}</h2>
-              <p style={muted}>Resumen accionable para decidir qué atender primero.</p>
+              <h2 style={h2}>{isManagerView && !selectedAdvisor ? "Prioridades generales" : "Prioridades de hoy"}</h2>
+              <p style={muted}>Agregados operativos del día como soporte a las prioridades por asesor.</p>
               <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
                 {prioritySummaries.map((group) => (
                   <PriorityGroup key={group.key} group={group} onView={() => setFilter(group.filter)} />
@@ -410,6 +505,15 @@ export default function WorkCenterView({ type = "advisor" }) {
           </section>
         </div>
       </main>
+      {interventionDraft && (
+        <InterventionModal
+          draft={interventionDraft}
+          setDraft={setInterventionDraft}
+          saving={savingIntervention}
+          onClose={() => setInterventionDraft(null)}
+          onSubmit={submitIntervention}
+        />
+      )}
     </Layout>
   );
 }
@@ -440,23 +544,144 @@ function AdvisorTable({ advisors, onPick }) {
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr>
-            {["Asesor", "Capacidad", "Esperando", "Vencidos", "Riesgo", "Pipeline", ""].map((h) => <th key={h} style={th}>{h}</th>)}
+            {["Asesor", "Citas KPI", "%", "Esperando", "Vencidos", "Riesgo", "Pipeline", "Capacidad", ""].map((h) => <th key={h} style={th}>{h}</th>)}
           </tr>
         </thead>
         <tbody>
           {advisors.map((row) => (
             <tr key={row.id}>
               <td style={td}><strong>{row.name}</strong><div style={muted}>{row.email}</div></td>
-              <td style={td}><Badge variant={row.capacityWeight > 0 ? "bajo" : "alta"}>{row.availability}</Badge></td>
+              <td style={td}><strong>{row.citasEffective || 0}/{row.citasRequired || 0}</strong></td>
+              <td style={td}><Badge variant={kpiTone(row.kpiCitasPct)}>{fmtPct(row.kpiCitasPct)}</Badge></td>
               <td style={td}>{row.summary.waitingResponses}</td>
               <td style={td}>{row.summary.overdueActions}</td>
               <td style={td}>{row.summary.riskOpportunities}</td>
               <td style={td}>{fmtMoney(row.summary.pipeline)}</td>
+              <td style={td}><Badge variant={row.capacityWeight > 0 ? "bajo" : "alta"}>{row.availability}</Badge></td>
               <td style={td}><button onClick={() => onPick(row.id)} style={secondaryButtonStyle}>Ver</button></td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function PeoplePriorities({ priorities, onSupervise, onIntervene }) {
+  return (
+    <Panel>
+      <h2 style={h2}>Quién requiere mi atención</h2>
+      <p style={muted}>Prioridad por persona, ordenada por severidad operativa.</p>
+      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        {priorities.length === 0 && <p style={muted}>Sin asesores que requieran intervención con los datos actuales.</p>}
+        {priorities.map((item) => (
+          <div key={item.advisorId} style={{ border: `1px solid ${tone[item.variant]?.border || "#e5e7eb"}`, background: tone[item.variant]?.bg || "#fff", borderRadius: 12, padding: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div>
+                <strong style={{ color: "#111827", fontSize: 15 }}>{item.advisorName}</strong>
+                <p style={{ ...muted, marginTop: 6 }}>{item.why.join(" + ")}</p>
+                <p style={{ margin: "8px 0 0", color: "#374151", fontSize: 13 }}>Corregir: <strong>{item.recommendedAction}</strong></p>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button onClick={() => onSupervise(item.advisorId)} style={secondaryButtonStyle}>Supervisar</button>
+                <button onClick={() => onIntervene(item)} style={buttonStyle}>Registrar intervención</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function SuggestedInterventions({ items, onSupervise, onIntervene }) {
+  return (
+    <Panel>
+      <h2 style={h2}>Intervenciones sugeridas</h2>
+      <p style={muted}>Acciones determinísticas. No usa IA ni score gerencial oficial.</p>
+      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        {items.length === 0 && <p style={muted}>Sin sugerencias pendientes.</p>}
+        {items.map((item) => (
+          <div key={item.advisorId} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
+            <strong style={{ color: "#111827" }}>{item.advisorName}</strong>
+            <p style={muted}>{item.reason}</p>
+            <p style={{ margin: "8px 0", fontSize: 13, color: "#374151" }}>Acción: <strong>{item.recommendedAction}</strong></p>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button onClick={() => onSupervise(item.advisorId)} style={secondaryButtonStyle}>Supervisar</button>
+              <button onClick={() => onIntervene(item)} style={buttonStyle}>Registrar intervención</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function OperationsAttention({ items, onSupervise }) {
+  return (
+    <Panel>
+      <h2 style={h2}>Operaciones que requieren atención</h2>
+      <p style={muted}>Solo señales confiables de oportunidades: riesgo, acción vencida o falta de actividad.</p>
+      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        {items.length === 0 && <p style={muted}>Sin operaciones atoradas detectables en Fase 2A.</p>}
+        {items.map((item) => (
+          <div key={item.id} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
+            <strong style={{ color: "#111827" }}>{item.client}</strong>
+            <p style={muted}>{item.property || item.stage} · {item.advisorName}</p>
+            <p style={{ margin: "8px 0", color: "#374151", fontSize: 13 }}>{item.reason}</p>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button onClick={() => onSupervise(item.advisorId)} style={secondaryButtonStyle}>Supervisar</button>
+              {item.respondDeepLink && <a href={item.respondDeepLink} target="_blank" rel="noreferrer" style={{ ...secondaryButtonStyle, textDecoration: "none" }}>Abrir conversación</a>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function InterventionsTable({ items, onStatusChange }) {
+  return (
+    <Panel>
+      <h2 style={h2}>Seguimiento de intervenciones</h2>
+      <p style={muted}>Historial mínimo para dar seguimiento sin crear todavía Score Gerencial.</p>
+      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        {items.length === 0 && <p style={muted}>Aún no hay intervenciones registradas.</p>}
+        {items.slice(0, 6).map((item) => (
+          <div key={item.id} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
+            <strong style={{ color: "#111827" }}>{item.advisor?.full_name || item.advisor?.email || "Asesor"}</strong>
+            <p style={muted}>{item.reason}</p>
+            <p style={{ margin: "8px 0", color: "#374151", fontSize: 13 }}>Acción: <strong>{item.agreed_action}</strong>{item.review_on ? ` · Revisión ${item.review_on}` : ""}</p>
+            <select value={item.status} onChange={(e) => onStatusChange(item.id, e.target.value)} style={{ ...inputStyle, maxWidth: 260 }}>
+              {Object.entries(interventionStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function InterventionModal({ draft, setDraft, saving, onClose, onSubmit }) {
+  const set = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,.45)", display: "grid", placeItems: "center", zIndex: 2000, padding: 16 }}>
+      <div style={{ width: "min(520px, 100%)", background: "#fff", borderRadius: 16, border: "1px solid #e5e7eb", padding: 20, boxShadow: "0 24px 80px rgba(17,24,39,.22)" }}>
+        <h2 style={{ ...h2, fontSize: 20 }}>Registrar intervención</h2>
+        <p style={{ ...muted, marginBottom: 14 }}>{draft.advisorName}</p>
+        <label style={labelStyle}>Motivo</label>
+        <input value={draft.reason} onChange={(e) => set("reason", e.target.value)} style={inputStyle} />
+        <label style={labelStyle}>Acción acordada</label>
+        <input value={draft.agreedAction} onChange={(e) => set("agreedAction", e.target.value)} style={inputStyle} />
+        <label style={labelStyle}>Fecha de revisión</label>
+        <input type="date" value={draft.reviewOn} onChange={(e) => set("reviewOn", e.target.value)} style={inputStyle} />
+        <label style={labelStyle}>Nota breve opcional</label>
+        <textarea value={draft.notes} onChange={(e) => set("notes", e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button onClick={onClose} style={secondaryButtonStyle}>Cancelar</button>
+          <button onClick={onSubmit} disabled={saving} style={buttonStyle}>{saving ? "Guardando..." : "Registrar"}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -530,3 +755,4 @@ function WorkTable({ items, onAudit, canAudit = false }) {
 
 const th = { textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #e5e7eb", color: "#6b7280", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4 };
 const td = { padding: "11px 8px", borderBottom: "1px solid #f3f4f6", color: "#374151", verticalAlign: "top" };
+const labelStyle = { display: "block", margin: "12px 0 5px", color: "#374151", fontSize: 12, fontWeight: 900 };
