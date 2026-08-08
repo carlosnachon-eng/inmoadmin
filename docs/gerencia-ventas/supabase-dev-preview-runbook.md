@@ -105,6 +105,11 @@ supabase/migrations/202608080001_fase_2a_gerencia_ventas_base.sql
 supabase/seed/202608080001_fase_2a_minimal_seed.sql
 ```
 
+El seed no requiere usuarios Auth previos para cargarse desde SQL Editor o con
+service role. Los campos que referencian `auth.users` se cargan como `null`.
+Para pruebas RLS completas si se requieren usuarios Auth reales en DEV y
+`profiles.id` alineado con `auth.users.id`.
+
 5. Validar tablas nuevas:
 
 ```sql

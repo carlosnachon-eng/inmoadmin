@@ -3,10 +3,10 @@
 -- Uso: ejecutar solo despues de aplicar la migracion base en Supabase DEV.
 --
 -- Este seed no contiene datos reales y no debe ejecutarse en Produccion.
--- Para pruebas RLS con login real, crea primero usuarios Auth de prueba en
--- Supabase DEV y ajusta los UUID de `profiles.id` para que coincidan con
--- auth.users.id. Si solo se valida estructura/datos con service role, los UUID
--- sinteticos pueden conservarse.
+-- No depende de usuarios Auth: los campos que referencian auth.users se cargan
+-- como null. Para pruebas RLS con login real, crea despues usuarios Auth de
+-- prueba en Supabase DEV y ajusta los UUID de `profiles.id` para que coincidan
+-- con auth.users.id.
 
 begin;
 
@@ -49,21 +49,21 @@ on conflict do nothing;
 insert into public.gv_supervision_edges
   (id, supervisor_profile_id, subordinate_profile_id, scope, starts_on, active, notes, created_by)
 values
-  ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000011', 'ventas', '2026-08-01', true, 'Gerente supervisa asesor Dev', '00000000-0000-4000-8000-000000000001'),
-  ('10000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000012', 'ventas', '2026-08-01', true, 'Gerente supervisa asesor Dev', '00000000-0000-4000-8000-000000000001'),
-  ('10000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000013', 'ventas', '2026-08-01', true, 'Gerente supervisa asesor Dev', '00000000-0000-4000-8000-000000000001'),
-  ('10000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000014', 'ventas', '2026-08-01', true, 'Gerente supervisa asesor Dev', '00000000-0000-4000-8000-000000000001'),
-  ('10000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000015', 'operaciones', '2026-08-01', true, 'Coordinacion supervisa ambito asignado Dev', '00000000-0000-4000-8000-000000000001')
+  ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000011', 'ventas', '2026-08-01', true, 'Gerente supervisa asesor Dev', null),
+  ('10000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000012', 'ventas', '2026-08-01', true, 'Gerente supervisa asesor Dev', null),
+  ('10000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000013', 'ventas', '2026-08-01', true, 'Gerente supervisa asesor Dev', null),
+  ('10000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000014', 'ventas', '2026-08-01', true, 'Gerente supervisa asesor Dev', null),
+  ('10000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000015', 'operaciones', '2026-08-01', true, 'Coordinacion supervisa ambito asignado Dev', null)
 on conflict (id) do nothing;
 
 insert into public.gv_advisor_availability
   (id, profile_id, starts_on, ends_on, status, capacity_weight, reason, notes, created_by)
 values
-  ('11000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '2026-08-01', null, 'evaluable', 1, 'Activo Dev', null, '00000000-0000-4000-8000-000000000001'),
-  ('11000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000012', '2026-08-01', '2026-08-15', 'ausencia_temporal', 0, 'Ausencia temporal Dev', 'Caso para validar capacidad disponible', '00000000-0000-4000-8000-000000000001'),
-  ('11000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000013', '2026-08-01', '2026-08-20', 'fuera_temporal', 0, 'Fuera temporal Dev', 'Caso para validar exclusion evaluable', '00000000-0000-4000-8000-000000000001'),
-  ('11000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000014', '2026-08-01', null, 'evaluable', 1, 'Activo Dev', null, '00000000-0000-4000-8000-000000000001'),
-  ('11000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-000000000015', '2026-08-01', null, 'evaluable', 1, 'Activo Dev', null, '00000000-0000-4000-8000-000000000001')
+  ('11000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '2026-08-01', null, 'evaluable', 1, 'Activo Dev', null, null),
+  ('11000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000012', '2026-08-01', '2026-08-15', 'ausencia_temporal', 0, 'Ausencia temporal Dev', 'Caso para validar capacidad disponible', null),
+  ('11000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000013', '2026-08-01', '2026-08-20', 'fuera_temporal', 0, 'Fuera temporal Dev', 'Caso para validar exclusion evaluable', null),
+  ('11000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000014', '2026-08-01', null, 'evaluable', 1, 'Activo Dev', null, null),
+  ('11000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-000000000015', '2026-08-01', null, 'evaluable', 1, 'Activo Dev', null, null)
 on conflict (id) do nothing;
 
 insert into public.clientes (id, nombre, telefono, correo, etapa_interes, notas, asesor_id)
@@ -125,8 +125,8 @@ on conflict (id) do nothing;
 insert into public.cierres
   (id, anio, mes, mes_nombre, propiedad, fecha_cierre, operacion, precio, comision, cobrado, pendiente, vendedor, com_vendedor, pag_vendedor, pend_vend, comision_inmobiliaria, advisor_profile_id, operation_type_structured, operation_type_confidence, operation_type_source, classified_by, classified_at, classification_notes)
 values
-  ('60000000-0000-4000-8000-000000000001', 2026, 8, 'Agosto', 'Casa Dev San Andres', '2026-08-07', 'Venta', 3200000, 96000, 96000, 0, 'Ari Dev', 38400, 0, 38400, 57600, '00000000-0000-4000-8000-000000000011', 'nueva', 'manual_confirmed', 'seed_dev', '00000000-0000-4000-8000-000000000001', now(), 'Cierre nuevo sintetico'),
-  ('60000000-0000-4000-8000-000000000002', 2026, 8, 'Agosto', 'Casa Renovacion Dev', '2026-08-09', 'Renta', 22000, 11000, 11000, 0, 'Amanda Dev', 4400, 0, 4400, 6600, '00000000-0000-4000-8000-000000000015', 'renovacion', 'manual_confirmed', 'seed_dev', '00000000-0000-4000-8000-000000000001', now(), 'Renovacion sintetica fuera de meta nueva')
+  ('60000000-0000-4000-8000-000000000001', 2026, 8, 'Agosto', 'Casa Dev San Andres', '2026-08-07', 'Venta', 3200000, 96000, 96000, 0, 'Ari Dev', 38400, 0, 38400, 57600, '00000000-0000-4000-8000-000000000011', 'nueva', 'manual_confirmed', 'seed_dev', null, now(), 'Cierre nuevo sintetico'),
+  ('60000000-0000-4000-8000-000000000002', 2026, 8, 'Agosto', 'Casa Renovacion Dev', '2026-08-09', 'Renta', 22000, 11000, 11000, 0, 'Amanda Dev', 4400, 0, 4400, 6600, '00000000-0000-4000-8000-000000000015', 'renovacion', 'manual_confirmed', 'seed_dev', null, now(), 'Renovacion sintetica fuera de meta nueva')
 on conflict (id) do update set
   advisor_profile_id = excluded.advisor_profile_id,
   operation_type_structured = excluded.operation_type_structured,
@@ -139,10 +139,10 @@ on conflict (id) do update set
 insert into public.gv_opportunities
   (id, title, cliente_id, propiedad_id, asesor_id, stage, operation_type, forecast_category, probability_pct, estimated_price, estimated_commission, expected_close_date, next_action, next_action_at, risk_level, risk_reason, qualified_at, closed_at, cierre_id, lost_reason, lost_reason_category, offer_amount, apartado_amount, source, source_external_id, respond_contact_id, respond_conversation_id, respond_channel, respond_assignee_id, respond_status, respond_first_activity_at, respond_last_inbound_at, respond_last_outbound_at, last_activity_at, notes, created_by, updated_by)
 values
-  ('70000000-0000-4000-8000-000000000001', 'Venta Casa Dev San Andres', '20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', 'cierre_ganado', 'nueva', 'commit', 100, 3200000, 96000, '2026-08-07', 'Enviar agradecimiento y pedir referido', '2026-08-10 10:00:00-06', 'bajo', null, '2026-08-05 18:00:00-06', '2026-08-07 17:00:00-06', '60000000-0000-4000-8000-000000000001', null, null, 3150000, 50000, 'manual', null, null, null, null, null, null, null, null, null, '2026-08-07 17:00:00-06', 'Oportunidad nueva ganada', '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000002'),
-  ('70000000-0000-4000-8000-000000000002', 'Renta Departamento Dev Cholula', '20000000-0000-4000-8000-000000000003', '30000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000014', 'oferta', 'nueva', 'best_case', 65, 18000, 18000, '2026-08-20', 'Negociar condiciones de renta', '2026-08-09 13:00:00-06', 'normal', null, '2026-08-06 13:00:00-06', null, null, null, null, 17000, null, 'respond_io', 'respond-dev-001', 'contact-dev-001', 'conversation-dev-001', 'whatsapp', 'assignee-dev-ivan', 'open', '2026-08-04 09:00:00-06', '2026-08-08 09:30:00-06', '2026-08-08 09:45:00-06', '2026-08-08 09:45:00-06', 'Oportunidad con metadatos Respond.io sinteticos', '00000000-0000-4000-8000-000000000014', '00000000-0000-4000-8000-000000000014'),
-  ('70000000-0000-4000-8000-000000000003', 'Renovacion Casa Dev', null, '30000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000015', 'cierre_ganado', 'renovacion', 'commit', 100, 22000, 11000, '2026-08-09', 'Archivar renovacion', '2026-08-12 10:00:00-06', 'bajo', null, null, '2026-08-09 16:00:00-06', '60000000-0000-4000-8000-000000000002', null, null, null, null, 'manual', null, null, null, null, null, null, null, null, null, '2026-08-09 16:00:00-06', 'Renovacion separada de produccion nueva', '00000000-0000-4000-8000-000000000015', '00000000-0000-4000-8000-000000000015'),
-  ('70000000-0000-4000-8000-000000000004', 'Cliente perdido por credito Dev', '20000000-0000-4000-8000-000000000004', '30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000015', 'cierre_perdido', 'nueva', 'omitido', 0, 3200000, 96000, '2026-08-18', 'Sin siguiente accion', null, 'alto', 'Cliente no califico credito', null, null, null, 'No califico credito hipotecario', 'credito', null, null, 'manual', null, null, null, null, null, null, null, null, null, '2026-08-08 12:00:00-06', 'Operacion perdida sintetica', '00000000-0000-4000-8000-000000000015', '00000000-0000-4000-8000-000000000002')
+  ('70000000-0000-4000-8000-000000000001', 'Venta Casa Dev San Andres', '20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', 'cierre_ganado', 'nueva', 'commit', 100, 3200000, 96000, '2026-08-07', 'Enviar agradecimiento y pedir referido', '2026-08-10 10:00:00-06', 'bajo', null, '2026-08-05 18:00:00-06', '2026-08-07 17:00:00-06', '60000000-0000-4000-8000-000000000001', null, null, 3150000, 50000, 'manual', null, null, null, null, null, null, null, null, null, '2026-08-07 17:00:00-06', 'Oportunidad nueva ganada', null, null),
+  ('70000000-0000-4000-8000-000000000002', 'Renta Departamento Dev Cholula', '20000000-0000-4000-8000-000000000003', '30000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000014', 'oferta', 'nueva', 'best_case', 65, 18000, 18000, '2026-08-20', 'Negociar condiciones de renta', '2026-08-09 13:00:00-06', 'normal', null, '2026-08-06 13:00:00-06', null, null, null, null, 17000, null, 'respond_io', 'respond-dev-001', 'contact-dev-001', 'conversation-dev-001', 'whatsapp', 'assignee-dev-ivan', 'open', '2026-08-04 09:00:00-06', '2026-08-08 09:30:00-06', '2026-08-08 09:45:00-06', '2026-08-08 09:45:00-06', 'Oportunidad con metadatos Respond.io sinteticos', null, null),
+  ('70000000-0000-4000-8000-000000000003', 'Renovacion Casa Dev', null, '30000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000015', 'cierre_ganado', 'renovacion', 'commit', 100, 22000, 11000, '2026-08-09', 'Archivar renovacion', '2026-08-12 10:00:00-06', 'bajo', null, null, '2026-08-09 16:00:00-06', '60000000-0000-4000-8000-000000000002', null, null, null, null, 'manual', null, null, null, null, null, null, null, null, null, '2026-08-09 16:00:00-06', 'Renovacion separada de produccion nueva', null, null),
+  ('70000000-0000-4000-8000-000000000004', 'Cliente perdido por credito Dev', '20000000-0000-4000-8000-000000000004', '30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000015', 'cierre_perdido', 'nueva', 'omitido', 0, 3200000, 96000, '2026-08-18', 'Sin siguiente accion', null, 'alto', 'Cliente no califico credito', null, null, null, 'No califico credito hipotecario', 'credito', null, null, 'manual', null, null, null, null, null, null, null, null, null, '2026-08-08 12:00:00-06', 'Operacion perdida sintetica', null, null)
 on conflict (id) do update set
   stage = excluded.stage,
   operation_type = excluded.operation_type,
