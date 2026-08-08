@@ -21,12 +21,6 @@ const VALIDACION_HISTORICA = {
 // Debe reemplazarse en Fase 2 por una tabla/modelo formal de ausencias y capacidad.
 const EXCLUSIONES_TEMPORALES_FASE_1 = [
   {
-    email: "arinnet81@gmail.com",
-    fechaInicio: "2026-07-07",
-    fechaFin: "2026-12-31",
-    motivo: "Posible perfil duplicado sin actividad",
-  },
-  {
     email: "nextelmoto2@gmail.com",
     fechaInicio: "2026-08-01",
     fechaFin: "2026-08-31",
