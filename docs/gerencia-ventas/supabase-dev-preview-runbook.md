@@ -99,7 +99,17 @@ Fase 2A con seed sintetico.
 supabase/migrations/202608080001_fase_2a_gerencia_ventas_base.sql
 ```
 
-4. Ejecutar seed minimo sintetico en DEV/PREVIEW:
+4. Ejecutar grants para REST/RLS en DEV/PREVIEW:
+
+```text
+supabase/migrations/202608080002_fase_2a_dev_grants.sql
+```
+
+Este script no desactiva RLS ni abre acceso anonimo. Solo permite que
+`authenticated` y `service_role` tengan privilegios SQL suficientes para que
+PostgREST pueda evaluar las policies.
+
+5. Ejecutar seed minimo sintetico en DEV/PREVIEW:
 
 ```text
 supabase/seed/202608080001_fase_2a_minimal_seed.sql
