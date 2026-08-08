@@ -34,6 +34,7 @@ export const nav = [
   { id: "commissions",   label: "Comisiones",         icon: "💼",  link: "/comisiones",         modulo: "comisiones" },
   { id: "cierres",       label: "Cierres",            icon: "📊",  link: "/cierres",            modulo: "cierres" },
   { id: "ejecutivo",     label: "Resumen Ejecutivo",  icon: "👑",  link: "/ejecutivo",          modulo: "ejecutivo" },
+  { id: "gerencia_ventas", label: "Gerencia Ventas",  icon: "📈",  link: "/ejecutivo/gerencia-ventas", modulo: "ejecutivo" },
   { id: "firmas",        label: "Firmas",             icon: "📝",  link: "/firmas",             modulo: "firmas" },
   { id: "poliza",        label: "Póliza",             icon: "⚖️",  link: "/poliza",             modulo: "poliza" },
   { id: "dictamen",      label: "Dictamen",           icon: "📋",  link: "/dictamen",           modulo: "dictamen" },
