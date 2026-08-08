@@ -16,6 +16,30 @@ const VALIDACION_HISTORICA = {
   "2026-07": 232750,
 };
 
+// Solucion temporal Fase 1: exclusiones manuales solo para lectura gerencial.
+// No modifica Supabase, accesos, asignacion de leads, KPIs historicos ni workflows.
+// Debe reemplazarse en Fase 2 por una tabla/modelo formal de ausencias y capacidad.
+const EXCLUSIONES_TEMPORALES_FASE_1 = [
+  {
+    email: "arinnet81@gmail.com",
+    fechaInicio: "2026-07-07",
+    fechaFin: "2026-12-31",
+    motivo: "Posible perfil duplicado sin actividad",
+  },
+  {
+    email: "nextelmoto2@gmail.com",
+    fechaInicio: "2026-08-01",
+    fechaFin: "2026-08-31",
+    motivo: "Ausencia temporal",
+  },
+  {
+    email: "rddd298@gmail.com",
+    fechaInicio: "2026-08-01",
+    fechaFin: "2026-08-31",
+    motivo: "Ausencia temporal",
+  },
+];
+
 const fmtMoney = (value) => new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
@@ -48,6 +72,13 @@ const normalize = (value) => String(value || "").trim().toLowerCase();
 const esRenovacionTemporal = (cierre) => normalize(cierre?.propiedad).startsWith("renov");
 
 const nombrePerfil = (perfil) => perfil?.full_name || perfil?.email || "Sin nombre";
+
+const exclusionTemporalFase1 = (perfil, corte) => EXCLUSIONES_TEMPORALES_FASE_1.find((exclusion) => {
+  const email = normalize(perfil?.email);
+  return email === normalize(exclusion.email)
+    && corte >= exclusion.fechaInicio
+    && corte <= exclusion.fechaFin;
+});
 
 const normVendedor = (value) => {
   const s = normalize(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -253,10 +284,20 @@ export default function GerenciaVentasDashboard() {
     const diaEvaluado = esMesActual ? corteDay : daysInMonth(year, month);
     const diasEvaluables = countNonSundayDays(year, month, diaEvaluado);
     const partnerEmails = new Set((data.partners || []).map((p) => normalize(p.email)));
-    const asesoresComerciales = (data.profiles || [])
+    const asesoresComercialesTotales = (data.profiles || [])
       .filter((p) => p.active !== false && ROLES_ASESORES.has(p.role_id) && !partnerEmails.has(normalize(p.email)))
       .map((p) => ({ ...p, nombre: nombrePerfil(p) }))
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
+    const asesoresExcluidos = asesoresComercialesTotales
+      .map((asesor) => {
+        const exclusion = exclusionTemporalFase1(asesor, corte);
+        return exclusion ? { ...asesor, exclusion } : null;
+      })
+      .filter(Boolean);
+    const emailsExcluidos = new Set(asesoresExcluidos.map((asesor) => normalize(asesor.email)));
+    const idsExcluidos = new Set(asesoresExcluidos.map((asesor) => asesor.id));
+    const asesoresComerciales = asesoresComercialesTotales.filter((asesor) => !emailsExcluidos.has(normalize(asesor.email)));
+    const idsEvaluables = new Set(asesoresComerciales.map((asesor) => asesor.id));
     const profileById = new Map((data.profiles || []).map((p) => [p.id, p]));
     const nameById = (id) => nombrePerfil(profileById.get(id));
 
@@ -274,8 +315,9 @@ export default function GerenciaVentasDashboard() {
       const fecha = fechaMx(cita.fecha_hora);
       return fecha >= start && fecha <= corte;
     });
-    const citasEfectivas = citasHastaCorte.filter((cita) => cita.estado === "efectiva" || cita.estado === "calificada");
-    const citasCalificadas = citasHastaCorte.filter((cita) => cita.estado === "calificada");
+    const citasEvaluables = citasHastaCorte.filter((cita) => idsEvaluables.has(cita.asesor_id));
+    const citasEfectivas = citasEvaluables.filter((cita) => cita.estado === "efectiva" || cita.estado === "calificada");
+    const citasCalificadas = citasEvaluables.filter((cita) => cita.estado === "calificada");
     const requeridasEquipo = asesoresComerciales.length * diasEvaluables * META_CITAS_DIARIAS;
     const avanceMeta = totalNuevo / META_MENSUAL_NUEVA;
     const avanceCitas = requeridasEquipo ? citasEfectivas.length / requeridasEquipo : 0;
@@ -295,7 +337,7 @@ export default function GerenciaVentasDashboard() {
     });
 
     const corteFinal = new Date(`${corte}T23:59:59-06:00`);
-    const clientesActivos = (data.clientes || []).filter((c) => !["perdido", "cerrado"].includes(normalize(c.etapa_interes)));
+    const clientesActivos = (data.clientes || []).filter((c) => !["perdido", "cerrado"].includes(normalize(c.etapa_interes)) && !idsExcluidos.has(c.asesor_id));
     const riesgoCliente = (cliente) => {
       const citasCliente = citasByCliente.get(cliente.id) || [];
       const tieneCitaFutura = citasCliente.some((cita) => cita.estado === "agendada" && new Date(cita.fecha_hora) > corteFinal);
@@ -371,9 +413,10 @@ export default function GerenciaVentasDashboard() {
       end,
       corte,
       diasEvaluables,
+      asesoresComercialesTotales,
       asesoresComerciales,
-      asesoresTemporalesFuera: null,
-      capacidadDisponible: asesoresComerciales.length ? 1 : 0,
+      asesoresExcluidos,
+      capacidadDisponible: asesoresComercialesTotales.length ? asesoresComerciales.length / asesoresComercialesTotales.length : 0,
       cierresNuevos,
       renovaciones,
       totalNuevo,
@@ -453,7 +496,7 @@ export default function GerenciaVentasDashboard() {
             <Card label="Cerrado nuevo" value={fmtMoney(lectura.totalNuevo)} sub={`${pct(lectura.totalNuevo, META_MENSUAL_NUEVA)} de cumplimiento al corte ${lectura.corte}.`} tone={lectura.avanceMeta >= 1 ? "green" : lectura.avanceMeta >= 0.65 ? "yellow" : "red"} />
             <Card label="Renovaciones separadas" value={fmtMoney(lectura.totalRenovaciones)} sub={`${lectura.renovaciones.length} cierre(s) clasificados temporalmente por nombre Renov*.`} />
             <Card label="Citas efectivas" value={`${lectura.citasEfectivas} / ${lectura.requeridasEquipo}`} sub={`${pct(lectura.citasEfectivas, lectura.requeridasEquipo)} del requerido acumulado.`} tone={lectura.citasEfectivas >= lectura.requeridasEquipo ? "green" : lectura.citasEfectivas >= lectura.requeridasEquipo * 0.65 ? "yellow" : "red"} />
-            <Card label="Asesores cumpliendo" value={`${Math.round(lectura.cumplimientoAsesores * lectura.asesorRows.length)} / ${lectura.asesorRows.length}`} sub="Solo asesores activos/evaluables; sin tabla de ausencias en Fase 1." tone={lectura.cumplimientoAsesores >= 0.9 ? "green" : lectura.cumplimientoAsesores >= 0.65 ? "yellow" : "red"} />
+            <Card label="Asesores cumpliendo" value={`${Math.round(lectura.cumplimientoAsesores * lectura.asesorRows.length)} / ${lectura.asesorRows.length}`} sub={`${lectura.asesoresExcluidos.length} exclusion(es) temporales Fase 1.`} tone={lectura.cumplimientoAsesores >= 0.9 ? "green" : lectura.cumplimientoAsesores >= 0.65 ? "yellow" : "red"} />
             <Card label="Conversión operativa" value={lectura.citasCalificadas ? pct(lectura.cierresNuevos.length, lectura.citasCalificadas) : "n/d"} sub={`Cierres nuevos / citas calificadas del periodo. Referencia: ${Math.round(META_CONVERSION_OPERATIVA * 100)}%.`} />
           </section>
 
@@ -510,8 +553,24 @@ export default function GerenciaVentasDashboard() {
               </div>
               <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: 12 }}>
                 <p style={{ margin: 0, color: "#6b7280", fontSize: 12, fontWeight: 800, textTransform: "uppercase" }}>Capacidad comercial</p>
-                <p style={{ margin: "8px 0 0", fontSize: 24, fontWeight: 900, color: "#111827" }}>{lectura.asesoresComerciales.length} asesores</p>
-                <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: 12 }}>Fuera temporal: no disponible en datos actuales. No se aplicaron exclusiones por ausencia.</p>
+                <p style={{ margin: "8px 0 0", fontSize: 24, fontWeight: 900, color: "#111827" }}>{lectura.asesoresComerciales.length} / {lectura.asesoresComercialesTotales.length} evaluables</p>
+                <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: 12 }}>{pct(lectura.asesoresComerciales.length, lectura.asesoresComercialesTotales.length)} de capacidad disponible para lectura gerencial.</p>
+              </div>
+              <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: 12 }}>
+                <p style={{ margin: 0, color: "#6b7280", fontSize: 12, fontWeight: 800, textTransform: "uppercase" }}>Exclusiones temporales Fase 1</p>
+                {lectura.asesoresExcluidos.length === 0 ? (
+                  <p style={{ margin: "8px 0 0", color: "#6b7280", fontSize: 12 }}>Sin exclusiones aplicadas al corte.</p>
+                ) : (
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    {lectura.asesoresExcluidos.map((asesor) => (
+                      <div key={asesor.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, background: "#f9fafb" }}>
+                        <strong style={{ display: "block", color: "#111827", fontSize: 12 }}>{asesor.nombre}</strong>
+                        <span style={{ display: "block", color: "#6b7280", fontSize: 11 }}>{asesor.email}</span>
+                        <span style={{ display: "block", color: "#6b7280", fontSize: 11, marginTop: 4 }}>{asesor.exclusion.motivo}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: 12 }}>
                 <p style={{ margin: 0, color: "#6b7280", fontSize: 12, fontWeight: 800, textTransform: "uppercase" }}>Clientes en riesgo</p>
@@ -578,7 +637,7 @@ export default function GerenciaVentasDashboard() {
             <h2 style={styles.h2}>Limitaciones de Fase 1</h2>
             <ul style={{ margin: "12px 0 0", color: "#4b5563", lineHeight: 1.7, paddingLeft: 20 }}>
               <li>La clasificación de renovaciones usa temporalmente el prefijo Renov*; la arquitectura definitiva debe usar un campo estructurado.</li>
-              <li>No hay tabla de ausencias, por lo que todos los asesores activos cuentan como evaluables.</li>
+              <li>No hay tabla de ausencias; las exclusiones de capacidad son manuales, temporales y solo afectan esta lectura gerencial.</li>
               <li>No hay pipeline ni forecast estructurado; la Salud Comercial es preliminar.</li>
               <li>La conversión mostrada es operativa del periodo; todavía no es conversión por cohorte.</li>
               <li>El campo `cierres.vendedor` sigue siendo texto, no una relación formal con `profiles.id`.</li>
