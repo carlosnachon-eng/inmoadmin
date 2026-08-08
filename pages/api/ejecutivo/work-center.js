@@ -74,18 +74,18 @@ export default async function handler(req, res) {
       scoped.from("profiles").select("id, email, full_name, role_id, active").eq("active", true),
       scoped.from("gv_supervision_edges").select("id, supervisor_profile_id, subordinate_profile_id, scope, active").eq("scope", "ventas").eq("active", true),
       scoped.from("gv_advisor_availability").select("id, profile_id, status, capacity_weight, reason, starts_on, ends_on"),
-      scoped
+      admin
         .from("gv_opportunities")
         .select("*, clientes:cliente_id(nombre, telefono, correo), propiedades:propiedad_id(titulo, public_id)")
         .order("next_action_at", { ascending: true, nullsFirst: false }),
       scoped.from("gv_respond_contact_snapshots").select("*").order("respond_last_synced_at", { ascending: false }),
-      scoped
+      admin
         .from("citas")
         .select("id, cliente_id, propiedad_id, asesor_id, fecha_hora, estado, notas, clientes(nombre), propiedades(titulo)")
         .gte("fecha_hora", start)
         .lte("fecha_hora", end),
-      scoped.from("seguimientos_cliente").select("id, cliente_id, asesor_id, tipo, created_at").gte("created_at", start),
-      scoped.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured, vendedor").gte("fecha_cierre", today.slice(0, 7) + "-01"),
+      admin.from("seguimientos_cliente").select("id, cliente_id, asesor_id, tipo, created_at").gte("created_at", start),
+      admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured, vendedor").gte("fecha_cierre", today.slice(0, 7) + "-01"),
     ]);
 
     const snapshotsMissing = snapshotsRes.error?.code === "PGRST205" || /gv_respond_contact_snapshots/i.test(snapshotsRes.error?.message || "");
@@ -118,10 +118,16 @@ export default async function handler(req, res) {
       return res.status(403).json({ ok: false, error: "El perfil solicitado esta fuera del scope ventas permitido." });
     }
 
-    const targetOpportunities = effectiveTargetId ? opportunities.filter((opp) => opp.asesor_id === effectiveTargetId) : opportunities;
+    const scopedAdvisorIds = visibleAdvisorIds.size ? visibleAdvisorIds : new Set([profile.id]);
+    const scopedOpportunities = opportunities.filter((opp) => scopedAdvisorIds.has(opp.asesor_id));
+    const scopedCitas = citas.filter((cita) => scopedAdvisorIds.has(cita.asesor_id));
+    const scopedSeguimientos = seguimientos.filter((seg) => scopedAdvisorIds.has(seg.asesor_id));
+    const scopedCierres = cierres.filter((cierre) => !cierre.advisor_profile_id || scopedAdvisorIds.has(cierre.advisor_profile_id));
+
+    const targetOpportunities = effectiveTargetId ? scopedOpportunities.filter((opp) => opp.asesor_id === effectiveTargetId) : scopedOpportunities;
     const targetSnapshots = effectiveTargetId ? snapshots.filter((snap) => snap.mapped_profile_id === effectiveTargetId) : snapshots;
-    const targetCitas = effectiveTargetId ? citas.filter((cita) => cita.asesor_id === effectiveTargetId) : citas;
-    const targetSeguimientos = effectiveTargetId ? seguimientos.filter((seg) => seg.asesor_id === effectiveTargetId) : seguimientos;
+    const targetCitas = effectiveTargetId ? scopedCitas.filter((cita) => cita.asesor_id === effectiveTargetId) : scopedCitas;
+    const targetSeguimientos = effectiveTargetId ? scopedSeguimientos.filter((seg) => seg.asesor_id === effectiveTargetId) : scopedSeguimientos;
 
     const items = buildWorkItems({
       profileId: effectiveTargetId,
@@ -143,9 +149,9 @@ export default async function handler(req, res) {
       .filter(Boolean)
       .filter((p) => p.role_id === ADVISOR_ROLE)
       .map((advisor) => {
-        const advisorOpps = opportunities.filter((opp) => opp.asesor_id === advisor.id);
+        const advisorOpps = scopedOpportunities.filter((opp) => opp.asesor_id === advisor.id);
         const advisorSnaps = snapshots.filter((snap) => snap.mapped_profile_id === advisor.id);
-        const advisorCitas = citas.filter((cita) => cita.asesor_id === advisor.id);
+        const advisorCitas = scopedCitas.filter((cita) => cita.asesor_id === advisor.id);
         const advisorSummary = calculateSummary({ opportunities: advisorOpps, snapshots: advisorSnaps, citas: advisorCitas, profileId: advisor.id });
         const availabilityNow = availability.find((a) => a.profile_id === advisor.id && a.starts_on <= today && (!a.ends_on || a.ends_on >= today));
         return {
@@ -160,14 +166,14 @@ export default async function handler(req, res) {
       })
       .sort((a, b) => Number(b.needsIntervention) - Number(a.needsIntervention) || a.name.localeCompare(b.name));
 
-    const monthClosedNew = cierres
+    const monthClosedNew = scopedCierres
       .filter((c) => normalize(c.operation_type_structured || "nueva") !== "renovacion")
       .reduce((sum, c) => sum + Number(c.comision || 0), 0);
     const managementSummary = {
       metaEquipo: META_MENSUAL_NUEVA,
       cerradoNuevo: monthClosedNew,
-      pipeline: opportunities.filter((opp) => opp.operation_type === "nueva" && !["cierre_ganado", "cierre_perdido"].includes(opp.stage)).reduce((sum, opp) => sum + Number(opp.estimated_commission || 0), 0),
-      citasEquipo: citas.filter((cita) => ["efectiva", "calificada"].includes(cita.estado)).length,
+      pipeline: scopedOpportunities.filter((opp) => opp.operation_type === "nueva" && !["cierre_ganado", "cierre_perdido"].includes(opp.stage)).reduce((sum, opp) => sum + Number(opp.estimated_commission || 0), 0),
+      citasEquipo: scopedCitas.filter((cita) => ["efectiva", "calificada"].includes(cita.estado)).length,
       citasRequeridasDia: advisorRows.filter((row) => row.capacityWeight > 0).length * META_CITAS_DIARIAS,
       asesoresRequierenIntervencion: advisorRows.filter((row) => row.needsIntervention).length,
       clientesEsperandoRespuesta: summary.waitingResponses,

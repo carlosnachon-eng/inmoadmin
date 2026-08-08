@@ -121,6 +121,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   const isManagerView = type === "manager";
   const canUseManager = ["admin", "gerente_ventas"].includes(profile?.role_id);
   const mode = isManagerView ? (selectedAdvisor ? "supervise" : "management") : "mine";
+  const canRegisterSupervision = isManagerView && mode === "supervise" && canUseManager;
 
   const loadData = async ({ sync = false } = {}) => {
     if (!session?.access_token || !profile) return;
@@ -257,7 +258,7 @@ export default function WorkCenterView({ type = "advisor" }) {
                   <button key={key} onClick={() => setFilter(key)} style={filter === key ? buttonStyle : secondaryButtonStyle}>{label}</button>
                 ))}
               </div>
-              <WorkTable items={visibleItems} onAudit={async (item) => {
+              <WorkTable items={visibleItems} canAudit={canRegisterSupervision} onAudit={async (item) => {
                 if (!item.opportunityId) return;
                 const res = await fetch("/api/ejecutivo/work-center-event", {
                   method: "POST",
@@ -270,7 +271,9 @@ export default function WorkCenterView({ type = "advisor" }) {
                   await loadData();
                 }
               }} />
-              <input value={auditNote} onChange={(e) => setAuditNote(e.target.value)} placeholder="Nota breve para intervención gerencial" style={{ ...inputStyle, marginTop: 12 }} />
+              {canRegisterSupervision && (
+                <input value={auditNote} onChange={(e) => setAuditNote(e.target.value)} placeholder="Nota breve para intervención gerencial" style={{ ...inputStyle, marginTop: 12 }} />
+              )}
             </Panel>
           </section>
 
@@ -335,7 +338,7 @@ function AdvisorTable({ advisors, onPick }) {
   );
 }
 
-function WorkTable({ items, onAudit }) {
+function WorkTable({ items, onAudit, canAudit = false }) {
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -355,7 +358,7 @@ function WorkTable({ items, onAudit }) {
               <td style={td}>{item.nextAction}</td>
               <td style={td}><Badge variant={item.risk === "critico" ? "critica" : item.risk === "alto" ? "alta" : "normal"}>{item.risk || "normal"}</Badge></td>
               <td style={td}>{item.channel || "n/d"}<div style={muted}>{item.conversationStatus || ""}</div></td>
-              <td style={td}>{item.opportunityId && <button onClick={() => onAudit(item)} style={secondaryButtonStyle}>Intervenir</button>}</td>
+              <td style={td}>{canAudit && item.opportunityId && <button onClick={() => onAudit(item)} style={secondaryButtonStyle}>Intervenir</button>}</td>
             </tr>
           ))}
         </tbody>

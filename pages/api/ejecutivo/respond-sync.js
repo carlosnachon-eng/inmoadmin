@@ -167,6 +167,33 @@ async function syncRespond(admin, profiles, actorProfile) {
   }
 
   if (snapshots.length) {
+    const { data: existingSnapshots, error: existingError } = await admin
+      .from("gv_respond_contact_snapshots")
+      .select("respond_contact_id, mapped_profile_id, mapping_status, metadata")
+      .in("respond_contact_id", snapshots.map((snapshot) => snapshot.respond_contact_id));
+    if (existingError?.code === "PGRST205" || /gv_respond_contact_snapshots/i.test(existingError?.message || "")) {
+      const migrationError = new Error("RESPOND_SNAPSHOTS_MIGRATION_REQUIRED");
+      migrationError.statusCode = 424;
+      throw migrationError;
+    }
+    if (existingError) throw existingError;
+
+    const existingByContact = new Map((existingSnapshots || []).map((snapshot) => [snapshot.respond_contact_id, snapshot]));
+    snapshots.forEach((snapshot) => {
+      const existing = existingByContact.get(snapshot.respond_contact_id);
+      if (!snapshot.mapped_profile_id && existing?.mapped_profile_id) {
+        snapshot.mapped_profile_id = existing.mapped_profile_id;
+        snapshot.mapping_status = existing.mapping_status || "matched";
+        snapshot.metadata = {
+          ...snapshot.metadata,
+          preserved_dev_mapping: true,
+          previous_mapping_method: existing.metadata?.mapping_method || null,
+        };
+      }
+    });
+  }
+
+  if (snapshots.length) {
     const { error } = await admin
       .from("gv_respond_contact_snapshots")
       .upsert(snapshots, { onConflict: "respond_contact_id" });
