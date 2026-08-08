@@ -73,6 +73,9 @@ create index if not exists idx_gv_respond_snapshots_assignee_email
 
 alter table public.gv_respond_contact_snapshots enable row level security;
 
+grant select on public.gv_respond_contact_snapshots to authenticated;
+grant select, insert, update, delete on public.gv_respond_contact_snapshots to service_role;
+
 drop policy if exists "gv_respond_snapshots_select_scope" on public.gv_respond_contact_snapshots;
 create policy "gv_respond_snapshots_select_scope"
 on public.gv_respond_contact_snapshots
