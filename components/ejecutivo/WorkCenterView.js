@@ -3,8 +3,9 @@ import Head from "next/head";
 import Layout, { brand } from "../Layout";
 import { supabase } from "../../lib/supabase";
 
-const isProductionUi = process.env.NEXT_PUBLIC_APP_ENV === "production";
-const fase2aEnabled = isProductionUi ? process.env.NEXT_PUBLIC_FASE_2A_ENABLED === "true" : process.env.NEXT_PUBLIC_FASE_2A_ENABLED !== "false";
+const publicAppEnv = String(process.env.NEXT_PUBLIC_APP_ENV || "").trim().toLowerCase();
+const isPreviewUi = ["dev", "development", "preview"].includes(publicAppEnv);
+const fase2aEnabled = process.env.NEXT_PUBLIC_FASE_2A_ENABLED === "true";
 
 const fmtMoney = (value) => new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -306,10 +307,9 @@ function Card({ label, value, sub, strong }) {
 }
 
 function EmptyModuleNotice({ data }) {
-  const opportunities = data?.data?.opportunities || [];
-  const snapshots = data?.data?.respondSnapshots || [];
+  const coverage = data?.dataCoverage || {};
   const interventions = data?.interventions || [];
-  if (opportunities.length || snapshots.length || interventions.length) return null;
+  if (coverage.opportunities || coverage.respondSnapshots || interventions.length) return null;
   return (
     <Panel style={{ marginBottom: 16, borderColor: "#fde68a", background: "#fffbeb" }}>
       <strong style={{ color: "#92400e" }}>Fase 2A sin datos cargados todavía.</strong>
@@ -395,6 +395,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   const [rowInterventionMessage, setRowInterventionMessage] = useState(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [syncNotice, setSyncNotice] = useState(null);
   const [highlightedIntervention, setHighlightedIntervention] = useState(null);
 
   useEffect(() => {
@@ -404,7 +405,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   }, []);
 
   useEffect(() => {
-    if (isProductionUi && !session) {
+    if (!isPreviewUi && !session) {
       const timer = setTimeout(() => { window.location.href = "/"; }, 300);
       return () => clearTimeout(timer);
     }
@@ -435,6 +436,7 @@ export default function WorkCenterView({ type = "advisor" }) {
     if (!session?.access_token || !profile) return;
     setLoading(true);
     setError("");
+    if (!sync) setSyncNotice(null);
     try {
       const params = new URLSearchParams();
       if (isManagerView) params.set("mode", selectedAdvisor && selectedAdvisor !== "__unassigned" ? "supervise" : "management");
@@ -457,6 +459,12 @@ export default function WorkCenterView({ type = "advisor" }) {
         const syncJson = await syncRes.json();
         if (!syncRes.ok) setError(syncJson.error || "No se pudo sincronizar Respond.io.");
         else {
+          const coverage = syncJson?.result?.coverage;
+          if (coverage && !coverage.coverageComplete) {
+            setSyncNotice(`Sincronización parcial: ${coverage.contactsScanned || 0} contactos revisados. Motivo: ${coverage.stoppedReason || "cobertura incompleta"}.`);
+          } else {
+            setSyncNotice(null);
+          }
           const refreshed = await fetch(`/api/ejecutivo/work-center?${params.toString()}`, {
             headers: { Authorization: `Bearer ${session.access_token}` },
           });
@@ -640,7 +648,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   };
 
   if (!fase2aEnabled) return <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Módulo no habilitado.</main>;
-  if (!session) return isProductionUi ? <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Redirigiendo al inicio de sesión...</main> : <LoginPanel />;
+  if (!session) return isPreviewUi ? <LoginPanel /> : <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Redirigiendo al inicio de sesión...</main>;
   if (!profile || loading && !data) return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Cargando centro de trabajo...</div>;
   if (isManagerView && !canUseManager) {
     return <Layout view="mi_trabajo" profile={profile}><main style={{ padding: 28 }}><Panel><h1>Sin acceso</h1><p>Tu rol no tiene acceso a Mi Gerencia.</p></Panel></main></Layout>;
@@ -656,7 +664,7 @@ export default function WorkCenterView({ type = "advisor" }) {
         <div style={{ maxWidth: 1280, margin: "0 auto" }}>
           <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
             <div>
-              {!isProductionUi && <Badge variant="alta">ENTORNO DEV / PREVIEW</Badge>}
+              {isPreviewUi && <Badge variant="alta">ENTORNO DEV / PREVIEW</Badge>}
               <h1 style={{ margin: "12px 0 6px", color: "#111827", fontSize: 32, fontWeight: 950 }}>{title}</h1>
               <p style={{ margin: 0, color: "#6b7280", fontSize: 14, maxWidth: 760 }}>
                 {isManagerView
@@ -677,6 +685,7 @@ export default function WorkCenterView({ type = "advisor" }) {
           </header>
 
           {error && <Panel style={{ borderColor: "#fecaca", color: "#991b1b", marginBottom: 16 }}>{error}</Panel>}
+          {syncNotice && <Panel style={{ borderColor: "#fde68a", background: "#fffbeb", color: "#92400e", marginBottom: 16 }}>{syncNotice}</Panel>}
           {loading && <Panel style={{ marginBottom: 16 }}>Actualizando datos...</Panel>}
           <EmptyModuleNotice data={data} />
 
@@ -685,7 +694,12 @@ export default function WorkCenterView({ type = "advisor" }) {
               <h2 style={{ ...h2, marginBottom: 10 }}>Indicadores gerenciales</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
                 <Card label="Meta del equipo" value={fmtMoney(management.metaEquipo)} sub="Comisión nueva mensual objetivo." />
-                <Card label="Cerrado ganado del periodo" value={fmtMoney(management.cerradoNuevo)} sub="Comisión nueva cerrada." strong />
+                <Card
+                  label="Cerrado nuevo estructurado"
+                  value={management.closureCoverage?.structuredNew ? fmtMoney(management.cerradoNuevo) : "Sin datos estructurados"}
+                  sub={management.closureCoverage?.pendingClassification ? `${management.closureCoverage.pendingClassification} cierres del periodo pendientes de clasificar.` : "Comisión nueva cerrada con asesor y tipo estructurado."}
+                  strong={!!management.closureCoverage?.structuredNew}
+                />
                 <Card label="Pipeline comisión estimada" value={fmtMoney(management.pipeline)} sub="Comisión estimada en oportunidades abiertas." />
                 <Card label="Citas efectivas acumuladas" value={`${management.citasEquipo || 0} de ${management.citasRequeridasAcumuladas || 0}`} sub="Realizadas vs requeridas acumuladas." />
                 <Card label="Clientes esperando respuesta" value={management.clientesEsperandoRespuesta || 0} strong={management.clientesEsperandoRespuesta > 0} />
@@ -901,6 +915,7 @@ function OperationsAttention({ items, onSupervise }) {
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <button onClick={() => onSupervise(item.advisorId)} style={secondaryButtonStyle}>Supervisar</button>
               {item.respondDeepLink && <a href={item.respondDeepLink} target="_blank" rel="noreferrer" style={{ ...secondaryButtonStyle, textDecoration: "none" }}>Abrir conversación</a>}
+              {item.respondContactId && !item.respondDeepLink && <span style={{ color: "#6b7280", fontSize: 12, fontWeight: 900 }}>Sin enlace Respond.io configurado</span>}
             </div>
           </div>
         ))}
@@ -1086,6 +1101,7 @@ function WorkTable({ items, onAudit, onViewCita, onFollowUp, interventions = [],
                 <td style={td}>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {item.respondDeepLink && <a href={item.respondDeepLink} target="_blank" rel="noreferrer" style={{ ...secondaryButtonStyle, display: "inline-block", textDecoration: "none" }}>Abrir conversación</a>}
+                    {item.respondContactId && !item.respondDeepLink && <span style={{ color: "#6b7280", fontSize: 12, fontWeight: 900 }}>Sin enlace Respond.io configurado</span>}
                     {action?.kind === "cita" && <button onClick={() => onViewCita(item)} style={secondaryButtonStyle}>{action.label}</button>}
                     {action?.kind === "info" && <span title={action.title} style={{ color: "#6b7280", fontSize: 12, fontWeight: 900 }}>{action.label}</span>}
                     {activeIntervention?.id ? (

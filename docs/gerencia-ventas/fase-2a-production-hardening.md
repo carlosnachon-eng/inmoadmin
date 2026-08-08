@@ -10,7 +10,7 @@ Servidor:
 - `SUPABASE_ENVIRONMENT`: `production` o `dev`.
 - `FASE_2A_ENABLED`: `true` solo cuando el esquema productivo ya este aplicado y aprobado.
 - `SUPABASE_SERVICE_ROLE_KEY`: solo servidor, nunca cliente.
-- `RESPOND_IO_API_TOKEN`: token Developer API por entorno.
+- `RESPOND_IO_TOKEN`: token Developer API por entorno. `RESPOND_IO_API_TOKEN` se acepta solo como compatibilidad temporal.
 - `RESPOND_IO_WORKSPACE_ID`: workspace usado para deep-links.
 - `RESPOND_IO_PROFILE_MAP`: JSON opcional solo DEV/Preview para alias auditables. En Produccion se ignora.
 
@@ -43,6 +43,7 @@ Las APIs Fase 2A validan el project ref:
 - `supabase/migrations/202608080007_fase_2a_production_hardening.sql` es el paquete productivo idempotente.
 - `supabase/dev/` conserva los SQL usados para inmoadmin-dev y no debe ejecutarse contra Produccion.
 - `supabase/reports/202608080008_citas_confirmacion_dry_run.sql` es solo lectura.
+- `supabase/reports/202608080009_fase_2a_preflight.sql` es solo lectura y debe ejecutarse antes de aplicar 007.
 
 La migracion productiva:
 

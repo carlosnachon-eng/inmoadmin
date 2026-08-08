@@ -20,6 +20,48 @@ as $$
   limit 1
 $$;
 
+revoke all on function public.current_profile_role_id() from public, anon;
+grant execute on function public.current_profile_role_id() to authenticated, service_role;
+
+create table if not exists public.gv_supervision_edges (
+  id uuid primary key default gen_random_uuid(),
+  supervisor_profile_id uuid not null references public.profiles(id),
+  subordinate_profile_id uuid not null references public.profiles(id),
+  scope text not null default 'ventas'
+    check (scope in ('ventas', 'operaciones', 'administracion', 'juridico', 'global')),
+  starts_on date not null default current_date,
+  ends_on date null,
+  active boolean not null default true,
+  notes text null,
+  created_by uuid null references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_by uuid null references auth.users(id),
+  updated_at timestamptz not null default now(),
+  constraint gv_supervision_edges_no_self check (supervisor_profile_id <> subordinate_profile_id),
+  constraint gv_supervision_edges_valid_range check (ends_on is null or ends_on >= starts_on)
+);
+
+alter table public.gv_supervision_edges
+  add column if not exists supervisor_profile_id uuid references public.profiles(id),
+  add column if not exists subordinate_profile_id uuid references public.profiles(id),
+  add column if not exists scope text not null default 'ventas',
+  add column if not exists starts_on date not null default current_date,
+  add column if not exists ends_on date null,
+  add column if not exists active boolean not null default true,
+  add column if not exists notes text null,
+  add column if not exists created_by uuid null references auth.users(id),
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists updated_by uuid null references auth.users(id),
+  add column if not exists updated_at timestamptz not null default now();
+
+create index if not exists idx_gv_supervision_edges_supervisor
+  on public.gv_supervision_edges (supervisor_profile_id, scope, active, starts_on, ends_on);
+create index if not exists idx_gv_supervision_edges_subordinate
+  on public.gv_supervision_edges (subordinate_profile_id, scope, active, starts_on, ends_on);
+create unique index if not exists uq_gv_supervision_edges_active_scope
+  on public.gv_supervision_edges (supervisor_profile_id, subordinate_profile_id, scope)
+  where active = true and ends_on is null;
+
 create or replace function public.can_supervise_profile_in_scope(
   target_profile_id uuid,
   allowed_scopes text[]
@@ -48,36 +90,8 @@ as $$
   end
 $$;
 
-revoke all on function public.current_profile_role_id() from public, anon;
 revoke all on function public.can_supervise_profile_in_scope(uuid, text[]) from public, anon;
-grant execute on function public.current_profile_role_id() to authenticated, service_role;
 grant execute on function public.can_supervise_profile_in_scope(uuid, text[]) to authenticated, service_role;
-
-create table if not exists public.gv_supervision_edges (
-  id uuid primary key default gen_random_uuid(),
-  supervisor_profile_id uuid not null references public.profiles(id),
-  subordinate_profile_id uuid not null references public.profiles(id),
-  scope text not null default 'ventas'
-    check (scope in ('ventas', 'operaciones', 'administracion', 'juridico', 'global')),
-  starts_on date not null default current_date,
-  ends_on date null,
-  active boolean not null default true,
-  notes text null,
-  created_by uuid null references auth.users(id),
-  created_at timestamptz not null default now(),
-  updated_by uuid null references auth.users(id),
-  updated_at timestamptz not null default now(),
-  constraint gv_supervision_edges_no_self check (supervisor_profile_id <> subordinate_profile_id),
-  constraint gv_supervision_edges_valid_range check (ends_on is null or ends_on >= starts_on)
-);
-
-create index if not exists idx_gv_supervision_edges_supervisor
-  on public.gv_supervision_edges (supervisor_profile_id, scope, active, starts_on, ends_on);
-create index if not exists idx_gv_supervision_edges_subordinate
-  on public.gv_supervision_edges (subordinate_profile_id, scope, active, starts_on, ends_on);
-create unique index if not exists uq_gv_supervision_edges_active_scope
-  on public.gv_supervision_edges (supervisor_profile_id, subordinate_profile_id, scope)
-  where active = true and ends_on is null;
 
 create table if not exists public.gv_advisor_availability (
   id uuid primary key default gen_random_uuid(),
@@ -96,6 +110,19 @@ create table if not exists public.gv_advisor_availability (
   updated_at timestamptz not null default now(),
   constraint gv_advisor_availability_valid_range check (ends_on is null or ends_on >= starts_on)
 );
+
+alter table public.gv_advisor_availability
+  add column if not exists profile_id uuid references public.profiles(id),
+  add column if not exists starts_on date,
+  add column if not exists ends_on date null,
+  add column if not exists status text,
+  add column if not exists capacity_weight numeric(4,3) not null default 1,
+  add column if not exists reason text,
+  add column if not exists notes text null,
+  add column if not exists created_by uuid null references auth.users(id),
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists updated_by uuid null references auth.users(id),
+  add column if not exists updated_at timestamptz not null default now();
 
 create index if not exists idx_gv_advisor_availability_profile_period
   on public.gv_advisor_availability (profile_id, starts_on, ends_on);
@@ -163,6 +190,52 @@ create table if not exists public.gv_opportunities (
   constraint gv_opportunities_close_consistency
     check ((stage = 'cierre_ganado' and closed_at is not null) or stage <> 'cierre_ganado')
 );
+
+alter table public.gv_opportunities
+  add column if not exists cliente_id uuid null references public.clientes(id),
+  add column if not exists propiedad_id uuid null references public.propiedades(id),
+  add column if not exists asesor_id uuid references public.profiles(id),
+  add column if not exists owner_profile_id uuid null references public.profiles(id),
+  add column if not exists operation_type text not null default 'nueva',
+  add column if not exists forecast_category text not null default 'pipeline',
+  add column if not exists probability_pct integer null,
+  add column if not exists estimated_price numeric(14,2) null,
+  add column if not exists estimated_commission numeric(14,2) null,
+  add column if not exists expected_close_date date null,
+  add column if not exists next_action text null,
+  add column if not exists next_action_at timestamptz null,
+  add column if not exists risk_level text not null default 'normal',
+  add column if not exists risk_reason text null,
+  add column if not exists qualified_at timestamptz null,
+  add column if not exists closed_at timestamptz null,
+  add column if not exists cierre_id uuid null references public.cierres(id),
+  add column if not exists source text not null default 'manual',
+  add column if not exists source_external_id text null,
+  add column if not exists respond_contact_id text null,
+  add column if not exists respond_conversation_id text null,
+  add column if not exists respond_channel text null,
+  add column if not exists respond_assignee_id text null,
+  add column if not exists respond_assignee_email text null,
+  add column if not exists respond_channel_id text null,
+  add column if not exists respond_channel_source text null,
+  add column if not exists respond_status text null,
+  add column if not exists respond_conversation_status text null,
+  add column if not exists respond_lifecycle text null,
+  add column if not exists respond_first_activity_at timestamptz null,
+  add column if not exists respond_last_inbound_at timestamptz null,
+  add column if not exists respond_last_outbound_at timestamptz null,
+  add column if not exists respond_last_human_outbound_at timestamptz null,
+  add column if not exists respond_last_ai_outbound_at timestamptz null,
+  add column if not exists respond_unanswered_since timestamptz null,
+  add column if not exists respond_metadata jsonb not null default '{}'::jsonb,
+  add column if not exists respond_last_synced_at timestamptz null,
+  add column if not exists last_synced_at timestamptz null,
+  add column if not exists last_activity_at timestamptz null,
+  add column if not exists notes text null,
+  add column if not exists created_by uuid null references auth.users(id),
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists updated_by uuid null references auth.users(id),
+  add column if not exists updated_at timestamptz not null default now();
 
 create index if not exists idx_gv_opportunities_asesor_stage on public.gv_opportunities (asesor_id, stage);
 create index if not exists idx_gv_opportunities_next_action on public.gv_opportunities (next_action_at) where next_action_at is not null;
@@ -234,8 +307,42 @@ create table if not exists public.gv_respond_contact_snapshots (
   unique (respond_contact_id)
 );
 
+alter table public.gv_respond_contact_snapshots
+  add column if not exists respond_contact_id text,
+  add column if not exists respond_assignee_id text null,
+  add column if not exists respond_assignee_email text null,
+  add column if not exists mapped_profile_id uuid null references public.profiles(id),
+  add column if not exists mapping_status text not null default 'unmatched',
+  add column if not exists respond_channel_id text null,
+  add column if not exists respond_channel_source text null,
+  add column if not exists respond_conversation_status text null,
+  add column if not exists respond_lifecycle text null,
+  add column if not exists respond_last_inbound_at timestamptz null,
+  add column if not exists respond_last_outbound_at timestamptz null,
+  add column if not exists respond_last_human_outbound_at timestamptz null,
+  add column if not exists respond_last_ai_outbound_at timestamptz null,
+  add column if not exists respond_unanswered_since timestamptz null,
+  add column if not exists respond_last_synced_at timestamptz not null default now(),
+  add column if not exists atn_area text null,
+  add column if not exists atn_servicio text null,
+  add column if not exists atn_estado text null,
+  add column if not exists atn_destino text null,
+  add column if not exists atn_proxima_accion text null,
+  add column if not exists atn_fecha_proxima_accion date null,
+  add column if not exists atn_sla_vencido boolean null,
+  add column if not exists ven_presupuesto_compra numeric(14,2) null,
+  add column if not exists ven_renta_mensual_objetivo numeric(14,2) null,
+  add column if not exists ven_plazo text null,
+  add column if not exists inm_tipo text null,
+  add column if not exists inm_zona text null,
+  add column if not exists metadata jsonb not null default '{}'::jsonb,
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists updated_at timestamptz not null default now();
+
 create index if not exists idx_gv_respond_snapshots_profile on public.gv_respond_contact_snapshots (mapped_profile_id, respond_conversation_status);
 create index if not exists idx_gv_respond_snapshots_unanswered on public.gv_respond_contact_snapshots (respond_unanswered_since) where respond_unanswered_since is not null;
+create unique index if not exists uq_gv_respond_snapshots_contact
+  on public.gv_respond_contact_snapshots (respond_contact_id);
 
 create table if not exists public.gv_management_interventions (
   id uuid primary key default gen_random_uuid(),
@@ -253,6 +360,19 @@ create table if not exists public.gv_management_interventions (
   updated_at timestamptz not null default now()
 );
 
+alter table public.gv_management_interventions
+  add column if not exists advisor_profile_id uuid references public.profiles(id),
+  add column if not exists actor_profile_id uuid references public.profiles(id),
+  add column if not exists scope text not null default 'ventas',
+  add column if not exists reason text,
+  add column if not exists agreed_action text,
+  add column if not exists review_on date null,
+  add column if not exists status text not null default 'pendiente',
+  add column if not exists indicators jsonb not null default '{}'::jsonb,
+  add column if not exists notes text null,
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists updated_at timestamptz not null default now();
+
 create index if not exists idx_gv_management_interventions_advisor_status
   on public.gv_management_interventions (advisor_profile_id, status, created_at desc);
 create index if not exists idx_gv_management_interventions_actor_created
@@ -261,6 +381,22 @@ create unique index if not exists uq_gv_management_interventions_active_context
   on public.gv_management_interventions (advisor_profile_id, scope, (indicators->>'contextKey'))
   where status in ('pendiente', 'en_seguimiento', 'sin_mejora')
     and indicators ? 'contextKey';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'gv_management_interventions_context_key_not_blank'
+      and conrelid = 'public.gv_management_interventions'::regclass
+  ) then
+    alter table public.gv_management_interventions
+      add constraint gv_management_interventions_context_key_not_blank
+      check (
+        not (indicators ? 'contextKey')
+        or length(trim(indicators->>'contextKey')) > 0
+      ) not valid;
+  end if;
+end $$;
 
 alter table public.cierres
   add column if not exists advisor_profile_id uuid null references public.profiles(id),
@@ -414,9 +550,13 @@ create policy "gv_management_interventions_select_scope" on public.gv_management
 for select to authenticated
 using (
   public.current_profile_role_id() = 'admin'
-  or advisor_profile_id = auth.uid()
-  or actor_profile_id = auth.uid()
-  or public.can_supervise_profile_in_scope(advisor_profile_id, array['ventas', 'global'])
+  or (
+    public.current_profile_role_id() = 'gerente_ventas'
+    and (
+      actor_profile_id = auth.uid()
+      or public.can_supervise_profile_in_scope(advisor_profile_id, array['ventas', 'global'])
+    )
+  )
 );
 
 drop policy if exists "gv_management_interventions_insert_scope" on public.gv_management_interventions;
@@ -427,7 +567,10 @@ with check (
   and scope = 'ventas'
   and (
     public.current_profile_role_id() = 'admin'
-    or public.can_supervise_profile_in_scope(advisor_profile_id, array['ventas', 'global'])
+    or (
+      public.current_profile_role_id() = 'gerente_ventas'
+      and public.can_supervise_profile_in_scope(advisor_profile_id, array['ventas', 'global'])
+    )
   )
 );
 
@@ -436,20 +579,24 @@ create policy "gv_management_interventions_update_scope" on public.gv_management
 for update to authenticated
 using (
   public.current_profile_role_id() = 'admin'
-  or actor_profile_id = auth.uid()
-  or public.can_supervise_profile_in_scope(advisor_profile_id, array['ventas', 'global'])
+  or (
+    public.current_profile_role_id() = 'gerente_ventas'
+    and public.can_supervise_profile_in_scope(advisor_profile_id, array['ventas', 'global'])
+  )
 )
 with check (
   scope = 'ventas'
   and (
     public.current_profile_role_id() = 'admin'
-    or actor_profile_id = auth.uid()
-    or public.can_supervise_profile_in_scope(advisor_profile_id, array['ventas', 'global'])
+    or (
+      public.current_profile_role_id() = 'gerente_ventas'
+      and public.can_supervise_profile_in_scope(advisor_profile_id, array['ventas', 'global'])
+    )
   )
 );
 
 comment on table public.gv_management_interventions is
-  'Fase 2A: intervenciones gerenciales por asesor. No es Score Gerencial oficial.';
+  'Fase 2A: intervenciones gerenciales por asesor. SELECT limitado a admin/gerente_ventas; asesores no leen notas gerenciales. No es Score Gerencial oficial.';
 comment on column public.citas.confirmacion_estado is
   'Fase 2A: estado operativo de confirmacion de cita. Null conserva lectura legacy sin backfill automatico.';
 

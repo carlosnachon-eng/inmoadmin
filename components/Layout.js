@@ -3,9 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { useModulosPermitidos } from "../lib/permisos";
 
-const fase2aEnabled = process.env.NEXT_PUBLIC_APP_ENV === "production"
-  ? process.env.NEXT_PUBLIC_FASE_2A_ENABLED === "true"
-  : process.env.NEXT_PUBLIC_FASE_2A_ENABLED !== "false";
+const fase2aEnabled = process.env.NEXT_PUBLIC_FASE_2A_ENABLED === "true";
 
 export const brand = {
   red:       "#b91c3c",

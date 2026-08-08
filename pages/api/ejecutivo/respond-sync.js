@@ -10,8 +10,11 @@ import {
 } from "../../../lib/ejecutivo/workCenter";
 
 const RESPOND_BASE = "https://api.respond.io/v2";
-const MAX_CONTACTS = 30;
-const MAX_MESSAGES_PER_CONTACT = 12;
+const CONTACT_PAGE_LIMIT = 100;
+const MESSAGE_PAGE_LIMIT = 100;
+const MAX_CONTACT_PAGES = 10;
+const MAX_MESSAGE_PAGES_PER_CONTACT = 3;
+const RESPOND_MIN_INTERVAL_MS = 250;
 
 function rejectInternal(res, err) {
   console.error("[respond-sync]", err?.message || err);
@@ -20,38 +23,53 @@ function rejectInternal(res, err) {
 
 const syncLocks = globalThis.__fase2aRespondSyncLocks || new Map();
 globalThis.__fase2aRespondSyncLocks = syncLocks;
+let lastRespondRequestAt = 0;
 
 async function respondRequest(path, { method = "GET", body, params } = {}) {
-  const token = process.env.RESPOND_IO_API_TOKEN;
-  if (!token) throw new Error("Falta RESPOND_IO_API_TOKEN.");
-  const url = new URL(`${RESPOND_BASE}${path}`);
+  const token = process.env.RESPOND_IO_TOKEN || process.env.RESPOND_IO_API_TOKEN;
+  if (!token) throw new Error("Falta RESPOND_IO_TOKEN.");
+  const now = Date.now();
+  const wait = Math.max(0, RESPOND_MIN_INTERVAL_MS - (now - lastRespondRequestAt));
+  if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+  lastRespondRequestAt = Date.now();
+
+  const url = new URL(String(path).startsWith("http") ? path : `${RESPOND_BASE}${path}`);
   Object.entries(params || {}).forEach(([key, value]) => url.searchParams.set(key, String(value)));
-  const response = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await response.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { raw: text };
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await response.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { raw: text };
+    }
+    if (response.status === 429 && attempt < 3) {
+      const retryAfter = Number(response.headers.get("Retry-After") || 1);
+      await new Promise((resolve) => setTimeout(resolve, Math.max(1000, retryAfter * 1000)));
+      continue;
+    }
+    if (!response.ok) {
+      const err = new Error(`Respond.io ${response.status}`);
+      err.public = { status: response.status, code: json?.code, message: json?.message };
+      throw err;
+    }
+    return json;
   }
-  if (!response.ok) {
-    const err = new Error(`Respond.io ${response.status}`);
-    err.public = { status: response.status, code: json?.code, message: json?.message };
-    throw err;
-  }
-  return json;
+  throw new Error("Respond.io rate limit retry agotado.");
 }
 
 const items = (body) => (Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : []);
 const normalize = (value) => String(value || "").trim().toLowerCase();
+const paginationNext = (body) => body?.pagination?.next || null;
 
 function customValue(contact, slug) {
   const field = (contact.custom_fields || []).find((f) => normalize(f.slug || f.name || f.fieldId) === slug);
@@ -113,7 +131,13 @@ function messageSignals(messages) {
   return { lastInbound, lastOutbound, lastHumanOutbound, lastAiOutbound, unansweredSince };
 }
 
-function snapshotFromContact(contact, messages, profiles) {
+function isSnapshotRelevantForSales(snapshot, profilesById) {
+  const mapped = snapshot.mapped_profile_id ? profilesById.get(snapshot.mapped_profile_id) : null;
+  if (mapped?.role_id === "asesor" || mapped?.role_id === "gerente_ventas") return true;
+  return !snapshot.mapped_profile_id && normalize(snapshot.atn_area) === "ventas";
+}
+
+function snapshotFromContact(contact, messages, profiles, messagePagesRead) {
   const assignee = contact.assignee || null;
   const mapped = resolveRespondProfile(assignee, profiles);
   const channelId = messages?.[0]?.channelId || null;
@@ -122,6 +146,7 @@ function snapshotFromContact(contact, messages, profiles) {
     contact_name: contactDisplayName(contact),
     mapping_method: mapped.method,
     sync_mode: "metadata_only",
+    message_pages_read: messagePagesRead,
     fields_present: Object.keys(contact || {}).filter((key) => !["phone", "email", "profilePic"].includes(key)),
   };
   return {
@@ -157,27 +182,64 @@ function snapshotFromContact(contact, messages, profiles) {
   };
 }
 
-async function syncRespond(admin, profiles, actorProfile) {
-  const contactList = await respondRequest("/contact/list", {
-    method: "POST",
-    params: { limit: MAX_CONTACTS },
-    body: {
-      search: "",
-      timezone: "America/Mexico_City",
-      filter: { $and: [] },
-    },
-  });
+async function syncRespond(admin, profiles) {
+  const profilesById = new Map((profiles || []).map((profile) => [profile.id, profile]));
+  const coverage = {
+    contactsAvailable: null,
+    contactsScanned: 0,
+    pagesRead: 0,
+    contactsMatched: 0,
+    contactsUnassignedSales: 0,
+    contactsIgnoredOutsideSales: 0,
+    coverageComplete: false,
+    stoppedReason: null,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+  };
+  const contacts = [];
+  let nextPath = "/contact/list";
+  let contactPage = 0;
+  while (nextPath && contactPage < MAX_CONTACT_PAGES) {
+    const contactList = await respondRequest(nextPath, {
+      method: "POST",
+      params: nextPath === "/contact/list" ? { limit: CONTACT_PAGE_LIMIT } : undefined,
+      body: nextPath === "/contact/list" ? {
+        search: "",
+        timezone: "America/Mexico_City",
+        filter: { $and: [] },
+      } : undefined,
+    });
+    contacts.push(...items(contactList));
+    coverage.pagesRead += 1;
+    coverage.contactsAvailable = contactList.total ?? contactList.count ?? contactList.pagination?.total ?? coverage.contactsAvailable;
+    nextPath = paginationNext(contactList);
+    contactPage += 1;
+  }
+  coverage.contactsScanned = contacts.length;
+  coverage.coverageComplete = !nextPath;
+  coverage.stoppedReason = nextPath ? "max_contact_pages" : "complete";
 
-  const contacts = items(contactList).slice(0, MAX_CONTACTS);
   const snapshots = [];
   for (const contact of contacts) {
-    const messageList = await respondRequest(`/contact/id:${contact.id}/message/list`, {
-      params: { limit: MAX_MESSAGES_PER_CONTACT },
-    });
-    const messages = items(messageList);
-    snapshots.push(snapshotFromContact(contact, messages, profiles));
-    await new Promise((resolve) => setTimeout(resolve, 180));
+    const messages = [];
+    let messageNextPath = `/contact/id:${contact.id}/message/list`;
+    let messagePage = 0;
+    while (messageNextPath && messagePage < MAX_MESSAGE_PAGES_PER_CONTACT) {
+      const messageList = await respondRequest(messageNextPath, {
+        params: messageNextPath.includes("?") ? undefined : { limit: MESSAGE_PAGE_LIMIT },
+      });
+      messages.push(...items(messageList));
+      messageNextPath = paginationNext(messageList);
+      messagePage += 1;
+      const signals = messageSignals(messages);
+      if (signals.lastInbound && signals.lastOutbound && messages.length >= MESSAGE_PAGE_LIMIT) break;
+    }
+    const snapshot = snapshotFromContact(contact, messages, profiles, messagePage);
+    if (isSnapshotRelevantForSales(snapshot, profilesById)) snapshots.push(snapshot);
+    else coverage.contactsIgnoredOutsideSales += 1;
   }
+  coverage.contactsMatched = snapshots.filter((s) => s.mapped_profile_id).length;
+  coverage.contactsUnassignedSales = snapshots.filter((s) => !s.mapped_profile_id && normalize(s.atn_area) === "ventas").length;
 
   if (snapshots.length) {
     const { data: existingSnapshots, error: existingError } = await admin
@@ -220,6 +282,10 @@ async function syncRespond(admin, profiles, actorProfile) {
     matchedProfiles: snapshots.filter((s) => s.mapped_profile_id).length,
     unmatchedProfiles: snapshots.filter((s) => !s.mapped_profile_id).length,
     linkedOpportunitiesUpdated: 0,
+    coverage: {
+      ...coverage,
+      finishedAt: new Date().toISOString(),
+    },
   };
 }
 
@@ -260,7 +326,7 @@ export default async function handler(req, res) {
       .eq("active", true);
     if (profilesError) throw profilesError;
 
-    const result = await syncRespond(admin, profiles || [], actorProfile);
+    const result = await syncRespond(admin, profiles || []);
     return res.status(200).json({ ok: true, result });
   } catch (err) {
     if (err.statusCode === 404) return res.status(404).json({ ok: false, error: "Modulo no habilitado." });

@@ -8,19 +8,27 @@ import {
   authHeaderToken,
   buildWorkItems,
   calculateSummary,
+  citaConfirmationStatus,
   getAdminSupabase,
   getServerSupabase,
   nowMxDate,
+  respondInboxLink,
   safeName,
 } from "../../../lib/ejecutivo/workCenter";
 
 function monthBounds() {
   const today = nowMxDate();
   const month = today.slice(0, 7);
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5, 7));
+  const nextYear = monthNumber === 12 ? year + 1 : year;
+  const nextMonthNumber = monthNumber === 12 ? 1 : monthNumber + 1;
+  const nextMonth = `${nextYear}-${String(nextMonthNumber).padStart(2, "0")}`;
   return {
     today,
+    startDate: `${month}-01`,
     start: `${month}-01T00:00:00-06:00`,
-    end: `${month}-31T23:59:59-06:00`,
+    endExclusive: `${nextMonth}-01T00:00:00-06:00`,
   };
 }
 
@@ -41,7 +49,7 @@ function dateRange(startDate, endDate) {
   const current = new Date(`${startDate}T12:00:00-06:00`);
   const end = new Date(`${endDate}T12:00:00-06:00`);
   while (current <= end) {
-    dates.push(current.toISOString().slice(0, 10));
+    if (current.getDay() !== 0) dates.push(current.toISOString().slice(0, 10));
     current.setDate(current.getDate() + 1);
   }
   return dates;
@@ -49,7 +57,7 @@ function dateRange(startDate, endDate) {
 
 function capacityForDay(profileId, day, availability) {
   const row = availability.find((item) => item.profile_id === profileId && item.starts_on <= day && (!item.ends_on || item.ends_on >= day));
-  return Number(row?.capacity_weight ?? 1);
+  return Math.max(0, Math.min(1, Number(row?.capacity_weight ?? 0)));
 }
 
 function requiredCitasForAdvisor(profileId, availability, startDate, today) {
@@ -87,6 +95,30 @@ function recommendedAction(signals) {
 
 function maxIso(rows, key) {
   return (rows || []).map((row) => row?.[key]).filter(Boolean).sort().at(-1) || null;
+}
+
+function isSalesUnassignedSnapshot(snap) {
+  return normalize(snap.atn_area) === "ventas";
+}
+
+function availabilityOverlaps(availability = []) {
+  const byProfile = new Map();
+  availability.forEach((row) => {
+    const list = byProfile.get(row.profile_id) || [];
+    list.push(row);
+    byProfile.set(row.profile_id, list);
+  });
+  const overlaps = [];
+  byProfile.forEach((rows, profileId) => {
+    const ordered = rows.slice().sort((a, b) => String(a.starts_on).localeCompare(String(b.starts_on)));
+    for (let i = 0; i < ordered.length - 1; i += 1) {
+      const currentEnd = ordered[i].ends_on || "9999-12-31";
+      if (currentEnd >= ordered[i + 1].starts_on) {
+        overlaps.push({ profileId, firstId: ordered[i].id, secondId: ordered[i + 1].id });
+      }
+    }
+  });
+  return overlaps;
 }
 
 function stuckOperationReason(opp, today) {
@@ -127,49 +159,26 @@ export default async function handler(req, res) {
     if (profile.role_id === "coord_operaciones") return res.status(403).json({ ok: false, error: "Scope comercial no autorizado." });
 
     const effectiveTargetId = mode === "mine" ? profile.id : targetId || null;
-    const { start, end, today } = monthBounds();
+    const { start, endExclusive, today, startDate } = monthBounds();
 
     const [
       profilesRes,
       edgesRes,
       availabilityRes,
-      opportunitiesRes,
-      snapshotsRes,
-      citasRes,
-      seguimientosRes,
-      cierresRes,
       interventionsRes,
     ] = await Promise.all([
       scoped.from("profiles").select("id, email, full_name, role_id, active").eq("active", true),
       scoped.from("gv_supervision_edges").select("id, supervisor_profile_id, subordinate_profile_id, scope, active").eq("scope", "ventas").eq("active", true),
       scoped.from("gv_advisor_availability").select("id, profile_id, status, capacity_weight, reason, starts_on, ends_on"),
-      admin
-        .from("gv_opportunities")
-        .select("*, clientes:cliente_id(nombre, telefono, correo), propiedades:propiedad_id(titulo, public_id)")
-        .order("next_action_at", { ascending: true, nullsFirst: false }),
-      admin.from("gv_respond_contact_snapshots").select("*").order("respond_last_synced_at", { ascending: false }),
-      admin
-        .from("citas")
-        .select("id, cliente_id, propiedad_id, asesor_id, fecha_hora, estado, notas, confirmacion_estado, confirmacion_actualizada_at, confirmacion_actualizada_por, clientes(nombre), propiedades(titulo)")
-        .gte("fecha_hora", start)
-        .lte("fecha_hora", end),
-      admin.from("seguimientos_cliente").select("id, cliente_id, asesor_id, tipo, created_at").gte("created_at", start),
-      admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured, vendedor").gte("fecha_cierre", today.slice(0, 7) + "-01"),
       scoped.from("gv_management_interventions").select("*, advisor:advisor_profile_id(id, email, full_name), actor:actor_profile_id(id, email, full_name)").order("created_at", { ascending: false }).limit(30),
     ]);
 
-    const snapshotsMissing = snapshotsRes.error?.code === "PGRST205" || /gv_respond_contact_snapshots/i.test(snapshotsRes.error?.message || "");
     const interventionsMissing = interventionsRes.error?.code === "PGRST205" || /gv_management_interventions/i.test(interventionsRes.error?.message || "");
-    const firstError = [profilesRes, edgesRes, availabilityRes, opportunitiesRes, snapshotsMissing ? { error: null } : snapshotsRes, citasRes, seguimientosRes, cierresRes, interventionsMissing ? { error: null } : interventionsRes].find((r) => r.error)?.error;
+    const firstError = [profilesRes, edgesRes, availabilityRes, interventionsMissing ? { error: null } : interventionsRes].find((r) => r.error)?.error;
     if (firstError) throw firstError;
 
     const profiles = profilesRes.data || [];
     const profilesById = new Map(profiles.map((p) => [p.id, p]));
-    const opportunities = opportunitiesRes.data || [];
-    const snapshots = snapshotsMissing ? [] : (snapshotsRes.data || []);
-    const citas = citasRes.data || [];
-    const seguimientos = seguimientosRes.data || [];
-    const cierres = cierresRes.data || [];
     const availability = availabilityRes.data || [];
     const edges = edgesRes.data || [];
     const interventions = interventionsMissing ? [] : (interventionsRes.data || []);
@@ -191,14 +200,62 @@ export default async function handler(req, res) {
     }
 
     const scopedAdvisorIds = visibleAdvisorIds.size ? visibleAdvisorIds : new Set([profile.id]);
-    const scopedOpportunities = opportunities.filter((opp) => scopedAdvisorIds.has(opp.asesor_id));
-    const scopedCitas = citas.filter((cita) => scopedAdvisorIds.has(cita.asesor_id));
-    const scopedSeguimientos = seguimientos.filter((seg) => scopedAdvisorIds.has(seg.asesor_id));
-    const scopedCierres = cierres.filter((cierre) => !cierre.advisor_profile_id || scopedAdvisorIds.has(cierre.advisor_profile_id));
-    const scopedSnapshots = snapshots.filter((snap) => scopedAdvisorIds.has(snap.mapped_profile_id));
-    const unassignedSnapshots = canManage && mode === "management"
-      ? snapshots.filter((snap) => !snap.mapped_profile_id)
-      : [];
+    const scopedAdvisorIdList = [...scopedAdvisorIds].filter(Boolean);
+    const noData = { data: [], error: null };
+    const oppQuery = scopedAdvisorIdList.length
+      ? scoped
+        .from("gv_opportunities")
+        .select("*, clientes:cliente_id(nombre), propiedades:propiedad_id(titulo, public_id)")
+        .in("asesor_id", scopedAdvisorIdList)
+        .order("next_action_at", { ascending: true, nullsFirst: false })
+      : Promise.resolve(noData);
+    const citasQuery = scopedAdvisorIdList.length
+      ? admin
+        .from("citas")
+        .select("id, cliente_id, propiedad_id, asesor_id, fecha_hora, estado, notas, confirmacion_estado, confirmacion_actualizada_at, confirmacion_actualizada_por, clientes(nombre), propiedades(titulo)")
+        .in("asesor_id", scopedAdvisorIdList)
+        .gte("fecha_hora", start)
+        .lt("fecha_hora", endExclusive)
+      : Promise.resolve(noData);
+    const seguimientosQuery = scopedAdvisorIdList.length
+      ? admin.from("seguimientos_cliente").select("id, cliente_id, asesor_id, tipo, created_at").in("asesor_id", scopedAdvisorIdList).gte("created_at", start)
+      : Promise.resolve(noData);
+    const cierresQuery = scopedAdvisorIdList.length
+      ? admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured").in("advisor_profile_id", scopedAdvisorIdList).gte("fecha_cierre", startDate)
+      : Promise.resolve(noData);
+    const mappedSnapshotsQuery = scopedAdvisorIdList.length
+      ? scoped.from("gv_respond_contact_snapshots").select("*").in("mapped_profile_id", scopedAdvisorIdList).order("respond_last_synced_at", { ascending: false })
+      : Promise.resolve(noData);
+    const unassignedSnapshotsQuery = canManage && mode === "management"
+      ? admin.from("gv_respond_contact_snapshots").select("*").is("mapped_profile_id", null).eq("atn_area", "ventas").order("respond_last_synced_at", { ascending: false })
+      : Promise.resolve(noData);
+
+    const [
+      opportunitiesRes,
+      citasRes,
+      seguimientosRes,
+      cierresRes,
+      snapshotsRes,
+      unassignedSnapshotsRes,
+    ] = await Promise.all([
+      oppQuery,
+      citasQuery,
+      seguimientosQuery,
+      cierresQuery,
+      mappedSnapshotsQuery,
+      unassignedSnapshotsQuery,
+    ]);
+
+    const snapshotsMissing = [snapshotsRes, unassignedSnapshotsRes].some((r) => r.error?.code === "PGRST205" || /gv_respond_contact_snapshots/i.test(r.error?.message || ""));
+    const dataError = [opportunitiesRes, citasRes, seguimientosRes, cierresRes, snapshotsMissing ? { error: null } : snapshotsRes, snapshotsMissing ? { error: null } : unassignedSnapshotsRes].find((r) => r.error)?.error;
+    if (dataError) throw dataError;
+
+    const scopedOpportunities = opportunitiesRes.data || [];
+    const scopedCitas = citasRes.data || [];
+    const scopedSeguimientos = seguimientosRes.data || [];
+    const scopedCierres = cierresRes.data || [];
+    const scopedSnapshots = snapshotsMissing ? [] : (snapshotsRes.data || []);
+    const unassignedSnapshots = snapshotsMissing ? [] : (unassignedSnapshotsRes.data || []).filter(isSalesUnassignedSnapshot);
     const managementSnapshots = [...scopedSnapshots, ...unassignedSnapshots];
 
     const targetOpportunities = effectiveTargetId ? scopedOpportunities.filter((opp) => opp.asesor_id === effectiveTargetId) : scopedOpportunities;
@@ -231,19 +288,20 @@ export default async function handler(req, res) {
         const advisorCitas = scopedCitas.filter((cita) => cita.asesor_id === advisor.id);
         const advisorSummary = calculateSummary({ opportunities: advisorOpps, snapshots: advisorSnaps, citas: advisorCitas, profileId: advisor.id });
         const availabilityNow = availability.find((a) => a.profile_id === advisor.id && a.starts_on <= today && (!a.ends_on || a.ends_on >= today));
-        const citasRequired = requiredCitasForAdvisor(advisor.id, availability, start.slice(0, 10), today);
+        const citasRequired = requiredCitasForAdvisor(advisor.id, availability, startDate, today);
         const citaPct = kpiPct(advisorSummary.effectiveCitas, citasRequired);
+        const capacityWeight = capacityForDay(advisor.id, today, availability);
         return {
           id: advisor.id,
           name: safeName(advisor),
           email: advisor.email,
           availability: availabilityNow?.status || "sin_configurar",
-          capacityWeight: Number(availabilityNow?.capacity_weight ?? 1),
+          capacityWeight,
           citasEffective: advisorSummary.effectiveCitas,
           citasRequired,
           kpiCitasPct: citaPct,
           summary: advisorSummary,
-          needsIntervention: Number(availabilityNow?.capacity_weight ?? 1) > 0 && ((citaPct !== null && citaPct < 70) || advisorSummary.waitingResponses > 0 || advisorSummary.overdueActions > 0 || advisorSummary.riskOpportunities > 0),
+          needsIntervention: capacityWeight > 0 && ((citaPct !== null && citaPct < 70) || advisorSummary.waitingResponses > 0 || advisorSummary.overdueActions > 0 || advisorSummary.riskOpportunities > 0),
         };
       })
       .map((row) => {
@@ -322,14 +380,21 @@ export default async function handler(req, res) {
         reason: stuckOperationReason(opp, today),
         nextAction: opp.next_action,
         nextActionAt: opp.next_action_at,
-        respondDeepLink: opp.respond_contact_id ? `https://app.respond.io/space/411886/inbox/${encodeURIComponent(String(opp.respond_contact_id))}` : null,
+        respondDeepLink: respondInboxLink(opp.respond_contact_id),
       }))
       .filter((opp) => opp.reason)
       .sort((a, b) => (a.risk === "critico" ? -1 : 0) - (b.risk === "critico" ? -1 : 0) || String(a.nextActionAt || "").localeCompare(String(b.nextActionAt || "")))
       .slice(0, 8);
 
-    const monthClosedNew = scopedCierres
-      .filter((c) => normalize(c.operation_type_structured || "nueva") !== "renovacion")
+    const structuredNewCierres = scopedCierres.filter((c) => c.advisor_profile_id && normalize(c.operation_type_structured) === "nueva");
+    const closureCoverage = {
+      structuredNew: structuredNewCierres.length,
+      structuredRenewal: scopedCierres.filter((c) => normalize(c.operation_type_structured) === "renovacion").length,
+      withoutStructuredAdvisor: scopedCierres.filter((c) => !c.advisor_profile_id).length,
+      withoutStructuredType: scopedCierres.filter((c) => c.advisor_profile_id && !c.operation_type_structured).length,
+      pendingClassification: scopedCierres.filter((c) => !c.advisor_profile_id || !c.operation_type_structured).length,
+    };
+    const monthClosedNew = structuredNewCierres
       .reduce((sum, c) => sum + Number(c.comision || 0), 0);
     const evaluableAdvisorRows = advisorRows.filter((row) => !row.isUnassigned && row.capacityWeight > 0);
     const todayCitas = scopedCitas.filter((cita) => String(cita.fecha_hora || "").slice(0, 10) === today).length;
@@ -340,7 +405,7 @@ export default async function handler(req, res) {
       metaEquipo: META_MENSUAL_NUEVA,
       cerradoNuevo: monthClosedNew,
       pipeline: scopedOpportunities.filter((opp) => opp.operation_type === "nueva" && !["cierre_ganado", "cierre_perdido"].includes(opp.stage)).reduce((sum, opp) => sum + Number(opp.estimated_commission || 0), 0),
-      citasEquipo: scopedCitas.filter((cita) => cita.confirmacion_estado === "realizada").length,
+      citasEquipo: scopedCitas.filter((cita) => citaConfirmationStatus(cita) === "realizada").length,
       citasRequeridasAcumuladas,
       citasHoy: todayCitas,
       citasRequeridasHoy,
@@ -352,6 +417,10 @@ export default async function handler(req, res) {
       seguimientosVencidos: summary.overdueActions,
       conversacionesAbiertas: summary.openConversations,
       respondLastSyncedAt: maxIso(targetSnapshots, "respond_last_synced_at"),
+      closureCoverage,
+      waitingResponseStats: summary.waitingResponseStats,
+      unassignedSalesRule: "Solo se muestran contactos sin asignar cuando atn_area = ventas.",
+      availabilityOverlaps: availabilityOverlaps(availability),
     };
 
     return res.status(200).json({
@@ -369,9 +438,10 @@ export default async function handler(req, res) {
       interventions,
       items,
       workList: items,
-      data: {
-        opportunities: targetOpportunities,
-        respondSnapshots: targetSnapshots,
+      dataCoverage: {
+        opportunities: targetOpportunities.length,
+        respondSnapshots: targetSnapshots.length,
+        snapshotsMissing,
       },
       limitations: {
         citaConfirmacion: null,
