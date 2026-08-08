@@ -3,6 +3,9 @@ import Head from "next/head";
 import Layout, { brand } from "../Layout";
 import { supabase } from "../../lib/supabase";
 
+const isProductionUi = process.env.NEXT_PUBLIC_APP_ENV === "production";
+const fase2aEnabled = isProductionUi ? process.env.NEXT_PUBLIC_FASE_2A_ENABLED === "true" : process.env.NEXT_PUBLIC_FASE_2A_ENABLED !== "false";
+
 const fmtMoney = (value) => new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
@@ -302,8 +305,24 @@ function Card({ label, value, sub, strong }) {
   );
 }
 
+function EmptyModuleNotice({ data }) {
+  const opportunities = data?.data?.opportunities || [];
+  const snapshots = data?.data?.respondSnapshots || [];
+  const interventions = data?.interventions || [];
+  if (opportunities.length || snapshots.length || interventions.length) return null;
+  return (
+    <Panel style={{ marginBottom: 16, borderColor: "#fde68a", background: "#fffbeb" }}>
+      <strong style={{ color: "#92400e" }}>Fase 2A sin datos cargados todavía.</strong>
+      <p style={{ margin: "6px 0 0", color: "#6b7280", fontSize: 12, lineHeight: 1.45 }}>
+        Aún no hay oportunidades registradas en este módulo, no se ha realizado una sincronización de conversaciones
+        o no existen intervenciones guardadas. Los indicadores se muestran como estado inicial, no como conclusión comercial definitiva.
+      </p>
+    </Panel>
+  );
+}
+
 function LoginPanel() {
-  const [email, setEmail] = useState("ari.dev@emporio.test");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const login = async (event) => {
@@ -315,12 +334,12 @@ function LoginPanel() {
   return (
     <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#f4f5f7", fontFamily: "system-ui" }}>
       <form onSubmit={login} style={{ width: "min(420px, calc(100vw - 32px))", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 24, boxShadow: "0 20px 50px rgba(17,24,39,.08)" }}>
-        <Badge variant="alta">ENTORNO DEV</Badge>
-        <h1 style={{ margin: "14px 0 8px", fontSize: 26, color: "#111827" }}>Iniciar sesión DEV</h1>
-        <p style={{ margin: "0 0 18px", color: "#6b7280", fontSize: 13 }}>Usa los usuarios sintéticos de inmoadmin-dev para probar Mi Trabajo y Mi Gerencia.</p>
+        <Badge variant="alta">ENTORNO DEV / PREVIEW</Badge>
+        <h1 style={{ margin: "14px 0 8px", fontSize: 26, color: "#111827" }}>Iniciar sesión de prueba</h1>
+        <p style={{ margin: "0 0 18px", color: "#6b7280", fontSize: 13 }}>Usa únicamente usuarios autorizados para este entorno.</p>
         <label style={{ display: "block", fontSize: 12, fontWeight: 900, color: "#374151", marginBottom: 6 }}>Email</label>
         <input value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} />
-        <label style={{ display: "block", fontSize: 12, fontWeight: 900, color: "#374151", margin: "12px 0 6px" }}>Contraseña DEV</label>
+        <label style={{ display: "block", fontSize: 12, fontWeight: 900, color: "#374151", margin: "12px 0 6px" }}>Contraseña</label>
         <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" style={inputStyle} />
         {error && <p style={{ color: "#991b1b", fontSize: 12 }}>{error}</p>}
         <button type="submit" style={{ ...buttonStyle, width: "100%", marginTop: 16 }}>Entrar</button>
@@ -385,6 +404,13 @@ export default function WorkCenterView({ type = "advisor" }) {
   }, []);
 
   useEffect(() => {
+    if (isProductionUi && !session) {
+      const timer = setTimeout(() => { window.location.href = "/"; }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [session]);
+
+  useEffect(() => {
     if (!session?.user?.id) {
       setProfile(null);
       setLoading(false);
@@ -403,6 +429,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   const isUnassignedSelected = selectedAdvisor === "__unassigned";
   const mode = isManagerView ? (selectedAdvisor && !isUnassignedSelected ? "supervise" : "management") : "mine";
   const canRegisterSupervision = isManagerView && canUseManager && !isUnassignedSelected;
+  const canSyncRespond = isManagerView && canUseManager;
 
   const loadData = async ({ sync = false } = {}) => {
     if (!session?.access_token || !profile) return;
@@ -421,7 +448,7 @@ export default function WorkCenterView({ type = "advisor" }) {
       setData(json);
       setLastUpdatedAt(new Date().toISOString());
       setLastSyncedAt(json?.managementSummary?.respondLastSyncedAt || json?.summary?.respondLastSyncedAt || null);
-      if (sync) {
+      if (sync && canSyncRespond) {
         setSyncing(true);
         const syncRes = await fetch("/api/ejecutivo/respond-sync", {
           method: "POST",
@@ -450,7 +477,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   };
 
   useEffect(() => {
-    if (profile) loadData({ sync: true });
+    if (profile) loadData();
   }, [profile?.id, selectedAdvisor, type]);
 
   const consolidatedItems = useMemo(() => consolidateWorkItems(data?.workList || []), [data?.workList]);
@@ -612,8 +639,9 @@ export default function WorkCenterView({ type = "advisor" }) {
     }
   };
 
-  if (!session) return <LoginPanel />;
-  if (!profile || loading && !data) return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Cargando centro de trabajo DEV...</div>;
+  if (!fase2aEnabled) return <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Módulo no habilitado.</main>;
+  if (!session) return isProductionUi ? <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Redirigiendo al inicio de sesión...</main> : <LoginPanel />;
+  if (!profile || loading && !data) return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Cargando centro de trabajo...</div>;
   if (isManagerView && !canUseManager) {
     return <Layout view="mi_trabajo" profile={profile}><main style={{ padding: 28 }}><Panel><h1>Sin acceso</h1><p>Tu rol no tiene acceso a Mi Gerencia.</p></Panel></main></Layout>;
   }
@@ -623,12 +651,12 @@ export default function WorkCenterView({ type = "advisor" }) {
 
   return (
     <Layout view={isManagerView ? "mi_gerencia" : "mi_trabajo"} profile={profile} onLogout={() => supabase.auth.signOut()}>
-      <Head><title>{title} · InmoAdmin DEV</title></Head>
+      <Head><title>{title} · InmoAdmin</title></Head>
       <main style={{ padding: "26px 28px 44px", width: "100%" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto" }}>
           <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
             <div>
-              <Badge variant="alta">ENTORNO DEV · inmoadmin-dev</Badge>
+              {!isProductionUi && <Badge variant="alta">ENTORNO DEV / PREVIEW</Badge>}
               <h1 style={{ margin: "12px 0 6px", color: "#111827", fontSize: 32, fontWeight: 950 }}>{title}</h1>
               <p style={{ margin: 0, color: "#6b7280", fontSize: 14, maxWidth: 760 }}>
                 {isManagerView
@@ -640,7 +668,7 @@ export default function WorkCenterView({ type = "advisor" }) {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {isManagerView && <a href="/ejecutivo/gerencia-ventas" style={ghostLinkStyle}>Ver análisis completo</a>}
-              <button onClick={() => loadData({ sync: true })} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Sincronizar conversaciones"}</button>
+              {canSyncRespond && <button onClick={() => loadData({ sync: true })} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Sincronizar conversaciones"}</button>}
               <button onClick={() => loadData()} style={secondaryButtonStyle}>Actualizar indicadores</button>
             </div>
             <div style={{ flexBasis: "100%", color: "#6b7280", fontSize: 12, textAlign: "right" }}>
@@ -649,7 +677,8 @@ export default function WorkCenterView({ type = "advisor" }) {
           </header>
 
           {error && <Panel style={{ borderColor: "#fecaca", color: "#991b1b", marginBottom: 16 }}>{error}</Panel>}
-          {loading && <Panel style={{ marginBottom: 16 }}>Actualizando datos DEV...</Panel>}
+          {loading && <Panel style={{ marginBottom: 16 }}>Actualizando datos...</Panel>}
+          <EmptyModuleNotice data={data} />
 
           {isManagerView && (
             <section style={{ marginBottom: 16 }}>

@@ -1,6 +1,7 @@
 import {
   RESPOND_CUSTOM_FIELDS,
-  assertDevSupabaseUrl,
+  assertFase2AEnabled,
+  assertSupabaseEnvironment,
   authHeaderToken,
   getAdminSupabase,
   getServerSupabase,
@@ -14,12 +15,15 @@ const MAX_MESSAGES_PER_CONTACT = 12;
 
 function rejectInternal(res, err) {
   console.error("[respond-sync]", err?.message || err);
-  return res.status(500).json({ ok: false, error: "No se pudo sincronizar metadata Respond.io en DEV." });
+  return res.status(500).json({ ok: false, error: "No se pudo sincronizar metadata Respond.io." });
 }
 
+const syncLocks = globalThis.__fase2aRespondSyncLocks || new Map();
+globalThis.__fase2aRespondSyncLocks = syncLocks;
+
 async function respondRequest(path, { method = "GET", body, params } = {}) {
-  const token = process.env.RESPOND_IO_TOKEN;
-  if (!token) throw new Error("Falta RESPOND_IO_TOKEN.");
+  const token = process.env.RESPOND_IO_API_TOKEN;
+  if (!token) throw new Error("Falta RESPOND_IO_API_TOKEN.");
   const url = new URL(`${RESPOND_BASE}${path}`);
   Object.entries(params || {}).forEach(([key, value]) => url.searchParams.set(key, String(value)));
   const response = await fetch(url, {
@@ -193,11 +197,7 @@ async function syncRespond(admin, profiles, actorProfile) {
       if (!snapshot.mapped_profile_id && existing?.mapped_profile_id) {
         snapshot.mapped_profile_id = existing.mapped_profile_id;
         snapshot.mapping_status = existing.mapping_status || "matched";
-        snapshot.metadata = {
-          ...snapshot.metadata,
-          preserved_dev_mapping: true,
-          previous_mapping_method: existing.metadata?.mapping_method || null,
-        };
+        snapshot.metadata = { ...snapshot.metadata, preserved_mapping: true };
       }
     });
   }
@@ -214,56 +214,12 @@ async function syncRespond(admin, profiles, actorProfile) {
     if (error) throw error;
   }
 
-  const linkedContacts = snapshots.map((s) => s.respond_contact_id);
-  if (linkedContacts.length) {
-    const { data: linkedOpps, error: oppError } = await admin
-      .from("gv_opportunities")
-      .select("id, respond_contact_id, asesor_id")
-      .in("respond_contact_id", linkedContacts);
-    if (oppError) throw oppError;
-
-    for (const opp of linkedOpps || []) {
-      const snap = snapshots.find((s) => s.respond_contact_id === opp.respond_contact_id);
-      if (!snap) continue;
-      const update = {
-        respond_assignee_id: snap.respond_assignee_id,
-        respond_assignee_email: snap.respond_assignee_email,
-        respond_channel_id: snap.respond_channel_id,
-        respond_channel_source: snap.respond_channel_source,
-        respond_conversation_status: snap.respond_conversation_status,
-        respond_lifecycle: snap.respond_lifecycle,
-        respond_last_inbound_at: snap.respond_last_inbound_at,
-        respond_last_outbound_at: snap.respond_last_outbound_at,
-        respond_last_human_outbound_at: snap.respond_last_human_outbound_at,
-        respond_last_ai_outbound_at: snap.respond_last_ai_outbound_at,
-        respond_unanswered_since: snap.respond_unanswered_since,
-        respond_last_synced_at: snap.respond_last_synced_at,
-        last_synced_at: snap.respond_last_synced_at,
-        last_activity_at: snap.respond_last_outbound_at || snap.respond_last_inbound_at || undefined,
-        updated_by: actorProfile.id,
-        updated_at: new Date().toISOString(),
-      };
-      const { error: updateError } = await admin.from("gv_opportunities").update(update).eq("id", opp.id);
-      if (updateError) throw updateError;
-      await admin.from("gv_opportunity_events").insert({
-        opportunity_id: opp.id,
-        event_type: "external_sync",
-        actor_profile_id: actorProfile.id,
-        acted_as_profile_id: opp.asesor_id === actorProfile.id ? null : opp.asesor_id,
-        is_management_intervention: opp.asesor_id !== actorProfile.id,
-        event_source: "respond_io_sync",
-        metadata: { sync_mode: "metadata_only", respond_contact_id: snap.respond_contact_id },
-        notes: "Sincronizacion metadata-only desde Respond.io Growth Developer API.",
-      });
-    }
-  }
-
   return {
     contactsRead: contacts.length,
     snapshotsUpserted: snapshots.length,
     matchedProfiles: snapshots.filter((s) => s.mapped_profile_id).length,
     unmatchedProfiles: snapshots.filter((s) => !s.mapped_profile_id).length,
-    linkedOpportunitiesUpdated: linkedContacts.length,
+    linkedOpportunitiesUpdated: 0,
   };
 }
 
@@ -271,7 +227,13 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
 
   try {
-    assertDevSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+    const env = assertSupabaseEnvironment();
+    assertFase2AEnabled();
+    const lockKey = `${env.projectRef}:respond-sync`;
+    if (syncLocks.get(lockKey)) {
+      return res.status(409).json({ ok: false, error: "Ya hay una sincronización en curso." });
+    }
+    syncLocks.set(lockKey, Date.now());
     const jwt = authHeaderToken(req);
     if (!jwt) return res.status(401).json({ ok: false, error: "Sesion requerida." });
 
@@ -288,7 +250,7 @@ export default async function handler(req, res) {
       .maybeSingle();
     if (profileError) throw profileError;
     if (!actorProfile?.active) return res.status(403).json({ ok: false, error: "Perfil no autorizado." });
-    if (!["admin", "gerente_ventas", "asesor"].includes(actorProfile.role_id)) {
+    if (!["admin", "gerente_ventas"].includes(actorProfile.role_id)) {
       return res.status(403).json({ ok: false, error: "Respond.io sync no autorizado para este rol." });
     }
 
@@ -299,16 +261,22 @@ export default async function handler(req, res) {
     if (profilesError) throw profilesError;
 
     const result = await syncRespond(admin, profiles || [], actorProfile);
-    return res.status(200).json({ ok: true, dev: true, result });
+    return res.status(200).json({ ok: true, result });
   } catch (err) {
+    if (err.statusCode === 404) return res.status(404).json({ ok: false, error: "Modulo no habilitado." });
     if (err.statusCode === 424) {
       return res.status(424).json({
         ok: false,
-        error: "Falta ejecutar la migracion DEV de snapshots Respond.io.",
-        migration: "supabase/migrations/202608080004_fase_2a_respond_work_center.sql",
+        error: "Falta ejecutar la migracion de snapshots Respond.io.",
+        migration: "supabase/migrations/202608080007_fase_2a_production_hardening.sql",
       });
     }
     if (err.public) return res.status(502).json({ ok: false, error: "Respond.io rechazo la lectura.", detail: err.public });
     return rejectInternal(res, err);
+  } finally {
+    try {
+      const ref = assertSupabaseEnvironment().projectRef;
+      syncLocks.delete(`${ref}:respond-sync`);
+    } catch {}
   }
 }

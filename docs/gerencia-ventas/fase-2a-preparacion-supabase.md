@@ -1,7 +1,7 @@
 # Fase 2A Gerencia de Ventas: preparacion Supabase segura
 
-Estado: preparacion, sin ejecucion de SQL.  
-Fecha: 8 de agosto de 2026.  
+Estado: preparacion, sin ejecucion de SQL.
+Fecha: 8 de agosto de 2026.
 Rama: `codex/fase-2a-supabase-prep`.
 
 ## Objetivo

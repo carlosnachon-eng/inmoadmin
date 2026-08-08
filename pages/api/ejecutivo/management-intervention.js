@@ -1,5 +1,6 @@
 import {
-  assertDevSupabaseUrl,
+  assertFase2AEnabled,
+  assertSupabaseEnvironment,
   authHeaderToken,
   getAdminSupabase,
   getServerSupabase,
@@ -19,14 +20,15 @@ function normalizeReason(value) {
 
 function rejectInternal(res, err) {
   console.error("[management-intervention]", err?.message || err);
-  return res.status(500).json({ ok: false, error: "No se pudo registrar la intervención DEV." });
+  return res.status(500).json({ ok: false, error: "No se pudo registrar la intervención." });
 }
 
 export default async function handler(req, res) {
   if (!["POST", "PATCH"].includes(req.method)) return res.status(405).json({ ok: false, error: "Method Not Allowed" });
 
   try {
-    assertDevSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+    assertSupabaseEnvironment();
+    assertFase2AEnabled();
     const jwt = authHeaderToken(req);
     if (!jwt) return res.status(401).json({ ok: false, error: "Sesion requerida." });
 
@@ -69,7 +71,7 @@ export default async function handler(req, res) {
       const normalizedReason = normalizeReason(reason);
       const duplicate = (activeInterventions || []).find((item) => normalizeReason(item.reason) === normalizedReason);
       if (duplicate) {
-        return res.status(200).json({ ok: true, dev: true, duplicate: true, intervention: duplicate });
+        return res.status(200).json({ ok: true, duplicate: true, intervention: duplicate });
       }
 
       const { data, error } = await scoped
@@ -87,8 +89,22 @@ export default async function handler(req, res) {
         })
         .select("id, status, created_at")
         .single();
+      if (error?.code === "23505" && indicators?.contextKey) {
+        const { data: existing, error: existingError } = await scoped
+          .from("gv_management_interventions")
+          .select("id, status, reason, agreed_action, review_on, created_at")
+          .eq("advisor_profile_id", advisorProfileId)
+          .eq("scope", "ventas")
+          .eq("indicators->>contextKey", indicators.contextKey)
+          .in("status", ACTIVE_STATUS)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (existingError) throw existingError;
+        if (existing) return res.status(200).json({ ok: true, duplicate: true, intervention: existing });
+      }
       if (error) throw error;
-      return res.status(200).json({ ok: true, dev: true, intervention: data });
+      return res.status(200).json({ ok: true, intervention: data });
     }
 
     const { id, status } = req.body || {};
@@ -100,8 +116,9 @@ export default async function handler(req, res) {
       .select("id, status, updated_at")
       .single();
     if (error) throw error;
-    return res.status(200).json({ ok: true, dev: true, intervention: data });
+    return res.status(200).json({ ok: true, intervention: data });
   } catch (err) {
+    if (err.statusCode === 404) return res.status(404).json({ ok: false, error: "Modulo no habilitado." });
     return rejectInternal(res, err);
   }
 }

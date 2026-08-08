@@ -3,7 +3,8 @@ import {
   MANAGEMENT_ROLES,
   META_CITAS_DIARIAS,
   META_MENSUAL_NUEVA,
-  assertDevSupabaseUrl,
+  assertFase2AEnabled,
+  assertSupabaseEnvironment,
   authHeaderToken,
   buildWorkItems,
   calculateSummary,
@@ -25,7 +26,7 @@ function monthBounds() {
 
 function rejectInternal(res, err) {
   console.error("[work-center]", err?.message || err);
-  return res.status(500).json({ ok: false, error: "No se pudo cargar el centro de trabajo DEV." });
+  return res.status(500).json({ ok: false, error: "No se pudo cargar el centro de trabajo." });
 }
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
@@ -100,7 +101,8 @@ export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
 
   try {
-    assertDevSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+    assertSupabaseEnvironment();
+    assertFase2AEnabled();
     const jwt = authHeaderToken(req);
     if (!jwt) return res.status(401).json({ ok: false, error: "Sesion requerida." });
 
@@ -354,8 +356,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      dev: true,
-      environment: "inmoadmin-dev",
+      environment: process.env.APP_ENV || process.env.VERCEL_ENV || "preview",
       viewer: profile,
       mode,
       target: requestedTarget || (mode === "mine" ? profile : null),
@@ -374,11 +375,12 @@ export default async function handler(req, res) {
       },
       limitations: {
         citaConfirmacion: null,
-        respondMapping: "En DEV se usan aliases auditables para probar usuarios sinteticos cuando el email real de Respond.io no coincide con el Auth DEV.",
-        respondMigration: snapshotsMissing ? "Pendiente ejecutar migracion 202608080004 para snapshots Respond.io." : null,
+        respondMapping: null,
+        respondMigration: snapshotsMissing ? "Pendiente ejecutar la migracion de snapshots Respond.io." : null,
       },
     });
   } catch (err) {
+    if (err.statusCode === 404) return res.status(404).json({ ok: false, error: "Modulo no habilitado." });
     return rejectInternal(res, err);
   }
 }

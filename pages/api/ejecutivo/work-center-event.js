@@ -1,5 +1,6 @@
 import {
-  assertDevSupabaseUrl,
+  assertFase2AEnabled,
+  assertSupabaseEnvironment,
   authHeaderToken,
   getAdminSupabase,
   getServerSupabase,
@@ -15,14 +16,15 @@ const ALLOWED_EVENT_TYPES = new Set([
 
 function rejectInternal(res, err) {
   console.error("[work-center-event]", err?.message || err);
-  return res.status(500).json({ ok: false, error: "No se pudo registrar la auditoria DEV." });
+  return res.status(500).json({ ok: false, error: "No se pudo registrar la auditoria." });
 }
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
 
   try {
-    assertDevSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+    assertSupabaseEnvironment();
+    assertFase2AEnabled();
     const jwt = authHeaderToken(req);
     if (!jwt) return res.status(401).json({ ok: false, error: "Sesion requerida." });
 
@@ -61,15 +63,16 @@ export default async function handler(req, res) {
         acted_as_profile_id: isManagement ? (actedAsProfileId || visibleOpp.asesor_id) : null,
         is_management_intervention: isManagement,
         event_source: "app",
-        metadata: { prototype: "fase_2a_dev", scope: "ventas" },
+        metadata: { module: "fase_2a", scope: "ventas" },
         notes: String(notes || "").slice(0, 500),
       })
       .select("id, occurred_at, actor_profile_id, acted_as_profile_id, is_management_intervention")
       .single();
     if (insertError) throw insertError;
 
-    return res.status(200).json({ ok: true, dev: true, event });
+    return res.status(200).json({ ok: true, event });
   } catch (err) {
+    if (err.statusCode === 404) return res.status(404).json({ ok: false, error: "Modulo no habilitado." });
     return rejectInternal(res, err);
   }
 }

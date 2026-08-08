@@ -21,9 +21,11 @@ Flujo recomendado:
 6. Abrir PR con migracion y cambios de aplicacion.
 7. Revisar SQL antes de cualquier ejecucion productiva.
 
-Estado actual:
+Estado Fase 2A:
 
-- La carpeta se crea para preparar Fase 2A de Gerencia de Ventas.
-- La primera migracion es revisable y no ha sido ejecutada.
-- `bootstrap/` contiene un esquema base minimo para DEV cuando el proyecto
-  dev/preview esta vacio. No debe ejecutarse en Produccion.
+- `migrations/` contiene un paquete productivo revisable, aditivo e
+  idempotente.
+- `dev/` conserva bootstrap, seed y SQL aplicados manualmente en
+  `inmoadmin-dev`. No forma parte del flujo productivo.
+- `reports/` contiene consultas dry-run de solo lectura.
+- Ningun seed DEV debe ejecutarse contra Produccion.

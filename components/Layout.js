@@ -3,6 +3,10 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { useModulosPermitidos } from "../lib/permisos";
 
+const fase2aEnabled = process.env.NEXT_PUBLIC_APP_ENV === "production"
+  ? process.env.NEXT_PUBLIC_FASE_2A_ENABLED === "true"
+  : process.env.NEXT_PUBLIC_FASE_2A_ENABLED !== "false";
+
 export const brand = {
   red:       "#b91c3c",
   redDark:   "#7f1d2e",
@@ -85,6 +89,7 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
   const navFiltrado = permisosCargando
     ? []
     : nav.filter((n) => {
+        if (!fase2aEnabled && ["mi_trabajo", "mi_gerencia"].includes(n.id)) return false;
         const rolPermitido = n.rolesPermitidos?.includes(perfilPermisos?.role_id);
         return (!n.soloAdmin || esAdmin) &&
           (!n.rolesPermitidos || rolPermitido) &&

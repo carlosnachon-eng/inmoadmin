@@ -1,6 +1,6 @@
 # Runbook Supabase DEV/PREVIEW para Fase 2A
 
-Estado: preparado, no ejecutado.  
+Estado: preparado, no ejecutado.
 Fecha: 8 de agosto de 2026.
 
 ## Objetivo
