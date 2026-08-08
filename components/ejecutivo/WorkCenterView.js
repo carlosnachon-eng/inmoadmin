@@ -128,15 +128,6 @@ export default function WorkCenterView({ type = "advisor" }) {
     setLoading(true);
     setError("");
     try {
-      if (sync) {
-        setSyncing(true);
-        const syncRes = await fetch("/api/ejecutivo/respond-sync", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        const syncJson = await syncRes.json();
-        if (!syncRes.ok) setError(syncJson.error || "No se pudo sincronizar Respond.io.");
-      }
       const params = new URLSearchParams();
       if (isManagerView) params.set("mode", selectedAdvisor ? "supervise" : "management");
       else params.set("mode", "mine");
@@ -147,6 +138,22 @@ export default function WorkCenterView({ type = "advisor" }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo cargar la vista.");
       setData(json);
+      if (sync) {
+        setSyncing(true);
+        const syncRes = await fetch("/api/ejecutivo/respond-sync", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const syncJson = await syncRes.json();
+        if (!syncRes.ok) setError(syncJson.error || "No se pudo sincronizar Respond.io.");
+        else {
+          const refreshed = await fetch(`/api/ejecutivo/work-center?${params.toString()}`, {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+          const refreshedJson = await refreshed.json();
+          if (refreshed.ok) setData(refreshedJson);
+        }
+      }
     } catch (err) {
       setError(err.message || "Error inesperado.");
     } finally {
