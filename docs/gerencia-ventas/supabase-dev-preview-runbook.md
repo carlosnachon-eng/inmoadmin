@@ -109,7 +109,17 @@ Este script no desactiva RLS ni abre acceso anonimo. Solo permite que
 `authenticated` y `service_role` tengan privilegios SQL suficientes para que
 PostgREST pueda evaluar las policies.
 
-5. Ejecutar seed minimo sintetico en DEV/PREVIEW:
+5. Ejecutar correccion de RLS por scope:
+
+```text
+supabase/migrations/202608080003_fase_2a_scope_rls_fix.sql
+```
+
+Este script separa policies de disponibilidad y limita oportunidades al scope
+`ventas`. Una relacion `operaciones` no concede acceso a oportunidades
+comerciales.
+
+6. Ejecutar seed minimo sintetico en DEV/PREVIEW:
 
 ```text
 supabase/seed/202608080001_fase_2a_minimal_seed.sql
