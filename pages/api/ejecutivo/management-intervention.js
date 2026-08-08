@@ -6,6 +6,16 @@ import {
 } from "../../../lib/ejecutivo/workCenter";
 
 const ALLOWED_STATUS = new Set(["pendiente", "en_seguimiento", "corregida", "sin_mejora", "cerrada_decision_tomada"]);
+const ACTIVE_STATUS = ["pendiente", "en_seguimiento", "sin_mejora"];
+
+function normalizeReason(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
 
 function rejectInternal(res, err) {
   console.error("[management-intervention]", err?.message || err);
@@ -46,6 +56,21 @@ export default async function handler(req, res) {
         .maybeSingle();
       if (advisorError) throw advisorError;
       if (!visibleAdvisor && actorProfile.role_id !== "admin") return res.status(403).json({ ok: false, error: "Asesor fuera del scope autorizado." });
+
+      const { data: activeInterventions, error: duplicateError } = await scoped
+        .from("gv_management_interventions")
+        .select("id, status, reason, agreed_action, review_on, created_at")
+        .eq("advisor_profile_id", advisorProfileId)
+        .in("status", ACTIVE_STATUS)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (duplicateError) throw duplicateError;
+
+      const normalizedReason = normalizeReason(reason);
+      const duplicate = (activeInterventions || []).find((item) => normalizeReason(item.reason) === normalizedReason);
+      if (duplicate) {
+        return res.status(200).json({ ok: true, dev: true, duplicate: true, intervention: duplicate });
+      }
 
       const { data, error } = await scoped
         .from("gv_management_interventions")

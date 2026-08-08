@@ -48,6 +48,31 @@ const signalLabels = {
   sin_actividad: "Sin actividad",
 };
 
+const textLabels = {
+  "new lead": "Nuevo lead",
+  new_lead: "Nuevo lead",
+  "en atencion": "En atención",
+  en_atencion: "En atención",
+  contactado: "Contactado",
+  "responder conversacion": "Responder conversación",
+  responder_conversacion: "Responder conversación",
+  pendiente_confirmar: "Pendiente por confirmar",
+  confirmada: "Confirmada",
+  cancelada: "Cancelada",
+  no_show: "No-show",
+  realizada: "Realizada",
+  evaluable: "Evaluable",
+  ausencia_temporal: "Ausencia temporal",
+  fuera_temporal: "Fuera temporal",
+  sin_configurar: "Sin configurar",
+  requiere_revision: "Requiere revisión",
+  open: "Abierta",
+  closed: "Cerrada",
+  critico: "Crítico",
+  whatsapp: "WhatsApp",
+  "respond.io": "Respond.io",
+};
+
 const relevanceStage = {
   cierre_ganado: 10,
   contrato_firma: 9,
@@ -63,6 +88,48 @@ function unique(values) {
   return [...new Set((values || []).filter(Boolean))];
 }
 
+function labelize(value) {
+  const text = String(value || "").trim();
+  if (!text) return "n/d";
+  const key = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return textLabels[key] || textLabels[text] || text.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function cleanContactName(value) {
+  const text = String(value || "").trim();
+  if (!text || !/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9]/.test(text)) return "Contacto sin nombre";
+  return text;
+}
+
+function formatReviewDate(value) {
+  if (!value) return "";
+  const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }).replace(".", "");
+}
+
+function formatDateTime(value) {
+  if (!value) return "Sin fecha";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Sin fecha";
+  return date.toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
+}
+
+function fmtDateTimeShort(value) {
+  if (!value) return "Sin sincronización registrada";
+  return formatDateTime(value);
+}
+
+function displayAction(value, context = {}) {
+  const text = String(value || "").trim();
+  const normalized = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+  if (normalized === "liberar clientes esperando respuesta") {
+    const count = String(context.reason || "").match(/(\d+)\s+clientes esperando respuesta/)?.[1];
+    return count ? `Revisar y responder hoy los ${count} clientes pendientes` : "Revisar y responder clientes pendientes";
+  }
+  return labelize(text);
+}
+
 function consolidateWorkItems(items) {
   const groups = new Map();
   (items || []).forEach((item) => {
@@ -76,6 +143,7 @@ function consolidateWorkItems(items) {
     if (!current) {
       groups.set(key, {
         ...item,
+        client: cleanContactName(item.client),
         ids: [item.id],
         types: unique(item.types || [item.type]),
         signals: unique(item.types || [item.type]),
@@ -89,7 +157,7 @@ function consolidateWorkItems(items) {
       ...current,
       title: preferred.title || current.title,
       severity: preferred.severity || current.severity,
-      client: current.client || item.client,
+      client: cleanContactName(current.client || item.client),
       property: current.property || item.property,
       stage: stage || current.stage || item.stage,
       nextAction: preferred.nextAction || current.nextAction || item.nextAction,
@@ -211,10 +279,12 @@ const secondaryButtonStyle = { ...buttonStyle, background: "#f9fafb", color: "#3
 const ghostLinkStyle = { color: "#374151", textDecoration: "none", border: "1px solid #e5e7eb", background: "#fff", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontWeight: 900 };
 
 function fmtPct(value) {
+  if (value === null || value === undefined) return "—";
   return `${Number(value || 0).toFixed(1).replace(".0", "")}%`;
 }
 
 function kpiTone(value) {
+  if (value === null || value === undefined) return "normal";
   if (value < 40) return "critica";
   if (value < 70) return "alta";
   return "bajo";
@@ -246,6 +316,9 @@ export default function WorkCenterView({ type = "advisor" }) {
   const [auditNote, setAuditNote] = useState("");
   const [interventionDraft, setInterventionDraft] = useState(null);
   const [savingIntervention, setSavingIntervention] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [highlightedIntervention, setHighlightedIntervention] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: current } }) => setSession(current));
@@ -269,7 +342,8 @@ export default function WorkCenterView({ type = "advisor" }) {
 
   const isManagerView = type === "manager";
   const canUseManager = ["admin", "gerente_ventas"].includes(profile?.role_id);
-  const mode = isManagerView ? (selectedAdvisor ? "supervise" : "management") : "mine";
+  const isUnassignedSelected = selectedAdvisor === "__unassigned";
+  const mode = isManagerView ? (selectedAdvisor && !isUnassignedSelected ? "supervise" : "management") : "mine";
   const canRegisterSupervision = isManagerView && mode === "supervise" && canUseManager;
 
   const loadData = async ({ sync = false } = {}) => {
@@ -280,13 +354,15 @@ export default function WorkCenterView({ type = "advisor" }) {
       const params = new URLSearchParams();
       if (isManagerView) params.set("mode", selectedAdvisor ? "supervise" : "management");
       else params.set("mode", "mine");
-      if (selectedAdvisor) params.set("target", selectedAdvisor);
+      if (selectedAdvisor && selectedAdvisor !== "__unassigned") params.set("target", selectedAdvisor);
       const res = await fetch(`/api/ejecutivo/work-center?${params.toString()}`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo cargar la vista.");
       setData(json);
+      setLastUpdatedAt(new Date().toISOString());
+      setLastSyncedAt(json?.managementSummary?.respondLastSyncedAt || json?.summary?.respondLastSyncedAt || null);
       if (sync) {
         setSyncing(true);
         const syncRes = await fetch("/api/ejecutivo/respond-sync", {
@@ -300,7 +376,11 @@ export default function WorkCenterView({ type = "advisor" }) {
             headers: { Authorization: `Bearer ${session.access_token}` },
           });
           const refreshedJson = await refreshed.json();
-          if (refreshed.ok) setData(refreshedJson);
+          if (refreshed.ok) {
+            setData(refreshedJson);
+            setLastUpdatedAt(new Date().toISOString());
+            setLastSyncedAt(refreshedJson?.managementSummary?.respondLastSyncedAt || refreshedJson?.summary?.respondLastSyncedAt || null);
+          }
         }
       }
     } catch (err) {
@@ -316,8 +396,11 @@ export default function WorkCenterView({ type = "advisor" }) {
   }, [profile?.id, selectedAdvisor, type]);
 
   const consolidatedItems = useMemo(() => consolidateWorkItems(data?.workList || []), [data?.workList]);
-  const visibleItems = useMemo(() => filterItems(consolidatedItems, filter), [consolidatedItems, filter]);
-  const prioritySummaries = useMemo(() => priorityGroups(consolidatedItems), [consolidatedItems]);
+  const scopedConsolidatedItems = useMemo(() => (
+    isUnassignedSelected ? consolidatedItems.filter((item) => !item.ownerId) : consolidatedItems
+  ), [consolidatedItems, isUnassignedSelected]);
+  const visibleItems = useMemo(() => filterItems(scopedConsolidatedItems, filter), [scopedConsolidatedItems, filter]);
+  const prioritySummaries = useMemo(() => priorityGroups(scopedConsolidatedItems), [scopedConsolidatedItems]);
   const title = isManagerView ? "Mi Gerencia" : "Mi Trabajo";
   const targetName = data?.target?.full_name || data?.target?.email || "";
   const advisorById = useMemo(() => new Map((data?.advisorRows || []).map((advisor) => [advisor.id, advisor])), [data?.advisorRows]);
@@ -333,6 +416,13 @@ export default function WorkCenterView({ type = "advisor" }) {
       notes: "",
       indicators: payload.indicators || payload.why || [],
     });
+  };
+
+  const openInterventionFollowUp = (id) => {
+    setHighlightedIntervention(id);
+    setTimeout(() => {
+      document.getElementById(`intervention-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
   };
 
   const submitIntervention = async () => {
@@ -355,6 +445,7 @@ export default function WorkCenterView({ type = "advisor" }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo registrar la intervención.");
       setInterventionDraft(null);
+      if (json.duplicate && json.intervention?.id) setHighlightedIntervention(json.intervention.id);
       await loadData();
     } catch (err) {
       setError(err.message || "No se pudo registrar la intervención.");
@@ -371,7 +462,10 @@ export default function WorkCenterView({ type = "advisor" }) {
       body: JSON.stringify({ id, status }),
     });
     if (!res.ok) setError("No se pudo actualizar la intervención.");
-    else await loadData();
+    else {
+      setHighlightedIntervention(id);
+      await loadData();
+    }
   };
 
   if (!session) return <LoginPanel />;
@@ -398,11 +492,15 @@ export default function WorkCenterView({ type = "advisor" }) {
                   : "Centro de trabajo personal: prioridades, seguimientos, citas, oportunidades y conversaciones que requieren accion."}
               </p>
               {mode === "supervise" && <p style={{ margin: "10px 0 0", color: brand.red, fontWeight: 900 }}>Modo Supervisión — viendo a {targetName}</p>}
+              {isUnassignedSelected && <p style={{ margin: "10px 0 0", color: brand.red, fontWeight: 900 }}>Revisión gerencial — contactos sin asignar</p>}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {isManagerView && <a href="/ejecutivo/gerencia-ventas" style={ghostLinkStyle}>Ver análisis completo</a>}
-              <button onClick={() => loadData({ sync: true })} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Actualizar conversaciones"}</button>
-              <button onClick={() => loadData()} style={secondaryButtonStyle}>Actualizar vista</button>
+              <button onClick={() => loadData({ sync: true })} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Sincronizar conversaciones"}</button>
+              <button onClick={() => loadData()} style={secondaryButtonStyle}>Actualizar indicadores</button>
+            </div>
+            <div style={{ flexBasis: "100%", color: "#6b7280", fontSize: 12, textAlign: "right" }}>
+              Actualizado: {fmtDateTimeShort(lastUpdatedAt)} · Última sincronización Respond.io: {fmtDateTimeShort(lastSyncedAt)}
             </div>
           </header>
 
@@ -410,24 +508,39 @@ export default function WorkCenterView({ type = "advisor" }) {
           {loading && <Panel style={{ marginBottom: 16 }}>Actualizando datos DEV...</Panel>}
 
           {isManagerView && (
-            <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 16 }}>
-              <Card label="Meta equipo" value={fmtMoney(management.metaEquipo)} />
-              <Card label="Cerrado nuevo" value={fmtMoney(management.cerradoNuevo)} strong />
-              <Card label="Pipeline" value={fmtMoney(management.pipeline)} />
-              <Card label="Citas equipo" value={management.citasEquipo || 0} sub={`Requerido diario actual: ${management.citasRequeridasDia || 0}`} />
-              <Card label="Clientes esperando respuesta" value={management.clientesEsperandoRespuesta || 0} strong={management.clientesEsperandoRespuesta > 0} />
-              <Card label="Intervenciones sugeridas" value={management.asesoresRequierenIntervencion || 0} />
+            <section style={{ marginBottom: 16 }}>
+              <h2 style={{ ...h2, marginBottom: 10 }}>Indicadores gerenciales</h2>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+                <Card label="Meta del equipo" value={fmtMoney(management.metaEquipo)} sub="Comisión nueva mensual objetivo." />
+                <Card label="Cerrado ganado del periodo" value={fmtMoney(management.cerradoNuevo)} sub="Comisión nueva cerrada." strong />
+                <Card label="Pipeline comisión estimada" value={fmtMoney(management.pipeline)} sub="Comisión estimada en oportunidades abiertas." />
+                <Card label="Citas efectivas acumuladas" value={`${management.citasEquipo || 0} de ${management.citasRequeridasAcumuladas || 0}`} sub="Realizadas vs requeridas acumuladas." />
+                <Card label="Clientes esperando respuesta" value={management.clientesEsperandoRespuesta || 0} strong={management.clientesEsperandoRespuesta > 0} />
+              </div>
             </section>
           )}
 
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 16 }}>
+          {isManagerView && (
+            <section style={{ marginBottom: 16 }}>
+              <h2 style={{ ...h2, marginBottom: 10 }}>Indicadores operativos</h2>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+                <Card label="Citas de hoy" value={`${management.citasHoy || 0} de ${management.citasRequeridasHoy || 0}`} sub="Agendadas vs requeridas hoy." />
+                <Card label="Conversaciones abiertas" value={management.conversacionesAbiertas || 0} />
+                <Card label="Seguimientos vencidos" value={management.seguimientosVencidos || 0} strong={management.seguimientosVencidos > 0} />
+                <Card label="Oportunidades en riesgo" value={management.oportunidadesEnRiesgo || 0} strong={management.oportunidadesEnRiesgo > 0} />
+                <Card label="Intervenciones" value={`${management.intervencionesPorRegistrar || 0} por registrar`} sub={`${management.intervencionesActivas || 0} activas/en seguimiento.`} />
+              </div>
+            </section>
+          )}
+
+          {!isManagerView && <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 16 }}>
             <Card label="Citas de hoy" value={summary.todayCitas || 0} />
             <Card label="Citas efectivas acumuladas" value={summary.effectiveCitas || 0} />
             <Card label="Conversaciones abiertas" value={summary.openConversations || 0} />
             <Card label="Esperando respuesta" value={summary.waitingResponses || 0} strong={summary.waitingResponses > 0} />
             <Card label="Seguimientos vencidos" value={summary.overdueActions || 0} strong={summary.overdueActions > 0} />
-            <Card label="Pipeline potencial" value={fmtMoney(summary.pipeline)} />
-          </section>
+            <Card label="Pipeline comisión estimada" value={fmtMoney(summary.pipeline)} />
+          </section>}
 
           {isManagerView && (
             <Panel style={{ marginBottom: 16 }}>
@@ -439,7 +552,7 @@ export default function WorkCenterView({ type = "advisor" }) {
                 <select value={selectedAdvisor} onChange={(e) => setSelectedAdvisor(e.target.value)} style={inputStyle}>
                   <option value="">Vista gerencial del equipo</option>
                   {(data?.advisorRows || []).map((advisor) => (
-                    <option key={advisor.id} value={advisor.id}>{advisor.name} · {advisor.availability}</option>
+                    <option key={advisor.id} value={advisor.isUnassigned ? "__unassigned" : advisor.id}>{advisor.name} · {labelize(advisor.availability)}</option>
                   ))}
                 </select>
               </div>
@@ -448,20 +561,19 @@ export default function WorkCenterView({ type = "advisor" }) {
           )}
 
           {isManagerView && !selectedAdvisor && (
-            <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, .9fr)", gap: 16, marginBottom: 16 }}>
-              <PeoplePriorities priorities={data?.peoplePriorities || []} onSupervise={setSelectedAdvisor} onIntervene={openIntervention} />
-              <SuggestedInterventions items={data?.suggestedInterventions || []} onSupervise={setSelectedAdvisor} onIntervene={openIntervention} />
+            <section style={{ marginBottom: 16 }}>
+              <PeoplePriorities priorities={data?.peoplePriorities || []} onSupervise={setSelectedAdvisor} onIntervene={openIntervention} onFollowUp={openInterventionFollowUp} />
             </section>
           )}
 
           {isManagerView && !selectedAdvisor && (
             <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, .9fr)", gap: 16, marginBottom: 16 }}>
               <OperationsAttention items={data?.operationsAttention || []} onSupervise={setSelectedAdvisor} />
-              <InterventionsTable items={data?.interventions || []} onStatusChange={updateInterventionStatus} />
+              <InterventionsTable items={data?.interventions || []} onStatusChange={updateInterventionStatus} highlightedId={highlightedIntervention} />
             </section>
           )}
 
-          <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.95fr) minmax(320px, 1.05fr)", gap: 16 }}>
+          <section style={{ display: "grid", gap: 16 }}>
             <Panel>
               <h2 style={h2}>{isManagerView && !selectedAdvisor ? "Prioridades generales" : "Prioridades de hoy"}</h2>
               <p style={muted}>Agregados operativos del día como soporte a las prioridades por asesor.</p>
@@ -552,13 +664,13 @@ function AdvisorTable({ advisors, onPick }) {
             <tr key={row.id}>
               <td style={td}><strong>{row.name}</strong><div style={muted}>{row.email}</div></td>
               <td style={td}><strong>{row.citasEffective || 0}/{row.citasRequired || 0}</strong></td>
-              <td style={td}><Badge variant={kpiTone(row.kpiCitasPct)}>{fmtPct(row.kpiCitasPct)}</Badge></td>
+              <td style={td}>{row.kpiCitasPct === null || row.kpiCitasPct === undefined ? <span style={{ color: "#6b7280", fontWeight: 900 }}>No evaluable</span> : <Badge variant={kpiTone(row.kpiCitasPct)}>{fmtPct(row.kpiCitasPct)}</Badge>}</td>
               <td style={td}>{row.summary.waitingResponses}</td>
               <td style={td}>{row.summary.overdueActions}</td>
               <td style={td}>{row.summary.riskOpportunities}</td>
               <td style={td}>{fmtMoney(row.summary.pipeline)}</td>
-              <td style={td}><Badge variant={row.capacityWeight > 0 ? "bajo" : "alta"}>{row.availability}</Badge></td>
-              <td style={td}><button onClick={() => onPick(row.id)} style={secondaryButtonStyle}>Ver</button></td>
+              <td style={td}><Badge variant={row.capacityWeight > 0 ? "bajo" : "alta"}>{labelize(row.availability)}</Badge></td>
+              <td style={td}><button onClick={() => onPick(row.isUnassigned ? "__unassigned" : row.id)} style={secondaryButtonStyle}>Ver</button></td>
             </tr>
           ))}
         </tbody>
@@ -567,11 +679,11 @@ function AdvisorTable({ advisors, onPick }) {
   );
 }
 
-function PeoplePriorities({ priorities, onSupervise, onIntervene }) {
+function PeoplePriorities({ priorities, onSupervise, onIntervene, onFollowUp }) {
   return (
     <Panel>
       <h2 style={h2}>Quién requiere mi atención</h2>
-      <p style={muted}>Prioridad por persona, ordenada por severidad operativa.</p>
+      <p style={muted}>Acciones recomendadas según los indicadores actuales.</p>
       <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
         {priorities.length === 0 && <p style={muted}>Sin asesores que requieran intervención con los datos actuales.</p>}
         {priorities.map((item) => (
@@ -580,35 +692,16 @@ function PeoplePriorities({ priorities, onSupervise, onIntervene }) {
               <div>
                 <strong style={{ color: "#111827", fontSize: 15 }}>{item.advisorName}</strong>
                 <p style={{ ...muted, marginTop: 6 }}>{item.why.join(" + ")}</p>
-                <p style={{ margin: "8px 0 0", color: "#374151", fontSize: 13 }}>Corregir: <strong>{item.recommendedAction}</strong></p>
+                <p style={{ margin: "8px 0 0", color: "#374151", fontSize: 13 }}>Acción recomendada: <strong>{item.recommendedAction}</strong></p>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <button onClick={() => onSupervise(item.advisorId)} style={secondaryButtonStyle}>Supervisar</button>
-                <button onClick={() => onIntervene(item)} style={buttonStyle}>Registrar intervención</button>
+                {item.activeIntervention?.id ? (
+                  <button onClick={() => onFollowUp(item.activeIntervention.id)} style={buttonStyle}>Ver seguimiento</button>
+                ) : (
+                  <button onClick={() => onIntervene(item)} style={buttonStyle}>Registrar intervención</button>
+                )}
               </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
-function SuggestedInterventions({ items, onSupervise, onIntervene }) {
-  return (
-    <Panel>
-      <h2 style={h2}>Intervenciones sugeridas</h2>
-      <p style={muted}>Acciones determinísticas. No usa IA ni score gerencial oficial.</p>
-      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-        {items.length === 0 && <p style={muted}>Sin sugerencias pendientes.</p>}
-        {items.map((item) => (
-          <div key={item.advisorId} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-            <strong style={{ color: "#111827" }}>{item.advisorName}</strong>
-            <p style={muted}>{item.reason}</p>
-            <p style={{ margin: "8px 0", fontSize: 13, color: "#374151" }}>Acción: <strong>{item.recommendedAction}</strong></p>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button onClick={() => onSupervise(item.advisorId)} style={secondaryButtonStyle}>Supervisar</button>
-              <button onClick={() => onIntervene(item)} style={buttonStyle}>Registrar intervención</button>
             </div>
           </div>
         ))}
@@ -640,18 +733,18 @@ function OperationsAttention({ items, onSupervise }) {
   );
 }
 
-function InterventionsTable({ items, onStatusChange }) {
+function InterventionsTable({ items, onStatusChange, highlightedId }) {
   return (
     <Panel>
       <h2 style={h2}>Seguimiento de intervenciones</h2>
-      <p style={muted}>Historial mínimo para dar seguimiento sin crear todavía Score Gerencial.</p>
+      <p style={muted}>Intervenciones registradas y próximas revisiones.</p>
       <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
         {items.length === 0 && <p style={muted}>Aún no hay intervenciones registradas.</p>}
         {items.slice(0, 6).map((item) => (
-          <div key={item.id} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
+          <div id={`intervention-${item.id}`} key={item.id} style={{ border: `1px solid ${highlightedId === item.id ? brand.red : "#e5e7eb"}`, borderRadius: 12, padding: 12, boxShadow: highlightedId === item.id ? "0 0 0 3px rgba(194,18,47,.10)" : "none" }}>
             <strong style={{ color: "#111827" }}>{item.advisor?.full_name || item.advisor?.email || "Asesor"}</strong>
             <p style={muted}>{item.reason}</p>
-            <p style={{ margin: "8px 0", color: "#374151", fontSize: 13 }}>Acción: <strong>{item.agreed_action}</strong>{item.review_on ? ` · Revisión ${item.review_on}` : ""}</p>
+            <p style={{ margin: "8px 0", color: "#374151", fontSize: 13 }}>Acción: <strong>{displayAction(item.agreed_action, item)}</strong>{item.review_on ? ` · Revisión ${formatReviewDate(item.review_on)}` : ""}</p>
             <select value={item.status} onChange={(e) => onStatusChange(item.id, e.target.value)} style={{ ...inputStyle, maxWidth: 260 }}>
               {Object.entries(interventionStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
@@ -694,8 +787,8 @@ function actionForItem(item, canAudit) {
 }
 
 function compactSignals(item) {
-  const labels = unique(item.signals || item.types || []).map((signal) => signalLabels[signal] || signal);
-  if (item.confirmationStatus && item.types?.includes("cita")) labels.push(item.confirmationStatus.replace(/_/g, " "));
+  const labels = unique(item.signals || item.types || []).map((signal) => signalLabels[signal] || labelize(signal));
+  if (item.confirmationStatus && item.types?.includes("cita")) labels.push(labelize(item.confirmationStatus));
   return unique(labels);
 }
 
@@ -705,7 +798,7 @@ function ChannelSignals({ item }) {
   const remaining = signals.length - visible.length;
   return (
     <div>
-      <div style={{ color: "#374151", fontWeight: 800 }}>{item.channel || "n/d"}{item.conversationStatus ? ` · ${item.conversationStatus}` : ""}</div>
+      <div style={{ color: "#374151", fontWeight: 800 }}>{labelize(item.channel)}{item.conversationStatus ? ` · ${labelize(item.conversationStatus)}` : ""}</div>
       {signals.length > 0 && (
         <div title={signals.join(" · ")} style={{ marginTop: 5, color: "#6b7280", fontSize: 12, lineHeight: 1.35 }}>
           {visible.join(" · ")}{remaining > 0 ? ` · +${remaining}` : ""}
@@ -718,24 +811,25 @@ function ChannelSignals({ item }) {
 function WorkTable({ items, onAudit, canAudit = false }) {
   return (
     <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+      <table style={{ width: "100%", minWidth: 1080, borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr>
-            {["Cliente", "Etapa", "Última actividad", "Próxima acción", "Riesgo", "Canal / señales", ""].map((h) => <th key={h} style={th}>{h}</th>)}
+            {["Cliente", "Asesor", "Etapa", "Última actividad", "Próxima acción", "Riesgo", "Canal / señales", "Acción"].map((h) => <th key={h} style={th}>{h}</th>)}
           </tr>
         </thead>
         <tbody>
           {items.length === 0 ? (
-            <tr><td style={td} colSpan={7}>Sin elementos para este filtro.</td></tr>
+            <tr><td style={td} colSpan={8}>Sin elementos para este filtro.</td></tr>
           ) : items.map((item) => {
             const action = actionForItem(item, canAudit);
             return (
               <tr key={item.id}>
-                <td style={td}><strong>{item.client}</strong><div style={muted}>{item.property || item.ownerName || ""}</div></td>
-                <td style={td}>{item.stage || "n/d"}</td>
-                <td style={td}>{item.dueAt ? new Date(item.dueAt).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }) : "Sin fecha"}</td>
-                <td style={td}>{item.nextAction}</td>
-                <td style={td}><Badge variant={item.risk === "critico" ? "critica" : item.risk === "alto" ? "alta" : "normal"}>{item.risk || "normal"}</Badge></td>
+                <td style={td}><strong>{cleanContactName(item.client)}</strong><div style={muted}>{item.property || ""}</div></td>
+                <td style={td}>{item.ownerId ? (item.ownerName || "Sin asignar") : "Sin asignar"}</td>
+                <td style={td}>{labelize(item.stage)}</td>
+                <td style={td}>{formatDateTime(item.dueAt)}</td>
+                <td style={td}>{displayAction(item.nextAction, item)}</td>
+                <td style={td}><Badge variant={item.risk === "critico" ? "critica" : item.risk === "alto" ? "alta" : "normal"}>{labelize(item.risk || "normal")}</Badge></td>
                 <td style={td}><ChannelSignals item={item} /></td>
                 <td style={td}>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

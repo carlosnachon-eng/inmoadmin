@@ -29,6 +29,11 @@ function rejectInternal(res, err) {
 }
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
+const ACTIVE_INTERVENTION_STATUSES = new Set(["pendiente", "en_seguimiento", "sin_mejora"]);
+
+function normalizeReason(value) {
+  return normalize(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+}
 
 function dateRange(startDate, endDate) {
   const dates = [];
@@ -51,7 +56,7 @@ function requiredCitasForAdvisor(profileId, availability, startDate, today) {
 }
 
 function kpiPct(done, required) {
-  if (!required) return 100;
+  if (!required) return null;
   return Math.round((Number(done || 0) / Number(required || 0)) * 1000) / 10;
 }
 
@@ -65,18 +70,22 @@ function advisorSignals(row) {
   const signals = [];
   const summary = row.summary || {};
   if (row.capacityWeight <= 0) return signals;
-  if (row.kpiCitasPct < 60) signals.push({ key: "kpi_citas", label: `KPI citas ${row.kpiCitasPct}%`, action: "recuperar ritmo de citas", weight: 35 });
-  if (summary.waitingResponses > 0) signals.push({ key: "esperando_respuesta", label: `${summary.waitingResponses} clientes esperando respuesta`, action: "liberar clientes esperando respuesta", weight: Math.min(40, summary.waitingResponses * 4) });
-  if (summary.overdueActions > 0) signals.push({ key: "seguimientos_vencidos", label: `${summary.overdueActions} seguimiento${summary.overdueActions === 1 ? "" : "s"} vencido${summary.overdueActions === 1 ? "" : "s"}`, action: "actualizar próximas acciones", weight: summary.overdueActions * 15 });
-  if (summary.riskOpportunities > 0) signals.push({ key: "oportunidades_riesgo", label: `${summary.riskOpportunities} oportunidades en riesgo`, action: "revisar oportunidades en riesgo", weight: summary.riskOpportunities * 18 });
-  if (summary.appointmentStats?.pendingConfirmation > 0) signals.push({ key: "citas_confirmar", label: `${summary.appointmentStats.pendingConfirmation} citas por confirmar`, action: "confirmar citas", weight: summary.appointmentStats.pendingConfirmation * 10 });
+  if (row.kpiCitasPct !== null && row.kpiCitasPct < 60) signals.push({ key: "kpi_citas", label: `KPI citas ${row.kpiCitasPct}%`, action: "recuperar ritmo de citas", weight: 35 });
+  if (summary.waitingResponses > 0) signals.push({ key: "esperando_respuesta", label: `${summary.waitingResponses} clientes esperando respuesta`, action: `Revisar y responder hoy los ${summary.waitingResponses} clientes pendientes`, weight: Math.min(40, summary.waitingResponses * 4) });
+  if (summary.overdueActions > 0) signals.push({ key: "seguimientos_vencidos", label: `${summary.overdueActions} seguimiento${summary.overdueActions === 1 ? "" : "s"} vencido${summary.overdueActions === 1 ? "" : "s"}`, action: summary.overdueActions === 1 ? "Revisar el seguimiento vencido y definir la siguiente acción" : `Revisar los ${summary.overdueActions} seguimientos vencidos y definir siguientes acciones`, weight: summary.overdueActions * 15 });
+  if (summary.riskOpportunities > 0) signals.push({ key: "oportunidades_riesgo", label: `${summary.riskOpportunities} oportunidades en riesgo`, action: `Revisar las ${summary.riskOpportunities} oportunidades en riesgo con el asesor`, weight: summary.riskOpportunities * 18 });
+  if (summary.appointmentStats?.pendingConfirmation > 0) signals.push({ key: "citas_confirmar", label: `${summary.appointmentStats.pendingConfirmation} citas por confirmar`, action: `Confirmar o reprogramar las ${summary.appointmentStats.pendingConfirmation} citas pendientes`, weight: summary.appointmentStats.pendingConfirmation * 10 });
   return signals;
 }
 
 function recommendedAction(signals) {
   const priority = ["esperando_respuesta", "seguimientos_vencidos", "oportunidades_riesgo", "kpi_citas", "citas_confirmar"];
   const picked = priority.map((key) => signals.find((signal) => signal.key === key)).find(Boolean);
-  return picked?.action || "revisar cartera";
+  return picked?.action || "Revisar cartera y definir prioridades del día";
+}
+
+function maxIso(rows, key) {
+  return (rows || []).map((row) => row?.[key]).filter(Boolean).sort().at(-1) || null;
 }
 
 function stuckOperationReason(opp, today) {
@@ -136,7 +145,7 @@ export default async function handler(req, res) {
         .from("gv_opportunities")
         .select("*, clientes:cliente_id(nombre, telefono, correo), propiedades:propiedad_id(titulo, public_id)")
         .order("next_action_at", { ascending: true, nullsFirst: false }),
-      scoped.from("gv_respond_contact_snapshots").select("*").order("respond_last_synced_at", { ascending: false }),
+      admin.from("gv_respond_contact_snapshots").select("*").order("respond_last_synced_at", { ascending: false }),
       admin
         .from("citas")
         .select("id, cliente_id, propiedad_id, asesor_id, fecha_hora, estado, notas, confirmacion_estado, confirmacion_actualizada_at, confirmacion_actualizada_por, clientes(nombre), propiedades(titulo)")
@@ -184,9 +193,14 @@ export default async function handler(req, res) {
     const scopedCitas = citas.filter((cita) => scopedAdvisorIds.has(cita.asesor_id));
     const scopedSeguimientos = seguimientos.filter((seg) => scopedAdvisorIds.has(seg.asesor_id));
     const scopedCierres = cierres.filter((cierre) => !cierre.advisor_profile_id || scopedAdvisorIds.has(cierre.advisor_profile_id));
+    const scopedSnapshots = snapshots.filter((snap) => scopedAdvisorIds.has(snap.mapped_profile_id));
+    const unassignedSnapshots = canManage && mode === "management"
+      ? snapshots.filter((snap) => !snap.mapped_profile_id)
+      : [];
+    const managementSnapshots = [...scopedSnapshots, ...unassignedSnapshots];
 
     const targetOpportunities = effectiveTargetId ? scopedOpportunities.filter((opp) => opp.asesor_id === effectiveTargetId) : scopedOpportunities;
-    const targetSnapshots = effectiveTargetId ? snapshots.filter((snap) => snap.mapped_profile_id === effectiveTargetId) : snapshots;
+    const targetSnapshots = effectiveTargetId ? scopedSnapshots.filter((snap) => snap.mapped_profile_id === effectiveTargetId) : managementSnapshots;
     const targetCitas = effectiveTargetId ? scopedCitas.filter((cita) => cita.asesor_id === effectiveTargetId) : scopedCitas;
     const targetSeguimientos = effectiveTargetId ? scopedSeguimientos.filter((seg) => seg.asesor_id === effectiveTargetId) : scopedSeguimientos;
 
@@ -211,7 +225,7 @@ export default async function handler(req, res) {
       .filter((p) => p.role_id === ADVISOR_ROLE)
       .map((advisor) => {
         const advisorOpps = scopedOpportunities.filter((opp) => opp.asesor_id === advisor.id);
-        const advisorSnaps = snapshots.filter((snap) => snap.mapped_profile_id === advisor.id);
+        const advisorSnaps = scopedSnapshots.filter((snap) => snap.mapped_profile_id === advisor.id);
         const advisorCitas = scopedCitas.filter((cita) => cita.asesor_id === advisor.id);
         const advisorSummary = calculateSummary({ opportunities: advisorOpps, snapshots: advisorSnaps, citas: advisorCitas, profileId: advisor.id });
         const availabilityNow = availability.find((a) => a.profile_id === advisor.id && a.starts_on <= today && (!a.ends_on || a.ends_on >= today));
@@ -227,7 +241,7 @@ export default async function handler(req, res) {
           citasRequired,
           kpiCitasPct: citaPct,
           summary: advisorSummary,
-          needsIntervention: Number(availabilityNow?.capacity_weight ?? 1) > 0 && (citaPct < 70 || advisorSummary.waitingResponses > 0 || advisorSummary.overdueActions > 0 || advisorSummary.riskOpportunities > 0),
+          needsIntervention: Number(availabilityNow?.capacity_weight ?? 1) > 0 && ((citaPct !== null && citaPct < 70) || advisorSummary.waitingResponses > 0 || advisorSummary.overdueActions > 0 || advisorSummary.riskOpportunities > 0),
         };
       })
       .map((row) => {
@@ -240,29 +254,58 @@ export default async function handler(req, res) {
           recommendedAction: recommendedAction(signals),
           priorityVariant: priorityVariant(score),
         };
-      })
+      });
+
+    const unassignedSummary = calculateSummary({ opportunities: [], snapshots: unassignedSnapshots, citas: [], profileId: null });
+    if (unassignedSummary.waitingResponses > 0 || unassignedSummary.openConversations > 0) {
+      advisorRows.push({
+        id: "sin-asignar",
+        name: "Sin asignar",
+        email: "Contactos Respond.io sin asesor vinculado",
+        availability: "requiere_revision",
+        capacityWeight: 0,
+        citasEffective: 0,
+        citasRequired: 0,
+        kpiCitasPct: null,
+        summary: unassignedSummary,
+        needsIntervention: false,
+        interventionScore: unassignedSummary.waitingResponses * 4,
+        interventionSignals: [],
+        recommendedAction: "Revisar asignación de contactos sin responsable",
+        priorityVariant: unassignedSummary.waitingResponses > 0 ? "alta" : "normal",
+        isUnassigned: true,
+      });
+    }
+
+    advisorRows
       .sort((a, b) => b.interventionScore - a.interventionScore || a.name.localeCompare(b.name));
+
+    const activeInterventions = interventions.filter((item) => ACTIVE_INTERVENTION_STATUSES.has(item.status));
+    const activeByAdvisor = new Map();
+    const activeByAdvisorReason = new Map();
+    activeInterventions.forEach((item) => {
+      if (!activeByAdvisor.has(item.advisor_profile_id)) activeByAdvisor.set(item.advisor_profile_id, item);
+      activeByAdvisorReason.set(`${item.advisor_profile_id}:${normalizeReason(item.reason)}`, item);
+    });
 
     const peoplePriorities = advisorRows
       .filter((row) => row.capacityWeight > 0 && row.interventionSignals.length > 0)
-      .map((row) => ({
-        advisorId: row.id,
-        advisorName: row.name,
-        variant: row.priorityVariant,
-        score: row.interventionScore,
-        why: row.interventionSignals.map((signal) => signal.label),
-        explanation: `${row.name} requiere intervención por ${row.interventionSignals.map((signal) => signal.label).join(" + ")}.`,
-        recommendedAction: row.recommendedAction,
-      }));
-
-    const suggestedInterventions = peoplePriorities.map((priority) => ({
-      advisorId: priority.advisorId,
-      advisorName: priority.advisorName,
-      reason: priority.why.join(" + "),
-      indicators: priority.why,
-      recommendedAction: priority.recommendedAction,
-      variant: priority.variant,
-    }));
+      .map((row) => {
+        const indicators = row.interventionSignals.map((signal) => signal.label);
+        const reason = indicators.join(" + ");
+        const activeIntervention = activeByAdvisorReason.get(`${row.id}:${normalizeReason(reason)}`) || activeByAdvisor.get(row.id) || null;
+        return {
+          advisorId: row.id,
+          advisorName: row.name,
+          variant: row.priorityVariant,
+          score: row.interventionScore,
+          why: indicators,
+          reason,
+          explanation: `${row.name} requiere intervención por ${reason}.`,
+          recommendedAction: row.recommendedAction,
+          activeIntervention,
+        };
+      });
 
     const operationsAttention = scopedOpportunities
       .filter((opp) => scopedAdvisorIds.has(opp.asesor_id))
@@ -286,15 +329,27 @@ export default async function handler(req, res) {
     const monthClosedNew = scopedCierres
       .filter((c) => normalize(c.operation_type_structured || "nueva") !== "renovacion")
       .reduce((sum, c) => sum + Number(c.comision || 0), 0);
+    const evaluableAdvisorRows = advisorRows.filter((row) => !row.isUnassigned && row.capacityWeight > 0);
+    const todayCitas = scopedCitas.filter((cita) => String(cita.fecha_hora || "").slice(0, 10) === today).length;
+    const citasRequeridasAcumuladas = evaluableAdvisorRows.reduce((sum, row) => sum + Number(row.citasRequired || 0), 0);
+    const citasRequeridasHoy = evaluableAdvisorRows.reduce((sum, row) => sum + (capacityForDay(row.id, today, availability) * META_CITAS_DIARIAS), 0);
+    const interventionsPendingRegister = peoplePriorities.filter((priority) => !priority.activeIntervention).length;
     const managementSummary = {
       metaEquipo: META_MENSUAL_NUEVA,
       cerradoNuevo: monthClosedNew,
       pipeline: scopedOpportunities.filter((opp) => opp.operation_type === "nueva" && !["cierre_ganado", "cierre_perdido"].includes(opp.stage)).reduce((sum, opp) => sum + Number(opp.estimated_commission || 0), 0),
       citasEquipo: scopedCitas.filter((cita) => cita.confirmacion_estado === "realizada").length,
-      citasRequeridasDia: advisorRows.filter((row) => row.capacityWeight > 0).length * META_CITAS_DIARIAS,
-      asesoresRequierenIntervencion: advisorRows.filter((row) => row.needsIntervention).length,
+      citasRequeridasAcumuladas,
+      citasHoy: todayCitas,
+      citasRequeridasHoy,
+      asesoresRequierenIntervencion: peoplePriorities.length,
+      intervencionesPorRegistrar: interventionsPendingRegister,
+      intervencionesActivas: activeInterventions.length,
       clientesEsperandoRespuesta: summary.waitingResponses,
       oportunidadesEnRiesgo: summary.riskOpportunities,
+      seguimientosVencidos: summary.overdueActions,
+      conversacionesAbiertas: summary.openConversations,
+      respondLastSyncedAt: maxIso(targetSnapshots, "respond_last_synced_at"),
     };
 
     return res.status(200).json({
@@ -308,7 +363,7 @@ export default async function handler(req, res) {
       managementSummary,
       advisorRows,
       peoplePriorities,
-      suggestedInterventions,
+      suggestedInterventions: peoplePriorities.filter((priority) => !priority.activeIntervention),
       operationsAttention,
       interventions,
       items,
