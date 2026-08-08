@@ -513,7 +513,7 @@ export default function GerenciaVentasDashboard() {
                       <th style={styles.th}>Cumpl.</th>
                       <th style={styles.th}>Calif.</th>
                       <th style={styles.th}>Seg.</th>
-                      <th style={styles.th}>Riesgo</th>
+                      <th style={styles.th}>Sin actividad</th>
                       <th style={styles.th}>Cierres</th>
                       <th style={styles.th}>Comisión</th>
                     </tr>
@@ -567,7 +567,7 @@ export default function GerenciaVentasDashboard() {
                 )}
               </div>
               <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: 12 }}>
-                <p style={{ margin: 0, color: "#6b7280", fontSize: 12, fontWeight: 800, textTransform: "uppercase" }}>Clientes en riesgo</p>
+                <p style={{ margin: 0, color: "#6b7280", fontSize: 12, fontWeight: 800, textTransform: "uppercase" }}>Clientes sin actividad reciente</p>
                 <p style={{ margin: "8px 0 0", fontSize: 24, fontWeight: 900, color: "#111827" }}>{lectura.clientesEnRiesgo} / {lectura.clientesActivos}</p>
                 <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: 12 }}>Inferido por actividad reciente; no sustituye pipeline estructurado.</p>
               </div>
@@ -625,17 +625,6 @@ export default function GerenciaVentasDashboard() {
                 </tbody>
               </table>
             </div>
-          </section>
-
-          <section style={styles.section}>
-            <h2 style={styles.h2}>Limitaciones de Fase 1</h2>
-            <ul style={{ margin: "12px 0 0", color: "#4b5563", lineHeight: 1.7, paddingLeft: 20 }}>
-              <li>La clasificación de renovaciones usa temporalmente el prefijo Renov*; la arquitectura definitiva debe usar un campo estructurado.</li>
-              <li>No hay tabla de ausencias; las exclusiones de capacidad son manuales, temporales y solo afectan esta lectura gerencial.</li>
-              <li>No hay pipeline ni forecast estructurado; la Salud Comercial es preliminar.</li>
-              <li>La conversión mostrada es operativa del periodo; todavía no es conversión por cohorte.</li>
-              <li>El campo `cierres.vendedor` sigue siendo texto, no una relación formal con `profiles.id`.</li>
-            </ul>
           </section>
         </div>
       </main>
