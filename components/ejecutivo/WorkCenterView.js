@@ -38,6 +38,7 @@ const filters = [
 ];
 
 const severityRank = { critica: 0, alta: 1, normal: 2, bajo: 3 };
+const ACTIVE_INTERVENTION_STATUSES = new Set(["pendiente", "en_seguimiento", "sin_mejora"]);
 const signalLabels = {
   sin_respuesta: "Conversación",
   vencido: "Vencido",
@@ -71,6 +72,9 @@ const textLabels = {
   critico: "Crítico",
   whatsapp: "WhatsApp",
   "respond.io": "Respond.io",
+  visita_agendada: "Visita agendada",
+  "cita agendada": "Cita agendada",
+  "cita calificada": "Cita calificada",
 };
 
 const relevanceStage = {
@@ -127,7 +131,56 @@ function displayAction(value, context = {}) {
     const count = String(context.reason || "").match(/(\d+)\s+clientes esperando respuesta/)?.[1];
     return count ? `Revisar y responder hoy los ${count} clientes pendientes` : "Revisar y responder clientes pendientes";
   }
+  const actionLabels = {
+    "confirmar asistencia y enviar ubicacion": "Confirmar asistencia y enviar ubicación",
+    "confirmar asistencia": "Confirmar asistencia",
+    "enviar contraoferta revisada": "Enviar contraoferta revisada",
+    "preparar apartado y documentos": "Preparar apartado y documentos",
+    "retomar contacto y calificar presupuesto": "Retomar contacto y calificar presupuesto",
+    "negociar condiciones de renta": "Negociar condiciones de renta",
+  };
+  if (actionLabels[normalized]) return actionLabels[normalized];
   return labelize(text);
+}
+
+function normalizeKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function interventionContextKey(item) {
+  if (item.opportunityId) return `opportunity:${item.opportunityId}`;
+  if (item.citaId) return `cita:${item.citaId}`;
+  if (item.respondContactId) return `respond:${item.respondContactId}`;
+  return `work-item:${item.id}`;
+}
+
+function interventionReasonForItem(item) {
+  const key = interventionContextKey(item);
+  const client = cleanContactName(item.client);
+  const property = item.property ? ` · ${item.property}` : "";
+  return `${key} · ${client}${property}`.slice(0, 220);
+}
+
+function recommendedActionForItem(item) {
+  if (item.types?.includes("sin_respuesta")) return "Revisar y responder conversación pendiente";
+  if (item.types?.includes("vencido")) return "Revisar seguimiento vencido y definir siguiente acción";
+  if (item.types?.includes("riesgo")) return "Revisar riesgo con el asesor y acordar siguiente paso";
+  if (item.types?.includes("cita")) return "Confirmar o actualizar la cita";
+  return displayAction(item.nextAction) || "Revisar operación y acordar siguiente paso";
+}
+
+function findActiveInterventionForItem(item, interventions = []) {
+  const reason = normalizeKey(interventionReasonForItem(item));
+  return (interventions || []).find((intervention) => (
+    ACTIVE_INTERVENTION_STATUSES.has(intervention.status)
+    && intervention.advisor_profile_id === item.ownerId
+    && normalizeKey(intervention.reason) === reason
+  )) || null;
 }
 
 function consolidateWorkItems(items) {
@@ -170,6 +223,9 @@ function consolidateWorkItems(items) {
       respondDeepLink: current.respondDeepLink || item.respondDeepLink,
       confirmationStatus: current.confirmationStatus || item.confirmationStatus,
       citaId: current.citaId || item.citaId,
+      citaEstado: current.citaEstado || item.citaEstado,
+      citaConfirmacionEstado: current.citaConfirmacionEstado || item.citaConfirmacionEstado,
+      citaNotas: current.citaNotas || item.citaNotas,
       ownerId: current.ownerId || item.ownerId,
       ownerName: current.ownerName || item.ownerName,
       ids: unique([...(current.ids || []), item.id]),
@@ -313,9 +369,11 @@ export default function WorkCenterView({ type = "advisor" }) {
   const [data, setData] = useState(null);
   const [selectedAdvisor, setSelectedAdvisor] = useState("");
   const [filter, setFilter] = useState("todos");
-  const [auditNote, setAuditNote] = useState("");
   const [interventionDraft, setInterventionDraft] = useState(null);
+  const [rowInterventionDraft, setRowInterventionDraft] = useState(null);
+  const [citaDetail, setCitaDetail] = useState(null);
   const [savingIntervention, setSavingIntervention] = useState(false);
+  const [rowInterventionMessage, setRowInterventionMessage] = useState(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [highlightedIntervention, setHighlightedIntervention] = useState(null);
@@ -344,7 +402,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   const canUseManager = ["admin", "gerente_ventas"].includes(profile?.role_id);
   const isUnassignedSelected = selectedAdvisor === "__unassigned";
   const mode = isManagerView ? (selectedAdvisor && !isUnassignedSelected ? "supervise" : "management") : "mine";
-  const canRegisterSupervision = isManagerView && mode === "supervise" && canUseManager;
+  const canRegisterSupervision = isManagerView && canUseManager && !isUnassignedSelected;
 
   const loadData = async ({ sync = false } = {}) => {
     if (!session?.access_token || !profile) return;
@@ -352,7 +410,7 @@ export default function WorkCenterView({ type = "advisor" }) {
     setError("");
     try {
       const params = new URLSearchParams();
-      if (isManagerView) params.set("mode", selectedAdvisor ? "supervise" : "management");
+      if (isManagerView) params.set("mode", selectedAdvisor && selectedAdvisor !== "__unassigned" ? "supervise" : "management");
       else params.set("mode", "mine");
       if (selectedAdvisor && selectedAdvisor !== "__unassigned") params.set("target", selectedAdvisor);
       const res = await fetch(`/api/ejecutivo/work-center?${params.toString()}`, {
@@ -404,6 +462,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   const title = isManagerView ? "Mi Gerencia" : "Mi Trabajo";
   const targetName = data?.target?.full_name || data?.target?.email || "";
   const advisorById = useMemo(() => new Map((data?.advisorRows || []).map((advisor) => [advisor.id, advisor])), [data?.advisorRows]);
+  const selectedWorkItemId = rowInterventionDraft?.item?.id || citaDetail?.id || null;
 
   const openIntervention = (payload) => {
     const advisor = advisorById.get(payload.advisorId) || {};
@@ -423,6 +482,31 @@ export default function WorkCenterView({ type = "advisor" }) {
     setTimeout(() => {
       document.getElementById(`intervention-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
+  };
+
+  const openRowIntervention = (item) => {
+    const active = findActiveInterventionForItem(item, data?.interventions || []);
+    if (active?.id) {
+      openInterventionFollowUp(active.id);
+      return;
+    }
+    setError("");
+    setRowInterventionMessage(null);
+    setRowInterventionDraft({
+      item,
+      advisorId: item.ownerId,
+      advisorName: item.ownerName || advisorById.get(item.ownerId)?.name || "Asesor",
+      reason: interventionReasonForItem(item),
+      agreedAction: recommendedActionForItem(item),
+      reviewOn: reviewDefaultDate(),
+      notes: "",
+    });
+    setTimeout(() => document.getElementById("row-intervention-note")?.focus(), 80);
+  };
+
+  const closeRowIntervention = () => {
+    setRowInterventionDraft(null);
+    setRowInterventionMessage(null);
   };
 
   const submitIntervention = async () => {
@@ -449,6 +533,66 @@ export default function WorkCenterView({ type = "advisor" }) {
       await loadData();
     } catch (err) {
       setError(err.message || "No se pudo registrar la intervención.");
+    } finally {
+      setSavingIntervention(false);
+    }
+  };
+
+  const submitRowIntervention = async () => {
+    if (!rowInterventionDraft || !session?.access_token || savingIntervention) return;
+    if (!rowInterventionDraft.advisorId) {
+      setRowInterventionMessage({ type: "error", text: "Esta fila no tiene asesor responsable. Primero debe revisarse la asignación." });
+      return;
+    }
+    setSavingIntervention(true);
+    setRowInterventionMessage(null);
+    try {
+      const item = rowInterventionDraft.item;
+      const indicators = {
+        contextKey: interventionContextKey(item),
+        sourceItemId: item.id,
+        opportunityId: item.opportunityId || null,
+        citaId: item.citaId || null,
+        respondContactId: item.respondContactId || null,
+        signals: item.signals || item.types || [],
+        risk: item.risk || null,
+        stage: item.stage || null,
+      };
+      const contextLines = [
+        rowInterventionDraft.notes ? `Nota: ${rowInterventionDraft.notes}` : null,
+        `Cliente: ${cleanContactName(item.client)}`,
+        item.property ? `Propiedad: ${item.property}` : null,
+        `Asesor: ${rowInterventionDraft.advisorName}`,
+        `Etapa: ${labelize(item.stage)}`,
+        `Riesgo: ${labelize(item.risk || "normal")}`,
+        `Próxima acción registrada: ${displayAction(item.nextAction, item)}`,
+        `Contexto: ${interventionContextKey(item)}`,
+      ].filter(Boolean).join("\n");
+
+      const res = await fetch("/api/ejecutivo/management-intervention", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          advisorProfileId: rowInterventionDraft.advisorId,
+          reason: rowInterventionDraft.reason,
+          agreedAction: rowInterventionDraft.agreedAction,
+          reviewOn: rowInterventionDraft.reviewOn || null,
+          notes: contextLines,
+          indicators,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "No se pudo registrar la intervención.");
+      const interventionId = json.intervention?.id;
+      setRowInterventionMessage({ type: "success", text: json.duplicate ? "Ya existía una intervención activa para esta operación. Abrí el seguimiento." : "Intervención registrada correctamente." });
+      if (interventionId) setHighlightedIntervention(interventionId);
+      await loadData();
+      setTimeout(() => {
+        if (interventionId) openInterventionFollowUp(interventionId);
+        setRowInterventionDraft(null);
+      }, 500);
+    } catch (err) {
+      setRowInterventionMessage({ type: "error", text: err.message || "No se pudo registrar la intervención. Intenta nuevamente." });
     } finally {
       setSavingIntervention(false);
     }
@@ -598,21 +742,11 @@ export default function WorkCenterView({ type = "advisor" }) {
                 ))}
               </div>
               <WorkTable items={visibleItems} canAudit={canRegisterSupervision} onAudit={async (item) => {
-                if (!item.opportunityId) return;
-                const res = await fetch("/api/ejecutivo/work-center-event", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-                  body: JSON.stringify({ opportunityId: item.opportunityId, actedAsProfileId: item.ownerId, notes: auditNote || `Intervencion desde ${title}` }),
-                });
-                if (!res.ok) setError("No se pudo registrar la intervención.");
-                else {
-                  setAuditNote("");
-                  await loadData();
-                }
-              }} />
-              {canRegisterSupervision && (
-                <input value={auditNote} onChange={(e) => setAuditNote(e.target.value)} placeholder="Nota breve para intervención gerencial" style={{ ...inputStyle, marginTop: 12 }} />
-              )}
+                openRowIntervention(item);
+              }} onViewCita={(item) => {
+                setRowInterventionMessage(null);
+                setCitaDetail(item);
+              }} interventions={data?.interventions || []} selectedItemId={selectedWorkItemId} onFollowUp={openInterventionFollowUp} />
             </Panel>
           </section>
         </div>
@@ -625,6 +759,19 @@ export default function WorkCenterView({ type = "advisor" }) {
           onClose={() => setInterventionDraft(null)}
           onSubmit={submitIntervention}
         />
+      )}
+      {rowInterventionDraft && (
+        <RowInterventionModal
+          draft={rowInterventionDraft}
+          setDraft={setRowInterventionDraft}
+          message={rowInterventionMessage}
+          saving={savingIntervention}
+          onClose={closeRowIntervention}
+          onSubmit={submitRowIntervention}
+        />
+      )}
+      {citaDetail && (
+        <CitaModal item={citaDetail} onClose={() => setCitaDetail(null)} />
       )}
     </Layout>
   );
@@ -779,10 +926,80 @@ function InterventionModal({ draft, setDraft, saving, onClose, onSubmit }) {
   );
 }
 
+function RowInterventionModal({ draft, setDraft, message, saving, onClose, onSubmit }) {
+  const item = draft.item;
+  const set = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,.45)", display: "grid", placeItems: "center", zIndex: 2100, padding: 16 }}>
+      <div style={{ width: "min(680px, 100%)", maxHeight: "calc(100vh - 32px)", overflowY: "auto", background: "#fff", borderRadius: 16, border: "1px solid #e5e7eb", padding: 20, boxShadow: "0 24px 80px rgba(17,24,39,.22)" }}>
+        <h2 style={{ ...h2, fontSize: 20 }}>Intervenir operación</h2>
+        <p style={{ ...muted, marginBottom: 14 }}>Revisión ligada a una fila específica de la lista de trabajo.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10, marginBottom: 14 }}>
+          <Detail label="Cliente" value={cleanContactName(item.client)} />
+          <Detail label="Propiedad" value={item.property || "Sin propiedad vinculada"} />
+          <Detail label="Asesor" value={draft.advisorName} />
+          <Detail label="Etapa" value={labelize(item.stage)} />
+          <Detail label="Riesgo" value={labelize(item.risk || "normal")} />
+          <Detail label="Próxima acción registrada" value={displayAction(item.nextAction, item)} />
+        </div>
+        <Detail label="Señales" value={compactSignals(item).join(" · ") || "Sin señales adicionales"} />
+        <label style={labelStyle}>Acción gerencial recomendada</label>
+        <input value={draft.agreedAction} onChange={(e) => set("agreedAction", e.target.value)} style={inputStyle} />
+        <label style={labelStyle}>Fecha de revisión</label>
+        <input type="date" value={draft.reviewOn} onChange={(e) => set("reviewOn", e.target.value)} style={inputStyle} />
+        <label style={labelStyle}>Nota para la intervención</label>
+        <textarea id="row-intervention-note" value={draft.notes} onChange={(e) => set("notes", e.target.value)} rows={4} placeholder="Opcional: acuerdo, instrucción o contexto para seguimiento." style={{ ...inputStyle, resize: "vertical" }} />
+        {message && <p style={{ margin: "10px 0 0", color: message.type === "error" ? "#991b1b" : "#047857", fontSize: 13, fontWeight: 800 }}>{message.text}</p>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+          <button onClick={onClose} disabled={saving} style={secondaryButtonStyle}>Cancelar</button>
+          <button onClick={onSubmit} disabled={saving} style={buttonStyle}>{saving ? "Registrando..." : "Registrar intervención"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CitaModal({ item, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,.45)", display: "grid", placeItems: "center", zIndex: 2100, padding: 16 }}>
+      <div style={{ width: "min(620px, 100%)", background: "#fff", borderRadius: 16, border: "1px solid #e5e7eb", padding: 20, boxShadow: "0 24px 80px rgba(17,24,39,.22)" }}>
+        <h2 style={{ ...h2, fontSize: 20 }}>Detalle de cita</h2>
+        <p style={{ ...muted, marginBottom: 14 }}>Cita vinculada por ID estable: {item.citaId}</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+          <Detail label="Cliente" value={cleanContactName(item.client)} />
+          <Detail label="Propiedad" value={item.property || "Sin propiedad vinculada"} />
+          <Detail label="Asesor" value={item.ownerName || "Sin asignar"} />
+          <Detail label="Fecha y hora" value={formatDateTime(item.dueAt)} />
+          <Detail label="Estado de cita" value={labelize(item.citaEstado || item.stage)} />
+          <Detail label="Confirmación" value={labelize(item.citaConfirmacionEstado || item.confirmationStatus)} />
+          <Detail label="Próxima acción" value={displayAction(item.nextAction, item)} />
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <Detail label="Notas" value={item.citaNotas || "Sin notas registradas"} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={buttonStyle}>Volver a Mi Gerencia</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Detail({ label, value }) {
+  return (
+    <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 10, background: "#f9fafb" }}>
+      <p style={{ margin: 0, color: "#6b7280", fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.35 }}>{label}</p>
+      <p style={{ margin: "5px 0 0", color: "#111827", fontSize: 13, fontWeight: 800, lineHeight: 1.35 }}>{value || "n/d"}</p>
+    </div>
+  );
+}
+
 function actionForItem(item, canAudit) {
-  if (canAudit && item.opportunityId) return { label: "Intervenir", kind: "audit" };
+  if (item.types?.includes("cita")) {
+    if (item.citaId) return { label: "Ver cita", kind: "cita" };
+    return { label: "Cita no vinculada", kind: "info", title: "No existe un registro de cita vinculado a esta actividad." };
+  }
   if (item.types?.includes("oportunidad")) return { label: "Actualizar", kind: "pending" };
-  if (item.types?.includes("cita")) return { label: "Ver cita", kind: "pending" };
   return null;
 }
 
@@ -796,9 +1013,13 @@ function ChannelSignals({ item }) {
   const signals = compactSignals(item);
   const visible = signals.slice(0, 3);
   const remaining = signals.length - visible.length;
+  const channel = String(item.channel || "n/d")
+    .split("+")
+    .map((part) => labelize(part.trim()))
+    .join(" + ");
   return (
     <div>
-      <div style={{ color: "#374151", fontWeight: 800 }}>{labelize(item.channel)}{item.conversationStatus ? ` · ${labelize(item.conversationStatus)}` : ""}</div>
+      <div style={{ color: "#374151", fontWeight: 800 }}>{channel}{item.conversationStatus ? ` · ${labelize(item.conversationStatus)}` : ""}</div>
       {signals.length > 0 && (
         <div title={signals.join(" · ")} style={{ marginTop: 5, color: "#6b7280", fontSize: 12, lineHeight: 1.35 }}>
           {visible.join(" · ")}{remaining > 0 ? ` · +${remaining}` : ""}
@@ -808,7 +1029,7 @@ function ChannelSignals({ item }) {
   );
 }
 
-function WorkTable({ items, onAudit, canAudit = false }) {
+function WorkTable({ items, onAudit, onViewCita, onFollowUp, interventions = [], selectedItemId = null, canAudit = false }) {
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ width: "100%", minWidth: 1080, borderCollapse: "collapse", fontSize: 13 }}>
@@ -822,8 +1043,10 @@ function WorkTable({ items, onAudit, canAudit = false }) {
             <tr><td style={td} colSpan={8}>Sin elementos para este filtro.</td></tr>
           ) : items.map((item) => {
             const action = actionForItem(item, canAudit);
+            const activeIntervention = findActiveInterventionForItem(item, interventions);
+            const canInterveneItem = canAudit && item.opportunityId && item.ownerId;
             return (
-              <tr key={item.id}>
+              <tr key={item.id} style={selectedItemId === item.id ? { background: "#fff7f7", outline: `2px solid ${brand.red}` } : undefined}>
                 <td style={td}><strong>{cleanContactName(item.client)}</strong><div style={muted}>{item.property || ""}</div></td>
                 <td style={td}>{item.ownerId ? (item.ownerName || "Sin asignar") : "Sin asignar"}</td>
                 <td style={td}>{labelize(item.stage)}</td>
@@ -834,8 +1057,14 @@ function WorkTable({ items, onAudit, canAudit = false }) {
                 <td style={td}>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {item.respondDeepLink && <a href={item.respondDeepLink} target="_blank" rel="noreferrer" style={{ ...secondaryButtonStyle, display: "inline-block", textDecoration: "none" }}>Abrir conversación</a>}
-                    {action?.kind === "audit" && <button onClick={() => onAudit(item)} style={secondaryButtonStyle}>{action.label}</button>}
-                    {action?.kind === "pending" && <button type="button" disabled style={{ ...secondaryButtonStyle, opacity: 0.55, cursor: "not-allowed" }}>{action.label}</button>}
+                    {action?.kind === "cita" && <button onClick={() => onViewCita(item)} style={secondaryButtonStyle}>{action.label}</button>}
+                    {action?.kind === "info" && <span title={action.title} style={{ color: "#6b7280", fontSize: 12, fontWeight: 900 }}>{action.label}</span>}
+                    {activeIntervention?.id ? (
+                      <button onClick={() => onFollowUp(activeIntervention.id)} style={secondaryButtonStyle}>Ver seguimiento</button>
+                    ) : canInterveneItem ? (
+                      <button onClick={() => onAudit(item)} style={secondaryButtonStyle}>Intervenir</button>
+                    ) : null}
+                    {action?.kind === "pending" && !activeIntervention?.id && !canInterveneItem && <span style={{ color: "#6b7280", fontSize: 12, fontWeight: 900 }}>Actualización pendiente</span>}
                   </div>
                 </td>
               </tr>
