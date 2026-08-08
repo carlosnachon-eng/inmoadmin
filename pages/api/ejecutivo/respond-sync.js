@@ -67,6 +67,14 @@ function parseNumberField(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function contactDisplayName(contact) {
+  const pieces = [
+    contact?.firstName,
+    contact?.lastName,
+  ].filter(Boolean);
+  return contact?.name || contact?.fullName || (pieces.length ? pieces.join(" ") : null);
+}
+
 function messageTimestamp(message) {
   if (message?.messageId) return toIsoFromRespondTimestamp(message.messageId);
   const statusTs = Array.isArray(message?.status) ? message.status.map((s) => s.timestamp).filter(Boolean).sort((a, b) => a - b)[0] : null;
@@ -107,6 +115,7 @@ function snapshotFromContact(contact, messages, profiles) {
   const channelId = messages?.[0]?.channelId || null;
   const signals = messageSignals(messages);
   const metadata = {
+    contact_name: contactDisplayName(contact),
     mapping_method: mapped.method,
     sync_mode: "metadata_only",
     fields_present: Object.keys(contact || {}).filter((key) => !["phone", "email", "profilePic"].includes(key)),

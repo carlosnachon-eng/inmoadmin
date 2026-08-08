@@ -11,12 +11,12 @@ const fmtMoney = (value) => new Intl.NumberFormat("es-MX", {
 
 const filterItems = (items, filter) => {
   if (!filter || filter === "todos") return items;
-  if (filter === "hoy") return items.filter((item) => item.type === "hoy" || item.type === "cita");
-  if (filter === "vencidos") return items.filter((item) => item.type === "vencido");
-  if (filter === "sin_respuesta") return items.filter((item) => item.type === "sin_respuesta");
-  if (filter === "citas") return items.filter((item) => item.type === "cita");
-  if (filter === "oportunidades") return items.filter((item) => item.opportunityId);
-  if (filter === "riesgo") return items.filter((item) => item.type === "riesgo" || ["alto", "critico"].includes(item.risk));
+  if (filter === "hoy") return items.filter((item) => item.types?.includes("hoy") || item.types?.includes("cita"));
+  if (filter === "vencidos") return items.filter((item) => item.types?.includes("vencido"));
+  if (filter === "sin_respuesta") return items.filter((item) => item.types?.includes("sin_respuesta"));
+  if (filter === "citas") return items.filter((item) => item.types?.includes("cita"));
+  if (filter === "oportunidades") return items.filter((item) => item.types?.includes("oportunidad") || item.opportunityId);
+  if (filter === "riesgo") return items.filter((item) => item.types?.includes("riesgo"));
   return items;
 };
 
@@ -36,6 +36,124 @@ const filters = [
   ["oportunidades", "Oportunidades"],
   ["riesgo", "Riesgo"],
 ];
+
+const severityRank = { critica: 0, alta: 1, normal: 2, bajo: 3 };
+const signalLabels = {
+  sin_respuesta: "Conversación",
+  vencido: "Vencido",
+  riesgo: "Riesgo",
+  cita: "Cita",
+  hoy: "Hoy",
+  oportunidad: "Oportunidad",
+  sin_actividad: "Sin actividad",
+};
+
+const relevanceStage = {
+  cierre_ganado: 10,
+  contrato_firma: 9,
+  apartado: 8,
+  oferta: 7,
+  cita_calificada: 6,
+  cita_agendada: 5,
+  contactado: 4,
+  lead: 3,
+};
+
+function unique(values) {
+  return [...new Set((values || []).filter(Boolean))];
+}
+
+function consolidateWorkItems(items) {
+  const groups = new Map();
+  (items || []).forEach((item) => {
+    const relationKey = item.clientId ? `client:${item.clientId}:${item.property || item.opportunityId || item.citaId || ""}` : null;
+    const key = relationKey
+      || (item.respondContactId ? `respond:${item.respondContactId}` : null)
+      || (item.opportunityId ? `opp:${item.opportunityId}` : null)
+      || (item.citaId ? `cita:${item.citaId}` : null)
+      || `item:${item.id}`;
+    const current = groups.get(key);
+    if (!current) {
+      groups.set(key, {
+        ...item,
+        ids: [item.id],
+        types: unique(item.types || [item.type]),
+        signals: unique(item.types || [item.type]),
+        reasons: unique([item.reason]),
+      });
+      return;
+    }
+    const preferred = (severityRank[item.severity] ?? 9) < (severityRank[current.severity] ?? 9) ? item : current;
+    const stage = (relevanceStage[item.stage] || 0) > (relevanceStage[current.stage] || 0) ? item.stage : current.stage;
+    groups.set(key, {
+      ...current,
+      title: preferred.title || current.title,
+      severity: preferred.severity || current.severity,
+      client: current.client || item.client,
+      property: current.property || item.property,
+      stage: stage || current.stage || item.stage,
+      nextAction: preferred.nextAction || current.nextAction || item.nextAction,
+      dueAt: preferred.dueAt || current.dueAt || item.dueAt,
+      risk: ["critico", "alto"].includes(preferred.risk) ? preferred.risk : current.risk || item.risk,
+      channel: unique([current.channel, item.channel]).join(" + "),
+      conversationStatus: current.conversationStatus || item.conversationStatus,
+      opportunityId: current.opportunityId || item.opportunityId,
+      ownerId: current.ownerId || item.ownerId,
+      ownerName: current.ownerName || item.ownerName,
+      ids: unique([...(current.ids || []), item.id]),
+      types: unique([...(current.types || []), ...(item.types || [item.type])]),
+      signals: unique([...(current.signals || []), ...(item.types || [item.type])]),
+      reasons: unique([...(current.reasons || []), item.reason]),
+    });
+  });
+  return [...groups.values()].sort((a, b) => (severityRank[a.severity] ?? 9) - (severityRank[b.severity] ?? 9) || String(a.dueAt || "").localeCompare(String(b.dueAt || "")));
+}
+
+function priorityGroups(items) {
+  const count = (fn) => items.filter(fn).length;
+  return [
+    {
+      key: "sin_respuesta",
+      variant: "critica",
+      count: count((item) => item.types?.includes("sin_respuesta")),
+      label: "clientes esperando respuesta",
+      singular: "cliente esperando respuesta",
+      filter: "sin_respuesta",
+    },
+    {
+      key: "vencidos",
+      variant: "critica",
+      count: count((item) => item.types?.includes("vencido")),
+      label: "seguimientos vencidos",
+      singular: "seguimiento vencido",
+      filter: "vencidos",
+    },
+    {
+      key: "riesgo",
+      variant: "alta",
+      count: count((item) => item.types?.includes("riesgo")),
+      label: "oportunidades en riesgo",
+      singular: "oportunidad en riesgo",
+      filter: "riesgo",
+    },
+    {
+      key: "citas",
+      variant: "alta",
+      count: count((item) => item.types?.includes("cita") && item.stage === "agendada"),
+      label: "citas agendadas por confirmar",
+      singular: "cita agendada por confirmar",
+      filter: "citas",
+    },
+    {
+      key: "hoy",
+      variant: "normal",
+      count: count((item) => item.types?.includes("hoy")),
+      label: "próximas acciones para hoy",
+      singular: "próxima acción para hoy",
+      filter: "hoy",
+    },
+  ].filter((group) => group.count > 0);
+}
 
 function Badge({ children, variant = "normal" }) {
   const st = tone[variant] || tone.normal;
@@ -166,8 +284,9 @@ export default function WorkCenterView({ type = "advisor" }) {
     if (profile) loadData({ sync: true });
   }, [profile?.id, selectedAdvisor, type]);
 
-  const visibleItems = useMemo(() => filterItems(data?.workList || [], filter), [data?.workList, filter]);
-  const priorityItems = useMemo(() => (data?.items || []).filter((item) => item.severity !== "normal"), [data?.items]);
+  const consolidatedItems = useMemo(() => consolidateWorkItems(data?.workList || []), [data?.workList]);
+  const visibleItems = useMemo(() => filterItems(consolidatedItems, filter), [consolidatedItems, filter]);
+  const prioritySummaries = useMemo(() => priorityGroups(consolidatedItems), [consolidatedItems]);
   const title = isManagerView ? "Mi Gerencia" : "Mi Trabajo";
   const targetName = data?.target?.full_name || data?.target?.email || "";
 
@@ -191,13 +310,13 @@ export default function WorkCenterView({ type = "advisor" }) {
               <h1 style={{ margin: "12px 0 6px", color: "#111827", fontSize: 32, fontWeight: 950 }}>{title}</h1>
               <p style={{ margin: 0, color: "#6b7280", fontSize: 14, maxWidth: 760 }}>
                 {isManagerView
-                  ? "Centro de trabajo comercial para priorizar intervenciones, supervisar asesores y revisar actividad Respond.io metadata-only."
+                  ? "Centro de trabajo comercial para priorizar intervenciones y supervisar asesores."
                   : "Centro de trabajo personal: prioridades, seguimientos, citas, oportunidades y conversaciones que requieren accion."}
               </p>
               {mode === "supervise" && <p style={{ margin: "10px 0 0", color: brand.red, fontWeight: 900 }}>Modo Supervisión — viendo a {targetName}</p>}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={() => loadData({ sync: true })} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Refresh Respond.io"}</button>
+              <button onClick={() => loadData({ sync: true })} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Actualizar conversaciones"}</button>
               <button onClick={() => loadData()} style={secondaryButtonStyle}>Actualizar vista</button>
             </div>
           </header>
@@ -246,10 +365,12 @@ export default function WorkCenterView({ type = "advisor" }) {
           <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.95fr) minmax(320px, 1.05fr)", gap: 16 }}>
             <Panel>
               <h2 style={h2}>{isManagerView && !selectedAdvisor ? "Prioridades de Gerencia" : "Prioridades de hoy"}</h2>
-              <p style={muted}>Orden deterministico por severidad y vencimiento. Cada punto explica por que aparece.</p>
-              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                {priorityItems.slice(0, 8).map((item) => <Priority key={item.id} item={item} />)}
-                {priorityItems.length === 0 && <p style={muted}>Sin prioridades críticas con los datos actuales.</p>}
+              <p style={muted}>Resumen accionable para decidir qué atender primero.</p>
+              <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                {prioritySummaries.map((group) => (
+                  <PriorityGroup key={group.key} group={group} onView={() => setFilter(group.filter)} />
+                ))}
+                {prioritySummaries.length === 0 && <p style={muted}>Sin prioridades críticas con los datos actuales.</p>}
               </div>
             </Panel>
 
@@ -283,14 +404,6 @@ export default function WorkCenterView({ type = "advisor" }) {
               )}
             </Panel>
           </section>
-
-          <Panel style={{ marginTop: 16 }}>
-            <h2 style={h2}>Respond.io metadata-only</h2>
-            <p style={muted}>
-              Se sincronizan IDs, assignee, estado, lifecycle, canal, timestamps y campos operativos autorizados. No se guardan cuerpos completos, adjuntos, audios ni transcripciones.
-            </p>
-            <p style={{ ...muted, marginTop: 6 }}>Limitación citas: falta un campo formal de confirmación/no-show; por ahora solo se usa `estado`.</p>
-          </Panel>
         </div>
       </main>
     </Layout>
@@ -304,16 +417,15 @@ function Panel({ children, style }) {
 const h2 = { margin: 0, color: "#111827", fontSize: 18, fontWeight: 950 };
 const muted = { margin: "5px 0 0", color: "#6b7280", fontSize: 12, lineHeight: 1.45 };
 
-function Priority({ item }) {
+function PriorityGroup({ group, onView }) {
+  const label = group.count === 1 ? group.singular : group.label;
   return (
-    <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, background: "#fcfcfd" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-        <strong style={{ color: "#111827", fontSize: 13 }}>{item.title}</strong>
-        <Badge variant={item.severity}>{tone[item.severity]?.label || item.severity}</Badge>
+    <div style={{ border: `1px solid ${tone[group.variant]?.border || "#e5e7eb"}`, borderRadius: 12, padding: 12, background: tone[group.variant]?.bg || "#fcfcfd", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ width: 10, height: 10, borderRadius: 999, background: tone[group.variant]?.color || "#6b7280", flex: "0 0 auto" }} />
+        <strong style={{ color: "#111827", fontSize: 14 }}>{group.count} {label}</strong>
       </div>
-      <p style={{ margin: "6px 0 0", color: "#374151", fontSize: 13 }}>{item.client}{item.property ? ` · ${item.property}` : ""}</p>
-      <p style={muted}>{item.reason}</p>
-      {item.ownerName && <p style={muted}>Responsable: {item.ownerName}</p>}
+      <button onClick={onView} style={secondaryButtonStyle}>Ver</button>
     </div>
   );
 }
@@ -345,29 +457,49 @@ function AdvisorTable({ advisors, onPick }) {
   );
 }
 
+function actionForItem(item, canAudit) {
+  if (canAudit && item.opportunityId) return { label: "Intervenir", kind: "audit" };
+  if (item.types?.includes("oportunidad")) return { label: "Actualizar", kind: "pending" };
+  if (item.types?.includes("cita")) return { label: "Ver cita", kind: "pending" };
+  if (item.types?.includes("sin_respuesta") && item.respondDeepLink) return { label: "Abrir conversación", kind: "link" };
+  return null;
+}
+
 function WorkTable({ items, onAudit, canAudit = false }) {
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr>
-            {["Cliente", "Etapa", "Actividad", "Próxima acción", "Riesgo", "Canal", ""].map((h) => <th key={h} style={th}>{h}</th>)}
+            {["Cliente", "Etapa", "Última actividad", "Próxima acción", "Riesgo", "Canal / señales", ""].map((h) => <th key={h} style={th}>{h}</th>)}
           </tr>
         </thead>
         <tbody>
           {items.length === 0 ? (
             <tr><td style={td} colSpan={7}>Sin elementos para este filtro.</td></tr>
-          ) : items.map((item) => (
-            <tr key={item.id}>
-              <td style={td}><strong>{item.client}</strong><div style={muted}>{item.property || item.ownerName || ""}</div></td>
-              <td style={td}>{item.stage || "n/d"}</td>
-              <td style={td}>{item.dueAt ? new Date(item.dueAt).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }) : "Sin fecha"}</td>
-              <td style={td}>{item.nextAction}</td>
-              <td style={td}><Badge variant={item.risk === "critico" ? "critica" : item.risk === "alto" ? "alta" : "normal"}>{item.risk || "normal"}</Badge></td>
-              <td style={td}>{item.channel || "n/d"}<div style={muted}>{item.conversationStatus || ""}</div></td>
-              <td style={td}>{canAudit && item.opportunityId && <button onClick={() => onAudit(item)} style={secondaryButtonStyle}>Intervenir</button>}</td>
-            </tr>
-          ))}
+          ) : items.map((item) => {
+            const action = actionForItem(item, canAudit);
+            return (
+              <tr key={item.id}>
+                <td style={td}><strong>{item.client}</strong><div style={muted}>{item.property || item.ownerName || ""}</div></td>
+                <td style={td}>{item.stage || "n/d"}</td>
+                <td style={td}>{item.dueAt ? new Date(item.dueAt).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }) : "Sin fecha"}</td>
+                <td style={td}>{item.nextAction}</td>
+                <td style={td}><Badge variant={item.risk === "critico" ? "critica" : item.risk === "alto" ? "alta" : "normal"}>{item.risk || "normal"}</Badge></td>
+                <td style={td}>
+                  {item.channel || "n/d"}<div style={muted}>{item.conversationStatus || ""}</div>
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
+                    {(item.signals || item.types || []).map((signal) => <Badge key={signal}>{signalLabels[signal] || signal}</Badge>)}
+                  </div>
+                </td>
+                <td style={td}>
+                  {action?.kind === "audit" && <button onClick={() => onAudit(item)} style={secondaryButtonStyle}>{action.label}</button>}
+                  {action?.kind === "pending" && <button type="button" disabled style={{ ...secondaryButtonStyle, opacity: 0.55, cursor: "not-allowed" }}>{action.label}</button>}
+                  {action?.kind === "link" && <a href={item.respondDeepLink} style={{ ...secondaryButtonStyle, display: "inline-block", textDecoration: "none" }}>{action.label}</a>}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
