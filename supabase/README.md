@@ -25,3 +25,5 @@ Estado actual:
 
 - La carpeta se crea para preparar Fase 2A de Gerencia de Ventas.
 - La primera migracion es revisable y no ha sido ejecutada.
+- `bootstrap/` contiene un esquema base minimo para DEV cuando el proyecto
+  dev/preview esta vacio. No debe ejecutarse en Produccion.

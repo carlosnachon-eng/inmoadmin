@@ -80,6 +80,19 @@ Debe imprimir el proyecto DEV/PREVIEW, no Produccion.
 - existe el rol `coord_operaciones`;
 - existe el rol `asesor`.
 
+Resultado observado el 8 de agosto de 2026: `inmoadmin-dev` esta aislado, pero
+el esquema base esta vacio. Las tablas `profiles`, `roles`, `clientes`,
+`citas`, `propiedades` y `cierres` todavia no existen.
+
+Si DEV sigue vacio, ejecutar primero el bootstrap minimo DEV-only:
+
+```text
+supabase/bootstrap/202608080000_dev_minimal_base_schema.sql
+```
+
+Este bootstrap no es una replica completa de Produccion. Solo permite probar
+Fase 2A con seed sintetico.
+
 3. Ejecutar migracion en DEV/PREVIEW:
 
 ```text
