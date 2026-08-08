@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import Head from "next/head";
 import Layout, { brand } from "../../components/Layout";
 import { supabase } from "../../lib/supabase";
+import { SinAcceso } from "../../lib/permisos";
 
 const META_MENSUAL_NUEVA = 380000;
 const META_CITAS_DIARIAS = 2;
 const META_CONVERSION_OPERATIVA = 0.15;
-const ROLES_DIRECCION = new Set(["admin", "gerente_ventas"]);
+const ROLES_AUTORIZADOS_GERENCIA_VENTAS = new Set(["admin", "gerente_ventas"]);
 const ROLES_ASESORES = new Set(["asesor"]);
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const VALIDACION_HISTORICA = {
@@ -223,7 +224,7 @@ export default function GerenciaVentasDashboard() {
       .then(({ data: perfil }) => setProfile(perfil));
   }, [session?.user?.id]);
 
-  const puedeVer = profile?.active !== false && ROLES_DIRECCION.has(profile?.role_id);
+  const puedeVer = profile?.active !== false && ROLES_AUTORIZADOS_GERENCIA_VENTAS.has(profile?.role_id);
 
   useEffect(() => {
     if (!session || !puedeVer) return;
@@ -436,14 +437,7 @@ export default function GerenciaVentasDashboard() {
   }
 
   if (!session || !puedeVer) {
-    return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui", background: brand.bg }}>
-        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 32, textAlign: "center" }}>
-          <h1 style={{ margin: "0 0 8px", fontSize: 20 }}>Acceso restringido</h1>
-          <p style={{ margin: 0, color: "#6b7280" }}>Esta vista es para Dirección y Gerencia de Ventas.</p>
-        </div>
-      </div>
-    );
+    return <SinAcceso />;
   }
 
   const saludTone = lectura.salud.tone;
