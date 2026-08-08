@@ -34,7 +34,7 @@ export const nav = [
   { id: "commissions",   label: "Comisiones",         icon: "💼",  link: "/comisiones",         modulo: "comisiones" },
   { id: "cierres",       label: "Cierres",            icon: "📊",  link: "/cierres",            modulo: "cierres" },
   { id: "ejecutivo",     label: "Resumen Ejecutivo",  icon: "👑",  link: "/ejecutivo",          modulo: "ejecutivo" },
-  { id: "gerencia_ventas", label: "Gerencia Ventas",  icon: "📈",  link: "/ejecutivo/gerencia-ventas", modulo: "ejecutivo" },
+  { id: "gerencia_ventas", label: "Gerencia Ventas",  icon: "📈",  link: "/ejecutivo/gerencia-ventas", modulo: "ejecutivo", rolesPermitidos: ["admin", "gerente_ventas"] },
   { id: "firmas",        label: "Firmas",             icon: "📝",  link: "/firmas",             modulo: "firmas" },
   { id: "poliza",        label: "Póliza",             icon: "⚖️",  link: "/poliza",             modulo: "poliza" },
   { id: "dictamen",      label: "Dictamen",           icon: "📋",  link: "/dictamen",           modulo: "dictamen" },
@@ -82,10 +82,12 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
 
   const navFiltrado = permisosCargando
     ? []
-    : nav.filter(n =>
-        (!n.soloAdmin || esAdmin) &&
-        (n.siempreVisible || esAdmin || modulosPermitidos.includes(n.modulo))
-      );
+    : nav.filter((n) => {
+        const rolPermitido = n.rolesPermitidos?.includes(perfilPermisos?.role_id);
+        return (!n.soloAdmin || esAdmin) &&
+          (!n.rolesPermitidos || rolPermitido) &&
+          (n.siempreVisible || esAdmin || rolPermitido || modulosPermitidos.includes(n.modulo));
+      });
 
   const currentLabel = navFiltrado.find(n => n.id === view)?.label || "Inicio";
   const nombreRol = perfilPermisos?.roles?.nombre || (esAdmin ? "Administrador" : "Staff");
