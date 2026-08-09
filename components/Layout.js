@@ -3,6 +3,8 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { useModulosPermitidos } from "../lib/permisos";
 
+const fase2aEnabled = process.env.NEXT_PUBLIC_FASE_2A_ENABLED === "true";
+
 export const brand = {
   red:       "#b91c3c",
   redDark:   "#7f1d2e",
@@ -21,6 +23,7 @@ export const nav = [
   { id: "checador",      label: "Checador",          icon: "🕒",  link: "/checador",           modulo: "checador" },
   { id: "guias",         label: "Guías",              icon: "📍",  link: "/guias",              modulo: "guias" },
   { id: "kpis",          label: "KPIs",               icon: "🎯",  link: "/kpis",               modulo: "kpis" },
+  { id: "mi_trabajo",    label: "Mi Trabajo",         icon: "📌",  link: "/mi-trabajo",         modulo: "ejecutivo", rolesPermitidos: ["admin", "gerente_ventas", "asesor"] },
   { id: "clientes",      label: "Clientes",           icon: "👥",  link: "/clientes",           modulo: "clientes" },
   { id: "kpis_dashboard",label: "KPIs Dashboard",     icon: "📊",  link: "/kpis-dashboard",     modulo: "kpis-dashboard" },
   { id: "estadisticas_proyectos", label: "Estadísticas Proyectos", icon: "📣", link: "/estadisticas-proyectos", modulo: "estadisticas-proyectos", soloAdmin: true },
@@ -34,6 +37,7 @@ export const nav = [
   { id: "commissions",   label: "Comisiones",         icon: "💼",  link: "/comisiones",         modulo: "comisiones" },
   { id: "cierres",       label: "Cierres",            icon: "📊",  link: "/cierres",            modulo: "cierres" },
   { id: "ejecutivo",     label: "Resumen Ejecutivo",  icon: "👑",  link: "/ejecutivo",          modulo: "ejecutivo" },
+  { id: "mi_gerencia",   label: "Mi Gerencia",        icon: "🧭",  link: "/ejecutivo/mi-gerencia", modulo: "ejecutivo", rolesPermitidos: ["admin", "gerente_ventas"] },
   { id: "gerencia_ventas", label: "Gerencia Ventas",  icon: "📈",  link: "/ejecutivo/gerencia-ventas", modulo: "ejecutivo", rolesPermitidos: ["admin", "gerente_ventas"] },
   { id: "firmas",        label: "Firmas",             icon: "📝",  link: "/firmas",             modulo: "firmas" },
   { id: "poliza",        label: "Póliza",             icon: "⚖️",  link: "/poliza",             modulo: "poliza" },
@@ -83,6 +87,7 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
   const navFiltrado = permisosCargando
     ? []
     : nav.filter((n) => {
+        if (!fase2aEnabled && ["mi_trabajo", "mi_gerencia"].includes(n.id)) return false;
         const rolPermitido = n.rolesPermitidos?.includes(perfilPermisos?.role_id);
         return (!n.soloAdmin || esAdmin) &&
           (!n.rolesPermitidos || rolPermitido) &&
