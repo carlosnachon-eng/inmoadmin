@@ -153,7 +153,7 @@ create table if not exists public.gv_opportunities (
   risk_reason text null,
   qualified_at timestamptz null,
   closed_at timestamptz null,
-  cierre_id uuid null references public.cierres(id),
+  cierre_id bigint null references public.cierres(id),
   lost_reason text null,
   lost_reason_category text null
     check (lost_reason_category is null or lost_reason_category in ('precio', 'credito', 'documentacion', 'competencia', 'cliente_no_contesta', 'propietario', 'externa', 'otro')),
@@ -208,7 +208,7 @@ alter table public.gv_opportunities
   add column if not exists risk_reason text null,
   add column if not exists qualified_at timestamptz null,
   add column if not exists closed_at timestamptz null,
-  add column if not exists cierre_id uuid null references public.cierres(id),
+  add column if not exists cierre_id bigint null references public.cierres(id),
   add column if not exists source text not null default 'manual',
   add column if not exists source_external_id text null,
   add column if not exists respond_contact_id text null,

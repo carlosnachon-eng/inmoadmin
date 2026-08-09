@@ -40,7 +40,10 @@ required_extensions(extension_name) as (
 expected_columns(table_name, column_name, udt_name, required_before_007) as (
   values
     ('profiles', 'id', 'uuid', true),
+    ('clientes', 'id', 'uuid', true),
+    ('propiedades', 'id', 'uuid', true),
     ('citas', 'asesor_id', 'uuid', true),
+    ('cierres', 'id', 'int8', true),
     ('citas', 'confirmacion_estado', 'text', false),
     ('citas', 'confirmacion_actualizada_at', 'timestamptz', false),
     ('citas', 'confirmacion_actualizada_por', 'uuid', false),
@@ -76,7 +79,7 @@ expected_columns(table_name, column_name, udt_name, required_before_007) as (
     ('gv_opportunities', 'estimated_commission', 'numeric', false),
     ('gv_opportunities', 'next_action_at', 'timestamptz', false),
     ('gv_opportunities', 'risk_level', 'text', false),
-    ('gv_opportunities', 'cierre_id', 'uuid', false),
+    ('gv_opportunities', 'cierre_id', 'int8', false),
     ('gv_opportunities', 'respond_contact_id', 'text', false),
     ('gv_opportunities', 'respond_unanswered_since', 'timestamptz', false),
     ('gv_opportunity_events', 'id', 'uuid', false),
@@ -113,6 +116,38 @@ column_checks as (
     on c.table_schema = 'public'
    and c.table_name = ec.table_name
    and c.column_name = ec.column_name
+),
+critical_fk_targets(schema_name, table_name, column_name, udt_name) as (
+  values
+    ('public', 'profiles', 'id', 'uuid'),
+    ('public', 'clientes', 'id', 'uuid'),
+    ('public', 'propiedades', 'id', 'uuid'),
+    ('public', 'cierres', 'id', 'int8'),
+    ('auth', 'users', 'id', 'uuid')
+),
+critical_fk_target_checks as (
+  select
+    cft.schema_name,
+    cft.table_name,
+    cft.column_name,
+    cft.udt_name as expected_udt_name,
+    c.udt_name as actual_udt_name,
+    to_regclass(format('%I.%I', cft.schema_name, cft.table_name)) is not null as table_exists
+  from critical_fk_targets cft
+  left join information_schema.columns c
+    on c.table_schema = cft.schema_name
+   and c.table_name = cft.table_name
+   and c.column_name = cft.column_name
+),
+critical_fk_target_issues as (
+  select jsonb_agg(
+    schema_name || '.' || table_name || '.' || column_name || ': esperado ' || expected_udt_name || ', actual ' || coalesce(actual_udt_name, 'missing')
+    order by schema_name, table_name, column_name
+  ) as issues
+  from critical_fk_target_checks
+  where table_exists = false
+    or actual_udt_name is null
+    or actual_udt_name <> expected_udt_name
 ),
 missing_required_tables as (
   select jsonb_agg(rt.table_name order by rt.table_name) as missing
@@ -377,6 +412,16 @@ select
     else 'Columnas aditivas de citas/cierres no existen todavia; esperado antes de 007: ' || missing::text
   end as detail
 from missing_base_phase_2a_columns
+
+union all
+select
+  'critical_fk_target_types' as check_name,
+  case when issues is null then 'OK' else 'BLOCKER' end as status,
+  case
+    when issues is null then 'Tipos de columnas historicas usadas como FK compatibles con 007.'
+    else 'Incompatibilidad en columnas historicas usadas como FK: ' || issues::text
+  end as detail
+from critical_fk_target_issues
 
 union all
 select
