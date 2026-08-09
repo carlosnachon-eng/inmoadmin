@@ -559,6 +559,7 @@ export default function WorkCenterView({ type = "advisor" }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo ejecutar el sync piloto Respond.io.");
       setRespondPilotSyncResult(json.result || {});
+      await loadData();
     } catch (err) {
       setError(err.message || "No se pudo ejecutar el sync piloto Respond.io.");
     } finally {
