@@ -398,6 +398,8 @@ export default function WorkCenterView({ type = "advisor" }) {
   const [syncNotice, setSyncNotice] = useState(null);
   const [respondDryRunLoading, setRespondDryRunLoading] = useState(false);
   const [respondDryRunResult, setRespondDryRunResult] = useState(null);
+  const [respondPilotSyncLoading, setRespondPilotSyncLoading] = useState(false);
+  const [respondPilotSyncResult, setRespondPilotSyncResult] = useState(null);
   const [highlightedIntervention, setHighlightedIntervention] = useState(null);
 
   useEffect(() => {
@@ -540,6 +542,27 @@ export default function WorkCenterView({ type = "advisor" }) {
       setError(err.message || "No se pudo ejecutar el dry run Respond.io.");
     } finally {
       setRespondDryRunLoading(false);
+    }
+  };
+
+  const runRespondPilotSync = async () => {
+    if (!session?.access_token || !canRunRespondDryRun) return;
+    setRespondPilotSyncLoading(true);
+    setRespondPilotSyncResult(null);
+    setError("");
+    try {
+      const res = await fetch("/api/ejecutivo/respond-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ dryRun: false, limitContacts: 10 }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "No se pudo ejecutar el sync piloto Respond.io.");
+      setRespondPilotSyncResult(json.result || {});
+    } catch (err) {
+      setError(err.message || "No se pudo ejecutar el sync piloto Respond.io.");
+    } finally {
+      setRespondPilotSyncLoading(false);
     }
   };
 
@@ -706,6 +729,12 @@ export default function WorkCenterView({ type = "advisor" }) {
                   <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>Prueba sin escritura · 10 contactos</span>
                 </div>
               )}
+              {canRunRespondDryRun && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <button onClick={runRespondPilotSync} disabled={respondPilotSyncLoading} style={secondaryButtonStyle}>{respondPilotSyncLoading ? "Sincronizando..." : "Sync piloto"}</button>
+                  <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>Sync piloto · 10 contactos</span>
+                </div>
+              )}
               {canSyncRespond && <button onClick={() => loadData({ sync: true })} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Sincronizar conversaciones"}</button>}
               <button onClick={() => loadData()} style={secondaryButtonStyle}>Actualizar indicadores</button>
             </div>
@@ -717,6 +746,7 @@ export default function WorkCenterView({ type = "advisor" }) {
           {error && <Panel style={{ borderColor: "#fecaca", color: "#991b1b", marginBottom: 16 }}>{error}</Panel>}
           {syncNotice && <Panel style={{ borderColor: "#fde68a", background: "#fffbeb", color: "#92400e", marginBottom: 16 }}>{syncNotice}</Panel>}
           {respondDryRunResult && <RespondDryRunSummary result={respondDryRunResult} />}
+          {respondPilotSyncResult && <RespondDryRunSummary result={respondPilotSyncResult} title="Sync piloto Respond.io" message="Sync piloto Respond.io completado." />}
           {loading && <Panel style={{ marginBottom: 16 }}>Actualizando datos...</Panel>}
           <EmptyModuleNotice data={data} />
 
@@ -1060,7 +1090,7 @@ function CitaModal({ item, onClose }) {
   );
 }
 
-function RespondDryRunSummary({ result }) {
+function RespondDryRunSummary({ result, title = "Dry run Respond.io", message = "Dry run Respond.io completado. No se realizaron escrituras." }) {
   const coverage = result?.coverage || {};
   const metrics = [
     ["processedContacts", result?.processedContacts],
@@ -1081,8 +1111,8 @@ function RespondDryRunSummary({ result }) {
   ];
   return (
     <Panel style={{ borderColor: "#bfdbfe", background: "#eff6ff", marginBottom: 16 }}>
-      <h2 style={h2}>Dry run Respond.io</h2>
-      <p style={{ ...muted, marginTop: 6 }}>Dry run Respond.io completado. No se realizaron escrituras.</p>
+      <h2 style={h2}>{title}</h2>
+      <p style={{ ...muted, marginTop: 6 }}>{message}</p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginTop: 12 }}>
         {metrics.map(([label, value]) => <DryRunMetric key={label} label={label} value={value} />)}
       </div>
