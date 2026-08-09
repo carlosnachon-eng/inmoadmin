@@ -227,7 +227,7 @@ export default async function handler(req, res) {
       ? scoped.from("gv_respond_contact_snapshots").select("*").in("mapped_profile_id", scopedAdvisorIdList).order("respond_last_synced_at", { ascending: false })
       : Promise.resolve(noData);
     const unassignedSnapshotsQuery = canManage && mode === "management"
-      ? admin.from("gv_respond_contact_snapshots").select("*").is("mapped_profile_id", null).eq("atn_area", "ventas").order("respond_last_synced_at", { ascending: false })
+      ? admin.from("gv_respond_contact_snapshots").select("*").is("mapped_profile_id", null).ilike("atn_area", "%ventas%").order("respond_last_synced_at", { ascending: false })
       : Promise.resolve(noData);
 
     const [
