@@ -396,9 +396,9 @@ export default function WorkCenterView({ type = "advisor" }) {
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [syncNotice, setSyncNotice] = useState(null);
-  const [respondDryRunLoading, setRespondDryRunLoading] = useState(false);
+  const [respondDryRunLoading, setRespondDryRunLoading] = useState(null);
   const [respondDryRunResult, setRespondDryRunResult] = useState(null);
-  const [respondPilotSyncLoading, setRespondPilotSyncLoading] = useState(false);
+  const [respondPilotSyncLoading, setRespondPilotSyncLoading] = useState(null);
   const [respondPilotSyncResult, setRespondPilotSyncResult] = useState(null);
   const [highlightedIntervention, setHighlightedIntervention] = useState(null);
 
@@ -436,6 +436,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   const canRegisterSupervision = isManagerView && canUseManager && !isUnassignedSelected;
   const canSyncRespond = isManagerView && canUseManager;
   const canRunRespondDryRun = isManagerView && profile?.role_id === "admin";
+  const respondTemporaryBusy = respondDryRunLoading !== null || respondPilotSyncLoading !== null;
 
   const loadData = async ({ sync = false } = {}) => {
     if (!session?.access_token || !profile) return;
@@ -524,16 +525,16 @@ export default function WorkCenterView({ type = "advisor" }) {
     }, 50);
   };
 
-  const runRespondDryRun = async () => {
+  const runRespondDryRun = async (limitContacts = 10) => {
     if (!session?.access_token || !canRunRespondDryRun) return;
-    setRespondDryRunLoading(true);
+    setRespondDryRunLoading(limitContacts);
     setRespondDryRunResult(null);
     setError("");
     try {
       const res = await fetch("/api/ejecutivo/respond-sync", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ dryRun: true, limitContacts: 10 }),
+        body: JSON.stringify({ dryRun: true, limitContacts }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo ejecutar el dry run Respond.io.");
@@ -541,20 +542,20 @@ export default function WorkCenterView({ type = "advisor" }) {
     } catch (err) {
       setError(err.message || "No se pudo ejecutar el dry run Respond.io.");
     } finally {
-      setRespondDryRunLoading(false);
+      setRespondDryRunLoading(null);
     }
   };
 
-  const runRespondPilotSync = async () => {
+  const runRespondPilotSync = async (limitContacts = 10) => {
     if (!session?.access_token || !canRunRespondDryRun) return;
-    setRespondPilotSyncLoading(true);
+    setRespondPilotSyncLoading(limitContacts);
     setRespondPilotSyncResult(null);
     setError("");
     try {
       const res = await fetch("/api/ejecutivo/respond-sync", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ dryRun: false, limitContacts: 10 }),
+        body: JSON.stringify({ dryRun: false, limitContacts }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo ejecutar el sync piloto Respond.io.");
@@ -563,7 +564,7 @@ export default function WorkCenterView({ type = "advisor" }) {
     } catch (err) {
       setError(err.message || "No se pudo ejecutar el sync piloto Respond.io.");
     } finally {
-      setRespondPilotSyncLoading(false);
+      setRespondPilotSyncLoading(null);
     }
   };
 
@@ -726,14 +727,26 @@ export default function WorkCenterView({ type = "advisor" }) {
               {isManagerView && <a href="/ejecutivo/gerencia-ventas" style={ghostLinkStyle}>Ver análisis completo</a>}
               {canRunRespondDryRun && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <button onClick={runRespondDryRun} disabled={respondDryRunLoading} style={secondaryButtonStyle}>{respondDryRunLoading ? "Ejecutando..." : "Dry run Respond.io"}</button>
+                  <button onClick={() => runRespondDryRun(10)} disabled={respondTemporaryBusy} style={secondaryButtonStyle}>{respondDryRunLoading === 10 ? "Ejecutando..." : "Dry run Respond.io"}</button>
                   <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>Prueba sin escritura · 10 contactos</span>
                 </div>
               )}
               {canRunRespondDryRun && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <button onClick={runRespondPilotSync} disabled={respondPilotSyncLoading} style={secondaryButtonStyle}>{respondPilotSyncLoading ? "Sincronizando..." : "Sync piloto"}</button>
+                  <button onClick={() => runRespondDryRun(50)} disabled={respondTemporaryBusy} style={secondaryButtonStyle}>{respondDryRunLoading === 50 ? "Ejecutando..." : "Dry run 50"}</button>
+                  <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>Prueba sin escritura · 50 contactos</span>
+                </div>
+              )}
+              {canRunRespondDryRun && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <button onClick={() => runRespondPilotSync(10)} disabled={respondTemporaryBusy} style={secondaryButtonStyle}>{respondPilotSyncLoading === 10 ? "Sincronizando..." : "Sync piloto"}</button>
                   <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>Sync piloto · 10 contactos</span>
+                </div>
+              )}
+              {canRunRespondDryRun && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <button onClick={() => runRespondPilotSync(50)} disabled={respondTemporaryBusy} style={secondaryButtonStyle}>{respondPilotSyncLoading === 50 ? "Sincronizando..." : "Sync piloto 50"}</button>
+                  <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>Sync piloto · 50 contactos</span>
                 </div>
               )}
               {canSyncRespond && <button onClick={() => loadData({ sync: true })} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Sincronizar conversaciones"}</button>}
