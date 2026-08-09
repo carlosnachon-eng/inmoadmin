@@ -396,6 +396,8 @@ export default function WorkCenterView({ type = "advisor" }) {
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [syncNotice, setSyncNotice] = useState(null);
+  const [respondDryRunLoading, setRespondDryRunLoading] = useState(false);
+  const [respondDryRunResult, setRespondDryRunResult] = useState(null);
   const [highlightedIntervention, setHighlightedIntervention] = useState(null);
 
   useEffect(() => {
@@ -431,6 +433,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   const mode = isManagerView ? (selectedAdvisor && !isUnassignedSelected ? "supervise" : "management") : "mine";
   const canRegisterSupervision = isManagerView && canUseManager && !isUnassignedSelected;
   const canSyncRespond = isManagerView && canUseManager;
+  const canRunRespondDryRun = isManagerView && profile?.role_id === "admin";
 
   const loadData = async ({ sync = false } = {}) => {
     if (!session?.access_token || !profile) return;
@@ -517,6 +520,27 @@ export default function WorkCenterView({ type = "advisor" }) {
     setTimeout(() => {
       document.getElementById(`intervention-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
+  };
+
+  const runRespondDryRun = async () => {
+    if (!session?.access_token || !canRunRespondDryRun) return;
+    setRespondDryRunLoading(true);
+    setRespondDryRunResult(null);
+    setError("");
+    try {
+      const res = await fetch("/api/ejecutivo/respond-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ dryRun: true, limitContacts: 10 }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "No se pudo ejecutar el dry run Respond.io.");
+      setRespondDryRunResult(json.result || {});
+    } catch (err) {
+      setError(err.message || "No se pudo ejecutar el dry run Respond.io.");
+    } finally {
+      setRespondDryRunLoading(false);
+    }
   };
 
   const openRowIntervention = (item) => {
@@ -676,6 +700,12 @@ export default function WorkCenterView({ type = "advisor" }) {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {isManagerView && <a href="/ejecutivo/gerencia-ventas" style={ghostLinkStyle}>Ver análisis completo</a>}
+              {canRunRespondDryRun && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <button onClick={runRespondDryRun} disabled={respondDryRunLoading} style={secondaryButtonStyle}>{respondDryRunLoading ? "Ejecutando..." : "Dry run Respond.io"}</button>
+                  <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>Prueba sin escritura · 10 contactos</span>
+                </div>
+              )}
               {canSyncRespond && <button onClick={() => loadData({ sync: true })} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Sincronizar conversaciones"}</button>}
               <button onClick={() => loadData()} style={secondaryButtonStyle}>Actualizar indicadores</button>
             </div>
@@ -686,6 +716,7 @@ export default function WorkCenterView({ type = "advisor" }) {
 
           {error && <Panel style={{ borderColor: "#fecaca", color: "#991b1b", marginBottom: 16 }}>{error}</Panel>}
           {syncNotice && <Panel style={{ borderColor: "#fde68a", background: "#fffbeb", color: "#92400e", marginBottom: 16 }}>{syncNotice}</Panel>}
+          {respondDryRunResult && <RespondDryRunSummary result={respondDryRunResult} />}
           {loading && <Panel style={{ marginBottom: 16 }}>Actualizando datos...</Panel>}
           <EmptyModuleNotice data={data} />
 
@@ -1025,6 +1056,45 @@ function CitaModal({ item, onClose }) {
           <button onClick={onClose} style={buttonStyle}>Volver a Mi Gerencia</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function RespondDryRunSummary({ result }) {
+  const coverage = result?.coverage || {};
+  const metrics = [
+    ["processedContacts", result?.processedContacts],
+    ["contactsRead", result?.contactsRead],
+    ["snapshotsUpserted", result?.snapshotsUpserted],
+    ["snapshotsWouldUpsert", result?.snapshotsWouldUpsert],
+    ["snapshotsWouldCreate", result?.snapshotsWouldCreate],
+    ["snapshotsWouldUpdate", result?.snapshotsWouldUpdate],
+    ["matchedProfiles", result?.matchedProfiles],
+    ["unmatchedProfiles", result?.unmatchedProfiles],
+    ["contactsUnassignedSales", coverage?.contactsUnassignedSales ?? result?.contactsUnassignedSales],
+    ["contactsIgnoredOutsideSales", coverage?.contactsIgnoredOutsideSales ?? result?.contactsIgnoredOutsideSales],
+    ["messagePagesRead", coverage?.messagePagesRead ?? result?.messagePagesRead],
+    ["messageRequests", coverage?.messageRequests ?? result?.messageRequests],
+    ["durationMs", coverage?.durationMs ?? result?.durationMs],
+    ["coverageComplete", String(coverage?.coverageComplete ?? result?.coverageComplete ?? false)],
+    ["stoppedReason", coverage?.stoppedReason ?? result?.stoppedReason ?? "n/d"],
+  ];
+  return (
+    <Panel style={{ borderColor: "#bfdbfe", background: "#eff6ff", marginBottom: 16 }}>
+      <h2 style={h2}>Dry run Respond.io</h2>
+      <p style={{ ...muted, marginTop: 6 }}>Dry run Respond.io completado. No se realizaron escrituras.</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginTop: 12 }}>
+        {metrics.map(([label, value]) => <DryRunMetric key={label} label={label} value={value} />)}
+      </div>
+    </Panel>
+  );
+}
+
+function DryRunMetric({ label, value }) {
+  return (
+    <div style={{ border: "1px solid #dbeafe", borderRadius: 10, padding: "8px 10px", background: "#fff" }}>
+      <div style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>{label}</div>
+      <div style={{ color: "#111827", fontSize: 15, fontWeight: 950, marginTop: 2 }}>{value ?? "—"}</div>
     </div>
   );
 }
