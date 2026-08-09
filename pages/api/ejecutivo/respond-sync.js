@@ -15,6 +15,38 @@ const MESSAGE_PAGE_LIMIT = 100;
 const MAX_CONTACT_PAGES = 10;
 const MAX_MESSAGE_PAGES_PER_CONTACT = 3;
 const RESPOND_MIN_INTERVAL_MS = 250;
+const MAX_LIMIT_CONTACTS = 100;
+
+function badRequest(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+}
+
+export function parseSyncOptions(body = {}) {
+  let parsed;
+  try {
+    parsed = typeof body === "string" && body ? JSON.parse(body) : (body || {});
+  } catch {
+    throw badRequest("Body JSON invalido.");
+  }
+  if (parsed.dryRun !== undefined && typeof parsed.dryRun !== "boolean") {
+    throw badRequest("dryRun debe ser booleano.");
+  }
+
+  let limitContacts = null;
+  if (parsed.limitContacts !== undefined && parsed.limitContacts !== null) {
+    if (!Number.isInteger(parsed.limitContacts)) throw badRequest("limitContacts debe ser un entero.");
+    if (parsed.limitContacts < 1) throw badRequest("limitContacts debe ser mayor o igual a 1.");
+    if (parsed.limitContacts > MAX_LIMIT_CONTACTS) throw badRequest(`limitContacts no puede ser mayor a ${MAX_LIMIT_CONTACTS}.`);
+    limitContacts = parsed.limitContacts;
+  }
+
+  return {
+    dryRun: parsed.dryRun === true,
+    limitContacts,
+  };
+}
 
 function rejectInternal(res, err) {
   console.error("[respond-sync]", err?.message || err);
@@ -182,7 +214,9 @@ function snapshotFromContact(contact, messages, profiles, messagePagesRead) {
   };
 }
 
-async function syncRespond(admin, profiles) {
+async function syncRespond(admin, profiles, options = {}) {
+  const dryRun = options.dryRun === true;
+  const limitContacts = options.limitContacts || null;
   const profilesById = new Map((profiles || []).map((profile) => [profile.id, profile]));
   const coverage = {
     contactsAvailable: null,
@@ -195,29 +229,44 @@ async function syncRespond(admin, profiles) {
     stoppedReason: null,
     startedAt: new Date().toISOString(),
     finishedAt: null,
+    durationMs: null,
+    requestedLimit: limitContacts,
+    processedContacts: 0,
+    messagePagesRead: 0,
+    messageRequests: 0,
   };
   const contacts = [];
   let nextPath = "/contact/list";
   let contactPage = 0;
-  while (nextPath && contactPage < MAX_CONTACT_PAGES) {
+  let lastContactNextPath = null;
+  while (nextPath && contactPage < MAX_CONTACT_PAGES && (!limitContacts || contacts.length < limitContacts)) {
+    const remaining = limitContacts ? limitContacts - contacts.length : CONTACT_PAGE_LIMIT;
+    const requestedPageLimit = Math.min(CONTACT_PAGE_LIMIT, remaining);
     const contactList = await respondRequest(nextPath, {
       method: "POST",
-      params: nextPath === "/contact/list" ? { limit: CONTACT_PAGE_LIMIT } : undefined,
+      params: nextPath === "/contact/list" ? { limit: requestedPageLimit } : undefined,
       body: nextPath === "/contact/list" ? {
         search: "",
         timezone: "America/Mexico_City",
         filter: { $and: [] },
       } : undefined,
     });
-    contacts.push(...items(contactList));
+    const pageItems = items(contactList);
+    contacts.push(...(limitContacts ? pageItems.slice(0, limitContacts - contacts.length) : pageItems));
     coverage.pagesRead += 1;
     coverage.contactsAvailable = contactList.total ?? contactList.count ?? contactList.pagination?.total ?? coverage.contactsAvailable;
-    nextPath = paginationNext(contactList);
+    lastContactNextPath = paginationNext(contactList);
+    nextPath = limitContacts && contacts.length >= limitContacts ? null : lastContactNextPath;
     contactPage += 1;
   }
   coverage.contactsScanned = contacts.length;
-  coverage.coverageComplete = !nextPath;
-  coverage.stoppedReason = nextPath ? "max_contact_pages" : "complete";
+  coverage.processedContacts = contacts.length;
+  coverage.coverageComplete = !lastContactNextPath;
+  coverage.stoppedReason = lastContactNextPath && limitContacts && contacts.length >= limitContacts
+    ? "limit_contacts"
+    : lastContactNextPath
+      ? "max_contact_pages"
+      : "complete";
 
   const snapshots = [];
   for (const contact of contacts) {
@@ -231,6 +280,8 @@ async function syncRespond(admin, profiles) {
       messages.push(...items(messageList));
       messageNextPath = paginationNext(messageList);
       messagePage += 1;
+      coverage.messagePagesRead += 1;
+      coverage.messageRequests += 1;
       const signals = messageSignals(messages);
       if (signals.lastInbound && signals.lastOutbound && messages.length >= MESSAGE_PAGE_LIMIT) break;
     }
@@ -241,6 +292,8 @@ async function syncRespond(admin, profiles) {
   coverage.contactsMatched = snapshots.filter((s) => s.mapped_profile_id).length;
   coverage.contactsUnassignedSales = snapshots.filter((s) => !s.mapped_profile_id && normalize(s.atn_area) === "ventas").length;
 
+  let snapshotsCreated = 0;
+  let snapshotsUpdated = 0;
   if (snapshots.length) {
     const { data: existingSnapshots, error: existingError } = await admin
       .from("gv_respond_contact_snapshots")
@@ -256,6 +309,8 @@ async function syncRespond(admin, profiles) {
     const existingByContact = new Map((existingSnapshots || []).map((snapshot) => [snapshot.respond_contact_id, snapshot]));
     snapshots.forEach((snapshot) => {
       const existing = existingByContact.get(snapshot.respond_contact_id);
+      if (existing) snapshotsUpdated += 1;
+      else snapshotsCreated += 1;
       if (!snapshot.mapped_profile_id && existing?.mapped_profile_id) {
         snapshot.mapped_profile_id = existing.mapped_profile_id;
         snapshot.mapping_status = existing.mapping_status || "matched";
@@ -264,7 +319,7 @@ async function syncRespond(admin, profiles) {
     });
   }
 
-  if (snapshots.length) {
+  if (snapshots.length && !dryRun) {
     const { error } = await admin
       .from("gv_respond_contact_snapshots")
       .upsert(snapshots, { onConflict: "respond_contact_id" });
@@ -276,15 +331,24 @@ async function syncRespond(admin, profiles) {
     if (error) throw error;
   }
 
+  const finishedAt = new Date().toISOString();
+  const durationMs = new Date(finishedAt).getTime() - new Date(coverage.startedAt).getTime();
   return {
+    dryRun,
+    requestedLimit: limitContacts,
+    processedContacts: contacts.length,
     contactsRead: contacts.length,
-    snapshotsUpserted: snapshots.length,
+    snapshotsUpserted: dryRun ? 0 : snapshots.length,
+    snapshotsWouldUpsert: snapshots.length,
+    snapshotsWouldCreate: snapshotsCreated,
+    snapshotsWouldUpdate: snapshotsUpdated,
     matchedProfiles: snapshots.filter((s) => s.mapped_profile_id).length,
     unmatchedProfiles: snapshots.filter((s) => !s.mapped_profile_id).length,
     linkedOpportunitiesUpdated: 0,
     coverage: {
       ...coverage,
-      finishedAt: new Date().toISOString(),
+      finishedAt,
+      durationMs,
     },
   };
 }
@@ -326,9 +390,11 @@ export default async function handler(req, res) {
       .eq("active", true);
     if (profilesError) throw profilesError;
 
-    const result = await syncRespond(admin, profiles || []);
+    const options = parseSyncOptions(req.body);
+    const result = await syncRespond(admin, profiles || [], options);
     return res.status(200).json({ ok: true, result });
   } catch (err) {
+    if (err.statusCode === 400) return res.status(400).json({ ok: false, error: err.message });
     if (err.statusCode === 404) return res.status(404).json({ ok: false, error: "Modulo no habilitado." });
     if (err.statusCode === 424) {
       return res.status(424).json({
