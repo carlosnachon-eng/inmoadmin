@@ -10,12 +10,13 @@ import {
 } from "../../../lib/ejecutivo/workCenter";
 
 const RESPOND_BASE = "https://api.respond.io/v2";
-const CONTACT_PAGE_LIMIT = 100;
 const MESSAGE_PAGE_LIMIT = 100;
-const MAX_CONTACT_PAGES = 10;
 const MAX_MESSAGE_PAGES_PER_CONTACT = 3;
 const RESPOND_MIN_INTERVAL_MS = 250;
-const MAX_LIMIT_CONTACTS = 100;
+const FINAL_SYNC_BATCH_SIZE = 50;
+const RESPOND_SYNC_STALE_MS = 15 * 60 * 1000;
+const RESPOND_SYNC_ACTIONS = new Set(["start", "continue", "resume", "status"]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function badRequest(message) {
   const error = new Error(message);
@@ -30,21 +31,18 @@ export function parseSyncOptions(body = {}) {
   } catch {
     throw badRequest("Body JSON invalido.");
   }
-  if (parsed.dryRun !== undefined && typeof parsed.dryRun !== "boolean") {
-    throw badRequest("dryRun debe ser booleano.");
+  if (parsed.dryRun !== undefined || parsed.limitContacts !== undefined) {
+    throw badRequest("dryRun y limitContacts ya no forman parte del flujo publico de Produccion.");
   }
-
-  let limitContacts = null;
-  if (parsed.limitContacts !== undefined && parsed.limitContacts !== null) {
-    if (!Number.isInteger(parsed.limitContacts)) throw badRequest("limitContacts debe ser un entero.");
-    if (parsed.limitContacts < 1) throw badRequest("limitContacts debe ser mayor o igual a 1.");
-    if (parsed.limitContacts > MAX_LIMIT_CONTACTS) throw badRequest(`limitContacts no puede ser mayor a ${MAX_LIMIT_CONTACTS}.`);
-    limitContacts = parsed.limitContacts;
+  if (!RESPOND_SYNC_ACTIONS.has(parsed.action)) {
+    throw badRequest("action invalida.");
   }
-
+  if (["continue", "resume", "status"].includes(parsed.action) && !UUID_RE.test(String(parsed.runId || ""))) {
+    throw badRequest("runId invalido.");
+  }
   return {
-    dryRun: parsed.dryRun === true,
-    limitContacts,
+    action: parsed.action,
+    runId: parsed.runId || null,
   };
 }
 
@@ -224,62 +222,144 @@ function snapshotFromContact(contact, messages, profiles, messagePagesRead) {
   };
 }
 
-async function syncRespond(admin, profiles, options = {}) {
-  const dryRun = options.dryRun === true;
-  const limitContacts = options.limitContacts || null;
-  const profilesById = new Map((profiles || []).map((profile) => [profile.id, profile]));
-  const coverage = {
-    contactsAvailable: null,
-    contactsScanned: 0,
-    pagesRead: 0,
-    contactsMatched: 0,
-    contactsUnassignedSales: 0,
+function isMissingPhase2ATable(error) {
+  return error?.code === "PGRST205" || /gv_respond_(contact_snapshots|sync_runs)/i.test(error?.message || "");
+}
+
+function migrationRequiredError() {
+  const migrationError = new Error("RESPOND_PHASE_2A_MIGRATION_REQUIRED");
+  migrationError.statusCode = 424;
+  return migrationError;
+}
+
+function isStaleRun(run) {
+  const updatedAt = run?.updated_at ? new Date(run.updated_at).getTime() : 0;
+  return updatedAt > 0 && Date.now() - updatedAt > RESPOND_SYNC_STALE_MS;
+}
+
+function publicRun(run, extra = {}) {
+  if (!run) return null;
+  return {
+    runId: run.id,
+    status: run.status,
+    batchNumber: run.batch_number || 0,
+    contactsProcessed: run.contacts_processed || 0,
+    snapshotsUpserted: run.snapshots_upserted || 0,
+    snapshotsCreated: run.snapshots_created || 0,
+    snapshotsUpdated: run.snapshots_updated || 0,
+    contactsIgnoredOutsideSales: run.contacts_ignored_outside_sales || 0,
+    contactsExcludedAreaConflict: run.contacts_excluded_area_conflict || 0,
+    messageRequests: run.message_requests || 0,
+    coverageComplete: run.coverage_complete || false,
+    stoppedReason: run.stopped_reason || null,
+    lastError: run.last_error || null,
+    startedAt: run.started_at || null,
+    finishedAt: run.finished_at || null,
+    updatedAt: run.updated_at || null,
+    ...extra,
+  };
+}
+
+async function recoverStaleRuns(admin) {
+  const { data: running, error } = await admin
+    .from("gv_respond_sync_runs")
+    .select("*")
+    .eq("status", "running")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (isMissingPhase2ATable(error)) throw migrationRequiredError();
+  if (error) throw error;
+  if (!running) return null;
+  if (!isStaleRun(running)) return running;
+
+  const { error: updateError } = await admin
+    .from("gv_respond_sync_runs")
+    .update({
+      status: "failed",
+      finished_at: new Date().toISOString(),
+      stopped_reason: "stale_run_recovered",
+      last_error: "stale_run_recovered",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", running.id)
+    .eq("status", "running");
+  if (updateError) throw updateError;
+  return null;
+}
+
+async function createRun(admin, actorProfile) {
+  const { data, error } = await admin
+    .from("gv_respond_sync_runs")
+    .insert({
+      status: "running",
+      actor_profile_id: actorProfile.id,
+      metadata: { batch_size: FINAL_SYNC_BATCH_SIZE, stale_ttl_ms: RESPOND_SYNC_STALE_MS },
+    })
+    .select("*")
+    .single();
+  if (isMissingPhase2ATable(error)) throw migrationRequiredError();
+  if (error?.code === "23505") return { conflict: true };
+  if (error) throw error;
+  return { run: data };
+}
+
+async function getRun(admin, runId) {
+  const { data, error } = await admin
+    .from("gv_respond_sync_runs")
+    .select("*")
+    .eq("id", runId)
+    .maybeSingle();
+  if (isMissingPhase2ATable(error)) throw migrationRequiredError();
+  if (error) throw error;
+  return data;
+}
+
+async function failRun(admin, run, err, stoppedReason = "batch_failed") {
+  const message = err?.public?.message || err?.message || "batch_failed";
+  const { data, error } = await admin
+    .from("gv_respond_sync_runs")
+    .update({
+      status: "failed",
+      finished_at: new Date().toISOString(),
+      stopped_reason: stoppedReason,
+      last_error: String(message).slice(0, 500),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", run.id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function readContactBatch(cursor) {
+  const contactPath = cursor || "/contact/list";
+  const contactList = await respondRequest(contactPath, {
+    method: "POST",
+    params: contactPath === "/contact/list" ? { limit: FINAL_SYNC_BATCH_SIZE } : undefined,
+    body: contactPath === "/contact/list" ? {
+      search: "",
+      timezone: "America/Mexico_City",
+      filter: { $and: [] },
+    } : undefined,
+  });
+  return {
+    contacts: items(contactList).slice(0, FINAL_SYNC_BATCH_SIZE),
+    nextCursor: paginationNext(contactList),
+    contactsAvailable: contactList.total ?? contactList.count ?? contactList.pagination?.total ?? null,
+  };
+}
+
+async function buildSnapshotsForBatch(contacts, profiles, profilesById) {
+  const snapshots = [];
+  const metrics = {
     contactsIgnoredOutsideSales: 0,
     contactsExcludedAreaConflict: 0,
-    coverageComplete: false,
-    stoppedReason: null,
-    startedAt: new Date().toISOString(),
-    finishedAt: null,
-    durationMs: null,
-    requestedLimit: limitContacts,
-    processedContacts: 0,
     messagePagesRead: 0,
     messageRequests: 0,
   };
-  const contacts = [];
-  let nextPath = "/contact/list";
-  let contactPage = 0;
-  let lastContactNextPath = null;
-  while (nextPath && contactPage < MAX_CONTACT_PAGES && (!limitContacts || contacts.length < limitContacts)) {
-    const remaining = limitContacts ? limitContacts - contacts.length : CONTACT_PAGE_LIMIT;
-    const requestedPageLimit = Math.min(CONTACT_PAGE_LIMIT, remaining);
-    const contactList = await respondRequest(nextPath, {
-      method: "POST",
-      params: nextPath === "/contact/list" ? { limit: requestedPageLimit } : undefined,
-      body: nextPath === "/contact/list" ? {
-        search: "",
-        timezone: "America/Mexico_City",
-        filter: { $and: [] },
-      } : undefined,
-    });
-    const pageItems = items(contactList);
-    contacts.push(...(limitContacts ? pageItems.slice(0, limitContacts - contacts.length) : pageItems));
-    coverage.pagesRead += 1;
-    coverage.contactsAvailable = contactList.total ?? contactList.count ?? contactList.pagination?.total ?? coverage.contactsAvailable;
-    lastContactNextPath = paginationNext(contactList);
-    nextPath = limitContacts && contacts.length >= limitContacts ? null : lastContactNextPath;
-    contactPage += 1;
-  }
-  coverage.contactsScanned = contacts.length;
-  coverage.processedContacts = contacts.length;
-  coverage.coverageComplete = !lastContactNextPath;
-  coverage.stoppedReason = lastContactNextPath && limitContacts && contacts.length >= limitContacts
-    ? "limit_contacts"
-    : lastContactNextPath
-      ? "max_contact_pages"
-      : "complete";
 
-  const snapshots = [];
   for (const contact of contacts) {
     const messages = [];
     let messageNextPath = `/contact/id:${contact.id}/message/list`;
@@ -291,91 +371,141 @@ async function syncRespond(admin, profiles, options = {}) {
       messages.push(...items(messageList));
       messageNextPath = paginationNext(messageList);
       messagePage += 1;
-      coverage.messagePagesRead += 1;
-      coverage.messageRequests += 1;
+      metrics.messagePagesRead += 1;
+      metrics.messageRequests += 1;
       const signals = messageSignals(messages);
       if (signals.lastInbound && signals.lastOutbound && messages.length >= MESSAGE_PAGE_LIMIT) break;
     }
     const snapshot = snapshotFromContact(contact, messages, profiles, messagePage);
     if (isSnapshotRelevantForSales(snapshot, profilesById)) snapshots.push(snapshot);
-    else if (hasExplicitSalesAreaConflict(snapshot, profilesById)) coverage.contactsExcludedAreaConflict += 1;
-    else coverage.contactsIgnoredOutsideSales += 1;
+    else if (hasExplicitSalesAreaConflict(snapshot, profilesById)) metrics.contactsExcludedAreaConflict += 1;
+    else metrics.contactsIgnoredOutsideSales += 1;
   }
-  coverage.contactsMatched = snapshots.filter((s) => s.mapped_profile_id).length;
-  coverage.contactsUnassignedSales = snapshots.filter((s) => !s.mapped_profile_id && normalize(s.atn_area) === "ventas").length;
+
+  return { snapshots, metrics };
+}
+
+async function countSnapshotChanges(admin, snapshots) {
+  if (!snapshots.length) return { snapshotsCreated: 0, snapshotsUpdated: 0 };
+  const { data: existingSnapshots, error } = await admin
+    .from("gv_respond_contact_snapshots")
+    .select("respond_contact_id, mapped_profile_id, mapping_status, metadata")
+    .in("respond_contact_id", snapshots.map((snapshot) => snapshot.respond_contact_id));
+  if (isMissingPhase2ATable(error)) throw migrationRequiredError();
+  if (error) throw error;
 
   let snapshotsCreated = 0;
   let snapshotsUpdated = 0;
-  if (snapshots.length) {
-    const { data: existingSnapshots, error: existingError } = await admin
-      .from("gv_respond_contact_snapshots")
-      .select("respond_contact_id, mapped_profile_id, mapping_status, metadata")
-      .in("respond_contact_id", snapshots.map((snapshot) => snapshot.respond_contact_id));
-    if (existingError?.code === "PGRST205" || /gv_respond_contact_snapshots/i.test(existingError?.message || "")) {
-      const migrationError = new Error("RESPOND_SNAPSHOTS_MIGRATION_REQUIRED");
-      migrationError.statusCode = 424;
-      throw migrationError;
+  const existingByContact = new Map((existingSnapshots || []).map((snapshot) => [snapshot.respond_contact_id, snapshot]));
+  snapshots.forEach((snapshot) => {
+    const existing = existingByContact.get(snapshot.respond_contact_id);
+    if (existing) snapshotsUpdated += 1;
+    else snapshotsCreated += 1;
+    if (!snapshot.mapped_profile_id && existing?.mapped_profile_id) {
+      snapshot.mapped_profile_id = existing.mapped_profile_id;
+      snapshot.mapping_status = existing.mapping_status || "matched";
+      snapshot.metadata = { ...snapshot.metadata, preserved_mapping: true };
     }
-    if (existingError) throw existingError;
+  });
+  return { snapshotsCreated, snapshotsUpdated };
+}
 
-    const existingByContact = new Map((existingSnapshots || []).map((snapshot) => [snapshot.respond_contact_id, snapshot]));
-    snapshots.forEach((snapshot) => {
-      const existing = existingByContact.get(snapshot.respond_contact_id);
-      if (existing) snapshotsUpdated += 1;
-      else snapshotsCreated += 1;
-      if (!snapshot.mapped_profile_id && existing?.mapped_profile_id) {
-        snapshot.mapped_profile_id = existing.mapped_profile_id;
-        snapshot.mapping_status = existing.mapping_status || "matched";
-        snapshot.metadata = { ...snapshot.metadata, preserved_mapping: true };
-      }
+async function processRunBatch(admin, profiles, run) {
+  const profilesById = new Map((profiles || []).map((profile) => [profile.id, profile]));
+  const batchStartedAt = new Date().toISOString();
+  const batchCursor = run.current_cursor || run.last_confirmed_cursor || null;
+
+  const { data: heartbeat, error: heartbeatError } = await admin
+    .from("gv_respond_sync_runs")
+    .update({
+      current_cursor: batchCursor,
+      updated_at: batchStartedAt,
+    })
+    .eq("id", run.id)
+    .eq("status", "running")
+    .select("*")
+    .single();
+  if (heartbeatError) throw heartbeatError;
+
+  try {
+    const { contacts, nextCursor, contactsAvailable } = await readContactBatch(batchCursor);
+    const { snapshots, metrics } = await buildSnapshotsForBatch(contacts, profiles || [], profilesById);
+    const { snapshotsCreated, snapshotsUpdated } = await countSnapshotChanges(admin, snapshots);
+
+    if (snapshots.length) {
+      const { error } = await admin
+        .from("gv_respond_contact_snapshots")
+        .upsert(snapshots, { onConflict: "respond_contact_id" });
+      if (isMissingPhase2ATable(error)) throw migrationRequiredError();
+      if (error) throw error;
+    }
+
+    const coverageComplete = !nextCursor;
+    const stoppedReason = coverageComplete ? "complete" : "batch_complete";
+    const update = {
+      current_cursor: nextCursor || null,
+      last_confirmed_cursor: nextCursor || null,
+      batch_number: (heartbeat.batch_number || 0) + 1,
+      contacts_processed: (heartbeat.contacts_processed || 0) + contacts.length,
+      snapshots_upserted: (heartbeat.snapshots_upserted || 0) + snapshots.length,
+      snapshots_created: (heartbeat.snapshots_created || 0) + snapshotsCreated,
+      snapshots_updated: (heartbeat.snapshots_updated || 0) + snapshotsUpdated,
+      contacts_ignored_outside_sales: (heartbeat.contacts_ignored_outside_sales || 0) + metrics.contactsIgnoredOutsideSales,
+      contacts_excluded_area_conflict: (heartbeat.contacts_excluded_area_conflict || 0) + metrics.contactsExcludedAreaConflict,
+      message_requests: (heartbeat.message_requests || 0) + metrics.messageRequests,
+      coverage_complete: coverageComplete,
+      stopped_reason: stoppedReason,
+      last_error: null,
+      metadata: {
+        ...(heartbeat.metadata || {}),
+        batch_size: FINAL_SYNC_BATCH_SIZE,
+        contacts_available: contactsAvailable,
+        last_batch_contacts: contacts.length,
+        last_batch_snapshots: snapshots.length,
+        last_batch_message_pages: metrics.messagePagesRead,
+        last_batch_started_at: batchStartedAt,
+        last_batch_finished_at: new Date().toISOString(),
+      },
+      updated_at: new Date().toISOString(),
+    };
+    if (coverageComplete) {
+      update.status = "completed";
+      update.finished_at = new Date().toISOString();
+    }
+
+    const { data: updatedRun, error: updateError } = await admin
+      .from("gv_respond_sync_runs")
+      .update(update)
+      .eq("id", run.id)
+      .eq("status", "running")
+      .select("*")
+      .single();
+    if (updateError) throw updateError;
+
+    return publicRun(updatedRun, {
+      batch: {
+        contactsProcessed: contacts.length,
+        snapshotsUpserted: snapshots.length,
+        snapshotsCreated,
+        snapshotsUpdated,
+        contactsIgnoredOutsideSales: metrics.contactsIgnoredOutsideSales,
+        contactsExcludedAreaConflict: metrics.contactsExcludedAreaConflict,
+        messageRequests: metrics.messageRequests,
+      },
     });
+  } catch (err) {
+    const failed = await failRun(admin, heartbeat || run, err);
+    return publicRun(failed, { error: failed.last_error });
   }
-
-  if (snapshots.length && !dryRun) {
-    const { error } = await admin
-      .from("gv_respond_contact_snapshots")
-      .upsert(snapshots, { onConflict: "respond_contact_id" });
-    if (error?.code === "PGRST205" || /gv_respond_contact_snapshots/i.test(error?.message || "")) {
-      const migrationError = new Error("RESPOND_SNAPSHOTS_MIGRATION_REQUIRED");
-      migrationError.statusCode = 424;
-      throw migrationError;
-    }
-    if (error) throw error;
-  }
-
-  const finishedAt = new Date().toISOString();
-  const durationMs = new Date(finishedAt).getTime() - new Date(coverage.startedAt).getTime();
-  return {
-    dryRun,
-    requestedLimit: limitContacts,
-    processedContacts: contacts.length,
-    contactsRead: contacts.length,
-    snapshotsUpserted: dryRun ? 0 : snapshots.length,
-    snapshotsWouldUpsert: snapshots.length,
-    snapshotsWouldCreate: snapshotsCreated,
-    snapshotsWouldUpdate: snapshotsUpdated,
-    matchedProfiles: snapshots.filter((s) => s.mapped_profile_id).length,
-    unmatchedProfiles: snapshots.filter((s) => !s.mapped_profile_id).length,
-    linkedOpportunitiesUpdated: 0,
-    coverage: {
-      ...coverage,
-      finishedAt,
-      durationMs,
-    },
-  };
 }
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
+  let lockKey = null;
 
   try {
     const env = assertSupabaseEnvironment();
     assertFase2AEnabled();
-    const lockKey = `${env.projectRef}:respond-sync`;
-    if (syncLocks.get(lockKey)) {
-      return res.status(409).json({ ok: false, error: "Ya hay una sincronización en curso." });
-    }
-    syncLocks.set(lockKey, Date.now());
     const jwt = authHeaderToken(req);
     if (!jwt) return res.status(401).json({ ok: false, error: "Sesion requerida." });
 
@@ -396,14 +526,65 @@ export default async function handler(req, res) {
       return res.status(403).json({ ok: false, error: "Respond.io sync no autorizado para este rol." });
     }
 
+    const options = parseSyncOptions(req.body);
+    if (options.action === "status") {
+      const run = await getRun(admin, options.runId);
+      if (!run) return res.status(404).json({ ok: false, error: "Run no encontrado." });
+      return res.status(200).json({ ok: true, result: publicRun(run) });
+    }
+
+    lockKey = `${env.projectRef}:respond-sync`;
+    if (syncLocks.get(lockKey)) {
+      return res.status(409).json({ ok: false, error: "Ya hay una sincronización en curso." });
+    }
+    syncLocks.set(lockKey, Date.now());
+
     const { data: profiles, error: profilesError } = await admin
       .from("profiles")
       .select("id, email, full_name, role_id, active")
       .eq("active", true);
     if (profilesError) throw profilesError;
 
-    const options = parseSyncOptions(req.body);
-    const result = await syncRespond(admin, profiles || [], options);
+    let run;
+    if (options.action === "start") {
+      const running = await recoverStaleRuns(admin);
+      if (running) return res.status(409).json({ ok: false, error: "Ya hay una sincronización en curso.", result: publicRun(running) });
+      const created = await createRun(admin, actorProfile);
+      if (created.conflict) return res.status(409).json({ ok: false, error: "Ya hay una sincronización en curso." });
+      run = created.run;
+    }
+
+    if (options.action === "continue") {
+      run = await getRun(admin, options.runId);
+      if (!run) return res.status(404).json({ ok: false, error: "Run no encontrado." });
+      if (run.status !== "running") return res.status(409).json({ ok: false, error: "El run no está activo.", result: publicRun(run) });
+    }
+
+    if (options.action === "resume") {
+      const failedRun = await getRun(admin, options.runId);
+      if (!failedRun) return res.status(404).json({ ok: false, error: "Run no encontrado." });
+      if (failedRun.status !== "failed") return res.status(409).json({ ok: false, error: "Solo se puede reanudar un run fallido.", result: publicRun(failedRun) });
+      const running = await recoverStaleRuns(admin);
+      if (running) return res.status(409).json({ ok: false, error: "Ya hay una sincronización en curso.", result: publicRun(running) });
+      const { data: resumed, error: resumeError } = await admin
+        .from("gv_respond_sync_runs")
+        .update({
+          status: "running",
+          finished_at: null,
+          stopped_reason: "resumed",
+          last_error: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", failedRun.id)
+        .eq("status", "failed")
+        .select("*")
+        .single();
+      if (resumeError?.code === "23505") return res.status(409).json({ ok: false, error: "Ya hay una sincronización en curso." });
+      if (resumeError) throw resumeError;
+      run = resumed;
+    }
+
+    const result = await processRunBatch(admin, profiles || [], run);
     return res.status(200).json({ ok: true, result });
   } catch (err) {
     if (err.statusCode === 400) return res.status(400).json({ ok: false, error: err.message });
@@ -418,9 +599,6 @@ export default async function handler(req, res) {
     if (err.public) return res.status(502).json({ ok: false, error: "Respond.io rechazo la lectura.", detail: err.public });
     return rejectInternal(res, err);
   } finally {
-    try {
-      const ref = assertSupabaseEnvironment().projectRef;
-      syncLocks.delete(`${ref}:respond-sync`);
-    } catch {}
+    if (lockKey) syncLocks.delete(lockKey);
   }
 }
