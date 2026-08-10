@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabase";
 const publicAppEnv = String(process.env.NEXT_PUBLIC_APP_ENV || "").trim().toLowerCase();
 const isPreviewUi = ["dev", "development", "preview"].includes(publicAppEnv);
 const fase2aEnabled = process.env.NEXT_PUBLIC_FASE_2A_ENABLED === "true";
+const RESPOND_RESUME_RUN_ID = "9e83cdea-74f9-4580-9f7e-9fd76757de5b";
 
 const fmtMoney = (value) => new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -432,6 +433,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   const mode = isManagerView ? (selectedAdvisor && !isUnassignedSelected ? "supervise" : "management") : "mine";
   const canRegisterSupervision = isManagerView && canUseManager && !isUnassignedSelected;
   const canSyncRespond = isManagerView && canUseManager;
+  const canResumeRespondSync = isManagerView && profile?.role_id === "admin";
 
   const loadData = async () => {
     if (!session?.access_token || !profile) return;
@@ -530,6 +532,40 @@ export default function WorkCenterView({ type = "advisor" }) {
       setSyncNotice("Sincronización Respond.io completada correctamente.");
     } catch (err) {
       setError(err.message || "No se pudo sincronizar Respond.io.");
+      if (err.result) setRespondSyncProgress(err.result);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const runRespondResumeSync = async () => {
+    if (!session?.access_token || !canResumeRespondSync || syncing) return;
+    setSyncing(true);
+    setError("");
+    setSyncNotice(null);
+    setRespondSyncProgress(null);
+    try {
+      const status = await postRespondSync({ action: "status", runId: RESPOND_RESUME_RUN_ID });
+      setRespondSyncProgress(status);
+      if (status?.status !== "failed") {
+        throw new Error(`No se puede reanudar: el run esta en estado ${status?.status || "desconocido"}.`);
+      }
+
+      let result = await postRespondSync({ action: "resume", runId: RESPOND_RESUME_RUN_ID });
+      setRespondSyncProgress(result);
+      let guard = 0;
+      while (result?.status === "running" && !result?.coverageComplete && guard < 200) {
+        guard += 1;
+        result = await postRespondSync({ action: "continue", runId: result.runId });
+        setRespondSyncProgress(result);
+        if (result?.status === "failed") throw new Error(result.lastError || "La sincronizacion fallo.");
+      }
+      if (guard >= 200) throw new Error("La sincronizacion se detuvo por limite de lotes.");
+      if (result?.status === "failed") throw new Error(result.lastError || "La sincronizacion fallo.");
+      await loadData();
+      setSyncNotice("Sincronizacion Respond.io reanudada y completada correctamente.");
+    } catch (err) {
+      setError(err.message || "No se pudo reanudar Respond.io.");
       if (err.result) setRespondSyncProgress(err.result);
     } finally {
       setSyncing(false);
@@ -694,6 +730,7 @@ export default function WorkCenterView({ type = "advisor" }) {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {isManagerView && <a href="/ejecutivo/gerencia-ventas" style={ghostLinkStyle}>Ver análisis completo</a>}
               {canSyncRespond && <button onClick={runRespondFullSync} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Sincronizar conversaciones"}</button>}
+              {canResumeRespondSync && <button onClick={runRespondResumeSync} disabled={syncing} style={secondaryButtonStyle}>Reanudar sincronización</button>}
               <button onClick={() => loadData()} style={secondaryButtonStyle}>Actualizar indicadores</button>
             </div>
             <div style={{ flexBasis: "100%", color: "#6b7280", fontSize: 12, textAlign: "right" }}>
