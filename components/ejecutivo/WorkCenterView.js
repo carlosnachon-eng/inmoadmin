@@ -1117,6 +1117,7 @@ function RespondDryRunSummary({ result, title = "Dry run Respond.io", message = 
     ["unmatchedProfiles", result?.unmatchedProfiles],
     ["contactsUnassignedSales", coverage?.contactsUnassignedSales ?? result?.contactsUnassignedSales],
     ["contactsIgnoredOutsideSales", coverage?.contactsIgnoredOutsideSales ?? result?.contactsIgnoredOutsideSales],
+    ["contactsExcludedAreaConflict", coverage?.contactsExcludedAreaConflict ?? result?.contactsExcludedAreaConflict],
     ["messagePagesRead", coverage?.messagePagesRead ?? result?.messagePagesRead],
     ["messageRequests", coverage?.messageRequests ?? result?.messageRequests],
     ["durationMs", coverage?.durationMs ?? result?.durationMs],

@@ -165,8 +165,18 @@ function messageSignals(messages) {
 
 function isSnapshotRelevantForSales(snapshot, profilesById) {
   const mapped = snapshot.mapped_profile_id ? profilesById.get(snapshot.mapped_profile_id) : null;
-  if (mapped?.role_id === "asesor" || mapped?.role_id === "gerente_ventas") return true;
-  return !snapshot.mapped_profile_id && normalize(snapshot.atn_area) === "ventas";
+  const normalizedArea = normalize(snapshot.atn_area);
+  const hasExplicitArea = normalizedArea.length > 0;
+  const isCommercialProfile = mapped?.active === true && (mapped.role_id === "asesor" || mapped.role_id === "gerente_ventas");
+  if (isCommercialProfile) return !hasExplicitArea || normalizedArea === "ventas";
+  return !snapshot.mapped_profile_id && normalizedArea === "ventas";
+}
+
+function hasExplicitSalesAreaConflict(snapshot, profilesById) {
+  const mapped = snapshot.mapped_profile_id ? profilesById.get(snapshot.mapped_profile_id) : null;
+  const normalizedArea = normalize(snapshot.atn_area);
+  const isCommercialProfile = mapped?.active === true && (mapped.role_id === "asesor" || mapped.role_id === "gerente_ventas");
+  return isCommercialProfile && normalizedArea.length > 0 && normalizedArea !== "ventas";
 }
 
 function snapshotFromContact(contact, messages, profiles, messagePagesRead) {
@@ -225,6 +235,7 @@ async function syncRespond(admin, profiles, options = {}) {
     contactsMatched: 0,
     contactsUnassignedSales: 0,
     contactsIgnoredOutsideSales: 0,
+    contactsExcludedAreaConflict: 0,
     coverageComplete: false,
     stoppedReason: null,
     startedAt: new Date().toISOString(),
@@ -287,6 +298,7 @@ async function syncRespond(admin, profiles, options = {}) {
     }
     const snapshot = snapshotFromContact(contact, messages, profiles, messagePage);
     if (isSnapshotRelevantForSales(snapshot, profilesById)) snapshots.push(snapshot);
+    else if (hasExplicitSalesAreaConflict(snapshot, profilesById)) coverage.contactsExcludedAreaConflict += 1;
     else coverage.contactsIgnoredOutsideSales += 1;
   }
   coverage.contactsMatched = snapshots.filter((s) => s.mapped_profile_id).length;
