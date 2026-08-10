@@ -7,6 +7,7 @@ const publicAppEnv = String(process.env.NEXT_PUBLIC_APP_ENV || "").trim().toLowe
 const isPreviewUi = ["dev", "development", "preview"].includes(publicAppEnv);
 const fase2aEnabled = process.env.NEXT_PUBLIC_FASE_2A_ENABLED === "true";
 const RESPOND_RESUME_RUN_ID = "9e83cdea-74f9-4580-9f7e-9fd76757de5b";
+const RESPOND_SYNC_STALE_MS = 15 * 60 * 1000;
 
 const fmtMoney = (value) => new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -547,7 +548,9 @@ export default function WorkCenterView({ type = "advisor" }) {
     try {
       const status = await postRespondSync({ action: "status", runId: RESPOND_RESUME_RUN_ID });
       setRespondSyncProgress(status);
-      if (status?.status !== "failed") {
+      const updatedAt = status?.updatedAt ? new Date(status.updatedAt).getTime() : 0;
+      const isStaleRunning = status?.status === "running" && updatedAt > 0 && Date.now() - updatedAt > RESPOND_SYNC_STALE_MS;
+      if (status?.status !== "failed" && !isStaleRunning) {
         throw new Error(`No se puede reanudar: el run esta en estado ${status?.status || "desconocido"}.`);
       }
 
