@@ -13,6 +13,7 @@ const RESPOND_BASE = "https://api.respond.io/v2";
 const MESSAGE_PAGE_LIMIT = 100;
 const MAX_MESSAGE_PAGES_PER_CONTACT = 3;
 const RESPOND_MIN_INTERVAL_MS = 250;
+const RESPOND_REQUEST_TIMEOUT_MS = 30_000;
 const FINAL_SYNC_BATCH_SIZE = 50;
 const RESPOND_SYNC_STALE_MS = 15 * 60 * 1000;
 const RESPOND_SYNC_ACTIONS = new Set(["start", "continue", "resume", "status"]);
@@ -66,16 +67,32 @@ async function respondRequest(path, { method = "GET", body, params } = {}) {
   const url = new URL(String(path).startsWith("http") ? path : `${RESPOND_BASE}${path}`);
   Object.entries(params || {}).forEach(([key, value]) => url.searchParams.set(key, String(value)));
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const response = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const text = await response.text();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), RESPOND_REQUEST_TIMEOUT_MS);
+    let response;
+    let text;
+    try {
+      response = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: controller.signal,
+      });
+      text = await response.text();
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        const timeoutError = new Error("Respond.io request timeout.");
+        timeoutError.public = { status: 504, code: "respond_timeout", message: "Respond.io request timeout." };
+        throw timeoutError;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
     let json;
     try {
       json = JSON.parse(text);
@@ -273,6 +290,11 @@ async function recoverStaleRuns(admin) {
   if (!running) return null;
   if (!isStaleRun(running)) return running;
 
+  await markRunStaleRecovered(admin, running);
+  return null;
+}
+
+async function markRunStaleRecovered(admin, run) {
   const { error: updateError } = await admin
     .from("gv_respond_sync_runs")
     .update({
@@ -282,10 +304,9 @@ async function recoverStaleRuns(admin) {
       last_error: "stale_run_recovered",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", running.id)
+    .eq("id", run.id)
     .eq("status", "running");
   if (updateError) throw updateError;
-  return null;
 }
 
 async function createRun(admin, actorProfile) {
@@ -562,9 +583,16 @@ export default async function handler(req, res) {
     }
 
     if (options.action === "resume") {
-      const failedRun = await getRun(admin, options.runId);
+      let failedRun = await getRun(admin, options.runId);
       if (!failedRun) return res.status(404).json({ ok: false, error: "Run no encontrado." });
-      if (failedRun.status !== "failed") return res.status(409).json({ ok: false, error: "Solo se puede reanudar un run fallido.", result: publicRun(failedRun) });
+      if (failedRun.status === "running") {
+        if (!isStaleRun(failedRun)) {
+          return res.status(409).json({ ok: false, error: "El run sigue activo; aun no puede reanudarse.", result: publicRun(failedRun) });
+        }
+        await markRunStaleRecovered(admin, failedRun);
+        failedRun = await getRun(admin, options.runId);
+      }
+      if (failedRun.status !== "failed") return res.status(409).json({ ok: false, error: "Solo se puede reanudar un run fallido o stale.", result: publicRun(failedRun) });
       const running = await recoverStaleRuns(admin);
       if (running) return res.status(409).json({ ok: false, error: "Ya hay una sincronización en curso.", result: publicRun(running) });
       const { data: resumed, error: resumeError } = await admin
