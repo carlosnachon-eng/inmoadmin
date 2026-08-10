@@ -191,22 +191,35 @@ export default async function handler(req, res) {
       edgesRes,
       availabilityRes,
       interventionsRes,
+      interventionEventsRes,
     ] = await Promise.all([
       scoped.from("profiles").select("id, email, full_name, role_id, active").eq("active", true),
       scoped.from("gv_supervision_edges").select("id, supervisor_profile_id, subordinate_profile_id, scope, active").eq("scope", "ventas").eq("active", true),
       scoped.from("gv_advisor_availability").select("id, profile_id, status, capacity_weight, reason, starts_on, ends_on"),
       scoped.from("gv_management_interventions").select("*, advisor:advisor_profile_id(id, email, full_name), actor:actor_profile_id(id, email, full_name)").order("created_at", { ascending: false }).limit(30),
+      scoped.from("gv_management_intervention_events").select("id, intervention_id, event_type, actor_profile_id, old_status, new_status, review_on, notes, indicators_snapshot, comparison, created_at").order("created_at", { ascending: false }).limit(120),
     ]);
 
     const interventionsMissing = interventionsRes.error?.code === "PGRST205" || /gv_management_interventions/i.test(interventionsRes.error?.message || "");
-    const firstError = [profilesRes, edgesRes, availabilityRes, interventionsMissing ? { error: null } : interventionsRes].find((r) => r.error)?.error;
+    const interventionEventsMissing = interventionEventsRes.error?.code === "PGRST205" || /gv_management_intervention_events/i.test(interventionEventsRes.error?.message || "");
+    const firstError = [profilesRes, edgesRes, availabilityRes, interventionsMissing ? { error: null } : interventionsRes, interventionEventsMissing ? { error: null } : interventionEventsRes].find((r) => r.error)?.error;
     if (firstError) throw firstError;
 
     const profiles = profilesRes.data || [];
     const profilesById = new Map(profiles.map((p) => [p.id, p]));
     const availability = availabilityRes.data || [];
     const edges = edgesRes.data || [];
-    const interventions = interventionsMissing ? [] : (interventionsRes.data || []);
+    const interventionEvents = interventionEventsMissing ? [] : (interventionEventsRes.data || []);
+    const eventsByIntervention = new Map();
+    interventionEvents.forEach((event) => {
+      const list = eventsByIntervention.get(event.intervention_id) || [];
+      list.push(event);
+      eventsByIntervention.set(event.intervention_id, list);
+    });
+    const interventions = interventionsMissing ? [] : (interventionsRes.data || []).map((intervention) => ({
+      ...intervention,
+      events: eventsByIntervention.get(intervention.id) || [],
+    }));
 
     const visibleAdvisorIds = new Set();
     if (profile.role_id === ADVISOR_ROLE) visibleAdvisorIds.add(profile.id);
@@ -378,9 +391,11 @@ export default async function handler(req, res) {
 
     const activeInterventions = interventions.filter((item) => ACTIVE_INTERVENTION_STATUSES.has(item.status));
     const activeByAdvisor = new Map();
+    const activeByAdvisorContext = new Map();
     const activeByAdvisorReason = new Map();
     activeInterventions.forEach((item) => {
       if (!activeByAdvisor.has(item.advisor_profile_id)) activeByAdvisor.set(item.advisor_profile_id, item);
+      if (item.indicators?.contextKey) activeByAdvisorContext.set(`${item.advisor_profile_id}:${item.indicators.contextKey}`, item);
       activeByAdvisorReason.set(`${item.advisor_profile_id}:${normalizeReason(item.reason)}`, item);
     });
 
@@ -388,14 +403,33 @@ export default async function handler(req, res) {
       .filter((row) => row.capacityWeight > 0 && row.interventionSignals.length > 0)
       .map((row) => {
         const indicators = row.interventionSignals.map((signal) => signal.label);
+        const signalKeys = row.interventionSignals.map((signal) => signal.key);
+        const primarySignalKey = signalKeys[0] || "revision_gerencial";
+        const contextKey = `advisor:${row.id}:signal:${primarySignalKey}`;
         const reason = indicators.join(" + ");
-        const activeIntervention = activeByAdvisorReason.get(`${row.id}:${normalizeReason(reason)}`) || activeByAdvisor.get(row.id) || null;
+        const activeIntervention = activeByAdvisorContext.get(`${row.id}:${contextKey}`) || activeByAdvisorReason.get(`${row.id}:${normalizeReason(reason)}`) || activeByAdvisor.get(row.id) || null;
         return {
           advisorId: row.id,
           advisorName: row.name,
           variant: row.priorityVariant,
           score: row.interventionScore,
           why: indicators,
+          signalKeys,
+          primarySignalKey,
+          contextKey,
+          advisorSnapshot: {
+            waitingResponses: row.summary.waitingResponses,
+            effectiveCitas: row.summary.effectiveCitas,
+            scheduledCitas: row.summary.appointmentStats?.scheduled || 0,
+            pendingConfirmationCitas: row.summary.appointmentStats?.pendingConfirmation || 0,
+            openConversations: row.summary.openConversations,
+            overdueActions: row.summary.overdueActions,
+            riskOpportunities: row.summary.riskOpportunities,
+            activeOpportunities: row.summary.activeOpportunities,
+            pipeline: row.summary.pipeline,
+            citasRequired: row.citasRequired,
+            kpiCitasPct: row.kpiCitasPct,
+          },
           reason,
           explanation: `${row.name} requiere intervención por ${reason}.`,
           recommendedAction: row.recommendedAction,
