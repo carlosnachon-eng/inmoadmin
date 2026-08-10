@@ -39,6 +39,31 @@ function rejectInternal(res, err) {
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 const ACTIVE_INTERVENTION_STATUSES = new Set(["pendiente", "en_seguimiento", "sin_mejora"]);
+const SNAPSHOT_PAGE_SIZE = 1000;
+const RESPOND_SNAPSHOT_COLUMNS = [
+  "id",
+  "respond_contact_id",
+  "mapped_profile_id",
+  "respond_contact_name",
+  "respond_conversation_status",
+  "respond_lifecycle",
+  "respond_channel_source",
+  "respond_unanswered_since",
+  "respond_last_synced_at",
+  "atn_area",
+  "atn_proxima_accion",
+].join(", ");
+
+async function fetchAllPages(makeQuery, pageSize = SNAPSHOT_PAGE_SIZE) {
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await makeQuery().range(from, from + pageSize - 1);
+    if (error) return { data: rows, error };
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < pageSize) return { data: rows, error: null };
+  }
+}
 
 function normalizeReason(value) {
   return normalize(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
@@ -224,10 +249,21 @@ export default async function handler(req, res) {
       ? admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured").in("advisor_profile_id", scopedAdvisorIdList).gte("fecha_cierre", startDate)
       : Promise.resolve(noData);
     const mappedSnapshotsQuery = scopedAdvisorIdList.length
-      ? scoped.from("gv_respond_contact_snapshots").select("*").in("mapped_profile_id", scopedAdvisorIdList).order("respond_last_synced_at", { ascending: false })
+      ? fetchAllPages(() => scoped
+        .from("gv_respond_contact_snapshots")
+        .select(RESPOND_SNAPSHOT_COLUMNS)
+        .in("mapped_profile_id", scopedAdvisorIdList)
+        .order("respond_last_synced_at", { ascending: false })
+        .order("id", { ascending: true }))
       : Promise.resolve(noData);
     const unassignedSnapshotsQuery = canManage && mode === "management"
-      ? admin.from("gv_respond_contact_snapshots").select("*").is("mapped_profile_id", null).ilike("atn_area", "%ventas%").order("respond_last_synced_at", { ascending: false })
+      ? fetchAllPages(() => admin
+        .from("gv_respond_contact_snapshots")
+        .select(RESPOND_SNAPSHOT_COLUMNS)
+        .is("mapped_profile_id", null)
+        .ilike("atn_area", "%ventas%")
+        .order("respond_last_synced_at", { ascending: false })
+        .order("id", { ascending: true }))
       : Promise.resolve(noData);
 
     const [
