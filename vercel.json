@@ -19,6 +19,10 @@
     {
       "path": "/api/cron-checador",
       "schedule": "0 14 * * 1-6"
+    },
+    {
+      "path": "/api/cron/respond-webhook-worker",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

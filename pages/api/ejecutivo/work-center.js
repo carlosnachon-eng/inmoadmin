@@ -15,6 +15,7 @@ import {
   respondInboxLink,
   safeName,
 } from "../../../lib/ejecutivo/workCenter";
+import { isRespondIncrementalWorkerEnabled } from "../../../lib/ejecutivo/respondSync";
 
 function monthBounds() {
   const today = nowMxDate();
@@ -49,6 +50,9 @@ const RESPOND_SNAPSHOT_COLUMNS = [
   "respond_channel_source",
   "respond_unanswered_since",
   "respond_last_synced_at",
+  "sales_relevant",
+  "respond_record_active",
+  "respond_blocked",
   "atn_area",
   "atn_proxima_accion",
   "metadata",
@@ -266,6 +270,9 @@ export default async function handler(req, res) {
         .from("gv_respond_contact_snapshots")
         .select(RESPOND_SNAPSHOT_COLUMNS)
         .in("mapped_profile_id", scopedAdvisorIdList)
+        .eq("sales_relevant", true)
+        .eq("respond_record_active", true)
+        .eq("respond_blocked", false)
         .order("respond_last_synced_at", { ascending: false })
         .order("id", { ascending: true }))
       : Promise.resolve(noData);
@@ -275,6 +282,9 @@ export default async function handler(req, res) {
         .select(RESPOND_SNAPSHOT_COLUMNS)
         .is("mapped_profile_id", null)
         .ilike("atn_area", "%ventas%")
+        .eq("sales_relevant", true)
+        .eq("respond_record_active", true)
+        .eq("respond_blocked", false)
         .order("respond_last_synced_at", { ascending: false })
         .order("id", { ascending: true }))
       : Promise.resolve(noData);
@@ -497,6 +507,10 @@ export default async function handler(req, res) {
       ok: true,
       environment: process.env.APP_ENV || process.env.VERCEL_ENV || "preview",
       viewer: profile,
+      capabilities: {
+        respondIncrementalWorkerEnabled: isRespondIncrementalWorkerEnabled(),
+        respondFullReconciliation: profile.role_id === "admin",
+      },
       mode,
       target: requestedTarget || (mode === "mine" ? profile : null),
       summary,

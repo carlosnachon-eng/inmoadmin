@@ -1,19 +1,19 @@
 import {
-  RESPOND_CUSTOM_FIELDS,
   assertFase2AEnabled,
   assertSupabaseEnvironment,
   authHeaderToken,
   getAdminSupabase,
   getServerSupabase,
-  resolveRespondProfile,
-  toIsoFromRespondTimestamp,
 } from "../../../lib/ejecutivo/workCenter";
+import {
+  buildRespondSnapshot,
+  readRespondMessages,
+  respondItems,
+  respondPaginationNext,
+  respondRequest,
+  shouldPersistRespondSnapshot,
+} from "../../../lib/ejecutivo/respondSync";
 
-const RESPOND_BASE = "https://api.respond.io/v2";
-const MESSAGE_PAGE_LIMIT = 100;
-const MAX_MESSAGE_PAGES_PER_CONTACT = 3;
-const RESPOND_MIN_INTERVAL_MS = 250;
-const RESPOND_REQUEST_TIMEOUT_MS = 30_000;
 const FINAL_SYNC_BATCH_SIZE = 50;
 const RESPOND_SYNC_STALE_MS = 15 * 60 * 1000;
 const RESPOND_SYNC_ACTIONS = new Set(["start", "continue", "resume", "status"]);
@@ -54,190 +54,6 @@ function rejectInternal(res, err) {
 
 const syncLocks = globalThis.__fase2aRespondSyncLocks || new Map();
 globalThis.__fase2aRespondSyncLocks = syncLocks;
-let lastRespondRequestAt = 0;
-
-async function respondRequest(path, { method = "GET", body, params } = {}) {
-  const token = process.env.RESPOND_IO_TOKEN || process.env.RESPOND_IO_API_TOKEN;
-  if (!token) throw new Error("Falta RESPOND_IO_TOKEN.");
-  const now = Date.now();
-  const wait = Math.max(0, RESPOND_MIN_INTERVAL_MS - (now - lastRespondRequestAt));
-  if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-  lastRespondRequestAt = Date.now();
-
-  const url = new URL(String(path).startsWith("http") ? path : `${RESPOND_BASE}${path}`);
-  Object.entries(params || {}).forEach(([key, value]) => url.searchParams.set(key, String(value)));
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), RESPOND_REQUEST_TIMEOUT_MS);
-    let response;
-    let text;
-    try {
-      response = await fetch(url, {
-        method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        signal: controller.signal,
-      });
-      text = await response.text();
-    } catch (err) {
-      if (err?.name === "AbortError") {
-        const timeoutError = new Error("Respond.io request timeout.");
-        timeoutError.public = { status: 504, code: "respond_timeout", message: "Respond.io request timeout." };
-        throw timeoutError;
-      }
-      throw err;
-    } finally {
-      clearTimeout(timeout);
-    }
-    let json;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = { raw: text };
-    }
-    if (response.status === 429 && attempt < 3) {
-      const retryAfter = Number(response.headers.get("Retry-After") || 1);
-      await new Promise((resolve) => setTimeout(resolve, Math.max(1000, retryAfter * 1000)));
-      continue;
-    }
-    if (!response.ok) {
-      const err = new Error(`Respond.io ${response.status}`);
-      err.public = { status: response.status, code: json?.code, message: json?.message };
-      throw err;
-    }
-    return json;
-  }
-  throw new Error("Respond.io rate limit retry agotado.");
-}
-
-const items = (body) => (Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : []);
-const normalize = (value) => String(value || "").trim().toLowerCase();
-const paginationNext = (body) => body?.pagination?.next || null;
-
-function customValue(contact, slug) {
-  const field = (contact.custom_fields || []).find((f) => normalize(f.slug || f.name || f.fieldId) === slug);
-  const value = field?.value;
-  if (value === undefined || value === null || value === "") return null;
-  return value;
-}
-
-function parseDateField(value) {
-  if (!value) return null;
-  const text = String(value).slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
-}
-
-function parseNumberField(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function contactDisplayName(contact) {
-  const pieces = [
-    contact?.firstName,
-    contact?.lastName,
-  ].filter(Boolean);
-  return contact?.name || contact?.fullName || (pieces.length ? pieces.join(" ") : null);
-}
-
-function messageTimestamp(message) {
-  if (message?.messageId) return toIsoFromRespondTimestamp(message.messageId);
-  const statusTs = Array.isArray(message?.status) ? message.status.map((s) => s.timestamp).filter(Boolean).sort((a, b) => a - b)[0] : null;
-  return statusTs ? toIsoFromRespondTimestamp(statusTs) : null;
-}
-
-function messageSignals(messages) {
-  let lastInbound = null;
-  let lastOutbound = null;
-  let lastHumanOutbound = null;
-  let lastAiOutbound = null;
-
-  for (const message of messages || []) {
-    const ts = messageTimestamp(message);
-    if (!ts) continue;
-    if (message.traffic === "incoming") {
-      if (!lastInbound || ts > lastInbound) lastInbound = ts;
-      continue;
-    }
-    if (message.traffic === "outgoing") {
-      if (!lastOutbound || ts > lastOutbound) lastOutbound = ts;
-      if (message.sender?.source === "user") {
-        if (!lastHumanOutbound || ts > lastHumanOutbound) lastHumanOutbound = ts;
-      }
-      if (message.sender?.source === "ai_agent" || message.sender?.source === "workflow") {
-        if (!lastAiOutbound || ts > lastAiOutbound) lastAiOutbound = ts;
-      }
-    }
-  }
-
-  const unansweredSince = lastInbound && (!lastOutbound || lastInbound > lastOutbound) ? lastInbound : null;
-  return { lastInbound, lastOutbound, lastHumanOutbound, lastAiOutbound, unansweredSince };
-}
-
-function isSnapshotRelevantForSales(snapshot, profilesById) {
-  const mapped = snapshot.mapped_profile_id ? profilesById.get(snapshot.mapped_profile_id) : null;
-  const normalizedArea = normalize(snapshot.atn_area);
-  const hasExplicitArea = normalizedArea.length > 0;
-  const isCommercialProfile = mapped?.active === true && (mapped.role_id === "asesor" || mapped.role_id === "gerente_ventas");
-  if (isCommercialProfile) return !hasExplicitArea || normalizedArea === "ventas";
-  return !snapshot.mapped_profile_id && normalizedArea === "ventas";
-}
-
-function hasExplicitSalesAreaConflict(snapshot, profilesById) {
-  const mapped = snapshot.mapped_profile_id ? profilesById.get(snapshot.mapped_profile_id) : null;
-  const normalizedArea = normalize(snapshot.atn_area);
-  const isCommercialProfile = mapped?.active === true && (mapped.role_id === "asesor" || mapped.role_id === "gerente_ventas");
-  return isCommercialProfile && normalizedArea.length > 0 && normalizedArea !== "ventas";
-}
-
-function snapshotFromContact(contact, messages, profiles, messagePagesRead) {
-  const assignee = contact.assignee || null;
-  const mapped = resolveRespondProfile(assignee, profiles);
-  const channelId = messages?.[0]?.channelId || null;
-  const signals = messageSignals(messages);
-  const metadata = {
-    contact_name: contactDisplayName(contact),
-    mapping_method: mapped.method,
-    sync_mode: "metadata_only",
-    message_pages_read: messagePagesRead,
-    fields_present: Object.keys(contact || {}).filter((key) => !["phone", "email", "profilePic"].includes(key)),
-  };
-  return {
-    respond_contact_id: String(contact.id),
-    respond_assignee_id: assignee?.id ? String(assignee.id) : null,
-    respond_assignee_email: assignee?.email || null,
-    mapped_profile_id: mapped.profile?.id || null,
-    mapping_status: mapped.status,
-    respond_channel_id: channelId ? String(channelId) : null,
-    respond_channel_source: null,
-    respond_conversation_status: contact.status || null,
-    respond_lifecycle: contact.lifecycle || null,
-    respond_last_inbound_at: signals.lastInbound,
-    respond_last_outbound_at: signals.lastOutbound,
-    respond_last_human_outbound_at: signals.lastHumanOutbound,
-    respond_last_ai_outbound_at: signals.lastAiOutbound,
-    respond_unanswered_since: signals.unansweredSince,
-    respond_last_synced_at: new Date().toISOString(),
-    atn_area: customValue(contact, "atn_area"),
-    atn_servicio: customValue(contact, "atn_servicio"),
-    atn_estado: customValue(contact, "atn_estado"),
-    atn_destino: customValue(contact, "atn_destino"),
-    atn_proxima_accion: customValue(contact, "atn_proxima_accion"),
-    atn_fecha_proxima_accion: parseDateField(customValue(contact, "atn_fecha_proxima_accion")),
-    atn_sla_vencido: customValue(contact, "atn_sla_vencido") === true || customValue(contact, "atn_sla_vencido") === "true",
-    ven_presupuesto_compra: parseNumberField(customValue(contact, "ven_presupuesto_compra")),
-    ven_renta_mensual_objetivo: parseNumberField(customValue(contact, "ven_renta_mensual_objetivo")),
-    ven_plazo: customValue(contact, "ven_plazo"),
-    inm_tipo: customValue(contact, "inm_tipo"),
-    inm_zona: customValue(contact, "inm_zona"),
-    metadata,
-    updated_at: new Date().toISOString(),
-  };
-}
 
 function isMissingPhase2ATable(error) {
   return error?.code === "PGRST205" || /gv_respond_(contact_snapshots|sync_runs)/i.test(error?.message || "");
@@ -367,73 +183,59 @@ async function readContactBatch(cursor) {
     } : undefined,
   });
   return {
-    contacts: items(contactList).slice(0, FINAL_SYNC_BATCH_SIZE),
-    nextCursor: paginationNext(contactList),
+    contacts: respondItems(contactList).slice(0, FINAL_SYNC_BATCH_SIZE),
+    nextCursor: respondPaginationNext(contactList),
     contactsAvailable: contactList.total ?? contactList.count ?? contactList.pagination?.total ?? null,
   };
 }
 
-async function buildSnapshotsForBatch(contacts, profiles, profilesById) {
+async function buildSnapshotsForBatch(admin, contacts, profiles) {
   const snapshots = [];
   const metrics = {
     contactsIgnoredOutsideSales: 0,
     contactsExcludedAreaConflict: 0,
     messagePagesRead: 0,
     messageRequests: 0,
+    snapshotsCreated: 0,
+    snapshotsUpdated: 0,
   };
 
+  const contactIds = contacts.map((contact) => String(contact.id));
+  const { data: existingRows, error: existingError } = contactIds.length
+    ? await admin.from("gv_respond_contact_snapshots").select("*").in("respond_contact_id", contactIds)
+    : { data: [], error: null };
+  if (isMissingPhase2ATable(existingError)) throw migrationRequiredError();
+  if (existingError) throw existingError;
+  const existingByContact = new Map(
+    (existingRows || []).map((snapshot) => [snapshot.respond_contact_id, snapshot])
+  );
+
   for (const contact of contacts) {
-    const messages = [];
-    let messageNextPath = `/contact/id:${contact.id}/message/list`;
-    let messagePage = 0;
-    while (messageNextPath && messagePage < MAX_MESSAGE_PAGES_PER_CONTACT) {
-      const messageList = await respondRequest(messageNextPath, {
-        params: messageNextPath.includes("?") ? undefined : { limit: MESSAGE_PAGE_LIMIT },
-      });
-      messages.push(...items(messageList));
-      messageNextPath = paginationNext(messageList);
-      messagePage += 1;
-      metrics.messagePagesRead += 1;
-      metrics.messageRequests += 1;
-      const signals = messageSignals(messages);
-      if (signals.lastInbound && signals.lastOutbound && messages.length >= MESSAGE_PAGE_LIMIT) break;
+    const existingSnapshot = existingByContact.get(String(contact.id)) || null;
+    const messageResult = await readRespondMessages(contact.id);
+    metrics.messagePagesRead += messageResult.pagesRead;
+    metrics.messageRequests += messageResult.messageRequests;
+    const snapshot = buildRespondSnapshot({
+      contact,
+      messages: messageResult.messages,
+      profiles,
+      existingSnapshot,
+      messagePagesRead: messageResult.pagesRead,
+    });
+    if (!snapshot.sales_relevant) {
+      if (snapshot.exclusion_reason === "area_outside_sales") metrics.contactsExcludedAreaConflict += 1;
+      else metrics.contactsIgnoredOutsideSales += 1;
     }
-    const snapshot = snapshotFromContact(contact, messages, profiles, messagePage);
-    if (isSnapshotRelevantForSales(snapshot, profilesById)) snapshots.push(snapshot);
-    else if (hasExplicitSalesAreaConflict(snapshot, profilesById)) metrics.contactsExcludedAreaConflict += 1;
-    else metrics.contactsIgnoredOutsideSales += 1;
+    if (!shouldPersistRespondSnapshot(snapshot, existingSnapshot)) continue;
+    snapshots.push(snapshot);
+    if (existingSnapshot) metrics.snapshotsUpdated += 1;
+    else metrics.snapshotsCreated += 1;
   }
 
   return { snapshots, metrics };
 }
 
-async function countSnapshotChanges(admin, snapshots) {
-  if (!snapshots.length) return { snapshotsCreated: 0, snapshotsUpdated: 0 };
-  const { data: existingSnapshots, error } = await admin
-    .from("gv_respond_contact_snapshots")
-    .select("respond_contact_id, mapped_profile_id, mapping_status, metadata")
-    .in("respond_contact_id", snapshots.map((snapshot) => snapshot.respond_contact_id));
-  if (isMissingPhase2ATable(error)) throw migrationRequiredError();
-  if (error) throw error;
-
-  let snapshotsCreated = 0;
-  let snapshotsUpdated = 0;
-  const existingByContact = new Map((existingSnapshots || []).map((snapshot) => [snapshot.respond_contact_id, snapshot]));
-  snapshots.forEach((snapshot) => {
-    const existing = existingByContact.get(snapshot.respond_contact_id);
-    if (existing) snapshotsUpdated += 1;
-    else snapshotsCreated += 1;
-    if (!snapshot.mapped_profile_id && existing?.mapped_profile_id) {
-      snapshot.mapped_profile_id = existing.mapped_profile_id;
-      snapshot.mapping_status = existing.mapping_status || "matched";
-      snapshot.metadata = { ...snapshot.metadata, preserved_mapping: true };
-    }
-  });
-  return { snapshotsCreated, snapshotsUpdated };
-}
-
 async function processRunBatch(admin, profiles, run) {
-  const profilesById = new Map((profiles || []).map((profile) => [profile.id, profile]));
   const batchStartedAt = new Date().toISOString();
   const batchCursor = run.current_cursor || run.last_confirmed_cursor || null;
 
@@ -451,8 +253,7 @@ async function processRunBatch(admin, profiles, run) {
 
   try {
     const { contacts, nextCursor, contactsAvailable } = await readContactBatch(batchCursor);
-    const { snapshots, metrics } = await buildSnapshotsForBatch(contacts, profiles || [], profilesById);
-    const { snapshotsCreated, snapshotsUpdated } = await countSnapshotChanges(admin, snapshots);
+    const { snapshots, metrics } = await buildSnapshotsForBatch(admin, contacts, profiles || []);
 
     if (snapshots.length) {
       const { error } = await admin
@@ -470,8 +271,8 @@ async function processRunBatch(admin, profiles, run) {
       batch_number: (heartbeat.batch_number || 0) + 1,
       contacts_processed: (heartbeat.contacts_processed || 0) + contacts.length,
       snapshots_upserted: (heartbeat.snapshots_upserted || 0) + snapshots.length,
-      snapshots_created: (heartbeat.snapshots_created || 0) + snapshotsCreated,
-      snapshots_updated: (heartbeat.snapshots_updated || 0) + snapshotsUpdated,
+      snapshots_created: (heartbeat.snapshots_created || 0) + metrics.snapshotsCreated,
+      snapshots_updated: (heartbeat.snapshots_updated || 0) + metrics.snapshotsUpdated,
       contacts_ignored_outside_sales: (heartbeat.contacts_ignored_outside_sales || 0) + metrics.contactsIgnoredOutsideSales,
       contacts_excluded_area_conflict: (heartbeat.contacts_excluded_area_conflict || 0) + metrics.contactsExcludedAreaConflict,
       message_requests: (heartbeat.message_requests || 0) + metrics.messageRequests,
@@ -508,8 +309,8 @@ async function processRunBatch(admin, profiles, run) {
       batch: {
         contactsProcessed: contacts.length,
         snapshotsUpserted: snapshots.length,
-        snapshotsCreated,
-        snapshotsUpdated,
+        snapshotsCreated: metrics.snapshotsCreated,
+        snapshotsUpdated: metrics.snapshotsUpdated,
         contactsIgnoredOutsideSales: metrics.contactsIgnoredOutsideSales,
         contactsExcludedAreaConflict: metrics.contactsExcludedAreaConflict,
         messageRequests: metrics.messageRequests,
@@ -544,8 +345,8 @@ export default async function handler(req, res) {
       .maybeSingle();
     if (profileError) throw profileError;
     if (!actorProfile?.active) return res.status(403).json({ ok: false, error: "Perfil no autorizado." });
-    if (!["admin", "gerente_ventas"].includes(actorProfile.role_id)) {
-      return res.status(403).json({ ok: false, error: "Respond.io sync no autorizado para este rol." });
+    if (actorProfile.role_id !== "admin") {
+      return res.status(403).json({ ok: false, error: "La reconciliacion completa es exclusiva de Admin." });
     }
 
     const options = parseSyncOptions(req.body);
@@ -563,8 +364,7 @@ export default async function handler(req, res) {
 
     const { data: profiles, error: profilesError } = await admin
       .from("profiles")
-      .select("id, email, full_name, role_id, active")
-      .eq("active", true);
+      .select("id, email, full_name, role_id, active");
     if (profilesError) throw profilesError;
 
     let run;
