@@ -44,7 +44,6 @@ const RESPOND_SNAPSHOT_COLUMNS = [
   "id",
   "respond_contact_id",
   "mapped_profile_id",
-  "respond_contact_name",
   "respond_conversation_status",
   "respond_lifecycle",
   "respond_channel_source",
@@ -52,6 +51,7 @@ const RESPOND_SNAPSHOT_COLUMNS = [
   "respond_last_synced_at",
   "atn_area",
   "atn_proxima_accion",
+  "metadata",
 ].join(", ");
 
 async function fetchAllPages(makeQuery, pageSize = SNAPSHOT_PAGE_SIZE) {
