@@ -396,10 +396,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [syncNotice, setSyncNotice] = useState(null);
-  const [respondDryRunLoading, setRespondDryRunLoading] = useState(null);
-  const [respondDryRunResult, setRespondDryRunResult] = useState(null);
-  const [respondPilotSyncLoading, setRespondPilotSyncLoading] = useState(null);
-  const [respondPilotSyncResult, setRespondPilotSyncResult] = useState(null);
+  const [respondSyncProgress, setRespondSyncProgress] = useState(null);
   const [highlightedIntervention, setHighlightedIntervention] = useState(null);
 
   useEffect(() => {
@@ -435,14 +432,12 @@ export default function WorkCenterView({ type = "advisor" }) {
   const mode = isManagerView ? (selectedAdvisor && !isUnassignedSelected ? "supervise" : "management") : "mine";
   const canRegisterSupervision = isManagerView && canUseManager && !isUnassignedSelected;
   const canSyncRespond = isManagerView && canUseManager;
-  const canRunRespondDryRun = isManagerView && profile?.role_id === "admin";
-  const respondTemporaryBusy = respondDryRunLoading !== null || respondPilotSyncLoading !== null;
 
-  const loadData = async ({ sync = false } = {}) => {
+  const loadData = async () => {
     if (!session?.access_token || !profile) return;
     setLoading(true);
     setError("");
-    if (!sync) setSyncNotice(null);
+    setSyncNotice(null);
     try {
       const params = new URLSearchParams();
       if (isManagerView) params.set("mode", selectedAdvisor && selectedAdvisor !== "__unassigned" ? "supervise" : "management");
@@ -456,37 +451,10 @@ export default function WorkCenterView({ type = "advisor" }) {
       setData(json);
       setLastUpdatedAt(new Date().toISOString());
       setLastSyncedAt(json?.managementSummary?.respondLastSyncedAt || json?.summary?.respondLastSyncedAt || null);
-      if (sync && canSyncRespond) {
-        setSyncing(true);
-        const syncRes = await fetch("/api/ejecutivo/respond-sync", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        const syncJson = await syncRes.json();
-        if (!syncRes.ok) setError(syncJson.error || "No se pudo sincronizar Respond.io.");
-        else {
-          const coverage = syncJson?.result?.coverage;
-          if (coverage && !coverage.coverageComplete) {
-            setSyncNotice(`Sincronización parcial: ${coverage.contactsScanned || 0} contactos revisados. Motivo: ${coverage.stoppedReason || "cobertura incompleta"}.`);
-          } else {
-            setSyncNotice(null);
-          }
-          const refreshed = await fetch(`/api/ejecutivo/work-center?${params.toString()}`, {
-            headers: { Authorization: `Bearer ${session.access_token}` },
-          });
-          const refreshedJson = await refreshed.json();
-          if (refreshed.ok) {
-            setData(refreshedJson);
-            setLastUpdatedAt(new Date().toISOString());
-            setLastSyncedAt(refreshedJson?.managementSummary?.respondLastSyncedAt || refreshedJson?.summary?.respondLastSyncedAt || null);
-          }
-        }
-      }
     } catch (err) {
       setError(err.message || "Error inesperado.");
     } finally {
       setLoading(false);
-      setSyncing(false);
     }
   };
 
@@ -525,46 +493,46 @@ export default function WorkCenterView({ type = "advisor" }) {
     }, 50);
   };
 
-  const runRespondDryRun = async (limitContacts = 10) => {
-    if (!session?.access_token || !canRunRespondDryRun) return;
-    setRespondDryRunLoading(limitContacts);
-    setRespondDryRunResult(null);
-    setError("");
-    try {
-      const res = await fetch("/api/ejecutivo/respond-sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ dryRun: true, limitContacts }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "No se pudo ejecutar el dry run Respond.io.");
-      setRespondDryRunResult(json.result || {});
-    } catch (err) {
-      setError(err.message || "No se pudo ejecutar el dry run Respond.io.");
-    } finally {
-      setRespondDryRunLoading(null);
+  const postRespondSync = async (payload) => {
+    const res = await fetch("/api/ejecutivo/respond-sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      const error = new Error(json.error || "No se pudo sincronizar Respond.io.");
+      error.result = json.result || null;
+      throw error;
     }
+    return json.result || {};
   };
 
-  const runRespondPilotSync = async (limitContacts = 10) => {
-    if (!session?.access_token || !canRunRespondDryRun) return;
-    setRespondPilotSyncLoading(limitContacts);
-    setRespondPilotSyncResult(null);
+  const runRespondFullSync = async () => {
+    if (!session?.access_token || !canSyncRespond || syncing) return;
+    setSyncing(true);
     setError("");
+    setSyncNotice(null);
+    setRespondSyncProgress(null);
     try {
-      const res = await fetch("/api/ejecutivo/respond-sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ dryRun: false, limitContacts }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "No se pudo ejecutar el sync piloto Respond.io.");
-      setRespondPilotSyncResult(json.result || {});
+      let result = await postRespondSync({ action: "start" });
+      setRespondSyncProgress(result);
+      let guard = 0;
+      while (result?.status === "running" && !result?.coverageComplete && guard < 200) {
+        guard += 1;
+        result = await postRespondSync({ action: "continue", runId: result.runId });
+        setRespondSyncProgress(result);
+        if (result?.status === "failed") throw new Error(result.lastError || "La sincronización falló.");
+      }
+      if (guard >= 200) throw new Error("La sincronización se detuvo por límite de lotes.");
+      if (result?.status === "failed") throw new Error(result.lastError || "La sincronización falló.");
       await loadData();
+      setSyncNotice("Sincronización Respond.io completada correctamente.");
     } catch (err) {
-      setError(err.message || "No se pudo ejecutar el sync piloto Respond.io.");
+      setError(err.message || "No se pudo sincronizar Respond.io.");
+      if (err.result) setRespondSyncProgress(err.result);
     } finally {
-      setRespondPilotSyncLoading(null);
+      setSyncing(false);
     }
   };
 
@@ -725,31 +693,7 @@ export default function WorkCenterView({ type = "advisor" }) {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {isManagerView && <a href="/ejecutivo/gerencia-ventas" style={ghostLinkStyle}>Ver análisis completo</a>}
-              {canRunRespondDryRun && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <button onClick={() => runRespondDryRun(10)} disabled={respondTemporaryBusy} style={secondaryButtonStyle}>{respondDryRunLoading === 10 ? "Ejecutando..." : "Dry run Respond.io"}</button>
-                  <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>Prueba sin escritura · 10 contactos</span>
-                </div>
-              )}
-              {canRunRespondDryRun && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <button onClick={() => runRespondDryRun(50)} disabled={respondTemporaryBusy} style={secondaryButtonStyle}>{respondDryRunLoading === 50 ? "Ejecutando..." : "Dry run 50"}</button>
-                  <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>Prueba sin escritura · 50 contactos</span>
-                </div>
-              )}
-              {canRunRespondDryRun && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <button onClick={() => runRespondPilotSync(10)} disabled={respondTemporaryBusy} style={secondaryButtonStyle}>{respondPilotSyncLoading === 10 ? "Sincronizando..." : "Sync piloto"}</button>
-                  <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>Sync piloto · 10 contactos</span>
-                </div>
-              )}
-              {canRunRespondDryRun && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <button onClick={() => runRespondPilotSync(50)} disabled={respondTemporaryBusy} style={secondaryButtonStyle}>{respondPilotSyncLoading === 50 ? "Sincronizando..." : "Sync piloto 50"}</button>
-                  <span style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>Sync piloto · 50 contactos</span>
-                </div>
-              )}
-              {canSyncRespond && <button onClick={() => loadData({ sync: true })} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Sincronizar conversaciones"}</button>}
+              {canSyncRespond && <button onClick={runRespondFullSync} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Sincronizar conversaciones"}</button>}
               <button onClick={() => loadData()} style={secondaryButtonStyle}>Actualizar indicadores</button>
             </div>
             <div style={{ flexBasis: "100%", color: "#6b7280", fontSize: 12, textAlign: "right" }}>
@@ -759,8 +703,7 @@ export default function WorkCenterView({ type = "advisor" }) {
 
           {error && <Panel style={{ borderColor: "#fecaca", color: "#991b1b", marginBottom: 16 }}>{error}</Panel>}
           {syncNotice && <Panel style={{ borderColor: "#fde68a", background: "#fffbeb", color: "#92400e", marginBottom: 16 }}>{syncNotice}</Panel>}
-          {respondDryRunResult && <RespondDryRunSummary result={respondDryRunResult} />}
-          {respondPilotSyncResult && <RespondDryRunSummary result={respondPilotSyncResult} title="Sync piloto Respond.io" message="Sync piloto Respond.io completado." />}
+          {respondSyncProgress && <RespondSyncProgress result={respondSyncProgress} />}
           {loading && <Panel style={{ marginBottom: 16 }}>Actualizando datos...</Panel>}
           <EmptyModuleNotice data={data} />
 
@@ -1104,38 +1047,35 @@ function CitaModal({ item, onClose }) {
   );
 }
 
-function RespondDryRunSummary({ result, title = "Dry run Respond.io", message = "Dry run Respond.io completado. No se realizaron escrituras." }) {
-  const coverage = result?.coverage || {};
+function RespondSyncProgress({ result }) {
+  const batch = result?.batch || {};
   const metrics = [
-    ["processedContacts", result?.processedContacts],
-    ["contactsRead", result?.contactsRead],
+    ["estado", result?.status],
+    ["lote", result?.batchNumber],
+    ["contactos procesados", result?.contactsProcessed],
     ["snapshotsUpserted", result?.snapshotsUpserted],
-    ["snapshotsWouldUpsert", result?.snapshotsWouldUpsert],
-    ["snapshotsWouldCreate", result?.snapshotsWouldCreate],
-    ["snapshotsWouldUpdate", result?.snapshotsWouldUpdate],
-    ["matchedProfiles", result?.matchedProfiles],
-    ["unmatchedProfiles", result?.unmatchedProfiles],
-    ["contactsUnassignedSales", coverage?.contactsUnassignedSales ?? result?.contactsUnassignedSales],
-    ["contactsIgnoredOutsideSales", coverage?.contactsIgnoredOutsideSales ?? result?.contactsIgnoredOutsideSales],
-    ["contactsExcludedAreaConflict", coverage?.contactsExcludedAreaConflict ?? result?.contactsExcludedAreaConflict],
-    ["messagePagesRead", coverage?.messagePagesRead ?? result?.messagePagesRead],
-    ["messageRequests", coverage?.messageRequests ?? result?.messageRequests],
-    ["durationMs", coverage?.durationMs ?? result?.durationMs],
-    ["coverageComplete", String(coverage?.coverageComplete ?? result?.coverageComplete ?? false)],
-    ["stoppedReason", coverage?.stoppedReason ?? result?.stoppedReason ?? "n/d"],
+    ["snapshots creados", result?.snapshotsCreated],
+    ["snapshots actualizados", result?.snapshotsUpdated],
+    ["ignorados fuera de ventas", result?.contactsIgnoredOutsideSales],
+    ["conflictos de area", result?.contactsExcludedAreaConflict],
+    ["requests mensajes", result?.messageRequests],
+    ["ultimo lote contactos", batch.contactsProcessed],
+    ["ultimo lote snapshots", batch.snapshotsUpserted],
+    ["motivo", result?.stoppedReason || "en_proceso"],
   ];
   return (
     <Panel style={{ borderColor: "#bfdbfe", background: "#eff6ff", marginBottom: 16 }}>
-      <h2 style={h2}>{title}</h2>
-      <p style={{ ...muted, marginTop: 6 }}>{message}</p>
+      <h2 style={h2}>Sincronización Respond.io</h2>
+      <p style={{ ...muted, marginTop: 6 }}>Proceso definitivo por lotes de 50 contactos. Solo se almacenan metadatos autorizados.</p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginTop: 12 }}>
-        {metrics.map(([label, value]) => <DryRunMetric key={label} label={label} value={value} />)}
+        {metrics.map(([label, value]) => <SyncMetric key={label} label={label} value={value} />)}
       </div>
+      {result?.lastError && <p style={{ margin: "10px 0 0", color: "#991b1b", fontWeight: 900 }}>{result.lastError}</p>}
     </Panel>
   );
 }
 
-function DryRunMetric({ label, value }) {
+function SyncMetric({ label, value }) {
   return (
     <div style={{ border: "1px solid #dbeafe", borderRadius: 10, padding: "8px 10px", background: "#fff" }}>
       <div style={{ color: "#6b7280", fontSize: 11, fontWeight: 900 }}>{label}</div>
