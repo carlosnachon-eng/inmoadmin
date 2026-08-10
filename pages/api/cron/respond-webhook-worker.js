@@ -75,16 +75,14 @@ async function completeContact(admin, workerId, claim, profiles) {
       messagePagesRead: messageResult.pagesRead,
       eventOccurredAt: claim.latest_event_at,
     });
-    if (shouldPersistRespondSnapshot(calculated, previous)) snapshot = calculated;
+    if (shouldPersistRespondSnapshot(calculated)) snapshot = calculated;
   } catch (error) {
     if (error?.public?.status !== 404) throw error;
-    if (previous) {
-      snapshot = buildMissingRespondSnapshot({
-        respondContactId: claim.respond_contact_id,
-        existingSnapshot: previous,
-        eventOccurredAt: claim.latest_event_at,
-      });
-    }
+    snapshot = buildMissingRespondSnapshot({
+      respondContactId: claim.respond_contact_id,
+      existingSnapshot: previous,
+      eventOccurredAt: claim.latest_event_at,
+    });
   }
 
   const { error: applyError } = await admin.rpc("apply_respond_snapshot_and_complete_events", {

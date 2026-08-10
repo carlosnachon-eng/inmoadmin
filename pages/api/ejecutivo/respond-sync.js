@@ -226,7 +226,7 @@ async function buildSnapshotsForBatch(admin, contacts, profiles) {
       if (snapshot.exclusion_reason === "area_outside_sales") metrics.contactsExcludedAreaConflict += 1;
       else metrics.contactsIgnoredOutsideSales += 1;
     }
-    if (!shouldPersistRespondSnapshot(snapshot, existingSnapshot)) continue;
+    if (!shouldPersistRespondSnapshot(snapshot)) continue;
     snapshots.push(snapshot);
     if (existingSnapshot) metrics.snapshotsUpdated += 1;
     else metrics.snapshotsCreated += 1;
