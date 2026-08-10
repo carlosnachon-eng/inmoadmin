@@ -157,17 +157,18 @@ function normalizeKey(value) {
 }
 
 function interventionContextKey(item) {
-  if (item.opportunityId) return `opportunity:${item.opportunityId}`;
-  if (item.citaId) return `cita:${item.citaId}`;
-  if (item.respondContactId) return `respond:${item.respondContactId}`;
-  return `work-item:${item.id}`;
+  const signal = (item.types || item.signals || [item.type]).find(Boolean) || "revision";
+  if (item.opportunityId) return `opportunity:${item.opportunityId}:signal:${signal}`;
+  if (item.citaId) return `cita:${item.citaId}:signal:${signal}`;
+  if (item.respondContactId) return `respond:${item.respondContactId}:signal:${signal}`;
+  return `work-item:${item.id}:signal:${signal}`;
 }
 
 function interventionReasonForItem(item) {
-  const key = interventionContextKey(item);
   const client = cleanContactName(item.client);
   const property = item.property ? ` · ${item.property}` : "";
-  return `${key} · ${client}${property}`.slice(0, 220);
+  const signal = compactSignals(item).join(" + ") || "Revisión gerencial";
+  return `${signal} · ${client}${property}`.slice(0, 220);
 }
 
 function recommendedActionForItem(item) {
@@ -179,11 +180,15 @@ function recommendedActionForItem(item) {
 }
 
 function findActiveInterventionForItem(item, interventions = []) {
+  const contextKey = interventionContextKey(item);
   const reason = normalizeKey(interventionReasonForItem(item));
   return (interventions || []).find((intervention) => (
     ACTIVE_INTERVENTION_STATUSES.has(intervention.status)
     && intervention.advisor_profile_id === item.ownerId
-    && normalizeKey(intervention.reason) === reason
+    && (
+      intervention?.indicators?.contextKey === contextKey
+      || normalizeKey(intervention.reason) === reason
+    )
   )) || null;
 }
 
@@ -475,6 +480,7 @@ export default function WorkCenterView({ type = "advisor" }) {
 
   const openIntervention = (payload) => {
     const advisor = advisorById.get(payload.advisorId) || {};
+    const signalType = payload.primarySignalKey || payload.signalKeys?.[0] || "revision_gerencial";
     setInterventionDraft({
       advisorId: payload.advisorId,
       advisorName: payload.advisorName || advisor.name || "Asesor",
@@ -483,6 +489,9 @@ export default function WorkCenterView({ type = "advisor" }) {
       reviewOn: reviewDefaultDate(),
       notes: "",
       indicators: payload.indicators || payload.why || [],
+      contextKey: payload.contextKey || `advisor:${payload.advisorId}:signal:${signalType}`,
+      signalType,
+      advisorSnapshot: payload.advisorSnapshot || null,
     });
   };
 
@@ -575,7 +584,12 @@ export default function WorkCenterView({ type = "advisor" }) {
           agreedAction: interventionDraft.agreedAction,
           reviewOn: interventionDraft.reviewOn || null,
           notes: interventionDraft.notes,
-          indicators: { labels: interventionDraft.indicators },
+          indicators: {
+            contextKey: interventionDraft.contextKey,
+            signalType: interventionDraft.signalType,
+            labels: interventionDraft.indicators,
+            uiSnapshot: interventionDraft.advisorSnapshot,
+          },
         }),
       });
       const json = await res.json();
@@ -602,6 +616,7 @@ export default function WorkCenterView({ type = "advisor" }) {
       const item = rowInterventionDraft.item;
       const indicators = {
         contextKey: interventionContextKey(item),
+        signalType: (item.types || item.signals || [item.type]).find(Boolean) || "revision",
         sourceItemId: item.id,
         opportunityId: item.opportunityId || null,
         citaId: item.citaId || null,
@@ -650,12 +665,12 @@ export default function WorkCenterView({ type = "advisor" }) {
     }
   };
 
-  const updateInterventionStatus = async (id, status) => {
+  const updateInterventionStatus = async (id, status, notes = "") => {
     if (!session?.access_token) return;
     const res = await fetch("/api/ejecutivo/management-intervention", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ id, status }),
+      body: JSON.stringify({ id, status, notes }),
     });
     if (!res.ok) setError("No se pudo actualizar la intervención.");
     else {
@@ -943,24 +958,94 @@ function OperationsAttention({ items, onSupervise }) {
 }
 
 function InterventionsTable({ items, onStatusChange, highlightedId }) {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const ordered = (items || []).slice().sort((a, b) => {
+    const aDue = a.review_on && a.review_on <= todayKey ? 0 : 1;
+    const bDue = b.review_on && b.review_on <= todayKey ? 0 : 1;
+    return aDue - bDue || String(a.review_on || "9999-12-31").localeCompare(String(b.review_on || "9999-12-31"));
+  });
+  const reviewIntervention = (item) => {
+    const notes = window.prompt("Nota breve de revisión (opcional):", "") || "";
+    onStatusChange(item.id, item.status, notes);
+  };
   return (
     <Panel>
       <h2 style={h2}>Seguimiento de intervenciones</h2>
-      <p style={muted}>Intervenciones registradas y próximas revisiones.</p>
+      <p style={muted}>Intervenciones registradas, revisiones próximas y cambios de estado.</p>
       <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-        {items.length === 0 && <p style={muted}>Aún no hay intervenciones registradas.</p>}
-        {items.slice(0, 6).map((item) => (
+        {ordered.length === 0 && <p style={muted}>Aún no hay intervenciones registradas.</p>}
+        {ordered.slice(0, 8).map((item) => (
           <div id={`intervention-${item.id}`} key={item.id} style={{ border: `1px solid ${highlightedId === item.id ? brand.red : "#e5e7eb"}`, borderRadius: 12, padding: 12, boxShadow: highlightedId === item.id ? "0 0 0 3px rgba(194,18,47,.10)" : "none" }}>
-            <strong style={{ color: "#111827" }}>{item.advisor?.full_name || item.advisor?.email || "Asesor"}</strong>
-            <p style={muted}>{item.reason}</p>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <strong style={{ color: "#111827" }}>{item.advisor?.full_name || item.advisor?.email || "Asesor"}</strong>
+                <p style={muted}>{item.reason}</p>
+              </div>
+              {item.review_on && <Badge variant={item.review_on <= todayKey && ACTIVE_INTERVENTION_STATUSES.has(item.status) ? "critica" : "normal"}>{item.review_on <= todayKey ? "Para revisar" : "Próxima revisión"}</Badge>}
+            </div>
             <p style={{ margin: "8px 0", color: "#374151", fontSize: 13 }}>Acción: <strong>{displayAction(item.agreed_action, item)}</strong>{item.review_on ? ` · Revisión ${formatReviewDate(item.review_on)}` : ""}</p>
-            <select value={item.status} onChange={(e) => onStatusChange(item.id, e.target.value)} style={{ ...inputStyle, maxWidth: 260 }}>
-              {Object.entries(interventionStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
+            <InterventionComparison item={item} />
+            <InterventionTimeline events={item.events || []} />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+              <select value={item.status} onChange={(e) => onStatusChange(item.id, e.target.value)} style={{ ...inputStyle, maxWidth: 260 }}>
+                {Object.entries(interventionStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <button onClick={() => reviewIntervention(item)} style={secondaryButtonStyle}>Revisar</button>
+            </div>
           </div>
         ))}
       </div>
     </Panel>
+  );
+}
+
+function InterventionComparison({ item }) {
+  const latest = (item.events || []).find((event) => event.comparison && Object.keys(event.comparison).length);
+  const initial = item.indicators?.initialSnapshot || item.indicators?.uiSnapshot || null;
+  const metrics = latest?.comparison
+    ? [
+      ["Clientes esperando respuesta", latest.comparison.waitingResponses],
+      ["Citas efectivas", latest.comparison.effectiveCitas],
+      ["Conversaciones abiertas", latest.comparison.openConversations],
+    ]
+    : initial
+      ? [
+        ["Clientes esperando respuesta", { after: initial.waitingResponses }],
+        ["Citas efectivas", { after: initial.effectiveCitas }],
+        ["Conversaciones abiertas", { after: initial.openConversations }],
+      ]
+      : [];
+  if (!metrics.length) return null;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 6, marginTop: 10 }}>
+      {metrics.map(([label, metric]) => (
+        <div key={label} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 8, background: "#f9fafb" }}>
+          <div style={{ color: "#6b7280", fontSize: 10, fontWeight: 900, textTransform: "uppercase" }}>{label}</div>
+          <div style={{ color: "#111827", fontWeight: 950, marginTop: 2 }}>
+            {metric?.before !== undefined ? `${metric.before} → ${metric.after}` : metric?.after ?? "—"}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function InterventionTimeline({ events }) {
+  if (!events?.length) return null;
+  return (
+    <div style={{ marginTop: 10, borderTop: "1px solid #f3f4f6", paddingTop: 8 }}>
+      <div style={{ color: "#6b7280", fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>Historial</div>
+      <div style={{ display: "grid", gap: 5, marginTop: 6 }}>
+        {events.slice(0, 4).map((event) => (
+          <div key={event.id} style={{ color: "#374151", fontSize: 12 }}>
+            <strong>{labelize(event.event_type)}</strong>
+            {event.new_status ? ` · ${labelize(event.new_status)}` : ""}
+            {" · "}{formatDateTime(event.created_at)}
+            {event.notes ? <div style={{ color: "#6b7280", marginTop: 2 }}>{event.notes}</div> : null}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -971,6 +1056,7 @@ function InterventionModal({ draft, setDraft, saving, onClose, onSubmit }) {
       <div style={{ width: "min(520px, 100%)", background: "#fff", borderRadius: 16, border: "1px solid #e5e7eb", padding: 20, boxShadow: "0 24px 80px rgba(17,24,39,.22)" }}>
         <h2 style={{ ...h2, fontSize: 20 }}>Registrar intervención</h2>
         <p style={{ ...muted, marginBottom: 14 }}>{draft.advisorName}</p>
+        <InterventionDraftSnapshot snapshot={draft.advisorSnapshot} />
         <label style={labelStyle}>Motivo</label>
         <input value={draft.reason} onChange={(e) => set("reason", e.target.value)} style={inputStyle} />
         <label style={labelStyle}>Acción acordada</label>
@@ -983,6 +1069,28 @@ function InterventionModal({ draft, setDraft, saving, onClose, onSubmit }) {
           <button onClick={onClose} style={secondaryButtonStyle}>Cancelar</button>
           <button onClick={onSubmit} disabled={saving} style={buttonStyle}>{saving ? "Guardando..." : "Registrar"}</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function InterventionDraftSnapshot({ snapshot }) {
+  if (!snapshot) return (
+    <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 10, background: "#f9fafb", marginBottom: 12 }}>
+      <p style={{ margin: 0, color: "#6b7280", fontSize: 12, fontWeight: 800 }}>El sistema capturará automáticamente los indicadores actuales al guardar.</p>
+    </div>
+  );
+  const metrics = [
+    ["Clientes esperando", snapshot.waitingResponses],
+    ["Citas efectivas", `${snapshot.effectiveCitas || 0}/${snapshot.citasRequired || 0}`],
+    ["KPI citas", snapshot.kpiCitasPct === null || snapshot.kpiCitasPct === undefined ? "No evaluable" : fmtPct(snapshot.kpiCitasPct)],
+    ["Conversaciones abiertas", snapshot.openConversations],
+  ];
+  return (
+    <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 10, background: "#f9fafb", marginBottom: 12 }}>
+      <p style={{ margin: "0 0 8px", color: "#6b7280", fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>Indicadores automáticos</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 6 }}>
+        {metrics.map(([label, value]) => <Detail key={label} label={label} value={value} />)}
       </div>
     </div>
   );
@@ -1143,7 +1251,7 @@ function WorkTable({ items, onAudit, onViewCita, onFollowUp, interventions = [],
           ) : items.map((item) => {
             const action = actionForItem(item, canAudit);
             const activeIntervention = findActiveInterventionForItem(item, interventions);
-            const canInterveneItem = canAudit && item.opportunityId && item.ownerId;
+            const canInterveneItem = canAudit && item.ownerId;
             return (
               <tr key={item.id} style={selectedItemId === item.id ? { background: "#fff7f7", outline: `2px solid ${brand.red}` } : undefined}>
                 <td style={td}><strong>{cleanContactName(item.client)}</strong><div style={muted}>{item.property || ""}</div></td>
