@@ -335,10 +335,11 @@ async function failRun(admin, run, err, stoppedReason = "batch_failed") {
 
 async function readContactBatch(cursor) {
   const contactPath = cursor || "/contact/list";
+  const isContactListPath = String(contactPath).includes("/contact/list");
   const contactList = await respondRequest(contactPath, {
     method: "POST",
     params: contactPath === "/contact/list" ? { limit: FINAL_SYNC_BATCH_SIZE } : undefined,
-    body: contactPath === "/contact/list" ? {
+    body: isContactListPath ? {
       search: "",
       timezone: "America/Mexico_City",
       filter: { $and: [] },
