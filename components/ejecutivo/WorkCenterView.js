@@ -436,7 +436,10 @@ export default function WorkCenterView({ type = "advisor" }) {
   const isUnassignedSelected = selectedAdvisor === "__unassigned";
   const mode = isManagerView ? (selectedAdvisor && !isUnassignedSelected ? "supervise" : "management") : "mine";
   const canRegisterSupervision = isManagerView && canUseManager && !isUnassignedSelected;
-  const canSyncRespond = isManagerView && canUseManager;
+  const canRunRespondIncremental = isManagerView
+    && canUseManager
+    && data?.capabilities?.respondIncrementalWorkerEnabled === true;
+  const canRunRespondFullReconciliation = isManagerView && profile?.role_id === "admin";
 
   const loadData = async () => {
     if (!session?.access_token || !profile) return;
@@ -518,7 +521,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   };
 
   const runRespondFullSync = async () => {
-    if (!session?.access_token || !canSyncRespond || syncing) return;
+    if (!session?.access_token || !canRunRespondFullReconciliation || syncing) return;
     setSyncing(true);
     setError("");
     setSyncNotice(null);
@@ -540,6 +543,35 @@ export default function WorkCenterView({ type = "advisor" }) {
     } catch (err) {
       setError(err.message || "No se pudo sincronizar Respond.io.");
       if (err.result) setRespondSyncProgress(err.result);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const runRespondIncrementalSync = async () => {
+    if (!session?.access_token || !canRunRespondIncremental || syncing) return;
+    setSyncing(true);
+    setError("");
+    setSyncNotice(null);
+    setRespondSyncProgress(null);
+    try {
+      const res = await fetch("/api/cron/respond-webhook-worker", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        const failures = json?.result?.contactsFailed;
+        throw new Error(failures
+          ? `La actualización terminó con ${failures} contacto(s) pendiente(s) de reintento.`
+          : json.error || "No se pudieron actualizar las conversaciones.");
+      }
+      await loadData();
+      const processed = json?.result?.contactsProcessed || 0;
+      const events = json?.result?.eventsProcessed || 0;
+      setSyncNotice(`Actualización incremental completada: ${processed} contacto(s), ${events} evento(s).`);
+    } catch (err) {
+      setError(err.message || "No se pudieron actualizar las conversaciones.");
     } finally {
       setSyncing(false);
     }
@@ -708,7 +740,8 @@ export default function WorkCenterView({ type = "advisor" }) {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {isManagerView && <a href="/ejecutivo/gerencia-ventas" style={ghostLinkStyle}>Ver análisis completo</a>}
-              {canSyncRespond && <button onClick={runRespondFullSync} disabled={syncing} style={buttonStyle}>{syncing ? "Sincronizando..." : "Sincronizar conversaciones"}</button>}
+              {canRunRespondIncremental && <button onClick={runRespondIncrementalSync} disabled={syncing} style={buttonStyle}>{syncing ? "Actualizando..." : "Actualizar conversaciones"}</button>}
+              {canRunRespondFullReconciliation && <button onClick={runRespondFullSync} disabled={syncing} style={secondaryButtonStyle}>{syncing ? "Procesando..." : "Reconciliar todo Respond.io"}</button>}
               <button onClick={() => loadData()} style={secondaryButtonStyle}>Actualizar indicadores</button>
             </div>
             <div style={{ flexBasis: "100%", color: "#6b7280", fontSize: 12, textAlign: "right" }}>
