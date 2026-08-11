@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { resolveCoordinationNotificationRecipients } from "../../lib/coordinationNotificationRecipients.mjs";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -288,6 +289,11 @@ export default async function handler(req, res) {
       </div>
     </div>`;
 
+  const {
+    recipients: destinatariosEquipo,
+    source: destinatariosEquipoSource,
+  } = await resolveCoordinationNotificationRecipients(supabase);
+
   try {
     await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -297,7 +303,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         from: "InmoAdmin <cobros@emporioinmobiliario.com.mx>",
-        to: ["carlos.nachon@emporioinmobiliario.mx", "asistente1@emporioinmobiliario.mx", "administracion@emporioinmobiliario.com.mx"],
+        to: destinatariosEquipo,
         subject: `📋 Reporte diario — ${totalAtrasadosActual} atrasados, ${enviados} recordatorios — ${fmtFecha(hoy)}`,
         html: htmlEquipo,
       }),
@@ -395,6 +401,7 @@ export default async function handler(req, res) {
     recordatoriosEnviados: enviados,
     enviadosCondominio,
     recordatoriosPoliza,
+    destinatariosEquipoSource,
     resumen,
   });
 }
