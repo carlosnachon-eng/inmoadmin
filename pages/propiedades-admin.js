@@ -204,6 +204,38 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast, asesores }
 
   const urlPublica = p.public_id ? `https://www.emporioinmobiliario.com.mx/propiedades/${p.public_id}` : "";
   const puedeCompartir = p.status === STATUS_COMPARTIBLE;
+  const tienePinExacto = p.lat !== null && p.lat !== undefined && p.lng !== null && p.lng !== undefined;
+  const direccionCompleta = [p.direccion, p.colonia, p.ciudad, p.estado].filter(Boolean).join(", ");
+  const coordenadasExactas = tienePinExacto ? `${Number(p.lat).toFixed(6)}, ${Number(p.lng).toFixed(6)}` : "";
+  const mapsUrlCliente = tienePinExacto
+    ? `https://www.google.com/maps?q=${p.lat},${p.lng}`
+    : (direccionCompleta ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccionCompleta)}` : "");
+
+  const copiarUbicacionInterna = async () => {
+    const texto = [direccionCompleta, coordenadasExactas ? `Coordenadas: ${coordenadasExactas}` : ""].filter(Boolean).join("\n");
+    if (!texto) { showToast("Esta propiedad no tiene ubicación capturada", false); return; }
+    try {
+      await navigator.clipboard.writeText(texto);
+      showToast("Ubicación copiada");
+    } catch {
+      showToast("No se pudo copiar la ubicación", false);
+    }
+  };
+
+  const copiarLigaMapsCliente = async () => {
+    if (!mapsUrlCliente) { showToast("Esta propiedad no tiene ubicación para compartir", false); return; }
+    try {
+      await navigator.clipboard.writeText(mapsUrlCliente);
+      showToast("Liga de ubicación copiada para enviar al cliente");
+    } catch {
+      showToast("No se pudo copiar la liga de ubicación", false);
+    }
+  };
+
+  const abrirMapsCliente = () => {
+    if (!mapsUrlCliente) { showToast("Esta propiedad no tiene ubicación para abrir", false); return; }
+    window.open(mapsUrlCliente, "_blank");
+  };
 
   const enviarPorWhatsApp = async () => {
     if (!puedeCompartir) { showToast("Solo las propiedades publicadas pueden enviarse", false); return; }
@@ -398,6 +430,34 @@ function FichaDetalle({ p, onClose, onEditar, puedeEditar, showToast, asesores }
 
       <div style={{ height: 1, background: "#f3f4f6", margin: "16px 0" }} />
       <p style={{ fontSize: 12, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 10px" }}>Información operativa (interna)</p>
+
+      {(direccionCompleta || coordenadasExactas) && (
+        <div style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div>
+              <p style={{ margin: "0 0 3px", fontSize: 11, fontWeight: 800, color: "#1e40af", textTransform: "uppercase", letterSpacing: "0.04em" }}>Ubicación para el equipo</p>
+              <p style={{ margin: 0, fontSize: 13, color: "#374151", lineHeight: 1.4 }}>{direccionCompleta || "Sin dirección capturada"}</p>
+              {coordenadasExactas && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#111827", fontWeight: 700 }}>📍 {coordenadasExactas}</p>}
+              {!coordenadasExactas && <p style={{ margin: "4px 0 0", fontSize: 11, color: "#92400e" }}>No hay pin exacto capturado todavía; edita la propiedad para ponerlo en el mapa.</p>}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <button onClick={copiarUbicacionInterna} style={{ background: "#eff6ff", color: "#1e40af", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                Copiar ubicación interna
+              </button>
+              {mapsUrlCliente && (
+                <button onClick={copiarLigaMapsCliente} style={{ background: "#f0fdf4", color: "#065f46", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                  Copiar liga Maps para cliente
+                </button>
+              )}
+              {mapsUrlCliente && (
+                <button onClick={abrirMapsCliente} style={{ background: "#1e40af", color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                  Abrir Maps
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 12 }}>
         <Dato label="¿Administrada por Emporio?" value={p.es_administrada} />
