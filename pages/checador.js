@@ -12,27 +12,13 @@ const supabase = createClient(
 // son roles de la tabla `roles`, así que agregar a alguien nuevo es cambiar
 // su rol en profiles, no tocar este código.
 const ROLES_CON_ACCESO_ADMIN_CHECADOR = ['admin', 'gerente_ventas']
-const ROLES_QUE_PUEDEN_PRESTAR_LLAVES = ['admin', 'gerente_ventas', 'coord_operaciones']
+const ROLES_QUE_PUEDEN_ADMINISTRAR_LLAVES = ['admin', 'gerente_ventas', 'coord_operaciones']
 const ROLES_EQUIPO_INTERNO = ['admin', 'gerente_ventas', 'coord_operaciones', 'juridico', 'asesor', 'chofer']
 const isPartnerEmail = (email, partnerEmails) => partnerEmails.has(String(email || '').toLowerCase())
 
-// El horario/turno de cada persona sigue siendo un dato manual que tú
-// asignas (no todos los asesores tienen el mismo turno) — esto se mantiene
-// como configuración editable aquí, pero separado del ROL (que ya no se
-// hardcodea). Si agregas a alguien nuevo al equipo, agrégalo aquí también
-// con su horario, y asegúrate de que su cuenta en profiles tenga role_id
-// correcto (admin/gerente_ventas/coord_operaciones/juridico/asesor/chofer).
-const HORARIOS_POR_EMAIL = {
-  'carlos.nachon@emporioinmobiliario.mx': null,
-  'ariannet81@gmail.com': 'guardia',
-  'angelicamomox@gmail.com': 'guardia',
-  'rddd298@gmail.com': 'guardia',
-  'ivanmtzco@gmail.com': 'guardia',
-  'nextelmoto2@gmail.com': 'guardia',
-  'islas.amanda111@gmail.com': 'guardia',
-  'guillermo@emporioinmobiliario.com.mx': 'junta',
-  'juridico@emporioinmobiliario.mx': 'lv_9_5',
-  'asistente1@emporioinmobiliario.mx': 'lv_9_5_s_10_2',
+const CUSTODIA_LLAVES = {
+  email: null,
+  nombre: 'Coordinación Administrativa y Operativa',
 }
 
 const OFICINA_LAT = 19.0135225
@@ -221,25 +207,7 @@ export default function Checador() {
   const esCarlos = perfilDb?.role_id === 'admin'
   const soloLlaves = esCarlos // Carlos (Admin) no necesita "checar" su propia asistencia individualmente:
                                 // ya tiene la pestaña 📊 Admin con la vista completa del equipo.
-  const puedePrestar = ROLES_QUE_PUEDEN_PRESTAR_LLAVES.includes(perfilDb?.role_id)
-
-  // Mapa de nombres reales conocidos, como respaldo mientras full_name
-  // en profiles siga vacío (hoy no se está llenando esa columna). Si
-  // full_name sí tiene algo, eso tiene prioridad; si no, usamos esto;
-  // y si tampoco está aquí, como último recurso usamos lo de antes del @.
-  const NOMBRES_CONOCIDOS = {
-    'carlos.nachon@emporioinmobiliario.mx': 'Carlos',
-    'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
-    'juridico@emporioinmobiliario.mx': 'Zaye',
-    'asistente1@emporioinmobiliario.mx': 'Tania',
-    'ariannet81@gmail.com': 'Ariannet',
-    'angelicamomox@gmail.com': 'Angélica',
-    'rddd298@gmail.com': 'Rosario',
-    'ivanmtzco@gmail.com': 'Iván',
-    'nextelmoto2@gmail.com': 'Andrea',
-    'islas.amanda111@gmail.com': 'Amanda',
-    'ismaelorortiz@gmail.com': 'Ismael Ortiz',
-  }
+  const puedeAdministrarLlaves = ROLES_QUE_PUEDEN_ADMINISTRAR_LLAVES.includes(perfilDb?.role_id)
 
   // Lista de personas del equipo interno (para el selector de "a quién le presto la llave").
   // Antes salía de Object.keys(PERSONAL); ahora se carga de profiles, excluyendo
@@ -254,7 +222,7 @@ export default function Checador() {
         const internos = (profilesRes.data || []).filter(p => ROLES_EQUIPO_INTERNO.includes(p.role_id) && !isPartnerEmail(p.email, partnerEmails))
         setListaPersonas(internos.map(p => ({
           email: p.email,
-          nombre: p.full_name || NOMBRES_CONOCIDOS[p.email] || p.email.split('@')[0],
+          nombre: p.full_name || p.email.split('@')[0],
           rol: ROL_ID_A_COMPORTAMIENTO[p.role_id],
         })))
       })
@@ -648,8 +616,8 @@ export default function Checador() {
       propiedad: formLlave.propiedad,
       notas: formLlave.notas,
       en_resguardo: true,
-      portador_nombre: 'Tania',
-      portador_email: 'asistente1@emporioinmobiliario.mx',
+      portador_nombre: CUSTODIA_LLAVES.nombre,
+      portador_email: CUSTODIA_LLAVES.email,
     })
     setSavingLlave(false)
     if (error) { showToast('Error: ' + error.message, false); return }
@@ -675,7 +643,7 @@ export default function Checador() {
     setUploadingFoto(null)
   }
 
-  // Prestar (Carlos, Guillermo, Tania → a cualquiera)
+  // Prestar (roles autorizados para administrar llaves → cualquier receptor)
   const prestarLlave = async (llave) => {
     const paraEmail = formPrestamo.tipo_receptor === 'personal' ? formPrestamo.para_email : null
     const esCandado = formPrestamo.tipo_receptor === 'candado'
@@ -737,8 +705,8 @@ export default function Checador() {
     setSavingLlave(true)
     const { error } = await supabase.from('llaves').update({
       en_resguardo: true,
-      portador_email: 'asistente1@emporioinmobiliario.mx',
-      portador_nombre: 'Tania',
+      portador_email: CUSTODIA_LLAVES.email,
+      portador_nombre: CUSTODIA_LLAVES.nombre,
       fecha_prestamo: null,
     }).eq('id', llave.id)
     if (!error) {
@@ -746,9 +714,9 @@ export default function Checador() {
         llave_id: llave.id, numero: llave.numero, propiedad: llave.propiedad,
         tipo: 'devolucion',
         de_email: llave.portador_email, de_nombre: llave.portador_nombre,
-        para_email: 'asistente1@emporioinmobiliario.mx', para_nombre: 'Tania',
+        para_email: CUSTODIA_LLAVES.email, para_nombre: CUSTODIA_LLAVES.nombre,
       })
-      showToast(`✅ Llave #${llave.numero} devuelta a Tania`)
+      showToast(`✅ Llave #${llave.numero} devuelta a resguardo`)
     } else { showToast('Error: ' + error.message, false) }
     setSavingLlave(false)
     setShowModalDevolver(null)
@@ -1196,7 +1164,7 @@ export default function Checador() {
                 </select>
               </div>
 
-              {(esAdmin || esCarlos || email === 'asistente1@emporioinmobiliario.mx') && (
+              {puedeAdministrarLlaves && (
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   <button onClick={() => setShowModalLlave(true)}
                     style={{ flex: 1, padding: 12, borderRadius: 12, border: '1px dashed #b91c3c', background: '#fff0f3', color: '#b91c3c', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
@@ -1223,7 +1191,7 @@ export default function Checador() {
                             <span style={{ fontSize: 14, fontWeight: 700, color: '#374151' }}>{llave.propiedad}</span>
                           </div>
                           <p style={{ margin: 0, fontSize: 12, color: enResguardo ? '#065f46' : esMia ? '#b91c3c' : '#92400e', fontWeight: 600 }}>
-                            {enResguardo ? '✅ En resguardo (Tania)' : esMia ? '🔑 La tienes tú' : `📍 Con ${llave.portador_nombre}`}
+                            {enResguardo ? `✅ En resguardo (${CUSTODIA_LLAVES.nombre})` : esMia ? '🔑 La tienes tú' : `📍 Con ${llave.portador_nombre}`}
                           </p>
                           {!enResguardo && llave.fecha_prestamo && (
                             <p style={{ margin: '2px 0 0', fontSize: 11, color: alerta ? '#dc2626' : '#9ca3af', fontWeight: alerta ? 700 : 400 }}>
@@ -1241,43 +1209,43 @@ export default function Checador() {
                         </div>
                       )}
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {/* Prestar — solo Carlos, Guillermo, Tania */}
-                        {puedePrestar && enResguardo && (
+                        {/* Prestar — roles autorizados para administrar llaves */}
+                        {puedeAdministrarLlaves && enResguardo && (
                           <button onClick={() => setShowModalPrestamo(llave)}
                             style={{ background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
                             🔑 Prestar
                           </button>
                         )}
                         {/* Tomar — asesores y staff cuando está en resguardo */}
-                        {!puedePrestar && enResguardo && (
+                        {!puedeAdministrarLlaves && enResguardo && (
                           <button onClick={() => setShowModalTomar(llave)}
                             style={{ background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
                             🔑 Tomar
                           </button>
                         )}
                         {/* Devolver — quien la tiene o admins */}
-                        {!enResguardo && (esMia || puedePrestar) && (
+                        {!enResguardo && (esMia || puedeAdministrarLlaves) && (
                           <button onClick={() => setShowModalDevolver(llave)}
                             style={{ background: '#f0fdf4', color: '#065f46', border: '1px solid #86efac', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
                             ✅ Devolver
                           </button>
                         )}
                         {/* Traspasar — quien la tiene */}
-                        {!enResguardo && (esMia || puedePrestar) && (
+                        {!enResguardo && (esMia || puedeAdministrarLlaves) && (
                           <button onClick={() => setShowModalTraspaso(llave)}
                             style={{ background: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
                             ↔️ Traspasar
                           </button>
                         )}
-                        {/* Dar de baja — solo admins y Tania */}
-                        {(esAdmin || esCarlos || email === 'asistente1@emporioinmobiliario.mx') && (
+                        {/* Dar de baja — roles autorizados para administrar llaves */}
+                        {puedeAdministrarLlaves && (
                           <button onClick={() => setShowModalBaja(llave)}
                             style={{ background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
                             Dar de baja
                           </button>
                         )}
-                        {/* Foto — admins y Tania */}
-                        {(esAdmin || esCarlos || email === 'asistente1@emporioinmobiliario.mx') && (
+                        {/* Foto — roles autorizados para administrar llaves */}
+                        {puedeAdministrarLlaves && (
                           <label style={{ cursor: 'pointer' }}>
                             <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
                               onChange={e => e.target.files[0] && subirFotoLlave(llave, e.target.files[0])} />
@@ -1665,7 +1633,7 @@ export default function Checador() {
             <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400, textAlign: 'center' }}>
               <p style={{ fontSize: 48, margin: '0 0 8px' }}>✅</p>
               <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 800 }}>Devolver llave #{showModalDevolver.numero}</h3>
-              <p style={{ margin: '0 0 20px', fontSize: 13, color: '#9ca3af' }}>{showModalDevolver.propiedad} → Tania (resguardo)</p>
+              <p style={{ margin: '0 0 20px', fontSize: 13, color: '#9ca3af' }}>{showModalDevolver.propiedad} → {CUSTODIA_LLAVES.nombre}</p>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button onClick={() => setShowModalDevolver(null)} style={{ flex: 1, padding: 12, borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
                 <button onClick={() => devolverLlave(showModalDevolver)} disabled={savingLlave}

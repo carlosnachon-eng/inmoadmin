@@ -63,7 +63,7 @@ const Btn = ({ children, onClick, color = "#1a1a2e", disabled, small }) => (
 export default function Caja() {
   const router = useRouter();
   const { cargando: permisoCargando, puedeVer: puedeVerModulo, puedeEditar: puedeVerSaldos } = usePermiso("caja");
-  // puedeVerModulo: puede entrar y registrar movimientos (Admin y Tania)
+  // puedeVerModulo: puede entrar y registrar movimientos según su rol y permisos.
   // puedeVerSaldos: puede ver saldos, historial y filtros completos (solo Admin)
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
