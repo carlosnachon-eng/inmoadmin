@@ -520,6 +520,13 @@ export default function PropiedadesAdmin() {
   const [search, setSearch] = useState("");
   const [filtroOperacion, setFiltroOperacion] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("operativas");
+  const [filtroTipo, setFiltroTipo] = useState("");
+  const [precioMin, setPrecioMin] = useState("");
+  const [precioMax, setPrecioMax] = useState("");
+  const [recamarasMin, setRecamarasMin] = useState("");
+  const [banosMin, setBanosMin] = useState("");
+  const [estacionamientosMin, setEstacionamientosMin] = useState("");
+  const [ordenPropiedades, setOrdenPropiedades] = useState("recientes");
   const [modalForm, setModalForm] = useState(null); // null | "nueva" | objeto propiedad a editar
   const [form, setForm] = useState(PROPIEDAD_VACIA);
   const [saving, setSaving] = useState(false);
@@ -660,17 +667,47 @@ export default function PropiedadesAdmin() {
     setModalDetalle(propiedad);
   }, [router.isReady, router.query.propiedad, propiedades]);
 
+  const num = (v) => Number(v || 0);
+  const filtrosAvanzadosActivos = [filtroTipo, precioMin, precioMax, recamarasMin, banosMin, estacionamientosMin]
+    .filter(v => String(v || "").trim() !== "").length;
+  const limpiarFiltros = () => {
+    setSearch("");
+    setFiltroOperacion("");
+    setFiltroStatus("operativas");
+    setFiltroTipo("");
+    setPrecioMin("");
+    setPrecioMax("");
+    setRecamarasMin("");
+    setBanosMin("");
+    setEstacionamientosMin("");
+    setOrdenPropiedades("recientes");
+  };
+
   const filtered = propiedades.filter(p => {
-    const matchSearch = !search ||
-      p.titulo?.toLowerCase().includes(search.toLowerCase()) ||
-      p.direccion?.toLowerCase().includes(search.toLowerCase()) ||
-      p.colonia?.toLowerCase().includes(search.toLowerCase()) ||
-      p.public_id?.toLowerCase().includes(search.toLowerCase());
+    const texto = [p.titulo, p.direccion, p.colonia, p.ciudad, p.public_id]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const matchSearch = !search || texto.includes(search.toLowerCase());
     const matchOp = !filtroOperacion || p.operacion === filtroOperacion;
     const matchStatus = filtroStatus === "operativas"
       ? p.status !== "archived"
       : !filtroStatus || p.status === filtroStatus;
-    return matchSearch && matchOp && matchStatus;
+    const matchTipo = !filtroTipo || p.tipo === filtroTipo;
+    const matchPrecioMin = !precioMin || num(p.precio) >= num(precioMin);
+    const matchPrecioMax = !precioMax || num(p.precio) <= num(precioMax);
+    const matchRecamaras = !recamarasMin || num(p.recamaras) >= num(recamarasMin);
+    const matchBanos = !banosMin || num(p.banos) >= num(banosMin);
+    const matchEstacionamientos = !estacionamientosMin || num(p.estacionamientos) >= num(estacionamientosMin);
+    return matchSearch && matchOp && matchStatus && matchTipo && matchPrecioMin && matchPrecioMax && matchRecamaras && matchBanos && matchEstacionamientos;
+  }).sort((a, b) => {
+    if (ordenPropiedades === "precio_asc") return num(a.precio) - num(b.precio);
+    if (ordenPropiedades === "precio_desc") return num(b.precio) - num(a.precio);
+    if (ordenPropiedades === "recamaras_desc") return num(b.recamaras) - num(a.recamaras);
+    if (ordenPropiedades === "m2_desc") return num(b.m2_construccion) - num(a.m2_construccion);
+    const fechaA = new Date(a.created_at || 0).getTime();
+    const fechaB = new Date(b.created_at || 0).getTime();
+    return fechaB - fechaA;
   });
 
   const abrirNueva = () => { setForm(PROPIEDAD_VACIA); setModalForm("nueva"); };
@@ -936,28 +973,69 @@ export default function PropiedadesAdmin() {
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 20px" }}>
 
         {/* Filtros */}
-        <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 14, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-          <input
-            placeholder="Buscar por título, dirección o ID…"
-            value={search} onChange={e => setSearch(e.target.value)}
-            style={{ flex: 1, minWidth: 200, padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13 }}
-          />
-          <select value={filtroOperacion} onChange={e => setFiltroOperacion(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
-            <option value="">Venta y renta</option>
-            <option value="sale">Solo venta</option>
-            <option value="rental">Solo renta</option>
-          </select>
-          <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
-            <option value="operativas">Operativas (sin archivadas)</option>
-            <option value="">Todos los estatus</option>
-            <option value="published">Publicada</option>
-            <option value="reserved">Reservada</option>
-            <option value="sold">Vendida</option>
-            <option value="leased">Rentada</option>
-            <option value="draft">Borrador</option>
-            <option value="archived">Archivadas</option>
-          </select>
-          <span style={{ fontSize: 12, color: "#9ca3af", marginLeft: "auto" }}>{filtered.length} propiedades</span>
+        <div style={{ background: "#fff", borderRadius: 12, padding: "14px", marginBottom: 14, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(260px, 1.5fr) repeat(4, minmax(130px, 1fr))", gap: 8, alignItems: "center" }}>
+            <input
+              placeholder="Buscar por título, dirección, colonia, ciudad o ID…"
+              value={search} onChange={e => setSearch(e.target.value)}
+              style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13 }}
+            />
+            <select value={filtroOperacion} onChange={e => setFiltroOperacion(e.target.value)} style={{ padding: "9px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+              <option value="">Venta y renta</option>
+              <option value="sale">Solo venta</option>
+              <option value="rental">Solo renta</option>
+            </select>
+            <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} style={{ padding: "9px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+              <option value="">Todos los tipos</option>
+              {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} style={{ padding: "9px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+              <option value="operativas">Operativas</option>
+              <option value="">Todos los estatus</option>
+              <option value="published">Publicada</option>
+              <option value="reserved">Reservada</option>
+              <option value="sold">Vendida</option>
+              <option value="leased">Rentada</option>
+              <option value="draft">Borrador</option>
+              <option value="archived">Archivadas</option>
+            </select>
+            <select value={ordenPropiedades} onChange={e => setOrdenPropiedades(e.target.value)} style={{ padding: "9px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+              <option value="recientes">Más recientes</option>
+              <option value="precio_asc">Precio: menor a mayor</option>
+              <option value="precio_desc">Precio: mayor a menor</option>
+              <option value="recamaras_desc">Más recámaras</option>
+              <option value="m2_desc">Más m² construcción</option>
+            </select>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, minmax(110px, 1fr)) auto", gap: 8, marginTop: 10, alignItems: "center" }}>
+            <input type="number" inputMode="numeric" placeholder="Precio mín."
+              value={precioMin} onChange={e => setPrecioMin(e.target.value)}
+              style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13 }} />
+            <input type="number" inputMode="numeric" placeholder="Precio máx."
+              value={precioMax} onChange={e => setPrecioMax(e.target.value)}
+              style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13 }} />
+            <select value={recamarasMin} onChange={e => setRecamarasMin(e.target.value)} style={{ padding: "9px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+              <option value="">Recámaras</option>
+              {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}+ rec.</option>)}
+            </select>
+            <select value={banosMin} onChange={e => setBanosMin(e.target.value)} style={{ padding: "9px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+              <option value="">Baños</option>
+              {[1,1.5,2,2.5,3,4].map(n => <option key={n} value={n}>{n}+ baños</option>)}
+            </select>
+            <select value={estacionamientosMin} onChange={e => setEstacionamientosMin(e.target.value)} style={{ padding: "9px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+              <option value="">Estac.</option>
+              {[1,2,3,4].map(n => <option key={n} value={n}>{n}+ estac.</option>)}
+            </select>
+            <button onClick={limpiarFiltros} style={{ background: filtrosAvanzadosActivos || search || filtroOperacion || filtroTipo || filtroStatus !== "operativas" || ordenPropiedades !== "recientes" ? "#f3f4f6" : "#fff", color: "#374151", border: "1px solid #e5e7eb", borderRadius: 8, padding: "9px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+              Limpiar
+            </button>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 700 }}>{filtered.length} de {propiedades.length} propiedades</span>
+            {filtrosAvanzadosActivos > 0 && <span style={{ fontSize: 11, color: brand.red, background: brand.redLight, padding: "4px 9px", borderRadius: 999, fontWeight: 800 }}>{filtrosAvanzadosActivos} filtro{filtrosAvanzadosActivos === 1 ? "" : "s"} avanzado{filtrosAvanzadosActivos === 1 ? "" : "s"}</span>}
+          </div>
         </div>
 
         {loading ? (
