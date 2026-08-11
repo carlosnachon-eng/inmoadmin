@@ -38,10 +38,6 @@ const SOURCE_QUERIES = {
     .from("inspecciones")
     .select("id, estatus, fecha, created_at, updated_at")
     .in("estatus", ["pendiente_presupuesto", "pendiente_autorizacion_propietario"]),
-  solicitudes_inquilino: (client) => client
-    .from("solicitudes_inquilino")
-    .select("id, status, created_at, updated_at, ia_revision_manual, failed_document_types:ia_analisis_documental->documentos_fallidos")
-    .in("status", ["pendiente", "en_revision", "revision", "revision_manual"]),
   poliza_expedientes: (client) => client
     .from("poliza_expedientes")
     .select("id, status, status_expediente, fecha_vigencia, created_at, updated_at")
@@ -53,6 +49,16 @@ function getAdminClient() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Supabase no configurado");
   return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+function getAuthenticatedClient(token) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) throw new Error("Supabase no configurado");
+  return createClient(url, key, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
@@ -102,11 +108,11 @@ export default async function handler(req, res) {
   if (!token) return res.status(401).json({ ok: false, error: "Sesión requerida." });
 
   try {
-    const admin = getAdminClient();
-    const { data: { user }, error: userError } = await admin.auth.getUser(token);
+    const authenticated = getAuthenticatedClient(token);
+    const { data: { user }, error: userError } = await authenticated.auth.getUser(token);
     if (userError || !user) return res.status(401).json({ ok: false, error: "Sesión inválida." });
 
-    const { data: profile, error: profileError } = await admin
+    const { data: profile, error: profileError } = await authenticated
       .from("profiles")
       .select("id, role_id, active")
       .eq("id", user.id)
@@ -118,6 +124,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ ok: false, error: "Centro Operativo no autorizado para este rol." });
     }
 
+    const admin = getAdminClient();
     const results = await Promise.all(Object.entries(SOURCE_QUERIES)
       .map(([sourceType, makeQuery]) => loadSource(admin, sourceType, makeQuery)));
 

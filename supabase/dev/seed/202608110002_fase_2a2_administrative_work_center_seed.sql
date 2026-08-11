@@ -112,22 +112,14 @@ values
    'pendiente_autorizacion_propietario', current_date)
 on conflict (id) do nothing;
 
--- Caso 9: solicitud con un documento faltante sintetico, sin documento ni PII.
-insert into public.solicitudes_inquilino
-  (id, status, ia_revision_manual, ia_analisis_documental, created_at, updated_at)
-values
-  ('2a220000-0000-4000-8000-000000000070',
-   'en_revision', true,
-   '{"documentos_fallidos":["identificacion_qa"]}'::jsonb,
-   now() - interval '3 days', now() - interval '3 days')
-on conflict (id) do nothing;
+-- Regla pendiente: documentacion_incompleta no tiene hoy una señal
+-- estructurada no-IA inequívoca en solicitudes_inquilino. No se crea QA.
 
--- Caso 10: poliza proxima a vencer.
+-- Caso 9: poliza proxima a vencer.
 insert into public.poliza_expedientes
-  (id, inquilino_id, status, status_expediente, fecha_vigencia, created_at, updated_at)
+  (id, status, status_expediente, fecha_vigencia, created_at, updated_at)
 values
   ('2a220000-0000-4000-8000-000000000080',
-   '2a220000-0000-4000-8000-000000000070',
    'activo', 'activo', current_date + 20, now() - interval '10 days', now() - interval '2 days')
 on conflict (id) do nothing;
 

@@ -24,7 +24,6 @@ const SOURCE_LABELS = {
   firmas: "Firmas",
   firmas_citas: "Citas de firma",
   inspecciones: "Inspecciones",
-  solicitudes_inquilino: "Solicitudes",
   poliza_expedientes: "Pólizas",
 };
 
