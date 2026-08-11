@@ -20,32 +20,6 @@ const diasFuera = (fecha_prestamo) => {
   return Math.floor((new Date() - new Date(fecha_prestamo)) / (1000 * 60 * 60 * 24));
 };
 
-const PERSONAL_FALLBACK = {
-  'ariannet81@gmail.com':              'Ariannet',
-  'angelicamomox@gmail.com':           'Angélica',
-  'rddd298@gmail.com':                 'Rosario',
-  'ivanmtzco@gmail.com':               'Iván',
-  'nextelmoto2@gmail.com':             'Andrea',
-  'islas.amanda111@gmail.com':         'Amanda',
-  'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
-  'juridico@emporioinmobiliario.mx':   'Zaye',
-  'asistente1@emporioinmobiliario.mx': 'Tania',
-};
-
-const NOMBRES_CONOCIDOS = {
-  'carlos.nachon@emporioinmobiliario.mx': 'Carlos',
-  'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
-  'juridico@emporioinmobiliario.mx': 'Zaye',
-  'asistente1@emporioinmobiliario.mx': 'Tania',
-  'ariannet81@gmail.com': 'Ariannet',
-  'angelicamomox@gmail.com': 'Angélica',
-  'rddd298@gmail.com': 'Rosario',
-  'ivanmtzco@gmail.com': 'Iván',
-  'nextelmoto2@gmail.com': 'Andrea',
-  'islas.amanda111@gmail.com': 'Amanda',
-  'ismaelorortiz@gmail.com': 'Ismael Ortiz',
-};
-
 const ROLES_EQUIPO_CHECADOR_CRON = ['gerente_ventas', 'coord_operaciones', 'juridico', 'asesor', 'chofer'];
 const ROLES_ASISTENCIA_FIJA = ['coord_operaciones', 'juridico', 'chofer'];
 const ROLES_JUNTA = ['gerente_ventas', 'asesor'];
@@ -54,7 +28,7 @@ const isPartnerEmail = (email, partnerEmails) => partnerEmails.has(String(email 
 
 const getNombrePersona = (profile) => {
   const email = String(profile?.email || '').toLowerCase();
-  return profile?.full_name || NOMBRES_CONOCIDOS[email] || email.split('@')[0] || profile?.email || 'Sin nombre';
+  return profile?.full_name || email.split('@')[0] || profile?.email || 'Sin nombre';
 };
 
 const cargarEquipoChecador = async () => {
@@ -68,16 +42,7 @@ const cargarEquipoChecador = async () => {
   ]);
 
   if (profilesError || !profiles?.length) {
-    const fallback = Object.entries(PERSONAL_FALLBACK).map(([email, nombre]) => ({
-      email,
-      nombre,
-      role_id: ['juridico@emporioinmobiliario.mx', 'asistente1@emporioinmobiliario.mx'].includes(email)
-        ? 'juridico'
-        : email === 'guillermo@emporioinmobiliario.com.mx'
-          ? 'gerente_ventas'
-          : 'asesor',
-    }));
-    return { equipo: fallback, source: 'fallback' };
+    return { equipo: [], source: 'profiles_unavailable' };
   }
 
   const partnerEmails = new Set((partners || []).map(p => String(p.email || '').toLowerCase()));

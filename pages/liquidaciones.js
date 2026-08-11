@@ -277,7 +277,7 @@ export default function Liquidaciones() {
 
   const today = new Date().toISOString().split("T")[0];
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
-  const isAdmin = puedeEditar; // antes: profile?.role === "admin". Ahora cubre Admin y Tania (coord_operaciones).
+  const isAdmin = puedeEditar; // El acceso se resuelve por rol y matriz de permisos.
 
   const emptyForm = {
     owner_name: "", owner_email: "", period_description: "",

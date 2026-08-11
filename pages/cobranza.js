@@ -87,7 +87,7 @@ export default function Cobranza() {
 
   const today = new Date().toISOString().split("T")[0];
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
-  const isAdmin = puedeEditar; // antes: profile?.role === "admin". Ahora cubre Admin y Tania (coord_operaciones).
+  const isAdmin = puedeEditar; // El acceso se resuelve por rol y matriz de permisos.
 
   const emptyForm = { tenant_name: "", tenant_email: "", property_name: "", amount: "", due_date: "", status: "pendiente", payment_method: "transferencia", notes: "" };
   const [form, setForm] = useState(emptyForm);

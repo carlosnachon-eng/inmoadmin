@@ -7,8 +7,8 @@ import { generarActaEntregaInmueble } from '../../lib/generarActaEntregaInmueble
 const RESPONSABLE_LABELS = {
   ventas: 'Ventas',
   juridico: 'Jurídico',
-  administracion: 'Administración (Tania)',
-  coordinacion: 'Administración (Tania)',
+  administracion: 'Coordinación Administrativa y Operativa',
+  coordinacion: 'Coordinación Administrativa y Operativa',
   direccion: 'Dirección',
   asesor: 'Asesor',
   automatico: 'Automático',

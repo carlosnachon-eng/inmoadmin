@@ -183,7 +183,7 @@ export default function Mantenimiento() {
   const [form, setForm] = useState(emptyTicket);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
-  const isAdmin = puedeEditar; // antes: profile?.role === "admin". Ahora cubre Admin y Tania (coord_operaciones) según la matriz de permisos.
+  const isAdmin = puedeEditar; // El acceso se resuelve por rol y matriz de permisos.
   const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
