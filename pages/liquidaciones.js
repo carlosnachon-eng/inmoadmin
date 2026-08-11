@@ -14,6 +14,18 @@ const calcComision = (c) => {
   return c.commission_value;
 };
 
+const contratoVigenteEnPeriodo = (contrato, anio, mes) => {
+  if (!contrato) return false;
+  if (!anio || !mes) return contrato.status === "activo";
+  const inicioPeriodo = new Date(anio, mes - 1, 1);
+  const finPeriodo = new Date(anio, mes, 0, 23, 59, 59, 999);
+  const inicioContrato = contrato.start_date ? new Date(contrato.start_date + "T12:00:00") : null;
+  const finContrato = contrato.end_date ? new Date(contrato.end_date + "T12:00:00") : null;
+  if (inicioContrato && inicioContrato > finPeriodo) return false;
+  if (finContrato && finContrato < inicioPeriodo) return false;
+  return true;
+};
+
 const savePDF = (doc, filename) => {
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
@@ -157,9 +169,12 @@ export default function Liquidaciones() {
     setExpedienteLoading(true);
     const propsProp = properties.filter(p => p.owner_email === owner.email);
     const propNames = propsProp.map(p => p.name);
-    const contratosProp = contracts.filter(c => propNames.includes(c.property_name) && c.status === "activo");
-    const contractIds = contratosProp.map(c => c.id);
     const [anio, mes] = mesCorte.split("-").map(Number);
+    const contratosProp = contracts.filter(c =>
+      propNames.includes(c.property_name) &&
+      contratoVigenteEnPeriodo(c, anio, mes)
+    );
+    const contractIds = contratosProp.map(c => c.id);
     const [
       { data: pagosMes },
       { data: ticketsProp },
@@ -372,13 +387,14 @@ export default function Liquidaciones() {
     return anio && mes ? `${anio}-${meses[mes]}` : null;
   };
 
-  const getContratosAdministracionOwner = (ownerEmail, propertyName = "") => {
+  const getContratosAdministracionOwner = (ownerEmail, propertyName = "", periodo = "") => {
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
     const propNames = propsProp.map(p => p.name);
+    const [anio, mes] = periodo ? periodo.split("-").map(Number) : [];
     return contracts.filter(c =>
       propNames.includes(c.property_name) &&
       (!propertyName || c.property_name === propertyName) &&
-      c.status === "activo" &&
+      contratoVigenteEnPeriodo(c, anio, mes) &&
       c.rent_receiver === "inmobiliaria"
     );
   };
@@ -387,7 +403,7 @@ export default function Liquidaciones() {
     const periodo = periodoKeyDesdeDescripcion(periodDescription);
     if (!periodo) return { periodo: null, contratosProp: [], comisionesPendientes: [], totalComision: 0 };
 
-    let contratosProp = getContratosAdministracionOwner(ownerEmail, propertyName);
+    let contratosProp = getContratosAdministracionOwner(ownerEmail, propertyName, periodo);
     if (soloRentasPagadas) {
       contratosProp = contratosProp.filter(c => payments.some(p =>
         p.contract_id === c.id &&
@@ -428,7 +444,10 @@ export default function Liquidaciones() {
     const fechaCorte = new Date(anio, mes - 1, 1);
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
     const propNamesCalc = propsProp.map(p => p.name);
-    const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
+    const contratosProp = contracts.filter(c =>
+      propsProp.some(p => p.name === c.property_name) &&
+      contratoVigenteEnPeriodo(c, anio, mes)
+    );
     const contractIds = contratosProp.map(c => c.id);
     const pagosMes = payments.filter(p => {
       if (p.status !== "pagado" || !p.due_date) return false;
@@ -855,7 +874,10 @@ export default function Liquidaciones() {
   const openLiquidar = (ownerName, ownerEmail) => {
     const [anioLiq, mesLiq] = mesCorte.split("-").map(Number);
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
-    const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
+    const contratosProp = contracts.filter(c =>
+      propsProp.some(p => p.name === c.property_name) &&
+      contratoVigenteEnPeriodo(c, anioLiq, mesLiq)
+    );
     const contractIds = contratosProp.map(c => c.id);
     // Solo rentas efectivamente cobradas (pagadas) en el mes del corte
     const pagosCobradosMes = payments.filter(p => {
@@ -997,7 +1019,7 @@ export default function Liquidaciones() {
         const propsProp = properties.filter(p => p.owner_email === form.owner_email);
         const contratosProp = contracts.filter(c =>
           propsProp.some(p => p.name === c.property_name) &&
-          c.status === "activo" &&
+          contratoVigenteEnPeriodo(c, Number(anio), Number(meses[mes])) &&
           c.rent_receiver === "inmobiliaria"
         );
         const contractIds = contratosProp.map(c => c.id);
@@ -1046,7 +1068,10 @@ export default function Liquidaciones() {
     const mes = fechaCorte.toLocaleDateString("es-MX", { year: "numeric", month: "long" });
 
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
-    const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
+    const contratosProp = contracts.filter(c =>
+      propsProp.some(p => p.name === c.property_name) &&
+      contratoVigenteEnPeriodo(c, anioCorte, mesNumCorte)
+    );
     const liqProp = ownerPayments.filter(l => l.owner_email === ownerEmail);
     const ticketsProp = tickets.filter(t => {
       if (!propsProp.some(p => p.name === t.property_name)) return false;
@@ -1512,7 +1537,11 @@ export default function Liquidaciones() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
                   {propietariosUnicos.map((owner, i) => {
                     const propsProp = properties.filter(p => p.owner_email === owner.email);
-                    const contratosProp = contracts.filter(c => propsProp.some(p => p.name === c.property_name) && c.status === "activo");
+                    const [anioCard, mesCard] = mesCorte.split("-").map(Number);
+                    const contratosProp = contracts.filter(c =>
+                      propsProp.some(p => p.name === c.property_name) &&
+                      contratoVigenteEnPeriodo(c, anioCard, mesCard)
+                    );
                     const liquidoProp = contratosProp.reduce((a, c) => a + (c.monthly_rent || 0) - calcComision(c), 0);
                     const pagosDelPropietario = payments.filter(p => propsProp.some(pr => pr.name === p.property_name) && p.status === "pagado");
                     const totalPagado = pagosDelPropietario.reduce((a, p) => a + (p.amount || 0), 0);
