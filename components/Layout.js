@@ -24,6 +24,7 @@ export const nav = [
   { id: "guias",         label: "Guías",              icon: "📍",  link: "/guias",              modulo: "guias" },
   { id: "kpis",          label: "KPIs",               icon: "🎯",  link: "/kpis",               modulo: "kpis" },
   { id: "mi_trabajo",    label: "Mi Trabajo",         icon: "📌",  link: "/mi-trabajo",         modulo: "ejecutivo", rolesPermitidos: ["admin", "gerente_ventas", "asesor"] },
+  { id: "mi_trabajo_administrativo", label: "Trabajo Administrativo", icon: "🗂️", link: "/mi-trabajo-administrativo", modulo: "operaciones_work_center", rolesPermitidos: ["admin", "coord_operaciones"] },
   { id: "clientes",      label: "Clientes",           icon: "👥",  link: "/clientes",           modulo: "clientes" },
   { id: "kpis_dashboard",label: "KPIs Dashboard",     icon: "📊",  link: "/kpis-dashboard",     modulo: "kpis-dashboard" },
   { id: "estadisticas_proyectos", label: "Estadísticas Proyectos", icon: "📣", link: "/estadisticas-proyectos", modulo: "estadisticas-proyectos", soloAdmin: true },

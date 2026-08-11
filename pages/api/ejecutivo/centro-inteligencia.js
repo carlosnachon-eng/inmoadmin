@@ -271,7 +271,7 @@ async function cargarDatosOperativos(metrics) {
       .order('created_at', { ascending: false })),
     safe('operativo.firmas', () => supabase
       .from('firmas')
-      .select('id, titulo, tipo, nombre_comprador, propiedad_id, recibo_id, status, etapa_actual, created_at, updated_at, firma_etapas(id, orden, clave, nombre, status, responsable, updated_at)')
+      .select('id, titulo, tipo, nombre_comprador, propiedad_id, recibo_id, status, etapa_actual, created_at, updated_at, firma_etapas(id, orden, clave, nombre, status, responsable)')
       .in('status', ['activo', 'completado'])
       .order('updated_at', { ascending: true })),
     safe('operativo.firmas_citas', () => supabase
