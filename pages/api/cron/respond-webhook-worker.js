@@ -16,8 +16,19 @@ import {
   shouldPersistRespondSnapshot,
 } from "../../../lib/ejecutivo/respondSync";
 
-const WORKER_CONTACT_LIMIT = 20;
+const DEFAULT_WORKER_CONTACT_LIMIT = 20;
+const SAFE_WORKER_CONTACT_LIMIT = 1;
 const MAX_ATTEMPTS = 8;
+
+export function resolveWorkerContactLimit(value = process.env.RESPOND_INCREMENTAL_WORKER_CONTACT_LIMIT) {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return DEFAULT_WORKER_CONTACT_LIMIT;
+  }
+  const normalized = String(value).trim();
+  if (!/^\d+$/.test(normalized)) return SAFE_WORKER_CONTACT_LIMIT;
+  const parsed = Number(normalized);
+  return parsed >= 1 && parsed <= 20 ? parsed : SAFE_WORKER_CONTACT_LIMIT;
+}
 
 function constantTimeEqual(left, right) {
   const leftBuffer = Buffer.from(String(left || ""));
@@ -128,7 +139,7 @@ export default async function handler(req, res) {
     const receivedBefore = new Date().toISOString();
     const { data: claims, error: claimError } = await admin.rpc("claim_respond_webhook_contacts", {
       p_worker_id: workerId,
-      p_limit: WORKER_CONTACT_LIMIT,
+      p_limit: resolveWorkerContactLimit(),
       p_received_before: receivedBefore,
     });
     if (claimError) throw claimError;
