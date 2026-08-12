@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   buildAdministrativeWorkCenter,
   isAdministrativeWorkCenterRole,
+  sanitizeAdministrativeSourceRows,
 } from "../../../lib/operaciones/administrativeWorkCenter";
 
 const SOURCE_PAGE_SIZE = 1000;
@@ -42,6 +43,15 @@ const SOURCE_QUERIES = {
     .from("poliza_expedientes")
     .select("id, status, status_expediente, fecha_vigencia, created_at, updated_at")
     .eq("status", "activo"),
+  condominios: (client) => client
+    .from("condominios")
+    .select("id, activo"),
+  unidades_condominio: (client) => client
+    .from("unidades_condominio")
+    .select("id, condominio_id, activo"),
+  cuotas_condominio: (client) => client
+    .from("cuotas_condominio")
+    .select("id, condominio_id, unidad_id, periodo, monto, status, fecha_vencimiento, comprobante_url, created_at"),
 };
 
 function getAdminClient() {
@@ -81,7 +91,10 @@ async function fetchAllPages(makeQuery) {
 
 async function loadSource(client, sourceType, makeQuery) {
   try {
-    const data = await fetchAllPages(() => makeQuery(client));
+    const data = sanitizeAdministrativeSourceRows(
+      sourceType,
+      await fetchAllPages(() => makeQuery(client)),
+    );
     return { sourceType, data, error: null };
   } catch (error) {
     console.error(`[administrative-work-center:${sourceType}]`, error?.code || "query_error", error?.message || error);

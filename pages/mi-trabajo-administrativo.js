@@ -25,6 +25,7 @@ const SOURCE_LABELS = {
   firmas_citas: "Citas de firma",
   inspecciones: "Inspecciones",
   poliza_expedientes: "Pólizas",
+  condominio_cobranza: "Condominios",
 };
 
 const formatDate = (value) => {
