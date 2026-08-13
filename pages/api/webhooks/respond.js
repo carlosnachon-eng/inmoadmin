@@ -7,6 +7,7 @@ import {
   extractRespondWebhookEvent,
   isValidRespondWebhookSignature,
   readRespondWebhookBody,
+  resolveRespondWebhookSigningKeys,
 } from "../../../lib/ejecutivo/respondWebhook";
 
 export const config = {
@@ -21,12 +22,11 @@ export default async function handler(req, res) {
   try {
     assertSupabaseEnvironment();
     assertRespondIncrementalWebhooksEnabled();
-    const signingKey = process.env.RESPOND_WEBHOOK_SIGNING_KEY;
-    if (!signingKey) return res.status(503).json({ ok: false, error: "Webhook no configurado." });
+    const signingKeys = resolveRespondWebhookSigningKeys();
 
     const body = await readRespondWebhookBody(req);
     const signature = req.headers["x-webhook-signature"];
-    if (!isValidRespondWebhookSignature(body, signature, signingKey)) {
+    if (!isValidRespondWebhookSignature(body, signature, signingKeys)) {
       return res.status(401).json({ ok: false, error: "Firma invalida." });
     }
 
