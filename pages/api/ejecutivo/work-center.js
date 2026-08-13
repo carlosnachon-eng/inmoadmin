@@ -16,6 +16,7 @@ import {
   safeName,
 } from "../../../lib/ejecutivo/workCenter";
 import { isRespondIncrementalWorkerEnabled } from "../../../lib/ejecutivo/respondSync";
+import { resolveInterventionSignalState } from "../../../lib/ejecutivo/managementIntervention";
 
 function monthBounds() {
   const today = nowMxDate();
@@ -316,6 +317,28 @@ export default async function handler(req, res) {
     const scopedSnapshots = snapshotsMissing ? [] : (snapshotsRes.data || []);
     const unassignedSnapshots = snapshotsMissing ? [] : (unassignedSnapshotsRes.data || []).filter(isSalesUnassignedSnapshot);
     const managementSnapshots = [...scopedSnapshots, ...unassignedSnapshots];
+    const activeSignalContactIds = [...new Set(interventions
+      .filter((intervention) => ACTIVE_INTERVENTION_STATUSES.has(intervention.status))
+      .filter((intervention) => intervention?.indicators?.signalType === "sin_respuesta")
+      .map((intervention) => intervention?.indicators?.respondContactId)
+      .filter(Boolean)
+      .map(String))];
+    const interventionSignalSnapshotsRes = activeSignalContactIds.length
+      ? await admin
+        .from("gv_respond_contact_snapshots")
+        .select("respond_contact_id, respond_conversation_status, respond_unanswered_since")
+        .in("respond_contact_id", activeSignalContactIds)
+      : noData;
+    if (interventionSignalSnapshotsRes.error) throw interventionSignalSnapshotsRes.error;
+    const interventionSignalSnapshots = new Map(
+      (interventionSignalSnapshotsRes.data || []).map((snapshot) => [String(snapshot.respond_contact_id), snapshot])
+    );
+    const interventionsWithSignalState = interventions.map((intervention) => ({
+      ...intervention,
+      signalState: ACTIVE_INTERVENTION_STATUSES.has(intervention.status)
+        ? resolveInterventionSignalState(intervention, interventionSignalSnapshots)
+        : null,
+    }));
 
     const targetOpportunities = effectiveTargetId ? scopedOpportunities.filter((opp) => opp.asesor_id === effectiveTargetId) : scopedOpportunities;
     const targetSnapshots = effectiveTargetId ? scopedSnapshots.filter((snap) => snap.mapped_profile_id === effectiveTargetId) : managementSnapshots;
@@ -519,7 +542,7 @@ export default async function handler(req, res) {
       peoplePriorities,
       suggestedInterventions: peoplePriorities.filter((priority) => !priority.activeIntervention),
       operationsAttention,
-      interventions,
+      interventions: interventionsWithSignalState,
       items,
       workList: items,
       dataCoverage: {
