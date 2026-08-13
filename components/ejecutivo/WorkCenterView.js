@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Head from "next/head";
 import Layout, { brand } from "../Layout";
 import { supabase } from "../../lib/supabase";
+import {
+  requestManagementIntervention,
+  subscribeVisibleRefresh,
+} from "../../lib/ejecutivo/managementIntervention";
 
 const publicAppEnv = String(process.env.NEXT_PUBLIC_APP_ENV || "").trim().toLowerCase();
 const isPreviewUi = ["dev", "development", "preview"].includes(publicAppEnv);
@@ -384,6 +388,12 @@ const interventionStatusLabels = {
   cerrada_decision_tomada: "Cerrada / decisión tomada",
 };
 
+const interventionSignalLabels = {
+  active: { label: "Señal activa", variant: "critica" },
+  resolved: { label: "Señal resuelta", variant: "bajo" },
+  undetermined: { label: "No se puede determinar", variant: "normal" },
+};
+
 export default function WorkCenterView({ type = "advisor" }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -441,18 +451,20 @@ export default function WorkCenterView({ type = "advisor" }) {
     && data?.capabilities?.respondIncrementalWorkerEnabled === true;
   const canRunRespondFullReconciliation = isManagerView && profile?.role_id === "admin";
 
-  const loadData = async () => {
-    if (!session?.access_token || !profile) return;
-    setLoading(true);
-    setError("");
-    setSyncNotice(null);
+  const loadData = useCallback(async ({ silent = false, accessToken = session?.access_token } = {}) => {
+    if (!accessToken || !profile) return;
+    if (!silent) {
+      setLoading(true);
+      setError("");
+      setSyncNotice(null);
+    }
     try {
       const params = new URLSearchParams();
       if (isManagerView) params.set("mode", selectedAdvisor && selectedAdvisor !== "__unassigned" ? "supervise" : "management");
       else params.set("mode", "mine");
       if (selectedAdvisor && selectedAdvisor !== "__unassigned") params.set("target", selectedAdvisor);
       const res = await fetch(`/api/ejecutivo/work-center?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo cargar la vista.");
@@ -462,13 +474,20 @@ export default function WorkCenterView({ type = "advisor" }) {
     } catch (err) {
       setError(err.message || "Error inesperado.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, [isManagerView, profile, selectedAdvisor, session?.access_token]);
 
   useEffect(() => {
     if (profile) loadData();
-  }, [profile?.id, selectedAdvisor, type]);
+  }, [loadData, profile]);
+
+  useEffect(() => {
+    if (!isManagerView || !profile || !session?.access_token) return undefined;
+    return subscribeVisibleRefresh({
+      refresh: () => loadData({ silent: true }),
+    });
+  }, [isManagerView, loadData, profile, session?.access_token]);
 
   const consolidatedItems = useMemo(() => consolidateWorkItems(data?.workList || []), [data?.workList]);
   const scopedConsolidatedItems = useMemo(() => (
@@ -602,15 +621,25 @@ export default function WorkCenterView({ type = "advisor" }) {
     setRowInterventionMessage(null);
   };
 
+  const sendInterventionRequest = async ({ method, body }) => {
+    const result = await requestManagementIntervention({
+      accessToken: session?.access_token,
+      method,
+      body,
+      refreshSession: () => supabase.auth.refreshSession(),
+    });
+    if (result.refreshedSession) setSession(result.refreshedSession);
+    return result;
+  };
+
   const submitIntervention = async () => {
     if (!interventionDraft || !session?.access_token) return;
     setSavingIntervention(true);
     setError("");
     try {
-      const res = await fetch("/api/ejecutivo/management-intervention", {
+      const { response: res, json, refreshedSession } = await sendInterventionRequest({
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({
+        body: {
           advisorProfileId: interventionDraft.advisorId,
           reason: interventionDraft.reason,
           agreedAction: interventionDraft.agreedAction,
@@ -622,13 +651,12 @@ export default function WorkCenterView({ type = "advisor" }) {
             labels: interventionDraft.indicators,
             uiSnapshot: interventionDraft.advisorSnapshot,
           },
-        }),
+        },
       });
-      const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo registrar la intervención.");
       setInterventionDraft(null);
       if (json.duplicate && json.intervention?.id) setHighlightedIntervention(json.intervention.id);
-      await loadData();
+      await loadData({ accessToken: refreshedSession?.access_token || session.access_token });
     } catch (err) {
       setError(err.message || "No se pudo registrar la intervención.");
     } finally {
@@ -668,24 +696,22 @@ export default function WorkCenterView({ type = "advisor" }) {
         `Contexto: ${interventionContextKey(item)}`,
       ].filter(Boolean).join("\n");
 
-      const res = await fetch("/api/ejecutivo/management-intervention", {
+      const { response: res, json, refreshedSession } = await sendInterventionRequest({
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({
+        body: {
           advisorProfileId: rowInterventionDraft.advisorId,
           reason: rowInterventionDraft.reason,
           agreedAction: rowInterventionDraft.agreedAction,
           reviewOn: rowInterventionDraft.reviewOn || null,
           notes: contextLines,
           indicators,
-        }),
+        },
       });
-      const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo registrar la intervención.");
       const interventionId = json.intervention?.id;
       setRowInterventionMessage({ type: "success", text: json.duplicate ? "Ya existía una intervención activa para esta operación. Abrí el seguimiento." : "Intervención registrada correctamente." });
       if (interventionId) setHighlightedIntervention(interventionId);
-      await loadData();
+      await loadData({ accessToken: refreshedSession?.access_token || session.access_token });
       setTimeout(() => {
         if (interventionId) openInterventionFollowUp(interventionId);
         setRowInterventionDraft(null);
@@ -699,15 +725,17 @@ export default function WorkCenterView({ type = "advisor" }) {
 
   const updateInterventionStatus = async (id, status, notes = "") => {
     if (!session?.access_token) return;
-    const res = await fetch("/api/ejecutivo/management-intervention", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ id, status, notes }),
-    });
-    if (!res.ok) setError("No se pudo actualizar la intervención.");
-    else {
+    setError("");
+    try {
+      const { response: res, json, refreshedSession } = await sendInterventionRequest({
+        method: "PATCH",
+        body: { id, status, notes },
+      });
+      if (!res.ok) throw new Error(json.error || "No se pudo actualizar la intervención.");
       setHighlightedIntervention(id);
-      await loadData();
+      await loadData({ accessToken: refreshedSession?.access_token || session.access_token });
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar la intervención.");
     }
   };
 
@@ -1007,26 +1035,35 @@ function InterventionsTable({ items, onStatusChange, highlightedId }) {
       <p style={muted}>Intervenciones registradas, revisiones próximas y cambios de estado.</p>
       <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
         {ordered.length === 0 && <p style={muted}>Aún no hay intervenciones registradas.</p>}
-        {ordered.slice(0, 8).map((item) => (
-          <div id={`intervention-${item.id}`} key={item.id} style={{ border: `1px solid ${highlightedId === item.id ? brand.red : "#e5e7eb"}`, borderRadius: 12, padding: 12, boxShadow: highlightedId === item.id ? "0 0 0 3px rgba(194,18,47,.10)" : "none" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <div>
-                <strong style={{ color: "#111827" }}>{item.advisor?.full_name || item.advisor?.email || "Asesor"}</strong>
-                <p style={muted}>{item.reason}</p>
+        {ordered.slice(0, 8).map((item) => {
+          const signal = item.signalState ? interventionSignalLabels[item.signalState.state] || interventionSignalLabels.undetermined : null;
+          return (
+            <div id={`intervention-${item.id}`} key={item.id} style={{ border: `1px solid ${highlightedId === item.id ? brand.red : "#e5e7eb"}`, borderRadius: 12, padding: 12, boxShadow: highlightedId === item.id ? "0 0 0 3px rgba(194,18,47,.10)" : "none" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div>
+                  <strong style={{ color: "#111827" }}>{item.advisor?.full_name || item.advisor?.email || "Asesor"}</strong>
+                  <p style={muted}>{item.reason}</p>
+                </div>
+                {item.review_on && <Badge variant={item.review_on <= todayKey && ACTIVE_INTERVENTION_STATUSES.has(item.status) ? "critica" : "normal"}>{item.review_on <= todayKey ? "Para revisar" : "Próxima revisión"}</Badge>}
               </div>
-              {item.review_on && <Badge variant={item.review_on <= todayKey && ACTIVE_INTERVENTION_STATUSES.has(item.status) ? "critica" : "normal"}>{item.review_on <= todayKey ? "Para revisar" : "Próxima revisión"}</Badge>}
+              <p style={{ margin: "8px 0", color: "#374151", fontSize: 13 }}>Acción: <strong>{displayAction(item.agreed_action, item)}</strong>{item.review_on ? ` · Revisión ${formatReviewDate(item.review_on)}` : ""}</p>
+              {signal && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
+                  <Badge variant={signal.variant}>{signal.label}</Badge>
+                  <span style={{ color: "#6b7280", fontSize: 12 }}>{item.signalState.reason}</span>
+                </div>
+              )}
+              <InterventionComparison item={item} />
+              <InterventionTimeline events={item.events || []} />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+                <select value={item.status} onChange={(e) => onStatusChange(item.id, e.target.value)} style={{ ...inputStyle, maxWidth: 260 }}>
+                  {Object.entries(interventionStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+                <button onClick={() => reviewIntervention(item)} style={secondaryButtonStyle}>Registrar revisión</button>
+              </div>
             </div>
-            <p style={{ margin: "8px 0", color: "#374151", fontSize: 13 }}>Acción: <strong>{displayAction(item.agreed_action, item)}</strong>{item.review_on ? ` · Revisión ${formatReviewDate(item.review_on)}` : ""}</p>
-            <InterventionComparison item={item} />
-            <InterventionTimeline events={item.events || []} />
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
-              <select value={item.status} onChange={(e) => onStatusChange(item.id, e.target.value)} style={{ ...inputStyle, maxWidth: 260 }}>
-                {Object.entries(interventionStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-              <button onClick={() => reviewIntervention(item)} style={secondaryButtonStyle}>Revisar</button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </Panel>
   );
