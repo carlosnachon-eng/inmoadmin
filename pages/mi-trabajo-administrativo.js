@@ -26,6 +26,7 @@ const SOURCE_LABELS = {
   inspecciones: "Inspecciones",
   poliza_expedientes: "Pólizas",
   condominio_cobranza: "Condominios",
+  operational_recurring_task: "Mantenimiento programado",
 };
 
 const formatDate = (value) => {

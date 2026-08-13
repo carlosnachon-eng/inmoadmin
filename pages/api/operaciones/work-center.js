@@ -52,6 +52,9 @@ const SOURCE_QUERIES = {
   cuotas_condominio: (client) => client
     .from("cuotas_condominio")
     .select("id, condominio_id, unidad_id, periodo, monto, status, fecha_vencimiento, comprobante_url, created_at"),
+  operational_recurring_tasks: (client) => client
+    .from("operational_recurring_tasks")
+    .select("id, title, category, responsible_profile_id, property_id, condominium_id, recurrence_unit, recurrence_interval, recurrence_weekday, recurrence_month_day, timezone, next_due_at, lead_days, state, last_completed_at, responsible:profiles!operational_recurring_tasks_responsible_profile_id_fkey(id, active)"),
 };
 
 function getAdminClient() {
