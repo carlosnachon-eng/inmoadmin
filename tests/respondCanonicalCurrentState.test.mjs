@@ -80,6 +80,7 @@ test("inbound más reciente establece unanswered desde ese inbound", () => {
   const snapshot = build({ messages: fixture.messages.inboundLatest });
   assert.equal(snapshot.respond_unanswered_since, "2026-08-13T16:00:00.000Z");
   assert.equal(snapshot.respond_last_inbound_at, "2026-08-13T16:00:00.000Z");
+  assert.equal(snapshot.metadata.unanswered_state, "waiting_inbound");
 });
 
 test("outbound más reciente limpia unanswered aunque el snapshot anterior esté stale", () => {
@@ -89,6 +90,7 @@ test("outbound más reciente limpia unanswered aunque el snapshot anterior esté
   });
   assert.equal(snapshot.respond_unanswered_since, null);
   assert.equal(snapshot.respond_last_outbound_at, "2026-08-13T17:00:00.000Z");
+  assert.equal(snapshot.metadata.unanswered_state, "answered_outbound");
 });
 
 test("múltiples mensajes desordenados usan el timestamp real más reciente", () => {
@@ -135,6 +137,39 @@ test("frontera de página avanza solo si la página reciente no aporta direcció
   }
 });
 
+test("paginación agotada sin evidencia actual deja unanswered indeterminado y nulo", async () => {
+  process.env.RESPOND_IO_TOKEN = "qa";
+  const originalFetch = globalThis.fetch;
+  const responses = [
+    {
+      items: fixture.messages.unsupportedOnly,
+      pagination: { next: "https://api.respond.io/v2/contact/id:qa/message/list?limit=50&cursorId=2" },
+    },
+    {
+      items: [],
+      pagination: { next: null },
+    },
+  ];
+  globalThis.fetch = async () => new Response(JSON.stringify(responses.shift()), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+  try {
+    const result = await readRespondMessages("qa", 3);
+    const snapshot = build({
+      messages: result.messages,
+      existingSnapshot: staleExistingSnapshot,
+    });
+    assert.equal(result.pagesRead, 2);
+    assert.equal(snapshot.respond_last_inbound_at, staleExistingSnapshot.respond_last_inbound_at);
+    assert.equal(snapshot.respond_last_outbound_at, staleExistingSnapshot.respond_last_outbound_at);
+    assert.equal(snapshot.respond_unanswered_since, null);
+    assert.equal(snapshot.metadata.unanswered_state, "indeterminate_no_message_evidence");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("la primera página reciente basta aunque contenga ambos sentidos", async () => {
   process.env.RESPOND_IO_TOKEN = "qa";
   const originalFetch = globalThis.fetch;
@@ -164,6 +199,7 @@ test("conversación cerrada siempre limpia unanswered", () => {
   });
   assert.equal(snapshot.respond_conversation_status, "closed");
   assert.equal(snapshot.respond_unanswered_since, null);
+  assert.equal(snapshot.metadata.unanswered_state, "not_open");
 });
 
 test("assignee conocido usa el mapping actual", () => {
