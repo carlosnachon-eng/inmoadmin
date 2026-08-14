@@ -1,0 +1,61 @@
+{
+  "contact": {
+    "id": "qa-contact-current-state",
+    "status": "open",
+    "lifecycle": "qa",
+    "blocked": false,
+    "custom_fields": []
+  },
+  "messages": {
+    "inboundLatest": [
+      {
+        "messageId": 1786633200000000,
+        "traffic": "outgoing",
+        "timestamp": "2026-08-13T15:00:00.000Z",
+        "sender": { "source": "user" }
+      },
+      {
+        "messageId": 1786636800000000,
+        "traffic": "incoming",
+        "timestamp": "2026-08-13T16:00:00.000Z",
+        "sender": { "source": "contact" }
+      }
+    ],
+    "outboundLatest": [
+      {
+        "messageId": 1786636800000000,
+        "traffic": "incoming",
+        "timestamp": "2026-08-13T16:00:00.000Z",
+        "sender": { "source": "contact" }
+      },
+      {
+        "messageId": 1786640400000000,
+        "traffic": "outgoing",
+        "timestamp": "2026-08-13T17:00:00.000Z",
+        "sender": { "source": "user" }
+      }
+    ],
+    "unsupportedOnly": [
+      {
+        "messageId": 1786644000000000,
+        "traffic": "system",
+        "timestamp": "2026-08-13T18:00:00.000Z",
+        "sender": { "source": "workflow" }
+      }
+    ]
+  },
+  "assignees": {
+    "known": {
+      "id": "respond-user-qa",
+      "firstName": "QA",
+      "lastName": "Advisor",
+      "email": "advisor.qa@example.invalid"
+    },
+    "unassigned": null,
+    "deleted": {
+      "id": "respond-user-deleted",
+      "name": "Deleted User",
+      "email": "deleted.qa@example.invalid"
+    }
+  }
+}

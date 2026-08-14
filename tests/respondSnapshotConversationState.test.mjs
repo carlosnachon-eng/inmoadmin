@@ -62,14 +62,33 @@ test("todo estado distinto de open elimina unanswered", () => {
   }
 });
 
-test("conversación abierta conserva unanswered cuando inbound es posterior", () => {
+test("conversación abierta sin evidencia actual no reutiliza inbound histórico", () => {
   const snapshot = buildRespondSnapshot({
     contact: contact("open"),
     messages: [],
     profiles: [],
     existingSnapshot,
   });
-  assert.equal(snapshot.respond_unanswered_since, existingSnapshot.respond_last_inbound_at);
+  assert.equal(snapshot.respond_last_inbound_at, existingSnapshot.respond_last_inbound_at);
+  assert.equal(snapshot.respond_last_outbound_at, existingSnapshot.respond_last_outbound_at);
+  assert.equal(snapshot.respond_unanswered_since, null);
+  assert.equal(snapshot.metadata.unanswered_state, "indeterminate_no_message_evidence");
+});
+
+test("conversación abierta sin evidencia actual tampoco reutiliza outbound histórico", () => {
+  const snapshot = buildRespondSnapshot({
+    contact: contact("open"),
+    messages: [],
+    profiles: [],
+    existingSnapshot: {
+      ...existingSnapshot,
+      respond_last_inbound_at: "2026-08-13T18:00:00.000Z",
+      respond_last_outbound_at: "2026-08-13T21:00:00.000Z",
+      respond_unanswered_since: null,
+    },
+  });
+  assert.equal(snapshot.respond_unanswered_since, null);
+  assert.equal(snapshot.metadata.unanswered_state, "indeterminate_no_message_evidence");
 });
 
 test("el límite de lectura de mensajes continúa en 50", () => {
