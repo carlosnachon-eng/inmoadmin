@@ -9,6 +9,7 @@ import {
   readRespondWebhookBody,
   resolveRespondWebhookSigningKeys,
 } from "../../../lib/ejecutivo/respondWebhook";
+import { observeWhatsappAttributionFailOpen } from "../../../lib/whatsappAttribution/respondAttribution";
 
 export const config = {
   api: {
@@ -45,10 +46,16 @@ export default async function handler(req, res) {
       message_id: event.messageId,
       payload_meta: event.payloadMeta,
     });
-    if (error?.code === "23505") return res.status(200).json({ ok: true, duplicate: true });
-    if (error) throw error;
+    const duplicate = error?.code === "23505";
+    if (error && !duplicate) throw error;
 
-    return res.status(200).json({ ok: true, queued: true });
+    // Aditivo y fail-open: la atribución nunca condiciona el ACK, la cola,
+    // los retries ni el procesamiento canónico del evento Respond.io.
+    await observeWhatsappAttributionFailOpen({ admin, body });
+
+    return res.status(200).json(duplicate
+      ? { ok: true, duplicate: true }
+      : { ok: true, queued: true });
   } catch (error) {
     if (error?.statusCode === 404) return res.status(404).json({ ok: false, error: "Not Found" });
     if (error?.statusCode === 413) return res.status(413).json({ ok: false, error: error.message });

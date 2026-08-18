@@ -151,6 +151,7 @@ const receiverState = { insertResult: { error: null }, inserted: [] };
 globalThis.__respondReceiverTestDeps = {
   assertSupabaseEnvironment() {},
   assertRespondIncrementalWebhooksEnabled() {},
+  async observeWhatsappAttributionFailOpen() { return { status: "ignored" }; },
   getAdminSupabase() {
     return {
       from(table) {
@@ -182,6 +183,10 @@ const receiverHarnessSource = receiverSource
   .replace(
     /import \{[\s\S]*?\} from "\.\.\/\.\.\/\.\.\/lib\/ejecutivo\/respondWebhook";/,
     "const { extractRespondWebhookEvent, isValidRespondWebhookSignature, readRespondWebhookBody, resolveRespondWebhookSigningKeys } = globalThis.__respondReceiverTestDeps;",
+  )
+  .replace(
+    /import \{ observeWhatsappAttributionFailOpen \} from "\.\.\/\.\.\/\.\.\/lib\/whatsappAttribution\/respondAttribution";/,
+    "const { observeWhatsappAttributionFailOpen } = globalThis.__respondReceiverTestDeps;",
   );
 const { default: receiverHandler } = await import(
   `data:text/javascript;base64,${Buffer.from(receiverHarnessSource).toString("base64")}`
