@@ -124,7 +124,7 @@ export default function DetalleFirma() {
       supabase.from('firma_etapas').select('*').eq('firma_id', id).order('orden'),
       supabase.from('firma_comentarios').select('*').eq('firma_id', id).order('created_at', { ascending: false }),
       appointmentId
-        ? supabase.from('firma_citas').select('id, firma_id, fecha, hora, tipo, status').eq('id', appointmentId).eq('firma_id', id).maybeSingle()
+        ? supabase.from('firmas_citas').select('id, firma_id, fecha, hora, tipo, status').eq('id', appointmentId).eq('firma_id', id).maybeSingle()
         : Promise.resolve({ data: null })
     ])
     setFirma(f)

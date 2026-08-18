@@ -187,7 +187,7 @@ test("cada destino profundo consume y enfoca su identificador", async () => {
     ["mantenimiento.js", ["ticketId", "quoteId", "useContextualRecord"]],
     ["condominio/[id].js", ["unitId", "feeId", "period"]],
     ["poliza/index.js", ["expedienteId", "seleccionarExpediente"]],
-    ["firmas/[id].js", ["appointmentId", "firma_citas"]],
+    ["firmas/[id].js", ["appointmentId", "from('firmas_citas')"]],
     ["propiedades.js", ["serviceId", "paymentId", "filtroPeriodo"]],
   ]);
   for (const [file, needles] of expectations) {
