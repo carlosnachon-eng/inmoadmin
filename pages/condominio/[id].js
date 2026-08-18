@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
+import { contextualRecordStyle, useContextualRecord } from "../../lib/useContextualRecord";
 import { supabase } from "../../lib/supabase";
 import { brand } from "../../components/Layout";
 
@@ -105,6 +106,14 @@ export default function CondominioDetalle() {
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
   const [periodoVer, setPeriodoVer] = useState(periodoActual());
+  const contextualUnitId = useContextualRecord(router, "unitId", !loading, () => {
+    if (router.query.period) setPeriodoVer(String(router.query.period));
+    setTab("unidades");
+  });
+  const contextualFeeId = useContextualRecord(router, "feeId", !loading, () => {
+    if (router.query.period) setPeriodoVer(String(router.query.period));
+    setTab("cuotas");
+  });
 
   // Modales
   const [modalUnidad, setModalUnidad] = useState(null); // null | unidad
@@ -713,7 +722,7 @@ export default function CondominioDetalle() {
               {unidades.map(u => {
                 const cuotaMes = cuotasPeriodo.find(q => q.unidad_id === u.id);
                 return (
-                  <div key={u.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", borderLeft: `4px solid ${cuotaMes?.status === "pagado" ? "#065f46" : cuotaMes?.status === "atrasado" ? "#b91c3c" : "#e5e7eb"}` }}>
+                  <div id={`unitId-${u.id}`} key={u.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", borderLeft: `4px solid ${cuotaMes?.status === "pagado" ? "#065f46" : cuotaMes?.status === "atrasado" ? "#b91c3c" : "#e5e7eb"}`, ...contextualRecordStyle(contextualUnitId === u.id) }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <div>
                         <span style={{ fontSize: 11, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase" }}>Unidad</span>
@@ -877,7 +886,7 @@ export default function CondominioDetalle() {
                   </thead>
                   <tbody>
                     {cuotasPeriodo.map(q => (
-                      <tr key={q.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                      <tr id={`feeId-${q.id}`} key={q.id} style={{ borderTop: "1px solid #f3f4f6", ...contextualRecordStyle(contextualFeeId === q.id) }}>
                         <td style={{ padding: "10px 12px", fontWeight: 800, color: "#1a1a2e" }}>{q.unidades_condominio?.numero || "—"}</td>
                         <td style={{ padding: "10px 12px", fontSize: 13 }}>{q.unidades_condominio?.propietario_nombre || "—"}</td>
                         <td style={{ padding: "10px 12px", fontWeight: 700 }}>{fmt(q.monto)}</td>

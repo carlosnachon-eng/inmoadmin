@@ -140,7 +140,7 @@ test("usa contextKey estable, área, espera y deep link autorizados", () => {
   assert.equal(item.responsibleArea, "administracion_condominios");
   assert.equal(item.waitingOn, "condomino");
   assert.equal(item.dueAt, "2026-08-01");
-  assert.equal(item.href, `/condominio/${ACTIVE_CONDO}`);
+  assert.equal(item.href, `/condominio/${ACTIVE_CONDO}?unitId=${units.recent.id}&period=2026-08&feeId=2a223000-0000-4000-8000-000000000202`);
 });
 
 test("cuota no generada queda vencida después del día 10", () => {

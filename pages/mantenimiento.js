@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import { contextualRecordStyle, useContextualRecord } from "../lib/useContextualRecord";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -137,6 +138,13 @@ export default function Mantenimiento() {
   const [filterProperty, setFilterProperty] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [subiendoFoto, setSubiendoFoto] = useState(null);
+  const contextualTicketId = useContextualRecord(router, "ticketId", !loading, (ticketId) => {
+    setFilterStatus(""); setFilterPriority(""); setFilterProperty(""); setExpandedId(ticketId);
+  });
+  const contextualQuoteId = useContextualRecord(router, "quoteId", !loading, (quoteId) => {
+    const quote = quotes.find((row) => String(row.id) === quoteId);
+    if (quote?.ticket_id) setExpandedId(String(quote.ticket_id));
+  });
 
   const subirFotoTicket = async (ticket, file) => {
     setSubiendoFoto(ticket.id);
@@ -555,10 +563,11 @@ export default function Mantenimiento() {
             const quote    = quotes.find(q => q.ticket_id === t.id);
 
             return (
-              <div key={t.id} style={{
+              <div id={`ticketId-${t.id}`} key={t.id} style={{
                 background: "#fff", borderRadius: 14,
                 border: `2px solid ${t.priority === "urgente" ? "#fca5a5" : t.priority === "alta" ? "#fcd34d" : "#f0f0f0"}`,
                 boxShadow: "0 1px 3px rgba(0,0,0,0.06)", overflow: "hidden",
+                ...contextualRecordStyle(contextualTicketId === t.id),
               }}>
                 <div style={{ padding: "14px 18px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
@@ -677,7 +686,7 @@ export default function Mantenimiento() {
                     </div>
                     {/* Link cotización si existe */}
                     {quote && (
-                      <div style={{ marginTop: 12, background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #e5e7eb" }}>
+                      <div id={`quoteId-${quote.id}`} style={{ marginTop: 12, background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #e5e7eb", ...contextualRecordStyle(contextualQuoteId === String(quote.id)) }}>
                         <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#6b7280" }}>COTIZACIÓN</p>
                         <p style={{ margin: "0 0 4px", fontSize: 13, color: "#374151" }}>Costo: {fmt(quote.costo_proveedor)} + {quote.margen_pct}% = {fmt(quote.monto_sin_descuento ?? quote.monto_final)}</p>
                         {quote.descuento_valor > 0 && (

@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import { contextualRecordStyle, useContextualRecord } from "../lib/useContextualRecord";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -84,6 +85,9 @@ export default function Cobranza() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterMonth, setFilterMonth] = useState(String(new Date().getMonth() + 1));
   const [modalRecibido, setModalRecibido] = useState(null); // { pago, contrato }
+  const contextualPaymentId = useContextualRecord(router, "paymentId", !loading, () => {
+    setSearch(""); setFilterStatus(""); setFilterMonth("");
+  });
 
   const today = new Date().toISOString().split("T")[0];
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
@@ -394,7 +398,7 @@ export default function Cobranza() {
                   const contrato = contracts.find(c => c.id === p.contract_id);
                   const reciboRenta = receiptFor(p.id);
                   return (
-                    <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", background: p.status === "atrasado" ? "#fff5f5" : "#fff" }}>
+                    <tr id={`paymentId-${p.id}`} key={p.id} style={{ borderTop: "1px solid #f3f4f6", background: p.status === "atrasado" ? "#fff5f5" : "#fff", ...contextualRecordStyle(contextualPaymentId === p.id) }}>
                       <td style={{ padding: "11px 14px", fontWeight: 600, fontSize: 14 }}>{p.tenant_name || "-"}</td>
                       <td style={{ padding: "11px 14px", fontSize: 13, color: "#6b7280" }}>
                         {p.property_name || "-"}

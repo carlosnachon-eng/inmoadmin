@@ -79,10 +79,12 @@ const STATUS_COLORS = {
 export default function DetalleFirma() {
   const router = useRouter()
   const { id } = router.query
+  const appointmentId = typeof router.query.appointmentId === 'string' ? router.query.appointmentId : ''
 
   const [firma, setFirma] = useState(null)
   const [etapas, setEtapas] = useState([])
   const [comentarios, setComentarios] = useState([])
+  const [contextAppointment, setContextAppointment] = useState(null)
   const [comentario, setComentario] = useState('')
   const [notaEtapa, setNotaEtapa] = useState('')
   const [etapaActiva, setEtapaActiva] = useState(null)
@@ -114,13 +116,16 @@ export default function DetalleFirma() {
     observaciones_generales: '',
   })
 
-  useEffect(() => { if (!id) return; cargarTodo() }, [id])
+  useEffect(() => { if (!id) return; cargarTodo() }, [appointmentId, id])
 
   async function cargarTodo() {
-    const [{ data: f }, { data: e }, { data: c }] = await Promise.all([
+    const [{ data: f }, { data: e }, { data: c }, { data: appointment }] = await Promise.all([
       supabase.from('firmas').select('*').eq('id', id).single(),
       supabase.from('firma_etapas').select('*').eq('firma_id', id).order('orden'),
-      supabase.from('firma_comentarios').select('*').eq('firma_id', id).order('created_at', { ascending: false })
+      supabase.from('firma_comentarios').select('*').eq('firma_id', id).order('created_at', { ascending: false }),
+      appointmentId
+        ? supabase.from('firmas_citas').select('id, firma_id, fecha, hora, tipo').eq('id', appointmentId).eq('firma_id', id).maybeSingle()
+        : Promise.resolve({ data: null })
     ])
     setFirma(f)
     setDatosForm({
@@ -136,6 +141,7 @@ export default function DetalleFirma() {
     }))
     setEtapas(e || [])
     setComentarios(c || [])
+    setContextAppointment(appointment || null)
     setLoading(false)
   }
 
@@ -264,7 +270,12 @@ export default function DetalleFirma() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 36, objectFit: 'contain' }} />
           <div style={{ width: 1, height: 32, background: '#e5e7eb' }} />
-          <div>
+    <div>
+      {appointmentId && <div role="status" style={{ margin: '0 0 12px', padding: '10px 14px', borderRadius: 8, background: '#fffbeb', color: '#92400e', fontWeight: 700 }}>
+        {contextAppointment
+          ? `Contexto de cita: ${contextAppointment.fecha || "sin fecha"}${contextAppointment.hora ? ` · ${contextAppointment.hora}` : ""} · ${String(contextAppointment.tipo || "cita").replaceAll("_", " ")}`
+          : `La cita solicitada ${appointmentId.slice(0, 8)} no está disponible para este expediente.`}
+      </div>}
             <p style={{ margin: 0, fontSize: 9, color: '#C8102E', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Área Jurídica</p>
             <h1 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1a1a2e' }}>Coordinación de Firmas</h1>
           </div>

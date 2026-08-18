@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import Head from 'next/head'
+import { useRouter } from 'next/router'
+import { contextualRecordStyle, useContextualRecord } from '../lib/useContextualRecord'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -107,6 +109,7 @@ function ReceptorForm({ form, setForm, listaPersonas }) {
 }
 
 export default function Checador() {
+  const router = useRouter()
   const [session, setSession] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [tab, setTab] = useState('llaves')
@@ -150,6 +153,9 @@ export default function Checador() {
   const [filtroMovBusqueda, setFiltroMovBusqueda] = useState('')
   const [movsPagina, setMovsPagina] = useState(1)
   const MOVS_POR_PAGINA = 15
+  const contextualKeyId = useContextualRecord(router, 'keyId', llaves.length > 0, () => {
+    setTab('llaves'); setBusquedaLlave(''); setFiltroLlave('todas')
+  })
 
   // Admin
   const [vistaAdmin, setVistaAdmin] = useState('hoy')
@@ -1183,7 +1189,7 @@ export default function Checador() {
                   const enResguardo = llave.en_resguardo
                   const alerta = !enResguardo && diasFuera(llave.fecha_prestamo) >= 1
                   return (
-                    <div key={llave.id} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: `1px solid ${alerta ? '#fcd34d' : esMia ? '#fca5a5' : '#e5e7eb'}`, borderLeft: `4px solid ${alerta ? '#f59e0b' : esMia ? '#b91c3c' : enResguardo ? '#065f46' : '#f59e0b'}` }}>
+                    <div id={`keyId-${llave.id}`} key={llave.id} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: `1px solid ${alerta ? '#fcd34d' : esMia ? '#fca5a5' : '#e5e7eb'}`, borderLeft: `4px solid ${alerta ? '#f59e0b' : esMia ? '#b91c3c' : enResguardo ? '#065f46' : '#f59e0b'}`, ...contextualRecordStyle(contextualKeyId === llave.id) }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>

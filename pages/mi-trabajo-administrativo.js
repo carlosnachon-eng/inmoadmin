@@ -12,6 +12,11 @@ const BUCKETS = [
   ["proximo", "Próximos", "#166534", "#f0fdf4", "#bbf7d0"],
 ];
 
+const QUALITY_CARDS = [
+  ["data_quality", "Datos incompletos", "#9a3412", "#fff7ed", "#fed7aa"],
+  ["historical_review", "Históricos por revisar", "#475569", "#f8fafc", "#cbd5e1"],
+];
+
 const BUCKET_STYLE = Object.fromEntries(BUCKETS.map(([key, label, color, bg, border]) => [key, {
   label, color, bg, border,
 }]));
@@ -61,6 +66,44 @@ const ACTION_LABELS = {
   note_added: "Nota agregada",
 };
 
+const RULE_LABELS = {
+  servicio_periodo_sin_control: "Control mensual no generado",
+  servicio_datos_inconsistentes: "Configuración incompleta",
+  servicio_historico_revisar: "Servicio posiblemente histórico",
+  comprobante_servicio_pendiente: "Comprobante pendiente de revisión",
+  servicio_vencido: "Pago de servicio vencido",
+  servicio_proximo: "Pago de servicio próximo",
+  renta_pendiente: "Cobranza de renta",
+  renovacion_contrato: "Renovación contractual",
+  llave_fuera_resguardo: "Llave fuera de resguardo",
+  liquidacion_pendiente: "Liquidación pendiente",
+  liquidacion_parcial: "Liquidación parcial",
+  evidencia_entrega_incompleta: "Evidencia de entrega incompleta",
+  firma_sin_avance: "Firma sin avance",
+  cita_firma_pendiente: "Cita de firma pendiente",
+  scheduled_occurrence_due: "Tarea recurrente programada",
+};
+
+const MISSING_FIELD_LABELS = {
+  periodicidad_sin_ancla: "No existe un periodo y vencimiento previos confiables para calcular la siguiente obligación.",
+  "contract_relation.missing": "No se encontró una relación contractual confiable.",
+  "contract_relation.ambiguous": "Más de un contrato podría corresponder al servicio.",
+  "pago.status": "El pago no tiene estado.",
+  "pago.fecha_limite": "El pago no tiene fecha límite.",
+  property_name: "Falta la propiedad.",
+  tipo: "Falta el tipo de servicio.",
+  periodicidad: "Falta la periodicidad.",
+  quien_paga: "Falta definir quién paga.",
+};
+
+const CONTRACT_RELATION_LABELS = {
+  active: "Contrato activo",
+  ended: "Contrato terminado",
+  missing: "Sin contrato identificable",
+  ambiguous: "Relación contractual ambigua",
+  legacy_match: "Contrato activo inferido (legacy)",
+};
+
 const formatDate = (value) => {
   if (!value) return "Sin fecha límite";
   const rawValue = String(value);
@@ -81,10 +124,12 @@ export default function MiTrabajoAdministrativo() {
   const [sourceFilter, setSourceFilter] = useState("todos");
   const [responsibleFilter, setResponsibleFilter] = useState("todos");
   const [supervisionFilter, setSupervisionFilter] = useState("todos");
+  const [qualityFilter, setQualityFilter] = useState("todos");
   const [caseView, setCaseView] = useState("active");
   const [history, setHistory] = useState({ contextKey: null, actions: [], loading: false });
   const [noteEditor, setNoteEditor] = useState({ contextKey: null, text: "", saving: false });
   const [feedback, setFeedback] = useState("");
+  const [selectedItem, setSelectedItem] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: current } }) => {
@@ -147,7 +192,7 @@ export default function MiTrabajoAdministrativo() {
     if (authorized) loadData();
   }, [authorized, loadData, profile]);
 
-  const summaries = useMemo(() => BUCKETS.map(([key, label, color, bg, border]) => ({
+  const summaries = useMemo(() => [...BUCKETS, ...QUALITY_CARDS].map(([key, label, color, bg, border]) => ({
     key, label, color, bg, border, count: Number(data?.summary?.[key] || 0),
   })), [data?.summary]);
 
@@ -155,11 +200,14 @@ export default function MiTrabajoAdministrativo() {
     if (sourceFilter !== "todos" && item.sourceType !== sourceFilter) return false;
     if (responsibleFilter === "asignado" && !item.responsibleProfileId) return false;
     if (responsibleFilter === "sin_asignar" && item.responsibleProfileId) return false;
-    if (supervisionFilter === "autorizacion" && !(item.supervision?.requiresAuthorization || item.bucket === "requiere_autorizacion")) return false;
+    if (supervisionFilter === "autorizacion" && !(item.supervision?.requiresAuthorization || (item.bucket === "requiere_autorizacion" && !["data_quality", "historical_review"].includes(item.presentationCategory)))) return false;
     if (supervisionFilter === "manual" && !item.supervision?.manualControl) return false;
     if (supervisionFilter === "corregido" && item.supervision?.status !== "modified") return false;
+    if (qualityFilter === "data_quality" && item.presentationCategory !== "data_quality") return false;
+    if (qualityFilter === "historical_review" && item.presentationCategory !== "historical_review") return false;
+    if (qualityFilter === "operational" && ["data_quality", "historical_review"].includes(item.presentationCategory)) return false;
     return true;
-  }), [data?.items, responsibleFilter, sourceFilter, supervisionFilter]);
+  }), [data?.items, qualityFilter, responsibleFilter, sourceFilter, supervisionFilter]);
 
   const loadHistory = async (contextKey, toggle = true) => {
     if (toggle && history.contextKey === contextKey) { setHistory({ contextKey: null, actions: [], loading: false }); return; }
@@ -277,6 +325,9 @@ export default function MiTrabajoAdministrativo() {
           <select aria-label="Filtrar por supervisión" value={supervisionFilter} onChange={(e) => setSupervisionFilter(e.target.value)} style={{ padding: "8px 10px", border: `1px solid ${brand.border}`, borderRadius: 8, background: "#fff" }}>
             <option value="todos">Toda supervisión</option><option value="autorizacion">Requiere autorización</option><option value="manual">Tomado manualmente</option><option value="corregido">Corregido</option>
           </select>
+          <select aria-label="Filtrar por calidad" value={qualityFilter} onChange={(e) => setQualityFilter(e.target.value)} style={{ padding: "8px 10px", border: `1px solid ${brand.border}`, borderRadius: 8, background: "#fff" }}>
+            <option value="todos">Toda calidad operativa</option><option value="operational">Trabajo operativo</option><option value="data_quality">Datos incompletos</option><option value="historical_review">Históricos por revisar</option>
+          </select>
         </section>
 
         <section aria-label={caseView === "resolved" ? "Casos resueltos" : "Pendientes administrativos"} style={{ display: "grid", gap: 10 }}>
@@ -286,7 +337,12 @@ export default function MiTrabajoAdministrativo() {
             </div>
           )}
           {visibleItems.map((item) => {
-            const style = BUCKET_STYLE[item.bucket] || BUCKET_STYLE.proximo;
+            const qualityStyle = item.presentationCategory === "data_quality"
+              ? { label: "Datos incompletos", color: "#9a3412", bg: "#fff7ed", border: "#fed7aa" }
+              : item.presentationCategory === "historical_review"
+                ? { label: "Histórico por revisar", color: "#475569", bg: "#f8fafc", border: "#cbd5e1" }
+                : null;
+            const style = qualityStyle || BUCKET_STYLE[item.bucket] || BUCKET_STYLE.proximo;
             const owner = item.waitingOn
               ? `Esperando: ${String(item.waitingOn).replace(/_/g, " ")}`
               : item.responsibleProfileId
@@ -299,7 +355,7 @@ export default function MiTrabajoAdministrativo() {
                     <span style={{ fontSize: 11, fontWeight: 800, color: brand.grayLight, textTransform: "uppercase" }}>{SOURCE_LABELS[item.sourceType] || item.sourceType}</span>
                     <span style={{ fontSize: 11, fontWeight: 800, color: style.color, background: style.bg, border: `1px solid ${style.border}`, borderRadius: 999, padding: "3px 8px" }}>{style.label}</span>
                     <span style={{ fontSize: 11, fontWeight: 800, color: brand.grayLight }}>{item.priority}</span>
-                    {(item.supervision?.requiresAuthorization || item.bucket === "requiere_autorizacion") && <span style={{ fontSize: 11, fontWeight: 800, color: "#6b21a8" }}>Requiere autorización</span>}
+                    {(item.supervision?.requiresAuthorization || (item.bucket === "requiere_autorizacion" && !qualityStyle)) && <span style={{ fontSize: 11, fontWeight: 800, color: "#6b21a8" }}>Requiere autorización</span>}
                     {item.supervision?.manualControl && <span style={{ fontSize: 11, fontWeight: 800, color: "#1d4ed8" }}>Control manual</span>}
                   </div>
                   <h2 style={{ margin: "0 0 5px", fontSize: 17, color: brand.gray }}>{item.title}</h2>
@@ -343,13 +399,37 @@ export default function MiTrabajoAdministrativo() {
                     }) : "Sin correcciones registradas."}
                   </div>}
                 </div>
-                <a href={item.href} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", background: brand.red, color: "#fff", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 800 }}>
-                  Abrir
-                </a>
+                <div style={{ display: "grid", gap: 7 }}>
+                  <button type="button" onClick={() => { setSelectedItem(item); loadHistory(item.contextKey, false); }} style={{ border: `1px solid ${brand.border}`, background: "#fff", color: brand.gray, borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>Ver detalle</button>
+                  <a href={item.href} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", background: brand.red, color: "#fff", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 800 }}>Ir al módulo</a>
+                </div>
               </article>
             );
           })}
         </section>
+        {selectedItem && <div role="dialog" aria-modal="true" aria-label="Detalle del caso" style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(15,23,42,.38)", display: "flex", justifyContent: "flex-end" }} onClick={() => setSelectedItem(null)}>
+          <aside style={{ width: "min(520px, 94vw)", height: "100%", overflowY: "auto", background: "#fff", boxShadow: "-12px 0 30px rgba(15,23,42,.18)", padding: 24 }} onClick={(event) => event.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><div><div style={{ color: brand.red, fontWeight: 850, fontSize: 12, textTransform: "uppercase" }}>{SOURCE_LABELS[selectedItem.sourceType] || selectedItem.sourceType}</div><h2 style={{ color: brand.gray, margin: "6px 0 0" }}>{selectedItem.title}</h2></div><button type="button" aria-label="Cerrar detalle" onClick={() => setSelectedItem(null)} style={{ border: 0, background: "transparent", fontSize: 24, cursor: "pointer" }}>×</button></div>
+            <dl style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "10px 14px", marginTop: 22, fontSize: 13 }}>
+              <dt>Prioridad</dt><dd style={{ margin: 0 }}>{selectedItem.priority}</dd>
+              <dt>Categoría</dt><dd style={{ margin: 0 }}>{selectedItem.presentationCategory === "data_quality" ? "Datos incompletos" : selectedItem.presentationCategory === "historical_review" ? "Histórico por revisar" : BUCKET_STYLE[selectedItem.bucket]?.label}</dd>
+              <dt>Regla</dt><dd style={{ margin: 0 }}>{RULE_LABELS[selectedItem.ruleKey] || selectedItem.ruleKey.replace(/_/g, " ")}</dd>
+              {selectedItem.metadata?.propertyLabel && <><dt>Propiedad</dt><dd style={{ margin: 0 }}>{selectedItem.metadata.propertyLabel}</dd></>}
+              {selectedItem.metadata?.period && <><dt>Periodo</dt><dd style={{ margin: 0 }}>{selectedItem.metadata.period}</dd></>}
+              <dt>Fecha</dt><dd style={{ margin: 0 }}>{formatDate(selectedItem.dueAt || selectedItem.lastActivityAt)}</dd>
+              {selectedItem.metadata?.appointmentContext && <><dt>Cita contextual</dt><dd style={{ margin: 0 }}>{formatDate(selectedItem.metadata.appointmentContext.dueAt)} · Vencida</dd></>}
+              <dt>Responsable</dt><dd style={{ margin: 0 }}>{selectedItem.responsibleArea || "Sin asignar"}</dd>
+              {selectedItem.waitingOn && <><dt>Esperando</dt><dd style={{ margin: 0 }}>{String(selectedItem.waitingOn).replace(/_/g, " ")}</dd></>}
+              {selectedItem.metadata?.contractRelation && <><dt>Contrato</dt><dd style={{ margin: 0 }}>{CONTRACT_RELATION_LABELS[selectedItem.metadata.contractRelation] || selectedItem.metadata.contractRelation}</dd></>}
+            </dl>
+            <div style={{ marginTop: 20 }}><strong>Motivo</strong><p>{selectedItem.reason}</p><strong>Acción recomendada</strong><p>{selectedItem.recommendedAction}</p></div>
+            {selectedItem.dataQuality?.missingFields?.length > 0 && <section style={{ marginTop: 18, padding: 14, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10 }}><strong>Datos necesarios</strong><ul>{selectedItem.dataQuality.missingFields.map((field) => <li key={field}>{MISSING_FIELD_LABELS[field] || field.replace(/_/g, " ")}</li>)}</ul></section>}
+            {selectedItem.metadata?.requiresFinancialAuthorization && ["admin", "coord_operaciones"].includes(profile?.role_id) && <section style={{ marginTop: 18, padding: 14, background: "#faf5ff", borderRadius: 10 }}><strong>Revisión financiera requerida</strong><p style={{ marginBottom: 0 }}>Los importes permanecen sujetos a autorización humana. Esta vista no ejecuta movimientos.</p></section>}
+            <section style={{ marginTop: 20 }}><strong>Supervisión</strong><p>{selectedItem.supervision?.manualControl ? "Control manual activo" : "Sin control manual"} · {selectedItem.supervision?.automationPaused ? "Automatización pausada" : "Automatización no pausada"}</p></section>
+            <section style={{ marginTop: 20 }}><strong>Historial y notas</strong><div style={{ marginTop: 8, fontSize: 12 }}>{history.loading ? "Cargando…" : history.actions.length ? history.actions.map((action) => <div key={action.id} style={{ marginBottom: 8 }}><strong>{ACTION_LABELS[action.action_type] || action.action_type}</strong> · {new Date(action.created_at).toLocaleString("es-MX")}{action.notes && <div>{action.notes}</div>}</div>) : "Sin acciones registradas."}</div></section>
+            <a href={selectedItem.href} style={{ marginTop: 22, display: "inline-flex", textDecoration: "none", background: brand.red, color: "#fff", padding: "10px 14px", borderRadius: 8, fontWeight: 800 }}>Ir al módulo</a>
+          </aside>
+        </div>}
       </main>
     </Layout>
   );

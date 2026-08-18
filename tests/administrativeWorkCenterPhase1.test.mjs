@@ -17,38 +17,44 @@ const { calculateOwnerLiquidation, paymentReceivedByEmporio } = await import(
 );
 
 const options = { today: "2026-08-18", now: new Date("2026-08-18T18:00:00Z") };
-const service = { id: "service-1", property_name: "Casa A", tipo: "luz", periodicidad: "mensual", aplica: true, quien_paga: "inquilino" };
+const service = { id: "service-1", contract_id: "contract-service-1", property_name: "Casa A", tipo: "luz", periodicidad: "mensual", aplica: true, quien_paga: "inquilino" };
+const serviceContext = (extra = {}) => ({
+  properties: [{ id: "property-service-1", name: "Casa A" }],
+  contracts: [{ id: "contract-service-1", property_name: "Casa A", start_date: "2026-01-01", end_date: "2026-12-31", status: "activo" }],
+  servicios_inmueble: [service],
+  ...extra,
+});
 
 test("servicio sin pago esperado, próximo, vencido y en revisión", () => {
-  const missing = buildAdministrativeWorkCenter({ servicios_inmueble: [service] }, options).items[0];
+  const missing = buildAdministrativeWorkCenter(serviceContext(), options).items[0];
   assert.equal(missing.ruleKey, "servicio_periodo_sin_control");
-  assert.equal(missing.bucket, "vencido");
+  assert.equal(missing.bucket, "para_hoy");
 
-  const next = buildAdministrativeWorkCenter({ servicios_inmueble: [service], pagos_servicios: [{ id: "p1", property_name: "Casa A", tipo: "luz", periodo: "2026-08", status: "pendiente", fecha_limite: "2026-08-22" }] }, options).items[0];
+  const next = buildAdministrativeWorkCenter(serviceContext({ pagos_servicios: [{ id: "p1", servicio_id: "service-1", property_name: "Casa A", tipo: "luz", periodo: "2026-08", status: "pendiente", fecha_limite: "2026-08-22" }] }), options).items[0];
   assert.equal(next.ruleKey, "servicio_proximo");
   assert.equal(next.bucket, "proximo");
 
-  const overdue = buildAdministrativeWorkCenter({ servicios_inmueble: [service], pagos_servicios: [{ id: "p2", property_name: "Casa A", tipo: "luz", periodo: "2026-08", status: "pendiente", fecha_limite: "2026-08-17" }] }, options).items[0];
+  const overdue = buildAdministrativeWorkCenter(serviceContext({ pagos_servicios: [{ id: "p2", servicio_id: "service-1", property_name: "Casa A", tipo: "luz", periodo: "2026-08", status: "pendiente", fecha_limite: "2026-08-17" }] }), options).items[0];
   assert.equal(overdue.ruleKey, "servicio_vencido");
 
-  const review = buildAdministrativeWorkCenter({ servicios_inmueble: [service], pagos_servicios: [{ id: "p3", property_name: "Casa A", tipo: "luz", periodo: "2026-08", status: "en_revision", hasReceipt: true, fecha_limite: "2026-08-01" }] }, options).items[0];
+  const review = buildAdministrativeWorkCenter(serviceContext({ pagos_servicios: [{ id: "p3", servicio_id: "service-1", property_name: "Casa A", tipo: "luz", periodo: "2026-08", status: "en_revision", hasReceipt: true, fecha_limite: "2026-08-01" }] }), options).items[0];
   assert.equal(review.ruleKey, "comprobante_servicio_pendiente");
   assert.match(review.recommendedAction, /Validar/);
 });
 
 test("periodicidades no inventan faltantes para bimestral, anual o recarga", () => {
   for (const periodicidad of ["bimestral", "anual"]) {
-    const [item] = buildAdministrativeWorkCenter({
+    const [item] = buildAdministrativeWorkCenter(serviceContext({
       servicios_inmueble: [{ ...service, id: `service-${periodicidad}`, periodicidad }],
-    }, options).items;
+    }), options).items;
     assert.equal(item.ruleKey, "servicio_datos_inconsistentes");
     assert.equal(item.bucket, "requiere_autorizacion");
-    assert.ok(item.dataQuality.missingFields.includes("proximo_periodo_esperado"));
+    assert.ok(item.dataQuality.missingFields.includes("periodicidad_sin_ancla"));
     assert.notEqual(item.ruleKey, "servicio_periodo_sin_control");
   }
-  const recharge = buildAdministrativeWorkCenter({
+  const recharge = buildAdministrativeWorkCenter(serviceContext({
     servicios_inmueble: [{ ...service, id: "service-recharge", tipo: "gas_recarga", periodicidad: "recarga" }],
-  }, options);
+  }), options);
   assert.equal(recharge.items.length, 0);
 });
 

@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import { contextualRecordStyle, useContextualRecord } from "../lib/useContextualRecord";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -109,6 +110,9 @@ export default function Contratos() {
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("activo");
+  const contextualContractId = useContextualRecord(router, "contractId", !loading, () => {
+    setSearch(""); setFilterStatus("");
+  });
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
   const isAdmin = esAdmin; // El acceso se resuelve por rol y matriz de permisos.
@@ -373,7 +377,7 @@ export default function Contratos() {
                   const cobrosContrato = payments.filter(p => p.contract_id === c.id);
                   const cobradoContrato = cobrosContrato.filter(p => p.status === "pagado").length;
                   return (
-                    <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                    <tr id={`contractId-${c.id}`} key={c.id} style={{ borderTop: "1px solid #f3f4f6", ...contextualRecordStyle(contextualContractId === c.id) }}>
                       <td style={{ padding: "11px 14px", fontSize: 14 }}>
                         <p style={{ margin: 0, fontWeight: 600 }}>{c.tenant_name}</p>
                         {c.co_responsable_nombre && <p style={{ margin: "2px 0 0", fontSize: 11, color: "#7c3aed" }}>{c.co_responsable_nombre}</p>}
