@@ -10,7 +10,7 @@ const SOURCE_PAGE_SIZE = 1000;
 const SOURCE_QUERIES = {
   payments: (client) => client
     .from("payments")
-    .select("id, contract_id, property_name, due_date, amount, status, receipt_url, created_at"),
+    .select("id, contract_id, property_name, due_date, payment_date, amount, status, recibido_por, receipt_url, created_at"),
   contracts: (client) => client
     .from("contracts")
     .select("id, property_name, start_date, end_date, status, monthly_rent, commission_type, commission_value, rent_receiver, created_at"),
@@ -74,6 +74,11 @@ const SOURCE_QUERIES = {
   comisiones_admin: (client) => client
     .from("comisiones_admin")
     .select("id, contract_id, monto, periodo, tipo, status, fecha_cobro, created_at"),
+  cash_movements: (client) => client
+    .from("cash_movements")
+    .select("id, type, category, description, amount, date")
+    .eq("type", "entrada")
+    .eq("category", "renta_cobrada"),
   llaves: (client) => client
     .from("llaves")
     .select("id, numero, propiedad, portador_nombre, activa, en_resguardo, fecha_prestamo"),

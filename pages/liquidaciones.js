@@ -8,6 +8,7 @@ import {
   calculateOwnerLiquidation,
   contractActiveInPeriod,
   maintenanceOwnerBalance,
+  paymentReceivedByEmporio,
 } from "../lib/operaciones/ownerLiquidation";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
@@ -145,6 +146,7 @@ export default function Liquidaciones() {
   const [ownerPayments, setOwnerPayments] = useState([]);
   const [propertyExpenses, setPropertyExpenses] = useState([]);
   const [tickets, setTickets] = useState([]);
+  const [rentCashMovements, setRentCashMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -319,13 +321,14 @@ export default function Liquidaciones() {
 
   const loadData = async () => {
     setLoading(true);
-    const [p, c, pay, op, pe, t] = await Promise.all([
+    const [p, c, pay, op, pe, t, rentCash] = await Promise.all([
       supabase.from("properties").select("*").order("name"),
       supabase.from("contracts").select("*").order("created_at", { ascending: false }),
       supabase.from("payments").select("*").order("due_date", { ascending: true }),
       supabase.from("owner_payments").select("*").order("created_at", { ascending: false }),
       supabase.from("property_expenses").select("*").order("date", { ascending: false }),
       supabase.from("maintenance_tickets").select("*").order("created_at", { ascending: false }),
+      supabase.from("cash_movements").select("id, type, category, description, amount, date").eq("type", "entrada").eq("category", "renta_cobrada"),
     ]);
     setProperties(p.data || []);
     setContracts(c.data || []);
@@ -333,6 +336,7 @@ export default function Liquidaciones() {
     setOwnerPayments(op.data || []);
     setPropertyExpenses(pe.data || []);
     setTickets(t.data || []);
+    setRentCashMovements(rentCash.data || []);
     setLoading(false);
   };
 
@@ -440,6 +444,7 @@ export default function Liquidaciones() {
       ownerEmail, period: mesCorte, properties, contracts, payments,
       ownerPayments: ownerPaymentsWithPeriod, propertyExpenses,
       maintenanceTickets: tickets,
+      cashMovements: rentCashMovements,
     }).balance;
   };
 
@@ -833,6 +838,7 @@ export default function Liquidaciones() {
       ownerEmail, period: mesCorte, properties, contracts, payments,
       ownerPayments: ownerPaymentsWithPeriod, propertyExpenses,
       maintenanceTickets: tickets,
+      cashMovements: rentCashMovements,
     });
     const contratosProp = liquidation.ownerContracts;
     const pagosCobradosMes = liquidation.collectedRents;
@@ -1040,6 +1046,7 @@ export default function Liquidaciones() {
       ownerPayments: ownerPayments.map((row) => ({ ...row, period_key: periodoKeyDesdeDescripcion(row.period_description) })),
       propertyExpenses,
       maintenanceTickets: tickets,
+      cashMovements: rentCashMovements,
     });
     const totalRentaProp = liquidation.totalRent;
 
@@ -1052,14 +1059,12 @@ export default function Liquidaciones() {
       const d = new Date(mv.date + "T12:00:00");
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
-    const cobradaPorEmporio = (pago) => {
-      if (pago.recibido_por === "emporio") return true;
-      if (pago.recibido_por === "propietario") return false;
-      const c = contratosProp.find(c => c.id === pago.contract_id);
-      if (!c) return false;
-      if ((c.rent_receiver || "inmobiliaria") === "inmobiliaria") return true;
-      return entradasDelMes.some(mv => (mv.description || "").toLowerCase().includes((pago.property_name || "").toLowerCase()) && pago.property_name);
-    };
+    const cobradaPorEmporio = (pago) => paymentReceivedByEmporio(
+      pago,
+      contratosProp.find(c => c.id === pago.contract_id),
+      entradasDelMes,
+      periodKey,
+    );
     const rentaEmporio = pagosPagadosMes.filter(p => cobradaPorEmporio(p)).reduce((a, p) => a + (p.amount || 0), 0);
     const rentaDirecta = totalRentaProp - rentaEmporio;
 

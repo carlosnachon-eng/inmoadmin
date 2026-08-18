@@ -12,6 +12,9 @@ const loadable = workSource.replace(
 const { buildAdministrativeWorkCenter, sanitizeAdministrativeSourceRows } = await import(
   `data:text/javascript;base64,${Buffer.from(loadable).toString("base64")}`
 );
+const { calculateOwnerLiquidation, paymentReceivedByEmporio } = await import(
+  `data:text/javascript;base64,${Buffer.from(ownerSource).toString("base64")}`
+);
 
 const options = { today: "2026-08-18", now: new Date("2026-08-18T18:00:00Z") };
 const service = { id: "service-1", property_name: "Casa A", tipo: "luz", periodicidad: "mensual", aplica: true, quien_paga: "inquilino" };
@@ -49,12 +52,13 @@ test("periodicidades no inventan faltantes para bimestral, anual o recarga", () 
   assert.equal(recharge.items.length, 0);
 });
 
-const liquidationSources = (ownerPayments = [], tickets = []) => ({
+const liquidationSources = (ownerPayments = [], tickets = [], overrides = {}) => ({
   properties: [{ id: "prop-1", name: "Casa A", owner_email: "owner@example.com" }],
-  contracts: [{ id: "contract-1", property_name: "Casa A", start_date: "2026-01-01", end_date: "2026-12-31", monthly_rent: 10000, commission_type: "porcentaje", commission_value: 10 }],
-  payments: [{ id: "rent-1", contract_id: "contract-1", due_date: "2026-08-05", status: "pagado", amount: 10000 }],
+  contracts: [{ id: "contract-1", property_name: "Casa A", start_date: "2026-01-01", end_date: "2026-12-31", monthly_rent: 10000, commission_type: "porcentaje", commission_value: 10, rent_receiver: "inmobiliaria", ...overrides.contract }],
+  payments: [{ id: "rent-1", contract_id: "contract-1", property_name: "Casa A", due_date: "2026-08-05", status: "pagado", amount: 10000, ...overrides.payment }],
   owner_payments: ownerPayments,
   maintenance_tickets: tickets,
+  cash_movements: overrides.cashMovements || [],
 });
 
 test("liquidación pendiente y parcial usan el mismo cálculo determinístico", () => {
@@ -65,6 +69,66 @@ test("liquidación pendiente y parcial usan el mismo cálculo determinístico", 
   assert.equal(partial.metadata.balance, 6000);
   assert.equal(partial.ruleKey, "liquidacion_parcial");
   assert.doesNotMatch(JSON.stringify(partial), /owner@example\.com/);
+});
+
+test("A: renta recibida por inmobiliaria genera saldo liquidable", () => {
+  const item = buildAdministrativeWorkCenter(liquidationSources([], [], {
+    payment: { recibido_por: "emporio" },
+  }), options).items.find((row) => row.sourceType === "owner_liquidations");
+  assert.equal(item.metadata.totalRent, 10000);
+  assert.equal(item.metadata.totalCommission, 1000);
+  assert.equal(item.metadata.balance, 9000);
+});
+
+test("B y C: renta directa no genera saldo pero conserva comisión devengada manual", () => {
+  const result = buildAdministrativeWorkCenter(liquidationSources([], [], {
+    contract: { rent_receiver: "propietario" },
+    payment: { recibido_por: "propietario" },
+  }), options);
+  assert.equal(result.items.some((row) => row.sourceType === "owner_liquidations"), false);
+
+  const direct = calculateOwnerLiquidation({
+    ownerEmail: "owner@example.com",
+    period: "2026-08",
+    ...liquidationSources([], [], {
+      contract: { rent_receiver: "propietario" },
+      payment: { recibido_por: "propietario" },
+    }),
+  });
+  assert.equal(direct.totalRent, 0);
+  assert.equal(direct.totalRetainableCommission, 0);
+  assert.equal(direct.totalCommissionAccrued, 1000);
+  assert.equal(direct.balance, 0);
+});
+
+test("D: mezcla liquida sólo renta en poder de Emporio y separa comisión manual", () => {
+  const mixed = calculateOwnerLiquidation({
+    ownerEmail: "owner@example.com",
+    period: "2026-08",
+    properties: [
+      { id: "prop-1", name: "Casa A", owner_email: "owner@example.com" },
+      { id: "prop-2", name: "Casa B", owner_email: "owner@example.com" },
+    ],
+    contracts: [
+      { id: "contract-1", property_name: "Casa A", rent_receiver: "inmobiliaria", monthly_rent: 10000, commission_type: "porcentaje", commission_value: 10 },
+      { id: "contract-2", property_name: "Casa B", rent_receiver: "propietario", monthly_rent: 8000, commission_type: "porcentaje", commission_value: 10 },
+    ],
+    payments: [
+      { id: "rent-1", contract_id: "contract-1", property_name: "Casa A", due_date: "2026-08-05", status: "pagado", recibido_por: "emporio", amount: 10000 },
+      { id: "rent-2", contract_id: "contract-2", property_name: "Casa B", due_date: "2026-08-05", status: "pagado", recibido_por: "propietario", amount: 8000 },
+    ],
+  });
+  assert.equal(mixed.totalRent, 10000);
+  assert.equal(mixed.totalRetainableCommission, 1000);
+  assert.equal(mixed.totalCommissionAccrued, 1800);
+  assert.equal(mixed.balance, 9000);
+});
+
+test("payments.recibido_por prevalece y caja respalda el histórico directo cobrado en oficina", () => {
+  const directContract = { id: "c", property_name: "Casa A", rent_receiver: "propietario" };
+  assert.equal(paymentReceivedByEmporio({ amount: 10000, property_name: "Casa A", recibido_por: "propietario" }, directContract, [{ type: "entrada", category: "renta_cobrada", description: "Casa A", amount: 10000, date: "2026-08-05" }], "2026-08"), false);
+  assert.equal(paymentReceivedByEmporio({ amount: 10000, property_name: "Casa A", recibido_por: "emporio" }, directContract, [], "2026-08"), true);
+  assert.equal(paymentReceivedByEmporio({ amount: 10000, property_name: "Casa A" }, directContract, [{ type: "entrada", category: "renta_cobrada", description: "Renta Casa A", amount: 10000, date: "2026-08-05" }], "2026-08"), true);
 });
 
 test("la pantalla reutiliza el cálculo y no vuelve a descontar parciales", () => {

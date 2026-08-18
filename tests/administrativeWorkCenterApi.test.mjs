@@ -16,3 +16,8 @@ test("consultas server-side seleccionan sólo campos necesarios de evidencia", (
   assert.match(api, /sanitizeAdministrativeSourceRows/);
   assert.doesNotMatch(api, /\.select\("\*"\)/);
 });
+
+test("liquidaciones cargan receptor transaccional y evidencia de caja", () => {
+  assert.match(api, /payments[\s\S]*recibido_por/);
+  assert.match(api, /cash_movements[\s\S]*renta_cobrada/);
+});
