@@ -174,7 +174,8 @@ function ModalServicios({ property, onClose, showToast, profile }) {
       }]);
     }
 
-    const { error } = await supabase.from("pagos_servicios").insert({
+    const pagoExistente = pagos.find(p => p.tipo === servicio.tipo && p.periodo === periodoActual());
+    const datosPago = {
       property_name: property.name,
       tipo: servicio.tipo,
       periodo: periodoActual(),
@@ -184,7 +185,10 @@ function ModalServicios({ property, onClose, showToast, profile }) {
       fecha_limite: pagoForm.fecha_limite || null,
       subido_por: "admin",
       gasto_id: gastoId,
-    });
+    };
+    const { error } = pagoExistente
+      ? await supabase.from("pagos_servicios").update(datosPago).eq("id", pagoExistente.id)
+      : await supabase.from("pagos_servicios").insert(datosPago);
     setSaving(false);
     if (error) { showToast("Error: " + error.message, false); return; }
     showToast(loPagoEmporio ? "Pago registrado y descontado de la liquidación del propietario" : "Pago registrado");
@@ -217,6 +221,21 @@ function ModalServicios({ property, onClose, showToast, profile }) {
   const pagoDelPeriodo = (tipo) => {
     const periodo = periodoActual();
     return pagos.find(p => p.tipo === tipo && p.periodo === periodo);
+  };
+
+  const confirmarPagoHistorico = async (pago) => {
+    const config = SERVICIOS_CONFIG.find(c => c.tipo === pago.tipo);
+    if (!window.confirm(`¿Confirmar como pagado ${config?.label || pago.tipo} del periodo ${pago.periodo}?`)) return;
+    setSaving(true);
+    const notaAuditoria = `Comprobante validado desde historial el ${new Date().toLocaleDateString("es-MX")}.`;
+    const { error } = await supabase.from("pagos_servicios").update({
+      status: "pagado",
+      notas: [pago.notas, notaAuditoria].filter(Boolean).join(" "),
+    }).eq("id", pago.id);
+    setSaving(false);
+    if (error) { showToast("Error: " + error.message, false); return; }
+    showToast("Pago confirmado");
+    loadServicios();
   };
 
   const semaforo = (status) => {
@@ -342,6 +361,15 @@ function ModalServicios({ property, onClose, showToast, profile }) {
                       </a>
                     ) : (
                       <span style={{ color: "#9ca3af" }}>Sin archivo</span>
+                    )}
+                    {p.status === "en_revision" && (
+                      <button
+                        onClick={() => confirmarPagoHistorico(p)}
+                        disabled={saving}
+                        style={{ background: "#059669", color: "#fff", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1 }}
+                      >
+                        ✓ Confirmar pago
+                      </button>
                     )}
                   </div>
                 );
