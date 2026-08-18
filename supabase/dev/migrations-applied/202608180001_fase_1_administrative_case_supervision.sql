@@ -1,0 +1,7 @@
+-- REGISTRO DEV ONLY — NO EJECUTAR.
+-- Estado: APLICADA MANUALMENTE el 2026-08-18.
+-- Proyecto: inmoadmin-dev (hjfwjnejbcpmknvfpdcq).
+-- Fuente aplicada: supabase/migrations/202608180001_fase_1_administrative_case_supervision.sql
+-- SHA-256 auditado: 77f7f39a3ababc00132d1a35b9c9185a9c387d705d1516a9e52acc6bceab26b7
+-- Resultado: transacción exitosa; tablas, RPC, constraints, índices, grants y RLS verificados.
+-- Este archivo es exclusivamente documental y deliberadamente no contiene DDL.

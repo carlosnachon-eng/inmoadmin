@@ -1,0 +1,7 @@
+-- REGISTRO DEV ONLY — NO EJECUTAR.
+-- Estado: APLICADO MANUALMENTE el 2026-08-18.
+-- Proyecto: inmoadmin-dev (hjfwjnejbcpmknvfpdcq).
+-- Fuente aplicada: supabase/dev/bootstrap/202608180002_fase_1_operational_sources_schema.sql
+-- SHA-256 auditado: 52afd2fec9dacce9bffbd01b41356d040a46913990e3a573d0f884a16dac0073
+-- Resultado: transacción y checks exitosos; siete tablas, markers, grants y RLS verificados.
+-- Este archivo es exclusivamente documental y deliberadamente no contiene DDL.
