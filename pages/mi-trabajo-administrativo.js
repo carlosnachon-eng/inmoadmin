@@ -27,6 +27,9 @@ const SOURCE_LABELS = {
   poliza_expedientes: "Pólizas",
   condominio_cobranza: "Condominios",
   operational_recurring_task: "Mantenimiento programado",
+  servicios: "Servicios",
+  owner_liquidations: "Liquidaciones",
+  llaves: "Llaves",
 };
 
 const formatDate = (value) => {
@@ -46,6 +49,10 @@ export default function MiTrabajoAdministrativo() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("todos");
+  const [responsibleFilter, setResponsibleFilter] = useState("todos");
+  const [supervisionFilter, setSupervisionFilter] = useState("todos");
+  const [history, setHistory] = useState({ contextKey: null, actions: [], loading: false });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: current } }) => {
@@ -111,6 +118,37 @@ export default function MiTrabajoAdministrativo() {
     key, label, color, bg, border, count: Number(data?.summary?.[key] || 0),
   })), [data?.summary]);
 
+  const visibleItems = useMemo(() => (data?.items || []).filter((item) => {
+    if (sourceFilter !== "todos" && item.sourceType !== sourceFilter) return false;
+    if (responsibleFilter === "asignado" && !item.responsibleProfileId) return false;
+    if (responsibleFilter === "sin_asignar" && item.responsibleProfileId) return false;
+    if (supervisionFilter === "autorizacion" && !(item.supervision?.requiresAuthorization || item.bucket === "requiere_autorizacion")) return false;
+    if (supervisionFilter === "manual" && !item.supervision?.manualControl) return false;
+    if (supervisionFilter === "corregido" && item.supervision?.status !== "modified") return false;
+    return true;
+  }), [data?.items, responsibleFilter, sourceFilter, supervisionFilter]);
+
+  const supervise = async (item, actionType, value = {}) => {
+    const response = await fetch("/api/operaciones/administrative-cases", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ contextKey: item.contextKey, actionType, value }),
+    });
+    const json = await response.json();
+    if (!response.ok) { setError(json.error || "No se pudo guardar la supervisión."); return; }
+    await loadData();
+  };
+
+  const loadHistory = async (contextKey) => {
+    if (history.contextKey === contextKey) { setHistory({ contextKey: null, actions: [], loading: false }); return; }
+    setHistory({ contextKey, actions: [], loading: true });
+    const response = await fetch(`/api/operaciones/administrative-cases?contextKey=${encodeURIComponent(contextKey)}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const json = await response.json();
+    setHistory({ contextKey, actions: response.ok ? json.actions || [] : [], loading: false });
+  };
+
   const logout = async () => {
     await supabase.auth.signOut();
     window.location.href = "/";
@@ -167,13 +205,26 @@ export default function MiTrabajoAdministrativo() {
           <div role="alert" style={{ marginBottom: 16, padding: "12px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#991b1b" }}>{error}</div>
         )}
 
+        <section aria-label="Filtros" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+          <select aria-label="Filtrar por origen" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} style={{ padding: "8px 10px", border: `1px solid ${brand.border}`, borderRadius: 8, background: "#fff" }}>
+            <option value="todos">Todos los orígenes</option>
+            {[...new Set((data?.items || []).map((item) => item.sourceType))].map((source) => <option key={source} value={source}>{SOURCE_LABELS[source] || source}</option>)}
+          </select>
+          <select aria-label="Filtrar por responsable" value={responsibleFilter} onChange={(e) => setResponsibleFilter(e.target.value)} style={{ padding: "8px 10px", border: `1px solid ${brand.border}`, borderRadius: 8, background: "#fff" }}>
+            <option value="todos">Todos los responsables</option><option value="asignado">Con responsable</option><option value="sin_asignar">Sin responsable</option>
+          </select>
+          <select aria-label="Filtrar por supervisión" value={supervisionFilter} onChange={(e) => setSupervisionFilter(e.target.value)} style={{ padding: "8px 10px", border: `1px solid ${brand.border}`, borderRadius: 8, background: "#fff" }}>
+            <option value="todos">Toda supervisión</option><option value="autorizacion">Requiere autorización</option><option value="manual">Tomado manualmente</option><option value="corregido">Corregido</option>
+          </select>
+        </section>
+
         <section aria-label="Pendientes administrativos" style={{ display: "grid", gap: 10 }}>
           {!loading && !error && data?.items?.length === 0 && (
             <div style={{ background: "#fff", border: `1px solid ${brand.border}`, borderRadius: 12, padding: 24, color: brand.grayLight }}>
               No hay pendientes determinísticos para mostrar.
             </div>
           )}
-          {(data?.items || []).map((item) => {
+          {visibleItems.map((item) => {
             const style = BUCKET_STYLE[item.bucket] || BUCKET_STYLE.proximo;
             const owner = item.waitingOn
               ? `Esperando: ${String(item.waitingOn).replace(/_/g, " ")}`
@@ -187,6 +238,8 @@ export default function MiTrabajoAdministrativo() {
                     <span style={{ fontSize: 11, fontWeight: 800, color: brand.grayLight, textTransform: "uppercase" }}>{SOURCE_LABELS[item.sourceType] || item.sourceType}</span>
                     <span style={{ fontSize: 11, fontWeight: 800, color: style.color, background: style.bg, border: `1px solid ${style.border}`, borderRadius: 999, padding: "3px 8px" }}>{style.label}</span>
                     <span style={{ fontSize: 11, fontWeight: 800, color: brand.grayLight }}>{item.priority}</span>
+                    {(item.supervision?.requiresAuthorization || item.bucket === "requiere_autorizacion") && <span style={{ fontSize: 11, fontWeight: 800, color: "#6b21a8" }}>Requiere autorización</span>}
+                    {item.supervision?.manualControl && <span style={{ fontSize: 11, fontWeight: 800, color: "#1d4ed8" }}>Control manual</span>}
                   </div>
                   <h2 style={{ margin: "0 0 5px", fontSize: 17, color: brand.gray }}>{item.title}</h2>
                   <p style={{ margin: "0 0 8px", color: brand.gray, fontSize: 13 }}><strong>Motivo:</strong> {item.reason}</p>
@@ -195,6 +248,25 @@ export default function MiTrabajoAdministrativo() {
                     <span>{owner}</span>
                     <span>Fecha: {formatDate(item.dueAt || item.lastActivityAt)}</span>
                   </div>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
+                    <select aria-label="Corregir clasificación" value="" onChange={(e) => e.target.value && supervise(item, "classification_corrected", { bucket: e.target.value })} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px" }}>
+                      <option value="">Corregir clasificación…</option>{BUCKETS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                    </select>
+                    <select aria-label="Corregir prioridad" value="" onChange={(e) => e.target.value && supervise(item, "priority_corrected", { priority: e.target.value })} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px" }}>
+                      <option value="">Corregir prioridad…</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option>
+                    </select>
+                    <select aria-label="Reasignar responsable" value="" onChange={(e) => e.target.value && supervise(item, "responsible_reassigned", { profileId: e.target.value })} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px" }}>
+                      <option value="">Reasignar…</option>{(data?.responsibleOptions || []).map((option) => <option key={option.id} value={option.id}>{option.name} · {option.roleId}</option>)}
+                    </select>
+                    <button type="button" onClick={() => supervise(item, item.supervision?.manualControl ? "manual_control_released" : "manual_control_taken")} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>{item.supervision?.manualControl ? "Liberar control" : "Tomar control"}</button>
+                    <button type="button" onClick={() => supervise(item, item.supervision?.automationPaused ? "automation_resumed" : "automation_paused")} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>{item.supervision?.automationPaused ? "Reanudar automatización" : "Pausar automatización"}</button>
+                    <button type="button" onClick={() => supervise(item, item.supervision?.requiresAuthorization ? "authorization_cleared" : "authorization_required")} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>{item.supervision?.requiresAuthorization ? "Quitar autorización" : "Requiere autorización"}</button>
+                    <button type="button" onClick={() => supervise(item, "resolved")} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>Marcar resuelto</button>
+                    <button type="button" onClick={() => loadHistory(item.contextKey)} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>Historial</button>
+                  </div>
+                  {history.contextKey === item.contextKey && <div style={{ marginTop: 10, padding: 10, background: "#f9fafb", borderRadius: 8, fontSize: 12, color: brand.grayLight }}>
+                    {history.loading ? "Cargando historial…" : history.actions.length ? history.actions.map((action) => <div key={action.id}>{new Date(action.created_at).toLocaleString("es-MX")}: {action.action_type} ({action.actor_type})</div>) : "Sin correcciones registradas."}
+                  </div>}
                 </div>
                 <a href={item.href} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", background: brand.red, color: "#fff", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 800 }}>
                   Abrir

@@ -6,11 +6,16 @@ const moduleSource = await readFile(
   new URL("../lib/operaciones/administrativeWorkCenter.js", import.meta.url),
   "utf8",
 );
+const ownerSource = await readFile(new URL("../lib/operaciones/ownerLiquidation.js", import.meta.url), "utf8");
+const loadableSource = moduleSource.replace(
+  'import { calculateOwnerLiquidation, maintenanceOwnerBalance } from "./ownerLiquidation.js";',
+  ownerSource.replaceAll("export function", "function"),
+);
 const {
   buildAdministrativeWorkCenter,
   isAdministrativeWorkCenterRole,
   sanitizeAdministrativeSourceRows,
-} = await import(`data:text/javascript;base64,${Buffer.from(moduleSource).toString("base64")}`);
+} = await import(`data:text/javascript;base64,${Buffer.from(loadableSource).toString("base64")}`);
 
 const TODAY = "2026-08-11";
 const ACTIVE_CONDO = "2a223000-0000-4000-8000-000000000001";

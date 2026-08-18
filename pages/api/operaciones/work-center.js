@@ -10,16 +10,13 @@ const SOURCE_PAGE_SIZE = 1000;
 const SOURCE_QUERIES = {
   payments: (client) => client
     .from("payments")
-    .select("id, due_date, status, created_at")
-    .in("status", ["pendiente", "atrasado"]),
+    .select("id, contract_id, property_name, due_date, amount, status, receipt_url, created_at"),
   contracts: (client) => client
     .from("contracts")
-    .select("id, end_date, status, created_at")
-    .eq("status", "activo"),
+    .select("id, property_name, start_date, end_date, status, monthly_rent, commission_type, commission_value, rent_receiver, created_at"),
   maintenance_tickets: (client) => client
     .from("maintenance_tickets")
-    .select("id, assigned_to, priority, status, payer, created_at, updated_at")
-    .not("status", "in", '("terminado","cerrado","cancelado")'),
+    .select("id, property_name, assigned_to, priority, status, payer, charged_amount, advance_paid, advance_amount, descontado_de_liquidacion, fecha_cobro_propietario, recibo_cobro_id, created_at, updated_at"),
   maintenance_quotes: (client) => client
     .from("maintenance_quotes")
     .select("id, ticket_id, payer, status, created_at, updated_at")
@@ -55,6 +52,38 @@ const SOURCE_QUERIES = {
   operational_recurring_tasks: (client) => client
     .from("operational_recurring_tasks")
     .select("id, title, category, responsible_profile_id, property_id, condominium_id, recurrence_unit, recurrence_interval, recurrence_weekday, recurrence_month_day, timezone, next_due_at, lead_days, state, last_completed_at, responsible:profiles!operational_recurring_tasks_responsible_profile_id_fkey(id, active)"),
+  servicios_inmueble: (client) => client
+    .from("servicios_inmueble")
+    .select("id, property_name, tipo, periodicidad, aplica, quien_paga, created_at")
+    .eq("aplica", true),
+  pagos_servicios: (client) => client
+    .from("pagos_servicios")
+    .select("id, property_name, tipo, periodo, status, monto, fecha_limite, comprobante_url, gasto_id, created_at"),
+  properties: (client) => client
+    .from("properties")
+    .select("id, name, owner_email"),
+  owner_payments: (client) => client
+    .from("owner_payments")
+    .select("id, owner_email, period_description, amount_paid, status, payment_date, created_at"),
+  owner_payment_receipts: (client) => client
+    .from("owner_payment_receipts")
+    .select("id, owner_email, periodo, concepto, forma_pago, comprobante_url, firma_url, fecha, created_at"),
+  property_expenses: (client) => client
+    .from("property_expenses")
+    .select("id, property_name, category, amount, paid_by, date, created_at"),
+  comisiones_admin: (client) => client
+    .from("comisiones_admin")
+    .select("id, contract_id, monto, periodo, tipo, status, fecha_cobro, created_at"),
+  llaves: (client) => client
+    .from("llaves")
+    .select("id, numero, propiedad, portador_nombre, activa, en_resguardo, fecha_prestamo"),
+  administrative_case_controls: (client) => client
+    .from("administrative_case_controls")
+    .select("context_key, corrected_bucket, corrected_priority, responsible_profile_id, resolution_status, automation_paused, manual_control, requires_authorization, autonomy_mode, updated_at"),
+  administrative_profiles: (client) => client
+    .from("profiles")
+    .select("id, full_name, role_id, active")
+    .eq("active", true),
 };
 
 function getAdminClient() {
@@ -158,6 +187,11 @@ export default async function handler(req, res) {
       generatedAt: workCenter.generatedAt,
       today: workCenter.today,
       viewer: { profileId: profile.id, roleId: profile.role_id },
+      responsibleOptions: (sources.administrative_profiles || []).map((row) => ({
+        id: row.id,
+        name: row.full_name || "Perfil operativo",
+        roleId: row.role_id,
+      })),
       summary: workCenter.summary,
       items: workCenter.items,
       sourcesWithError,
