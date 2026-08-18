@@ -255,6 +255,13 @@ export default function PolizaPanel() {
     setModal('expediente')
   }
 
+  useEffect(() => {
+    const expedienteId = router.query.expedienteId
+    if (!router.isReady || !expedienteId || loading || !expedientes.length || (modal === 'expediente' && String(selected?.id) === String(expedienteId))) return
+    const expediente = expedientes.find(row => String(row.id) === String(expedienteId))
+    if (expediente) seleccionarExpediente(expediente)
+  }, [expedientes, loading, modal, router.isReady, router.query.expedienteId, selected?.id])
+
   const renovarExpediente = async (expediente) => {
     const completo = await cargarExpedienteCompleto(expediente)
     setSelected(completo)

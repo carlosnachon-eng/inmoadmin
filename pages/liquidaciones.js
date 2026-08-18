@@ -161,6 +161,23 @@ export default function Liquidaciones() {
   const [expedienteTab, setExpedienteTab] = useState("resumen");
   const [descargandoRecibo, setDescargandoRecibo] = useState(null);
 
+  useEffect(() => {
+    if (!router.isReady || loading || !properties.length) return;
+    const period = router.query.period;
+    if (typeof period === "string" && /^\d{4}-\d{2}$/.test(period)) setMesCorte(period);
+    const ownerId = router.query.ownerId;
+    if (ownerId) {
+      const property = properties.find((row) => String(row.id) === String(ownerId));
+      if (!property?.owner_email) return;
+      openExpediente({ email: property.owner_email, name: contracts.find((row) => row.property_name === property.name)?.owner_name || "Propietario" });
+      return;
+    }
+    const receiptId = router.query.receiptId;
+    if (!receiptId) return;
+    supabase.from("owner_payment_receipts").select("owner_email, owner_name").eq("id", receiptId).maybeSingle()
+      .then(({ data }) => data?.owner_email && openExpediente({ email: data.owner_email, name: data.owner_name || "Propietario" }));
+  }, [contracts, loading, properties, router.isReady, router.query.ownerId, router.query.period, router.query.receiptId]);
+
   const openExpediente = async (owner) => {
     setExpediente(owner);
     setExpedienteTab("resumen");

@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import { contextualRecordStyle, useContextualRecord } from "../lib/useContextualRecord";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -137,6 +138,9 @@ export default function Mantenimiento() {
   const [filterProperty, setFilterProperty] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [subiendoFoto, setSubiendoFoto] = useState(null);
+  const contextualTicketId = useContextualRecord(router, "ticketId", !loading, (ticketId) => {
+    setFilterStatus(""); setFilterPriority(""); setFilterProperty(""); setExpandedId(ticketId);
+  });
 
   const subirFotoTicket = async (ticket, file) => {
     setSubiendoFoto(ticket.id);
@@ -555,10 +559,11 @@ export default function Mantenimiento() {
             const quote    = quotes.find(q => q.ticket_id === t.id);
 
             return (
-              <div key={t.id} style={{
+              <div id={`ticketId-${t.id}`} key={t.id} style={{
                 background: "#fff", borderRadius: 14,
                 border: `2px solid ${t.priority === "urgente" ? "#fca5a5" : t.priority === "alta" ? "#fcd34d" : "#f0f0f0"}`,
                 boxShadow: "0 1px 3px rgba(0,0,0,0.06)", overflow: "hidden",
+                ...contextualRecordStyle(contextualTicketId === t.id),
               }}>
                 <div style={{ padding: "14px 18px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>

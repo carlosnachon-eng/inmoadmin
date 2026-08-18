@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import Layout, { brand, Btn } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
@@ -405,6 +406,7 @@ function ModalServicios({ property, onClose, showToast, profile }) {
 }
 
 export default function Propiedades() {
+  const router = useRouter();
   const { cargando: permisoCargando, puedeVer, puedeEditar, esAdmin } = usePermiso("propiedades");
 
   const [properties, setProperties] = useState([]);
@@ -424,6 +426,19 @@ export default function Propiedades() {
   const [busquedaProp, setBusquedaProp] = useState("");
   const [filtroStatusProp, setFiltroStatusProp] = useState("");
   const [filtroServicios, setFiltroServicios] = useState(false);
+
+  useEffect(() => {
+    const serviceId = router.query.serviceId;
+    if (!router.isReady || !serviceId || loading || !properties.length) return;
+    let active = true;
+    supabase.from("servicios_inmueble").select("id, property_name").eq("id", serviceId).maybeSingle()
+      .then(({ data }) => {
+        if (!active || !data) return;
+        const property = properties.find((row) => row.name === data.property_name);
+        if (property) setServiciosProperty(property);
+      });
+    return () => { active = false; };
+  }, [loading, properties, router.isReady, router.query.serviceId]);
 
   const emptyProp = { name: "", address: "", property_type: "depto", rent_amount: "", status: "disponible", notes: "", owner_email: "", owner_phone: "" };
   const emptyExpense = { property_name: "", category: "condominio", description: "", amount: "", paid_by: "propietario", payment_method: "transferencia", date: new Date().toISOString().split("T")[0], notes: "" };

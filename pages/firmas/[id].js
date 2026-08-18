@@ -79,6 +79,7 @@ const STATUS_COLORS = {
 export default function DetalleFirma() {
   const router = useRouter()
   const { id } = router.query
+  const appointmentId = typeof router.query.appointmentId === 'string' ? router.query.appointmentId : ''
 
   const [firma, setFirma] = useState(null)
   const [etapas, setEtapas] = useState([])
@@ -264,7 +265,8 @@ export default function DetalleFirma() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={{ height: 36, objectFit: 'contain' }} />
           <div style={{ width: 1, height: 32, background: '#e5e7eb' }} />
-          <div>
+    <div>
+      {appointmentId && <div role="status" style={{ margin: '0 0 12px', padding: '10px 14px', borderRadius: 8, background: '#fffbeb', color: '#92400e', fontWeight: 700 }}>Contexto: cita {appointmentId.slice(0, 8)} del expediente</div>}
             <p style={{ margin: 0, fontSize: 9, color: '#C8102E', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Área Jurídica</p>
             <h1 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1a1a2e' }}>Coordinación de Firmas</h1>
           </div>

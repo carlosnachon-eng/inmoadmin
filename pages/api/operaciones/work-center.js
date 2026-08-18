@@ -54,11 +54,11 @@ const SOURCE_QUERIES = {
     .select("id, title, category, responsible_profile_id, property_id, condominium_id, recurrence_unit, recurrence_interval, recurrence_weekday, recurrence_month_day, timezone, next_due_at, lead_days, state, last_completed_at, responsible:profiles!operational_recurring_tasks_responsible_profile_id_fkey(id, active)"),
   servicios_inmueble: (client) => client
     .from("servicios_inmueble")
-    .select("id, property_name, tipo, periodicidad, aplica, quien_paga, created_at")
+    .select("id, property_name, contract_id, tipo, periodicidad, dia_corte, dia_limite_pago, aplica, quien_paga, created_at")
     .eq("aplica", true),
   pagos_servicios: (client) => client
     .from("pagos_servicios")
-    .select("id, property_name, tipo, periodo, status, monto, fecha_limite, comprobante_url, gasto_id, created_at"),
+    .select("id, servicio_id, contract_id, property_name, tipo, periodo, status, monto, fecha_limite, comprobante_url, gasto_id, created_at"),
   properties: (client) => client
     .from("properties")
     .select("id, name, owner_email"),
