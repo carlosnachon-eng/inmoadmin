@@ -193,7 +193,7 @@ begin
   foreach table_name in array target_tables loop
     execute format('alter table public.%I enable row level security', table_name);
     execute format('revoke all on table public.%I from public, anon, authenticated', table_name);
-    execute format('grant select, insert, update, delete on table public.%I to authenticated', table_name);
+    execute format('grant select on table public.%I to authenticated', table_name);
     execute format('grant all privileges on table public.%I to service_role', table_name);
 
     for policy_name in
@@ -209,18 +209,6 @@ begin
     execute format(
       'create policy %I on public.%I for select to authenticated using (public.current_profile_can_view_operations_work_center())',
       table_name || '_operations_select', table_name
-    );
-    execute format(
-      'create policy %I on public.%I for insert to authenticated with check (public.current_profile_can_view_operations_work_center())',
-      table_name || '_operations_insert', table_name
-    );
-    execute format(
-      'create policy %I on public.%I for update to authenticated using (public.current_profile_can_view_operations_work_center()) with check (public.current_profile_can_view_operations_work_center())',
-      table_name || '_operations_update', table_name
-    );
-    execute format(
-      'create policy %I on public.%I for delete to authenticated using (public.current_profile_can_view_operations_work_center())',
-      table_name || '_operations_delete', table_name
     );
   end loop;
 end;

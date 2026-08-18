@@ -39,9 +39,11 @@ RLS productivo no es un modelo seguro para copiar:
 - los grants históricos incluyen a `anon` en las siete tablas.
 
 El bootstrap DEV revoca `public`, `anon` y el acceso previo de `authenticated`,
-habilita RLS y sólo permite al rol autenticado que satisfaga la guarda existente
-del Centro Operativo. `service_role` conserva acceso de servidor para la API;
-ninguna clave se incorpora al SQL ni al frontend.
+habilita RLS y sólo concede lectura al rol autenticado que satisfaga la guarda
+existente del Centro Operativo. No concede escritura directa a `authenticated`:
+las mutaciones deben pasar por rutas server-side o RPC revisadas. `service_role`
+conserva acceso de servidor para la API; ninguna clave se incorpora al SQL ni al
+frontend.
 
 Para que `CREATE TABLE IF NOT EXISTS` no oculte un esquema incompatible, cada
 tabla creada recibe el marcador

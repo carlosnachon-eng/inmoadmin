@@ -29,6 +29,11 @@ begin
        or has_table_privilege('anon', format('public.%I', table_name), 'DELETE') then
       raise exception 'anon conserva privilegios sobre public.%', table_name;
     end if;
+    if has_table_privilege('authenticated', format('public.%I', table_name), 'INSERT')
+       or has_table_privilege('authenticated', format('public.%I', table_name), 'UPDATE')
+       or has_table_privilege('authenticated', format('public.%I', table_name), 'DELETE') then
+      raise exception 'authenticated conserva escritura directa sobre public.%', table_name;
+    end if;
   end loop;
 
   if exists (
@@ -42,6 +47,18 @@ begin
            or lower(pg_get_expr(p.polwithcheck, p.polrelid)) = 'true')
   ) then
     raise exception 'Existe policy USING true o WITH CHECK true en el bootstrap';
+  end if;
+
+  if exists (
+    select 1
+    from pg_policy p
+    join pg_class c on c.oid = p.polrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = any(expected_tables)
+      and p.polcmd <> 'r'
+  ) then
+    raise exception 'Existe policy de escritura directa para authenticated';
   end if;
 end;
 $$;
