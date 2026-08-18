@@ -110,8 +110,8 @@ values
  ('f1a00000-0000-4000-8100-000000000004',9104,'FASE1-QA Patio Solar 2',false,'FASE1-QA Portador 3',now()-interval '80 hours','FASE1-QA',true)
 on conflict (id) do nothing;
 
-insert into public.operational_recurring_tasks (id,task_key,title,category,responsible_profile_id,recurrence_unit,recurrence_interval,due_time,timezone,next_due_at,lead_days,state,created_by,updated_by)
-values ('f1b00000-0000-4000-8100-000000000001','fase1-qa:recurring:upcoming','FASE1-QA Revisión operativa próxima','supervision','00000000-0000-4000-8000-000000000003','day',7,time '10:00','America/Mexico_City',((current_date+2+time '10:00') at time zone 'America/Mexico_City'),5,'active','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001')
+insert into public.operational_recurring_tasks (id,task_key,title,category,property_id,condominium_id,responsible_profile_id,recurrence_unit,recurrence_interval,due_time,timezone,next_due_at,lead_days,state,created_by,updated_by)
+values ('f1b00000-0000-4000-8100-000000000001','fase1-qa:recurring:upcoming','FASE1-QA Revisión operativa próxima','supervision','f1000000-0000-4000-8100-000000000001',null,'00000000-0000-4000-8000-000000000003','day',7,time '10:00','America/Mexico_City',((current_date+2+time '10:00') at time zone 'America/Mexico_City'),5,'active','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001')
 on conflict (id) do nothing;
 
 commit;

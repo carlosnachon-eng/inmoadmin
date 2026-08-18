@@ -38,6 +38,14 @@ select scenario, present from (values
  ('transferencia_sin_evidencia', exists(select 1 from public.owner_payment_receipts where id='f1900000-0000-4000-8100-000000000001' and forma_pago='transferencia' and comprobante_url is null)),
  ('efectivo_sin_firma', exists(select 1 from public.owner_payment_receipts where id='f1900000-0000-4000-8100-000000000002' and forma_pago='efectivo' and firma_url is null)),
  ('contrato_proximo_vencer', exists(select 1 from public.contracts where id='f1100000-0000-4000-8100-000000000004' and end_date between current_date and current_date+30)),
- ('tarea_recurrente_proxima', exists(select 1 from public.operational_recurring_tasks where id='f1b00000-0000-4000-8100-000000000001' and state='active'))
+ ('tarea_recurrente_proxima', exists(
+   select 1 from public.operational_recurring_tasks
+   where id='f1b00000-0000-4000-8100-000000000001'
+     and property_id='f1000000-0000-4000-8100-000000000001'
+     and condominium_id is null
+     and state='active'
+     and next_due_at>now()
+     and next_due_at<=now()+interval '3 days'
+ ))
 ) as checks(scenario,present)
 order by scenario;
