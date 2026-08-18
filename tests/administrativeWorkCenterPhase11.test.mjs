@@ -194,4 +194,7 @@ test("cada destino profundo consume y enfoca su identificador", async () => {
     const page = await readFile(new URL(`../pages/${file}`, import.meta.url), "utf8");
     for (const needle of needles) assert.ok(page.includes(needle), `${file} debe consumir ${needle}`);
   }
+  const signaturePage = await readFile(new URL("../pages/firmas/[id].js", import.meta.url), "utf8");
+  assert.match(signaturePage, /select\(['"]id, firma_id, fecha, hora, tipo['"]\)/);
+  assert.doesNotMatch(signaturePage, /firmas_citas['"]\)\.select\([^\n]*status/);
 });
