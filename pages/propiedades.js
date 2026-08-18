@@ -287,6 +287,16 @@ function ModalServicios({ property, onClose, showToast, profile }) {
                         {uploadingComp === config.tipo ? "Subiendo..." : "📎 Comprobante"}
                       </span>
                     </label>
+                    {pago?.comprobante_url && (
+                      <a
+                        href={pago.comprobante_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ background: "#ecfdf5", color: "#047857", border: "1px solid #a7f3d0", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, textDecoration: "none" }}
+                      >
+                        👁 Ver comprobante
+                      </a>
+                    )}
                   </div>
                 )}
               </div>
@@ -326,6 +336,13 @@ function ModalServicios({ property, onClose, showToast, profile }) {
                     <span style={{ color: brand.grayLight }}>{p.periodo}</span>
                     <span>{p.monto ? fmt(p.monto) : "—"}</span>
                     <span style={{ background: sc.bg, color: sc.color, padding: "2px 8px", borderRadius: 99, fontWeight: 600 }}>{sc.label}</span>
+                    {p.comprobante_url ? (
+                      <a href={p.comprobante_url} target="_blank" rel="noreferrer" style={{ color: "#1e40af", fontWeight: 700, textDecoration: "none" }}>
+                        📄 Ver
+                      </a>
+                    ) : (
+                      <span style={{ color: "#9ca3af" }}>Sin archivo</span>
+                    )}
                   </div>
                 );
               })}
