@@ -13,6 +13,12 @@ const { buildAdministrativeWorkCenter, resolveServiceContractRelation } = await 
 );
 const ui = await readFile(new URL("../pages/mi-trabajo-administrativo.js", import.meta.url), "utf8");
 const hook = await readFile(new URL("../lib/useContextualRecord.js", import.meta.url), "utf8");
+const hookFunctions = hook
+  .replace('import { useEffect, useRef } from "react";\n', "")
+  .replace(/export function useContextualRecord[\s\S]*?\n}\n\nexport const contextualRecordStyle[\s\S]*?\n  : \{};\n/, "")
+  .replace("export function resolveServiceDeepLinkContext", "function resolveServiceDeepLinkContext")
+  + "\nexport { resolveServiceDeepLinkContext };";
+const { resolveServiceDeepLinkContext } = await import(`data:text/javascript;base64,${Buffer.from(hookFunctions).toString("base64")}`);
 const options = { today: "2026-08-18", now: new Date("2026-08-18T18:00:00Z") };
 
 const base = (service, payments = [], contracts = []) => ({
@@ -86,5 +92,64 @@ test("UI separa calidad, ofrece detalle y destinos consumen parámetros", async 
   for (const file of ["cobranza.js", "contratos.js", "mantenimiento.js"]) {
     const page = await readFile(new URL(`../pages/${file}`, import.meta.url), "utf8");
     assert.match(page, /useContextualRecord/);
+  }
+});
+
+test("deep link de servicio abre servicio y periodo aunque no exista pago", () => {
+  const context = resolveServiceDeepLinkContext(
+    { serviceId: "service-x", period: "2026-08" },
+    [{ id: "service-x", tipo: "luz" }],
+    [],
+  );
+  assert.equal(context.service.id, "service-x");
+  assert.equal(context.period, "2026-08");
+  assert.equal(context.payment, null);
+  assert.equal(context.tab, "estado");
+});
+
+test("deep link de servicio selecciona el pago exacto", () => {
+  const context = resolveServiceDeepLinkContext(
+    { serviceId: "service-x", period: "2026-08", paymentId: "payment-y" },
+    [{ id: "service-x", tipo: "agua" }],
+    [{ id: "payment-y", periodo: "2026-08", tipo: "agua" }],
+  );
+  assert.equal(context.payment.id, "payment-y");
+  assert.equal(context.tab, "historial");
+  assert.equal(context.paymentMissing, false);
+});
+
+test("paymentId inexistente conserva el contexto del servicio sin romper", () => {
+  const context = resolveServiceDeepLinkContext(
+    { serviceId: "service-x", period: "2026-08", paymentId: "missing" },
+    [{ id: "service-x", tipo: "predial" }],
+    [],
+  );
+  assert.equal(context.service.id, "service-x");
+  assert.equal(context.payment, null);
+  assert.equal(context.paymentMissing, true);
+  assert.equal(context.tab, "estado");
+});
+
+test("sin query params conserva el comportamiento histórico", () => {
+  assert.deepEqual(resolveServiceDeepLinkContext({}, [{ id: "service-x" }], [{ id: "payment-y" }]), {
+    serviceId: "", paymentId: "", period: "", service: null, payment: null, tab: "estado", paymentMissing: false,
+  });
+});
+
+test("cada destino profundo consume y enfoca su identificador", async () => {
+  const expectations = new Map([
+    ["cobranza.js", ["paymentId", "useContextualRecord"]],
+    ["contratos.js", ["contractId", "useContextualRecord"]],
+    ["checador.js", ["keyId", "useContextualRecord"]],
+    ["liquidaciones.js", ["ownerId", "receiptId", "setExpedienteTab(\"comprobantes\")"]],
+    ["mantenimiento.js", ["ticketId", "quoteId", "useContextualRecord"]],
+    ["condominio/[id].js", ["unitId", "feeId", "period"]],
+    ["poliza/index.js", ["expedienteId", "seleccionarExpediente"]],
+    ["firmas/[id].js", ["appointmentId", "firma_citas"]],
+    ["propiedades.js", ["serviceId", "paymentId", "filtroPeriodo"]],
+  ]);
+  for (const [file, needles] of expectations) {
+    const page = await readFile(new URL(`../pages/${file}`, import.meta.url), "utf8");
+    for (const needle of needles) assert.ok(page.includes(needle), `${file} debe consumir ${needle}`);
   }
 });

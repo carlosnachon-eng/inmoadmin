@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import Layout, { brand, Btn } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import { contextualRecordStyle, resolveServiceDeepLinkContext } from "../lib/useContextualRecord";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -87,7 +88,7 @@ const SERVICIOS_CONFIG = [
   { tipo: "predial",       label: "🏛️ Predial/Limpia",  periodicidad: "anual", propietario: true },
 ];
 
-function ModalServicios({ property, onClose, showToast, profile }) {
+function ModalServicios({ property, onClose, showToast, profile, deepLink = {} }) {
   const [servicios, setServicios] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +100,7 @@ function ModalServicios({ property, onClose, showToast, profile }) {
   const [filtroTipo, setFiltroTipo] = useState("todos");
   const [filtroPeriodo, setFiltroPeriodo] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("todos");
+  const context = resolveServiceDeepLinkContext(deepLink, servicios, pagos);
 
   const periodoActual = () => {
     const hoy = new Date();
@@ -115,6 +117,16 @@ function ModalServicios({ property, onClose, showToast, profile }) {
   };
 
   useEffect(() => { loadServicios(); }, []);
+
+  useEffect(() => {
+    if (loading || !context.serviceId) return;
+    setTabServ(context.tab);
+    if (context.service?.tipo) setFiltroTipo(context.service.tipo);
+    if (context.period) setFiltroPeriodo(context.period);
+    const targetId = context.payment ? `paymentId-${context.payment.id}` : `serviceId-${context.serviceId}`;
+    const timer = window.setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+    return () => window.clearTimeout(timer);
+  }, [context.payment?.id, context.period, context.service?.tipo, context.serviceId, context.tab, loading]);
 
   const toggleServicio = async (tipo, periodicidad) => {
     const existe = servicios.find(s => s.tipo === tipo);
@@ -220,7 +232,7 @@ function ModalServicios({ property, onClose, showToast, profile }) {
   };
 
   const pagoDelPeriodo = (tipo) => {
-    const periodo = periodoActual();
+    const periodo = context.period || periodoActual();
     return pagos.find(p => p.tipo === tipo && p.periodo === periodo);
   };
 
@@ -264,6 +276,16 @@ function ModalServicios({ property, onClose, showToast, profile }) {
 
   return (
     <Modal title={`Servicios — ${property.name}`} onClose={onClose}>
+      {context.serviceId && (
+        <div role="status" style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 8, padding: "9px 12px", marginBottom: 12, fontSize: 12 }}>
+          <strong>Contexto de Trabajo Administrativo:</strong>{" "}
+          {context.payment
+            ? `pago ${context.payment.periodo || context.period || "seleccionado"}`
+            : context.paymentMissing
+              ? `el pago solicitado no está disponible; se conserva el servicio y periodo ${context.period || "indicado"}`
+              : `servicio seleccionado${context.period ? ` · falta control para ${context.period}` : ""}`}.
+        </div>
+      )}
       <div style={{ display: "flex", gap: 6, marginBottom: 18, borderBottom: "1px solid #f0f0f0" }}>
         {[{ id: "estado", label: "Estado actual" }, { id: "historial", label: "Historial" }].map(t => (
           <button key={t.id} onClick={() => setTabServ(t.id)} style={{
@@ -286,7 +308,7 @@ function ModalServicios({ property, onClose, showToast, profile }) {
             const pago = pagoDelPeriodo(config.tipo);
             const sc = semaforo(pago?.status);
             return (
-              <div key={config.tipo} style={{ border: "1px solid #f0f0f0", borderRadius: 10, padding: 12, marginBottom: 8 }}>
+              <div id={activo ? `serviceId-${activo.id}` : undefined} key={config.tipo} style={{ border: "1px solid #f0f0f0", borderRadius: 10, padding: 12, marginBottom: 8, ...contextualRecordStyle(Boolean(activo && context.serviceId === String(activo.id))) }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                     <input type="checkbox" checked={!!activo} onChange={() => toggleServicio(config.tipo, config.periodicidad)} />
@@ -352,7 +374,7 @@ function ModalServicios({ property, onClose, showToast, profile }) {
               {lista.map(p => {
                 const sc = semaforo(p.status);
                 return (
-                  <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #f3f4f6", fontSize: 12 }}>
+                  <div id={`paymentId-${p.id}`} key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #f3f4f6", fontSize: 12, ...contextualRecordStyle(context.paymentId === String(p.id)) }}>
                     <span style={{ color: brand.grayLight }}>{p.periodo}</span>
                     <span>{p.monto ? fmt(p.monto) : "—"}</span>
                     <span style={{ background: sc.bg, color: sc.color, padding: "2px 8px", borderRadius: 99, fontWeight: 600 }}>{sc.label}</span>
@@ -759,6 +781,7 @@ export default function Propiedades() {
           onClose={() => { setServiciosProperty(null); loadData(); }}
           showToast={showToast}
           profile={profile}
+          deepLink={{ serviceId: router.query.serviceId, paymentId: router.query.paymentId, period: router.query.period }}
         />
       )}
 

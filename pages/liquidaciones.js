@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import { contextualRecordStyle } from "../lib/useContextualRecord";
 import {
   administrationCommission,
   calculateOwnerLiquidation,
@@ -177,6 +178,14 @@ export default function Liquidaciones() {
     supabase.from("owner_payment_receipts").select("owner_email, owner_name").eq("id", receiptId).maybeSingle()
       .then(({ data }) => data?.owner_email && openExpediente({ email: data.owner_email, name: data.owner_name || "Propietario" }));
   }, [contracts, loading, properties, router.isReady, router.query.ownerId, router.query.period, router.query.receiptId]);
+
+  useEffect(() => {
+    const receiptId = typeof router.query.receiptId === "string" ? router.query.receiptId : "";
+    if (!receiptId || expedienteLoading || !expedienteData) return;
+    setExpedienteTab("comprobantes");
+    const timer = window.setTimeout(() => document.getElementById(`receiptId-${receiptId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+    return () => window.clearTimeout(timer);
+  }, [expedienteData, expedienteLoading, router.query.receiptId]);
 
   const openExpediente = async (owner) => {
     setExpediente(owner);
@@ -1965,7 +1974,7 @@ export default function Liquidaciones() {
                           </div>
                         )}
                         {recibosProp.map(r => (
-                          <div key={r.id} style={{ background: "#f9fafb", borderRadius: 10, padding: "12px 14px", marginBottom: 8 }}>
+                          <div id={`receiptId-${r.id}`} key={r.id} style={{ background: "#f9fafb", borderRadius: 10, padding: "12px 14px", marginBottom: 8, ...contextualRecordStyle(String(router.query.receiptId || "") === String(r.id)) }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                               <div style={{ flex: 1 }}>
                                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>

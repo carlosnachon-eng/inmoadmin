@@ -141,6 +141,10 @@ export default function Mantenimiento() {
   const contextualTicketId = useContextualRecord(router, "ticketId", !loading, (ticketId) => {
     setFilterStatus(""); setFilterPriority(""); setFilterProperty(""); setExpandedId(ticketId);
   });
+  const contextualQuoteId = useContextualRecord(router, "quoteId", !loading, (quoteId) => {
+    const quote = quotes.find((row) => String(row.id) === quoteId);
+    if (quote?.ticket_id) setExpandedId(String(quote.ticket_id));
+  });
 
   const subirFotoTicket = async (ticket, file) => {
     setSubiendoFoto(ticket.id);
@@ -682,7 +686,7 @@ export default function Mantenimiento() {
                     </div>
                     {/* Link cotización si existe */}
                     {quote && (
-                      <div style={{ marginTop: 12, background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #e5e7eb" }}>
+                      <div id={`quoteId-${quote.id}`} style={{ marginTop: 12, background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #e5e7eb", ...contextualRecordStyle(contextualQuoteId === String(quote.id)) }}>
                         <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#6b7280" }}>COTIZACIÓN</p>
                         <p style={{ margin: "0 0 4px", fontSize: 13, color: "#374151" }}>Costo: {fmt(quote.costo_proveedor)} + {quote.margen_pct}% = {fmt(quote.monto_sin_descuento ?? quote.monto_final)}</p>
                         {quote.descuento_valor > 0 && (
