@@ -417,6 +417,7 @@ export default function MiTrabajoAdministrativo() {
               {selectedItem.metadata?.propertyLabel && <><dt>Propiedad</dt><dd style={{ margin: 0 }}>{selectedItem.metadata.propertyLabel}</dd></>}
               {selectedItem.metadata?.period && <><dt>Periodo</dt><dd style={{ margin: 0 }}>{selectedItem.metadata.period}</dd></>}
               <dt>Fecha</dt><dd style={{ margin: 0 }}>{formatDate(selectedItem.dueAt || selectedItem.lastActivityAt)}</dd>
+              {selectedItem.metadata?.appointmentContext && <><dt>Cita contextual</dt><dd style={{ margin: 0 }}>{formatDate(selectedItem.metadata.appointmentContext.dueAt)} · Vencida</dd></>}
               <dt>Responsable</dt><dd style={{ margin: 0 }}>{selectedItem.responsibleArea || "Sin asignar"}</dd>
               {selectedItem.waitingOn && <><dt>Esperando</dt><dd style={{ margin: 0 }}>{String(selectedItem.waitingOn).replace(/_/g, " ")}</dd></>}
               {selectedItem.metadata?.contractRelation && <><dt>Contrato</dt><dd style={{ margin: 0 }}>{CONTRACT_RELATION_LABELS[selectedItem.metadata.contractRelation] || selectedItem.metadata.contractRelation}</dd></>}

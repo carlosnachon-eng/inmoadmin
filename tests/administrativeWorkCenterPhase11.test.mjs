@@ -127,6 +127,8 @@ test("UI separa calidad, ofrece detalle y destinos consumen parámetros", async 
   assert.match(ui, /Datos incompletos/);
   assert.match(ui, /Históricos por revisar/);
   assert.match(ui, /Ver detalle/);
+  assert.match(ui, /Cita contextual/);
+  assert.match(ui, /appointmentContext\.dueAt/);
   assert.match(ui, /owner_payment_receipts:\s*"Entregas a propietarios"/);
   assert.match(hook, /scrollIntoView/);
   for (const file of ["cobranza.js", "contratos.js", "mantenimiento.js"]) {
