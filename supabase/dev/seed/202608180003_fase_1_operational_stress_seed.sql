@@ -16,8 +16,10 @@ begin
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='properties' and column_name='owner_email') then
     raise exception 'FASE1-QA: properties.owner_email sigue ausente';
   end if;
-  if to_regclass('public.cash_movements') is null then
-    raise exception 'FASE1-QA: cash_movements sigue ausente';
+  if to_regclass('public.cash_movements') is null
+     or coalesce(obj_description(to_regclass('public.cash_movements'), 'pg_class'), '')
+       <> 'dev-bootstrap:202608180004:fase-1-work-center-source-gaps' then
+    raise exception 'FASE1-QA: cash_movements sigue ausente o no pertenece al bootstrap DEV esperado';
   end if;
 end;
 $$;
