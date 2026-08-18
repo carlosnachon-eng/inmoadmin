@@ -80,7 +80,47 @@ test("firma crítica absorbe su cita vencida como contexto", () => {
   }, options);
   const signatureItems = result.items.filter((item) => item.metadata?.signatureId === "signature-1");
   assert.equal(signatureItems.length, 1);
+  assert.equal(signatureItems[0].sourceType, "firmas");
+  assert.equal(signatureItems[0].contextKey, "administrative:firmas:signature-1:rule:firma_sin_avance");
+  assert.equal(signatureItems[0].href, "/firmas/signature-1?appointmentId=appointment-1");
   assert.equal(signatureItems[0].metadata.appointmentContext.appointmentId, "appointment-1");
+});
+
+test("firma crítica no absorbe una cita futura", () => {
+  const result = buildAdministrativeWorkCenter({
+    firmas: [{ id: "signature-1", status: "activo", etapa_actual: 1, updated_at: "2026-07-01T00:00:00Z" }],
+    firmas_citas: [{ id: "appointment-future", firma_id: "signature-1", fecha: "2026-08-20", hora: "12:00", status: "programada" }],
+  }, options);
+  const signatureItems = result.items.filter((item) => item.metadata?.signatureId === "signature-1");
+  assert.equal(signatureItems.length, 2);
+  assert.equal(signatureItems.find((item) => item.sourceType === "firmas").href, "/firmas/signature-1");
+  assert.equal(signatureItems.find((item) => item.sourceType === "firmas_citas").href, "/firmas/signature-1?appointmentId=appointment-future");
+});
+
+test("cita vencida sin firma crítica conserva su propia navegación", () => {
+  const result = buildAdministrativeWorkCenter({
+    firmas: [{ id: "signature-1", status: "activo", etapa_actual: 1, updated_at: "2026-08-18T12:00:00Z" }],
+    firmas_citas: [{ id: "appointment-overdue", firma_id: "signature-1", fecha: "2026-08-17", hora: "12:00", status: "programada" }],
+  }, options);
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].sourceType, "firmas_citas");
+  assert.equal(result.items[0].href, "/firmas/signature-1?appointmentId=appointment-overdue");
+});
+
+test("múltiples citas vencidas eligen determinísticamente la más reciente", () => {
+  const build = (firmas_citas) => buildAdministrativeWorkCenter({
+    firmas: [{ id: "signature-1", status: "activo", etapa_actual: 1, updated_at: "2026-07-01T00:00:00Z" }],
+    firmas_citas,
+  }, options).items.find((item) => item.sourceType === "firmas");
+  const appointments = [
+    { id: "appointment-old", firma_id: "signature-1", fecha: "2026-08-15", hora: "12:00", status: "programada" },
+    { id: "appointment-recent", firma_id: "signature-1", fecha: "2026-08-17", hora: "12:00", status: "programada" },
+  ];
+  const forward = build(appointments);
+  const reverse = build(appointments.slice().reverse());
+  assert.equal(forward.href, "/firmas/signature-1?appointmentId=appointment-recent");
+  assert.equal(reverse.href, forward.href);
+  assert.deepEqual(reverse.metadata.appointmentContext, forward.metadata.appointmentContext);
 });
 
 test("UI separa calidad, ofrece detalle y destinos consumen parámetros", async () => {
