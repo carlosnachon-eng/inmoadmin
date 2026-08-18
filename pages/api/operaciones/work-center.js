@@ -185,13 +185,15 @@ export default async function handler(req, res) {
       if (result.error) sourcesWithError.push(result.error);
     });
 
-    const workCenter = buildAdministrativeWorkCenter(sources);
+    const caseStatus = req.query.status === "resolved" ? "resolved" : "active";
+    const workCenter = buildAdministrativeWorkCenter(sources, { caseStatus });
     return res.status(200).json({
       ok: true,
       contractVersion: "2A.2-A",
       generatedAt: workCenter.generatedAt,
       today: workCenter.today,
       viewer: { profileId: profile.id, roleId: profile.role_id },
+      caseStatus,
       responsibleOptions: (sources.administrative_profiles || []).map((row) => ({
         id: row.id,
         name: row.full_name || "Perfil operativo",

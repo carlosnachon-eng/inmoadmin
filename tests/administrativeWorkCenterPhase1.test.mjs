@@ -174,4 +174,9 @@ test("supervisión corrige, filtra resueltos y conserva deduplicación", () => {
   assert.equal(corrected[0].supervision.manualControl, true);
   const resolved = buildAdministrativeWorkCenter({ ...sources, administrative_case_controls: [{ context_key: base.contextKey, resolution_status: "resolved" }] }, options);
   assert.equal(resolved.items.length, 0);
+  const resolvedView = buildAdministrativeWorkCenter({ ...sources, administrative_case_controls: [{ context_key: base.contextKey, resolution_status: "resolved" }] }, { ...options, caseStatus: "resolved" });
+  assert.equal(resolvedView.items.length, 1);
+  assert.equal(resolvedView.items[0].supervision.status, "resolved");
+  const reopened = buildAdministrativeWorkCenter({ ...sources, administrative_case_controls: [{ context_key: base.contextKey, resolution_status: "open" }] }, options);
+  assert.equal(reopened.items.length, 1);
 });

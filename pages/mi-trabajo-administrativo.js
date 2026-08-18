@@ -29,7 +29,36 @@ const SOURCE_LABELS = {
   operational_recurring_task: "Mantenimiento programado",
   servicios: "Servicios",
   owner_liquidations: "Liquidaciones",
+  owner_payment_receipts: "Entregas a propietarios",
   llaves: "Llaves",
+  pagos_servicios: "Pagos de servicios",
+  servicios_inmueble: "Servicios",
+  properties: "Propiedades",
+  owner_payments: "Liquidaciones",
+  property_expenses: "Gastos de propiedades",
+  comisiones_admin: "Comisiones administrativas",
+  cash_movements: "Caja",
+  administrative_case_controls: "Supervisión",
+  administrative_profiles: "Responsables",
+  condominios: "Condominios",
+  unidades_condominio: "Unidades de condominio",
+  cuotas_condominio: "Cuotas de condominio",
+  firma_etapas: "Etapas de firma",
+};
+
+const ACTION_LABELS = {
+  classification_corrected: "Clasificación corregida",
+  priority_corrected: "Prioridad corregida",
+  responsible_reassigned: "Responsable reasignado",
+  resolved: "Caso resuelto",
+  reopened: "Caso reabierto",
+  automation_paused: "Automatización pausada",
+  automation_resumed: "Automatización reanudada",
+  manual_control_taken: "Control manual tomado",
+  manual_control_released: "Control manual liberado",
+  authorization_required: "Autorización requerida",
+  authorization_cleared: "Autorización retirada",
+  note_added: "Nota agregada",
 };
 
 const formatDate = (value) => {
@@ -52,7 +81,10 @@ export default function MiTrabajoAdministrativo() {
   const [sourceFilter, setSourceFilter] = useState("todos");
   const [responsibleFilter, setResponsibleFilter] = useState("todos");
   const [supervisionFilter, setSupervisionFilter] = useState("todos");
+  const [caseView, setCaseView] = useState("active");
   const [history, setHistory] = useState({ contextKey: null, actions: [], loading: false });
+  const [noteEditor, setNoteEditor] = useState({ contextKey: null, text: "", saving: false });
+  const [feedback, setFeedback] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: current } }) => {
@@ -95,7 +127,8 @@ export default function MiTrabajoAdministrativo() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/operaciones/work-center", {
+      const suffix = caseView === "resolved" ? "?status=resolved" : "";
+      const response = await fetch(`/api/operaciones/work-center${suffix}`, {
         method: "GET",
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
@@ -107,7 +140,7 @@ export default function MiTrabajoAdministrativo() {
     } finally {
       setLoading(false);
     }
-  }, [authorized, session?.access_token]);
+  }, [authorized, caseView, session?.access_token]);
 
   useEffect(() => {
     if (profile && !authorized) setLoading(false);
@@ -128,25 +161,47 @@ export default function MiTrabajoAdministrativo() {
     return true;
   }), [data?.items, responsibleFilter, sourceFilter, supervisionFilter]);
 
-  const supervise = async (item, actionType, value = {}) => {
-    const response = await fetch("/api/operaciones/administrative-cases", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ contextKey: item.contextKey, actionType, value }),
-    });
-    const json = await response.json();
-    if (!response.ok) { setError(json.error || "No se pudo guardar la supervisión."); return; }
-    await loadData();
-  };
-
-  const loadHistory = async (contextKey) => {
-    if (history.contextKey === contextKey) { setHistory({ contextKey: null, actions: [], loading: false }); return; }
+  const loadHistory = async (contextKey, toggle = true) => {
+    if (toggle && history.contextKey === contextKey) { setHistory({ contextKey: null, actions: [], loading: false }); return; }
     setHistory({ contextKey, actions: [], loading: true });
     const response = await fetch(`/api/operaciones/administrative-cases?contextKey=${encodeURIComponent(contextKey)}`, {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
     const json = await response.json();
     setHistory({ contextKey, actions: response.ok ? json.actions || [] : [], loading: false });
+  };
+
+  const supervise = async (item, actionType, value = {}, notes = "") => {
+    setFeedback("");
+    setError("");
+    const response = await fetch("/api/operaciones/administrative-cases", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ contextKey: item.contextKey, actionType, value, notes }),
+    });
+    const json = await response.json();
+    if (!response.ok) {
+      setNoteEditor((current) => ({ ...current, saving: false }));
+      setError(json.error || "No se pudo guardar la supervisión.");
+      return;
+    }
+    setFeedback(actionType === "note_added" ? "Nota guardada correctamente." : actionType === "reopened" ? "Caso reabierto correctamente." : "Supervisión guardada correctamente.");
+    if (actionType === "note_added") {
+      setNoteEditor({ contextKey: null, text: "", saving: false });
+      await loadHistory(item.contextKey, false);
+    }
+    if (actionType === "reopened") {
+      setCaseView("active");
+      return;
+    }
+    await loadData();
+  };
+
+  const saveNote = async (item) => {
+    const notes = noteEditor.text.trim();
+    if (!notes) { setError("Escribe una nota antes de guardar."); return; }
+    setNoteEditor((current) => ({ ...current, saving: true }));
+    await supervise(item, "note_added", {}, notes);
   };
 
   const logout = async () => {
@@ -197,13 +252,19 @@ export default function MiTrabajoAdministrativo() {
 
         {data?.sourcesWithError?.length > 0 && (
           <div role="status" style={{ marginBottom: 16, padding: "12px 14px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, color: "#92400e", fontSize: 13 }}>
-            La bandeja se cargó parcialmente. Fuentes no disponibles: {data.sourcesWithError.map((source) => source.sourceType).join(", ")}.
+            La bandeja se cargó parcialmente. Fuentes no disponibles: {data.sourcesWithError.map((source) => SOURCE_LABELS[source.sourceType] || source.sourceType).join(", ")}.
           </div>
         )}
 
         {error && (
           <div role="alert" style={{ marginBottom: 16, padding: "12px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#991b1b" }}>{error}</div>
         )}
+        {feedback && <div role="status" style={{ marginBottom: 16, padding: "12px 14px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, color: "#166534" }}>{feedback}</div>}
+
+        <section aria-label="Vista de casos" style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <button type="button" aria-pressed={caseView === "active"} onClick={() => setCaseView("active")} style={{ border: `1px solid ${brand.border}`, background: caseView === "active" ? brand.gray : "#fff", color: caseView === "active" ? "#fff" : brand.gray, borderRadius: 8, padding: "8px 12px", fontWeight: 750, cursor: "pointer" }}>Activos</button>
+          <button type="button" aria-pressed={caseView === "resolved"} onClick={() => setCaseView("resolved")} style={{ border: `1px solid ${brand.border}`, background: caseView === "resolved" ? brand.gray : "#fff", color: caseView === "resolved" ? "#fff" : brand.gray, borderRadius: 8, padding: "8px 12px", fontWeight: 750, cursor: "pointer" }}>Resueltos</button>
+        </section>
 
         <section aria-label="Filtros" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
           <select aria-label="Filtrar por origen" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} style={{ padding: "8px 10px", border: `1px solid ${brand.border}`, borderRadius: 8, background: "#fff" }}>
@@ -218,10 +279,10 @@ export default function MiTrabajoAdministrativo() {
           </select>
         </section>
 
-        <section aria-label="Pendientes administrativos" style={{ display: "grid", gap: 10 }}>
+        <section aria-label={caseView === "resolved" ? "Casos resueltos" : "Pendientes administrativos"} style={{ display: "grid", gap: 10 }}>
           {!loading && !error && data?.items?.length === 0 && (
             <div style={{ background: "#fff", border: `1px solid ${brand.border}`, borderRadius: 12, padding: 24, color: brand.grayLight }}>
-              No hay pendientes determinísticos para mostrar.
+              {caseView === "resolved" ? "No hay casos resueltos para mostrar." : "No hay pendientes determinísticos para mostrar."}
             </div>
           )}
           {visibleItems.map((item) => {
@@ -249,6 +310,7 @@ export default function MiTrabajoAdministrativo() {
                     <span>Fecha: {formatDate(item.dueAt || item.lastActivityAt)}</span>
                   </div>
                   <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
+                    {caseView === "active" ? <>
                     <select aria-label="Corregir clasificación" value="" onChange={(e) => e.target.value && supervise(item, "classification_corrected", { bucket: e.target.value })} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px" }}>
                       <option value="">Corregir clasificación…</option>{BUCKETS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                     </select>
@@ -262,10 +324,23 @@ export default function MiTrabajoAdministrativo() {
                     <button type="button" onClick={() => supervise(item, item.supervision?.automationPaused ? "automation_resumed" : "automation_paused")} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>{item.supervision?.automationPaused ? "Reanudar automatización" : "Pausar automatización"}</button>
                     <button type="button" onClick={() => supervise(item, item.supervision?.requiresAuthorization ? "authorization_cleared" : "authorization_required")} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>{item.supervision?.requiresAuthorization ? "Quitar autorización" : "Requiere autorización"}</button>
                     <button type="button" onClick={() => supervise(item, "resolved")} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>Marcar resuelto</button>
+                    <button type="button" onClick={() => setNoteEditor({ contextKey: item.contextKey, text: "", saving: false })} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>Agregar nota</button>
+                    </> : <button type="button" onClick={() => supervise(item, "reopened")} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>Reabrir</button>}
                     <button type="button" onClick={() => loadHistory(item.contextKey)} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px", cursor: "pointer" }}>Historial</button>
                   </div>
+                  {noteEditor.contextKey === item.contextKey && <div style={{ marginTop: 10, display: "grid", gap: 7, maxWidth: 680 }}>
+                    <textarea aria-label="Nota del caso" maxLength={1000} value={noteEditor.text} onChange={(event) => setNoteEditor((current) => ({ ...current, text: event.target.value }))} rows={3} placeholder="Escribe una nota operativa…" style={{ width: "100%", resize: "vertical", border: `1px solid ${brand.border}`, borderRadius: 8, padding: 9, font: "inherit" }} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <button type="button" disabled={noteEditor.saving || !noteEditor.text.trim()} onClick={() => saveNote(item)} style={{ border: 0, background: brand.red, color: "#fff", borderRadius: 7, padding: "6px 10px", fontWeight: 750, cursor: "pointer" }}>{noteEditor.saving ? "Guardando…" : "Guardar nota"}</button>
+                      <button type="button" onClick={() => setNoteEditor({ contextKey: null, text: "", saving: false })} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>Cancelar</button>
+                      <span style={{ color: brand.grayLight, fontSize: 12 }}>{noteEditor.text.length}/1000</span>
+                    </div>
+                  </div>}
                   {history.contextKey === item.contextKey && <div style={{ marginTop: 10, padding: 10, background: "#f9fafb", borderRadius: 8, fontSize: 12, color: brand.grayLight }}>
-                    {history.loading ? "Cargando historial…" : history.actions.length ? history.actions.map((action) => <div key={action.id}>{new Date(action.created_at).toLocaleString("es-MX")}: {action.action_type} ({action.actor_type})</div>) : "Sin correcciones registradas."}
+                    {history.loading ? "Cargando historial…" : history.actions.length ? history.actions.map((action) => {
+                      const actor = (data?.responsibleOptions || []).find((option) => option.id === action.actor_profile_id)?.name || action.actor_type;
+                      return <div key={action.id} style={{ marginBottom: 5 }}><strong>{ACTION_LABELS[action.action_type] || action.action_type}</strong> · {actor} · {new Date(action.created_at).toLocaleString("es-MX")}{action.notes ? <div style={{ color: brand.gray, marginTop: 2 }}>{action.notes}</div> : null}</div>;
+                    }) : "Sin correcciones registradas."}
                   </div>}
                 </div>
                 <a href={item.href} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", background: brand.red, color: "#fff", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 800 }}>

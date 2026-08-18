@@ -21,3 +21,9 @@ test("liquidaciones cargan receptor transaccional y evidencia de caja", () => {
   assert.match(api, /payments[\s\S]*recibido_por/);
   assert.match(api, /cash_movements[\s\S]*renta_cobrada/);
 });
+
+test("consulta resueltos es explícita y conserva activos por defecto", () => {
+  assert.match(api, /req\.query\.status === "resolved"/);
+  assert.match(api, /buildAdministrativeWorkCenter\(sources, \{ caseStatus \}\)/);
+  assert.match(api, /caseStatus,/);
+});
