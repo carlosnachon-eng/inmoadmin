@@ -3,27 +3,24 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import {
+  administrationCommission,
+  calculateOwnerLiquidation,
+  contractActiveInPeriod,
+  maintenanceOwnerBalance,
+  paymentReceivedByEmporio,
+} from "../lib/operaciones/ownerLiquidation";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
 }).format(n || 0);
 
-const calcComision = (c) => {
-  if (!c.commission_value) return 0;
-  if (c.commission_type === "porcentaje") return (c.monthly_rent * c.commission_value) / 100;
-  return c.commission_value;
-};
+const calcComision = administrationCommission;
 
 const contratoVigenteEnPeriodo = (contrato, anio, mes) => {
   if (!contrato) return false;
   if (!anio || !mes) return contrato.status === "activo";
-  const inicioPeriodo = new Date(anio, mes - 1, 1);
-  const finPeriodo = new Date(anio, mes, 0, 23, 59, 59, 999);
-  const inicioContrato = contrato.start_date ? new Date(contrato.start_date + "T12:00:00") : null;
-  const finContrato = contrato.end_date ? new Date(contrato.end_date + "T12:00:00") : null;
-  if (inicioContrato && inicioContrato > finPeriodo) return false;
-  if (finContrato && finContrato < inicioPeriodo) return false;
-  return true;
+  return contractActiveInPeriod(contrato, `${anio}-${String(mes).padStart(2, "0")}`);
 };
 
 const savePDF = (doc, filename) => {
@@ -149,6 +146,7 @@ export default function Liquidaciones() {
   const [ownerPayments, setOwnerPayments] = useState([]);
   const [propertyExpenses, setPropertyExpenses] = useState([]);
   const [tickets, setTickets] = useState([]);
+  const [rentCashMovements, setRentCashMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -323,13 +321,14 @@ export default function Liquidaciones() {
 
   const loadData = async () => {
     setLoading(true);
-    const [p, c, pay, op, pe, t] = await Promise.all([
+    const [p, c, pay, op, pe, t, rentCash] = await Promise.all([
       supabase.from("properties").select("*").order("name"),
       supabase.from("contracts").select("*").order("created_at", { ascending: false }),
       supabase.from("payments").select("*").order("due_date", { ascending: true }),
       supabase.from("owner_payments").select("*").order("created_at", { ascending: false }),
       supabase.from("property_expenses").select("*").order("date", { ascending: false }),
       supabase.from("maintenance_tickets").select("*").order("created_at", { ascending: false }),
+      supabase.from("cash_movements").select("id, type, category, description, amount, date").eq("type", "entrada").eq("category", "renta_cobrada"),
     ]);
     setProperties(p.data || []);
     setContracts(c.data || []);
@@ -337,16 +336,13 @@ export default function Liquidaciones() {
     setOwnerPayments(op.data || []);
     setPropertyExpenses(pe.data || []);
     setTickets(t.data || []);
+    setRentCashMovements(rentCash.data || []);
     setLoading(false);
   };
 
   useEffect(() => { if (session) loadData(); }, [session]);
 
-  const saldoTicketMantenimiento = (ticket) => {
-    const cargo = ticket?.charged_amount || 0;
-    const anticipo = ticket?.advance_paid ? (ticket?.advance_amount || 0) : 0;
-    return Math.max(0, cargo - anticipo);
-  };
+  const saldoTicketMantenimiento = maintenanceOwnerBalance;
 
   const esTicketMantenimientoPropietarioPendiente = (ticket, propNames) => {
     if (!propNames.includes(ticket.property_name)) return false;
@@ -440,52 +436,16 @@ export default function Liquidaciones() {
   };
 
   const calcPendienteMes = (ownerEmail) => {
-    const [anio, mes] = mesCorte.split("-").map(Number);
-    const fechaCorte = new Date(anio, mes - 1, 1);
-    const propsProp = properties.filter(p => p.owner_email === ownerEmail);
-    const propNamesCalc = propsProp.map(p => p.name);
-    const contratosProp = contracts.filter(c =>
-      propsProp.some(p => p.name === c.property_name) &&
-      contratoVigenteEnPeriodo(c, anio, mes)
-    );
-    const contractIds = contratosProp.map(c => c.id);
-    const pagosMes = payments.filter(p => {
-      if (p.status !== "pagado" || !p.due_date) return false;
-      if (!contractIds.includes(p.contract_id)) return false;
-      const d = new Date(p.due_date + "T12:00:00");
-      return d.getMonth() === (mes - 1) && d.getFullYear() === anio;
-    });
-    const totalRenta = pagosMes.reduce((a, p) => a + (p.amount || 0), 0);
-    const contratosPagados = contratosProp.filter(c => pagosMes.some(p => p.contract_id === c.id));
-    const totalCom = contratosPagados.reduce((a, c) => a + calcComision(c), 0);
-    const gastosOpMes = propertyExpenses.filter(e => {
-      if (!propNamesCalc.includes(e.property_name)) return false;
-      if (e.paid_by !== "propietario") return false;
-      if (!e.date) return false;
-      const d = new Date(e.date + "T12:00:00");
-      return d.getMonth() === (mes - 1) && d.getFullYear() === anio;
-    }).reduce((a, e) => a + (e.amount || 0), 0);
-    const mantenimientoDescontadoMes = tickets.filter(t => {
-      if (!propNamesCalc.includes(t.property_name)) return false;
-      if (t.payer !== "propietario") return false;
-      if (!t.charged_amount || t.charged_amount <= 0) return false;
-      if (!t.descontado_de_liquidacion) return false;
-      if (!t.created_at) return false;
-      const d = new Date(t.created_at);
-      return d.getMonth() === (mes - 1) && d.getFullYear() === anio;
-    }).reduce((a, t) => a + ((t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0)), 0);
-    const liqDelMes = ownerPayments.filter(l => {
-      const desc = (l.period_description || "").toLowerCase();
-      const mesMes = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
-      return l.owner_email === ownerEmail && desc.includes(mesMes) && desc.includes(String(anio));
-    });
-    const totalAdelanto = liqDelMes.reduce((a, l) => a + (l.amount_paid || 0), 0);
-    // Si ya existe una liquidación "pagado" completa, el pendiente es 0
-    const yaLiquidadoCompleto = liqDelMes.some(l => l.status === "pagado");
-    if (yaLiquidadoCompleto) return 0;
-    // Tickets de meses anteriores con saldo pendiente (no descontados aún de una liquidación)
-    const saldoMantAnt = getTicketsPendientesAnteriores(propNamesCalc, anio, mes).reduce((a, t) => a + saldoTicketMantenimiento(t), 0);
-    return Math.max(0, totalRenta - totalCom - gastosOpMes - mantenimientoDescontadoMes - saldoMantAnt - totalAdelanto);
+    const ownerPaymentsWithPeriod = ownerPayments.map((row) => ({
+      ...row,
+      period_key: periodoKeyDesdeDescripcion(row.period_description),
+    }));
+    return calculateOwnerLiquidation({
+      ownerEmail, period: mesCorte, properties, contracts, payments,
+      ownerPayments: ownerPaymentsWithPeriod, propertyExpenses,
+      maintenanceTickets: tickets,
+      cashMovements: rentCashMovements,
+    }).balance;
   };
 
   const openModalPago = (owner) => {
@@ -500,7 +460,7 @@ export default function Liquidaciones() {
     const tieneCompleto = liqDelPeriodo.some(l => l.status === "pagado");
     const yaAbonado = tieneCompleto ? 0 : liqDelPeriodo.filter(l => l.status === "pagado_parcial")
       .reduce((a, l) => a + (l.amount_paid || 0), 0);
-    const saldoReal = Math.max(0, pendienteTotal - yaAbonado);
+    const saldoReal = pendienteTotal;
     setPropietarioPago(owner);
     setPagoYaAbonado(yaAbonado);
     setFormPago({
@@ -530,7 +490,6 @@ export default function Liquidaciones() {
       showToast("Ingresa un monto válido", false); return;
     }
     const pendienteActual = calcPendienteMes(propietarioPago.email);
-    const saldoMaximo = Math.max(0, pendienteActual - pagoYaAbonado);
     if (formPago.concepto === "total" && parseFloat(formPago.monto) > pendienteActual + 1) {
       showToast(`⚠️ El monto ($${parseFloat(formPago.monto).toLocaleString()}) excede el pendiente del mes ($${pendienteActual.toLocaleString()}). Verifica el monto.`, false); return;
     }
@@ -874,49 +833,25 @@ export default function Liquidaciones() {
   const openLiquidar = (ownerName, ownerEmail) => {
     const [anioLiq, mesLiq] = mesCorte.split("-").map(Number);
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
-    const contratosProp = contracts.filter(c =>
-      propsProp.some(p => p.name === c.property_name) &&
-      contratoVigenteEnPeriodo(c, anioLiq, mesLiq)
-    );
-    const contractIds = contratosProp.map(c => c.id);
-    // Solo rentas efectivamente cobradas (pagadas) en el mes del corte
-    const pagosCobradosMes = payments.filter(p => {
-      if (p.status !== "pagado" || !p.due_date) return false;
-      if (!contractIds.includes(p.contract_id)) return false;
-      const d = new Date(p.due_date + "T12:00:00");
-      return d.getMonth() === (mesLiq - 1) && d.getFullYear() === anioLiq;
+    const ownerPaymentsWithPeriod = ownerPayments.map((row) => ({ ...row, period_key: periodoKeyDesdeDescripcion(row.period_description) }));
+    const liquidation = calculateOwnerLiquidation({
+      ownerEmail, period: mesCorte, properties, contracts, payments,
+      ownerPayments: ownerPaymentsWithPeriod, propertyExpenses,
+      maintenanceTickets: tickets,
+      cashMovements: rentCashMovements,
     });
-    const totalRent = pagosCobradosMes.reduce((a, p) => a + (p.amount || 0), 0);
-    const contratosPagados = contratosProp.filter(c => pagosCobradosMes.some(p => p.contract_id === c.id));
-    const totalCom  = contratosPagados.reduce((a, c) => a + calcComision(c), 0);
-    const gastosOpMes = propertyExpenses.filter(e => {
-      if (!propsProp.some(p => p.name === e.property_name)) return false;
-      if (e.paid_by !== "propietario") return false;
-      if (!e.date) return false;
-      const d = new Date(e.date + "T12:00:00");
-      return d.getMonth() === (mesLiq - 1) && d.getFullYear() === anioLiq;
-    }).reduce((a, e) => a + (e.amount || 0), 0);
-    const mantenimientoDescontadoMes = tickets.filter(t => {
-      if (!propsProp.some(p => p.name === t.property_name)) return false;
-      if (t.payer !== "propietario") return false;
-      if (!t.charged_amount || t.charged_amount <= 0) return false;
-      if (!t.descontado_de_liquidacion) return false;
-      if (!t.created_at) return false;
-      const d = new Date(t.created_at);
-      return d.getMonth() === (mesLiq - 1) && d.getFullYear() === anioLiq;
-    }).reduce((a, t) => a + ((t.charged_amount || 0) - (t.advance_paid ? (t.advance_amount || 0) : 0)), 0);
+    const contratosProp = liquidation.ownerContracts;
+    const pagosCobradosMes = liquidation.collectedRents;
+    const totalRent = liquidation.totalRent;
+    const totalCom = liquidation.totalCommission;
+    const gastosOpMes = liquidation.totalExpenses;
+    const mantenimientoDescontadoMes = liquidation.totalDiscountedMaintenance;
     const propNamesOwner = propsProp.map(p => p.name);
-    const saldoMantAnt = getTicketsPendientesAnteriores(propNamesOwner, anioLiq, mesLiq).reduce((a, t) => a + saldoTicketMantenimiento(t), 0);
+    const saldoMantAnt = liquidation.totalPriorMaintenance;
     const saldoMantMesPendiente = getTicketsPendientesMes(propNamesOwner, anioLiq, mesLiq).reduce((a, t) => a + saldoTicketMantenimiento(t), 0);
-    const totalLiq  = totalRent - totalCom - gastosOpMes - mantenimientoDescontadoMes - saldoMantAnt;
-    // Descontar anticipos ya entregados en este periodo
+    const totalLiq = liquidation.totalLiquid;
     const periodoLabel = new Date(anioLiq, mesLiq - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" });
-    const anticiposPeriodo = ownerPayments.filter(l =>
-      l.owner_email === ownerEmail &&
-      (l.period_description || "") === periodoLabel &&
-      l.status === "pagado_parcial"
-    ).reduce((a, l) => a + (l.amount_paid || 0), 0);
-    const montoFinal = Math.max(0, totalLiq - anticiposPeriodo);
+    const montoFinal = liquidation.balance;
     // Solo propiedades con renta cobrada este mes
     const propsCobradas = propsProp.filter(p => pagosCobradosMes.some(pago => {
       const c = contratosProp.find(c => c.id === pago.contract_id);
@@ -1101,7 +1036,19 @@ export default function Liquidaciones() {
       const d = new Date(p.due_date + "T12:00:00");
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
-    const totalRentaProp = pagosPagadosMes.reduce((a, p) => a + (p.amount || 0), 0);
+    const periodKey = `${anioCorte}-${String(mesNumCorte).padStart(2, "0")}`;
+    const liquidation = calculateOwnerLiquidation({
+      ownerEmail,
+      period: periodKey,
+      properties,
+      contracts,
+      payments: pagosMesCalc || [],
+      ownerPayments: ownerPayments.map((row) => ({ ...row, period_key: periodoKeyDesdeDescripcion(row.period_description) })),
+      propertyExpenses,
+      maintenanceTickets: tickets,
+      cashMovements: rentCashMovements,
+    });
+    const totalRentaProp = liquidation.totalRent;
 
     // ── Clasificar rentas: directo a cuenta del propietario vs cobradas por Emporio ──
     const { data: entradasCajaMes } = await supabase.from("cash_movements")
@@ -1112,14 +1059,12 @@ export default function Liquidaciones() {
       const d = new Date(mv.date + "T12:00:00");
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
-    const cobradaPorEmporio = (pago) => {
-      if (pago.recibido_por === "emporio") return true;
-      if (pago.recibido_por === "propietario") return false;
-      const c = contratosProp.find(c => c.id === pago.contract_id);
-      if (!c) return false;
-      if ((c.rent_receiver || "inmobiliaria") === "inmobiliaria") return true;
-      return entradasDelMes.some(mv => (mv.description || "").toLowerCase().includes((pago.property_name || "").toLowerCase()) && pago.property_name);
-    };
+    const cobradaPorEmporio = (pago) => paymentReceivedByEmporio(
+      pago,
+      contratosProp.find(c => c.id === pago.contract_id),
+      entradasDelMes,
+      periodKey,
+    );
     const rentaEmporio = pagosPagadosMes.filter(p => cobradaPorEmporio(p)).reduce((a, p) => a + (p.amount || 0), 0);
     const rentaDirecta = totalRentaProp - rentaEmporio;
 
@@ -1136,13 +1081,13 @@ export default function Liquidaciones() {
     );
     const totalComProp = contratosComisionPendiente.reduce((a, c) => a + calcComision(c), 0);
     const totalComYaCobrada = contratosPagados.reduce((a, c) => a + calcComision(c), 0) - totalComProp;
-    const totalComisionesMes = totalComProp + totalComYaCobrada;
+    const totalComisionesMes = liquidation.totalCommission;
     const ticketsMantProp = ticketsProp.filter(t => t.payer === "propietario" && t.charged_amount > 0 && t.descontado_de_liquidacion);
     const costoMantPropTotal = ticketsMantProp.reduce((a, t) => a + (t.charged_amount || 0), 0);
     const anticipoMantProp   = ticketsMantProp.reduce((a, t) => a + (t.advance_amount || 0), 0);
-    const costoMantProp      = costoMantPropTotal - anticipoMantProp;
-    const gastosOpProp   = gastosProp.reduce((a, e) => a + (e.amount || 0), 0);
-    const totalLiqProp   = totalRentaProp - totalComisionesMes - costoMantProp - gastosOpProp - saldoPendienteAnteriores;
+    const costoMantProp = liquidation.totalDiscountedMaintenance;
+    const gastosOpProp = liquidation.totalExpenses;
+    const totalLiqProp = liquidation.totalLiquid;
     // Balance real considerando solo el dinero que Emporio tiene en su poder
     const balanceEmporio = rentaEmporio - totalComisionesMes - costoMantProp - gastosOpProp - saldoPendienteAnteriores;
     const liqDelMes = liqProp.filter(l => {
@@ -1151,8 +1096,8 @@ export default function Liquidaciones() {
       const anioStr = String(anioCorte);
       return desc.includes(mesMes) && desc.includes(anioStr);
     });
-    const totalAdelanto = liqDelMes.reduce((a, l) => a + (l.amount_paid || 0), 0);
-    const totalPendiente = totalLiqProp - totalAdelanto;
+    const totalAdelanto = liquidation.totalPaid;
+    const totalPendiente = liquidation.balance;
 
     let logoDataUrl = null;
     try {
@@ -1691,7 +1636,7 @@ export default function Liquidaciones() {
               <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Pendiente del mes</p>
               <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#b45309" }}>{fmt(calcPendienteMes(propietarioPago.email))}</p>
               {pagoYaAbonado > 0 && (
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#1e40af", fontWeight: 600 }}>Ya abonado: {fmt(pagoYaAbonado)} · Saldo: {fmt(Math.max(0, calcPendienteMes(propietarioPago.email) - pagoYaAbonado))}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#1e40af", fontWeight: 600 }}>Ya abonado: {fmt(pagoYaAbonado)} · Saldo: {fmt(calcPendienteMes(propietarioPago.email))}</p>
               )}
             </div>
           </div>
