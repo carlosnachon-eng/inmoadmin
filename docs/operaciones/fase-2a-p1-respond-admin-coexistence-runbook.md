@@ -18,7 +18,7 @@ Respond webhook firmado
             -> matches + query audit
 ```
 
-La captura requiere simultáneamente `SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED=true`, un `SHADOW_RESPOND_ADMIN_CHANNEL_ID` no vacío y coincidencia exacta. Sin `channelId`, el evento se descarta. `SHADOW_OUTBOUND_ENABLED=false` documenta que P1 no envía respuestas.
+La captura requiere simultáneamente `SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED=true`, un `SHADOW_RESPOND_ADMIN_CHANNEL_ID` no vacío y coincidencia exacta. Sin `channelId`, el evento se descarta. `SHADOW_OUTBOUND_ENABLED=false` documenta que P1 no envía respuestas y, si se activara por error, la propia captura se bloquea.
 
 Los errores y timeouts del fork Shadow se absorben después de que Ventas quedó encolado. No se usan nombre del canal, assignee, tags, equipo, contenido ni IA para decidir el canal.
 
@@ -43,14 +43,31 @@ No se usan regex de propiedades, direcciones, fuzzy matching indiscriminado ni b
 
 Respond documenta que los mensajes enviados desde WhatsApp Business App aparecen como echoes, pero falta probar end-to-end que Coexistence emita el evento nativo `New Outgoing Message` con `channelId` y forma compatible. Hasta comprobarlo, el adapter marca `echoGatePending`; una salida humana es contexto conversacional, no se clasifica como solicitud y no genera acciones.
 
+## Production readiness P1.1
+
+El schema final Shadow de Producción quedó aplicado manualmente el 19/08/2026. El artefacto versionado `supabase/migrations/202608190003_fase_2a_shadow_production_schema.sql` corresponde al DDL ejecutado; incorporarlo al repositorio no autoriza ni requiere volver a ejecutarlo.
+
+La autorización de captura valida el entorno completo y falla cerrada:
+
+- Preview/Development sólo puede escribir en `hjfwjnejbcpmknvfpdcq`, con `SUPABASE_ENVIRONMENT=dev`.
+- Production sólo puede escribir en `bnzrnizrmonjxlktbhlp`, con `VERCEL_ENV=production` y `SUPABASE_ENVIRONMENT=production` coincidentes.
+- Production exige además `SHADOW_RESPOND_ADMIN_PRODUCTION_ENABLED=true`.
+- Cualquier mezcla entre deployment y proyecto Supabase bloquea la captura.
+- `SHADOW_OUTBOUND_ENABLED=true` bloquea la captura; P1.1 no incorpora cliente outbound.
+
+Estado seguro obligatorio antes del onboarding real:
+
+- schema Shadow productivo existente;
+- `SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED=false` o ausente;
+- `SHADOW_RESPOND_ADMIN_PRODUCTION_ENABLED=false` o ausente;
+- `SHADOW_OUTBOUND_ENABLED=false` o ausente;
+- `SHADOW_RESPOND_ADMIN_CHANNEL_ID` vacío o ausente.
+
 ## Ruta segura para el piloto real
 
-El webhook Respond existente vive en Producción y P1 mantiene deliberadamente el bloqueo cuando `VERCEL_ENV=production` o `SUPABASE_ENVIRONMENT=production`. No se debe iniciar el onboarding hasta elegir una ruta explícita:
+El webhook Respond existente vive en Producción. P1.1 permite una futura captura productiva sólo mediante doble autorización y correspondencia exacta del proyecto Supabase. La preparación actual permanece apagada.
 
-1. Endpoint temporal Preview/DEV: técnicamente posible, pero enviaría mensajes reales de clientes a DEV y agregaría otro webhook operativo.
-2. Rollout separado del schema Shadow en Producción: desplegar únicamente tablas/RPC/policies Shadow read-only, validar seguridad y después habilitar de forma controlada el `channelId` administrativo.
-
-**Recomendación:** opción 2. Los mensajes reales deben permanecer en Producción; el rollout Shadow productivo debe ser una etapa separada, revisable y reversible. Este PR no lo implementa ni elimina la guarda productiva.
+Los mensajes reales deben permanecer en Producción. Preview/DEV sólo se usa con fixtures o datos sintéticos y sus credenciales DEV.
 
 ## Onboarding controlado futuro
 
@@ -60,16 +77,17 @@ El webhook Respond existente vive en Producción y P1 mantiene deliberadamente e
 4. Verificar el mismo número sin mostrarlo en evidencias.
 5. No compartir historial inicialmente si el flujo lo permite.
 6. Ejecutar con Carlos presente y completar verificación.
-7. Obtener el `channelId` administrativo desde metadata del canal/evento.
-8. Configurar la allowlist únicamente en Preview/DEV.
+7. Obtener el `channelId` administrativo desde metadata del canal/evento y configurarlo manteniendo captura apagada.
+8. Verificar inequívocamente la separación Ventas/Administración.
 9. Confirmar `SHADOW_OUTBOUND_ENABLED=false`.
-10. Habilitar captura Shadow únicamente en DEV.
-11. Enviar un mensaje inbound controlado y confirmar una sola copia.
-12. Responder manualmente desde el iPhone.
-13. Confirmar `New Outgoing Message`, `channelId` exacto y `outbound_human`.
-14. Confirmar cero respuestas API, cero IA y cero mutaciones ERP.
-15. Confirmar que el canal de Ventas continúa sin cambios.
-16. Medir el incremento MAC.
+10. Habilitar `SHADOW_RESPOND_ADMIN_PRODUCTION_ENABLED=true` durante la ventana autorizada.
+11. Habilitar `SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED=true` sólo durante esa ventana.
+12. Enviar un único mensaje inbound controlado y confirmar una sola fila Shadow.
+13. Responder manualmente desde el iPhone.
+14. Confirmar `New Outgoing Message`, `channelId` exacto y `outbound_human`.
+15. Confirmar cero respuestas API, cero IA y cero mutaciones ERP.
+16. Apagar captura inmediatamente ante cualquier anomalía.
+17. Confirmar que el canal de Ventas continúa sin cambios y medir el incremento MAC.
 
 ## Criterios de aborto
 
@@ -84,6 +102,6 @@ El webhook Respond existente vive en Producción y P1 mantiene deliberadamente e
 
 Antes de persistir se eliminan teléfono, email, URL, cuentas e identificadores personales del texto; el contacto externo se pseudonimiza. No se guarda payload crudo, token, teléfono completo, URL privada ni attachment. En P1 los attachments conservan únicamente el tipo de mensaje confirmado y nunca se descargan.
 
-## SQL DEV pendiente de revisión
+## SQL DEV versionado
 
-`supabase/dev/bootstrap/202608190002_fase_2a_p1_respond_admin_provider.sql` habilita exclusivamente `provider=respond_admin` y `direction=outbound_human` sobre el bootstrap P0 marcado. No se ha ejecutado. Tiene checks estáticos y rollback DEV que se niega a borrar datos.
+`supabase/dev/bootstrap/202608190002_fase_2a_p1_respond_admin_provider.sql` habilita exclusivamente `provider=respond_admin` y `direction=outbound_human` sobre el bootstrap P0 marcado. Fue aplicado y validado sólo en DEV durante P1. Tiene checks estáticos y rollback DEV que se niega a borrar datos; no debe ejecutarse en Producción.
