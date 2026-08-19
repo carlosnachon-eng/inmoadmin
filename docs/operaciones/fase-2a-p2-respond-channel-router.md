@@ -98,15 +98,20 @@ Ivonne.
 4. Configurar variables server-side con `RESPOND_CHANNEL_ROUTER_ENABLED=false`.
 5. Validar fixtures y llamadas controladas contra los borradores/test de Respond.
 6. Publicar ambos Workflows.
-7. Habilitar el router durante una ventana controlada, manteniendo todavía a
-   Ivonne como default sólo durante la comprobación inicial.
-8. Verificar los cinco canales y el desconocido.
-9. Retirar `Ivonne / All Contacts` inmediatamente después de confirmar routing.
-10. Ejecutar el caso multicanal `498219 -> 544519 -> 498219` sobre el contacto
+7. Abrir una ventana atendida y pausar mensajes de prueba hasta terminar los dos
+   cambios siguientes.
+8. Retirar `Ivonne / All Contacts` como default global.
+9. Inmediatamente habilitar el router y completar el redeploy productivo ya
+   preparado.
+10. Verificar los cinco canales y el desconocido.
+11. Ejecutar el caso multicanal `498219 -> 544519 -> 498219` sobre el contacto
     controlado, sin cerrar la conversación.
 
-La ventana del paso 7 debe ser mínima porque coexistirían el default y el nuevo
-router. No se considera terminado el cutover hasta retirar el default global.
+Este orden prioriza que Administración nunca quede expuesta a Ivonne. Puede
+existir un intervalo corto en el que los mensajes comerciales queden para
+atención humana/unassigned mientras termina el redeploy, pero evita el periodo
+de doble asignación que existiría si se habilitara el router antes de retirar el
+default global. El equipo humano debe vigilar la bandeja durante toda la ventana.
 
 ## Rollback
 
