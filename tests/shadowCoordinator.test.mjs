@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyShadowMessage, sanitizeShadowText, syntheticEnvelope, transformRespondFixture, validateShadowEnvelope } from "../lib/shadow/coordinator.js";
+import { classifyShadowMessage, ingestShadowEnvelope, sanitizeShadowText, syntheticEnvelope, transformRespondFixture, validateShadowEnvelope } from "../lib/shadow/coordinator.js";
 
 test("sanitiza PII antes de construir el envelope", () => {
   const result = sanitizeShadowText("persona@example.com +52 999 123 4567 https://privado.test/x 1234567890123456");
@@ -32,10 +32,26 @@ test("detecta multintención y conserva revisión humana", () => {
   assert.equal(result.intent, "multintencion"); assert.equal(result.requiresHuman, true);
 });
 
+test("intenciones específicas prevalecen sobre consulta de pago genérica", () => {
+  const owner = syntheticEnvelope({ id: "owner", text: "¿Ya le pagaron al propietario?", metadata: { area: "administracion" } });
+  const service = syntheticEnvelope({ id: "service", text: "¿Cuánto tengo que pagar de agua?", metadata: { area: "administracion" } });
+  assert.equal(classifyShadowMessage(owner).intent, "propietario_liquidacion");
+  assert.equal(classifyShadowMessage(service).intent, "consulta_servicio");
+});
+
 test("fingerprint es determinístico para reintentos", () => {
   const first = syntheticEnvelope({ id: "same", text: "No tengo luz", metadata: {} });
   const second = syntheticEnvelope({ id: "same", text: "No tengo luz", metadata: {} });
   assert.equal(first.payloadFingerprint, second.payloadFingerprint);
+});
+
+test("ingesta acepta el envelope ya validado sin exigir PII de contacto", async () => {
+  const envelope = syntheticEnvelope({ id: "validated", text: "No tengo luz", metadata: { area: "administracion" } });
+  let args;
+  const admin = { rpc: async (_name, value) => { args = value; return { data: { status: "accepted" }, error: null }; } };
+  await ingestShadowEnvelope(admin, envelope);
+  assert.equal(args.p_envelope.externalContactHash.length, 64);
+  assert.equal(Object.hasOwn(args.p_envelope, "externalContactId"), false);
 });
 
 test("fixture Respond sólo transforma a envelope neutral sin attachments inventados", () => {
