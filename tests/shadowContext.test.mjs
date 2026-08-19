@@ -94,6 +94,13 @@ test("UX distingue revisión, ambigüedad, likelihood y responsive móvil", asyn
   assert.match(source, /@media \(max-width: 720px\)/); assert.match(source, /grid-template-columns: minmax\(0,1fr\)/);
 });
 
+test("UX humaniza Respond/Admin y distingue la respuesta humana", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
+  assert.match(source, /WhatsApp Administración/);
+  assert.match(source, /Respuesta humana desde WhatsApp Business App/);
+  assert.match(source, /provider=respond_admin/);
+});
+
 test("pipeline contextual sólo persiste telemetría shadow", async () => {
   const source = await (await import("node:fs/promises")).readFile(new URL("../lib/shadow/pipeline.js", import.meta.url), "utf8");
   assert.doesNotMatch(source, /from\(["'](?:payments|contracts|maintenance_tickets|servicios_inmueble|pagos_servicios|llaves|owner_payments)["']\)\.(?:insert|update|upsert|delete)/);

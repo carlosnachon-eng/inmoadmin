@@ -9,6 +9,7 @@ import {
   readRespondWebhookBody,
   resolveRespondWebhookSigningKeys,
 } from "../../../lib/ejecutivo/respondWebhook";
+import { captureRespondAdminShadowIsolated } from "../../../lib/shadow/providers/respondAdmin";
 
 export const config = {
   api: {
@@ -45,8 +46,13 @@ export default async function handler(req, res) {
       message_id: event.messageId,
       payload_meta: event.payloadMeta,
     });
-    if (error?.code === "23505") return res.status(200).json({ ok: true, duplicate: true });
+    if (error?.code === "23505") {
+      await captureRespondAdminShadowIsolated(admin, body);
+      return res.status(200).json({ ok: true, duplicate: true });
+    }
     if (error) throw error;
+
+    await captureRespondAdminShadowIsolated(admin, body);
 
     return res.status(200).json({ ok: true, queued: true });
   } catch (error) {

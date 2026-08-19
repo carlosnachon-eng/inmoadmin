@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     }
     const admin = client(process.env.SUPABASE_SERVICE_ROLE_KEY);
     const [messages, conversations, events, matches, evaluations] = await Promise.all([
-      admin.from("shadow_messages").select("id,conversation_id,direction,occurred_at,sanitized_text,message_type,attachment_metadata,processing_state,intent,administrative_likelihood,reason_codes,requires_human,created_at").order("occurred_at", { ascending: false }).limit(250),
+      admin.from("shadow_messages").select("id,conversation_id,direction,occurred_at,sanitized_text,message_type,attachment_metadata,provider_metadata,processing_state,intent,administrative_likelihood,reason_codes,requires_human,created_at").order("occurred_at", { ascending: false }).limit(250),
       admin.from("shadow_conversations").select("id,provider,channel,contact_hash,first_message_at,last_message_at,administrative_likelihood,status"),
       admin.from("shadow_ingestion_events").select("status,sanitization_changed,duplicate_count"),
       admin.from("shadow_context_matches").select("message_id,internal_entity_type,internal_id,display_label,match_method,confidence_rank,ambiguous,reason_code,context_href"),
