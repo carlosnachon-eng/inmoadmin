@@ -1,0 +1,80 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Head from "next/head";
+import Layout, { brand } from "../components/Layout";
+import { supabase } from "../lib/supabase";
+
+const ROLES = new Set(["admin", "coord_operaciones"]);
+const EVALUATIONS = [
+  ["correct", "Correcto"], ["partially_correct", "Parcialmente correcto"],
+  ["incorrect", "Incorrecto"], ["wrong_context", "Contexto equivocado"],
+  ["wrong_intent", "Intención equivocada"], ["not_administration", "No era Administración"],
+];
+const likelihoodLabel = { high: "Alta", medium: "Media", low: "Baja", unknown: "Sin determinar" };
+
+export default function ShadowCoordinatorPage() {
+  const [session, setSession] = useState(null); const [profile, setProfile] = useState(null);
+  const [ready, setReady] = useState(false); const [data, setData] = useState(null);
+  const [selectedId, setSelectedId] = useState(null); const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false); const [evaluation, setEvaluation] = useState("correct");
+  const [correction, setCorrection] = useState("");
+  useEffect(() => { supabase.auth.getSession().then(({ data: { session: value } }) => { setSession(value); setReady(true); }); }, []);
+  useEffect(() => { if (!session?.user) return; supabase.from("profiles").select("id,role_id,active,email").eq("id", session.user.id).maybeSingle().then(({ data: value }) => setProfile(value)); }, [session?.user]);
+  const authorized = profile?.active && ROLES.has(profile.role_id);
+  const load = useCallback(async () => {
+    if (!authorized || !session?.access_token) return;
+    setError("");
+    const response = await fetch("/api/operaciones/shadow-coordinator", { headers: { Authorization: `Bearer ${session.access_token}` } });
+    const json = await response.json(); if (!response.ok) return setError(json.error || "No se pudo cargar.");
+    setData(json); setSelectedId((current) => current || json.messages?.[0]?.id || null);
+  }, [authorized, session?.access_token]);
+  useEffect(() => { load(); }, [load]);
+  const selected = data?.messages?.find((item) => item.id === selectedId);
+  const conversation = data?.conversations?.find((item) => item.id === selected?.conversation_id);
+  const matches = useMemo(() => (data?.matches || []).filter((item) => item.message_id === selectedId), [data, selectedId]);
+  const evaluations = useMemo(() => (data?.evaluations || []).filter((item) => item.message_id === selectedId), [data, selectedId]);
+  const intentCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.intent]: (acc[item.intent] || 0) + 1 }), {}), [data]);
+  const likelihoodCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.administrative_likelihood]: (acc[item.administrative_likelihood] || 0) + 1 }), { high: 0, medium: 0, low: 0, unknown: 0 }), [data]);
+  const ambiguousMessageIds = useMemo(() => new Set((data?.matches || []).filter((item) => item.ambiguous).map((item) => item.message_id)), [data]);
+  const saveEvaluation = async () => {
+    setSaving(true); setError("");
+    const response = await fetch("/api/operaciones/shadow-coordinator", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ messageId: selectedId, classification: evaluation, expectedCorrection: correction }) });
+    const json = await response.json(); setSaving(false); if (!response.ok) return setError(json.error || "No se guardó la evaluación.");
+    setCorrection(""); await load();
+  };
+  if (!ready || (session && !profile)) return <div style={{ padding: 32 }}>Cargando…</div>;
+  if (!session) return <div style={{ padding: 32 }}>Inicia sesión para acceder.</div>;
+  if (!authorized) return <div style={{ padding: 32 }}>Acceso reservado a Dirección y Coordinación de Operaciones.</div>;
+  const card = { background: "#fff", border: `1px solid ${brand.border}`, borderRadius: 12, padding: 14 };
+  return <Layout view="coordinador_ia_sombra" profile={profile} onLogout={async () => { await supabase.auth.signOut(); window.location.href = "/"; }}>
+    <Head><title>Coordinador IA — Sombra</title></Head>
+    <main style={{ padding: 22 }}>
+      <div style={{ marginBottom: 16 }}><h1 style={{ margin: 0, color: brand.gray }}>🌒 Coordinador IA — Sombra</h1><p style={{ color: brand.grayLight }}>Sólo observación y evaluación. No envía mensajes ni modifica el ERP.</p></div>
+      {error && <div style={{ ...card, background: "#fef2f2", color: "#991b1b", marginBottom: 12 }}>{error}</div>}
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 16 }}>
+        {[["Mensajes", data?.messages?.length || 0], ["Duplicados", data?.metrics?.duplicate || 0], ["Sanitizados", data?.metrics?.sanitized || 0], ["Revisión humana", data?.messages?.filter(x=>x.requires_human).length || 0], ["Contexto ambiguo", ambiguousMessageIds.size], ["Evaluaciones", data?.evaluations?.length || 0]].map(([label,value]) => <div key={label} style={card}><div style={{ fontSize: 24, fontWeight: 800 }}>{value}</div><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
+      </section>
+      <section style={{ ...card, display: "grid", gridTemplateColumns: "repeat(4,minmax(70px,1fr))", gap: 8, marginBottom: 16 }} aria-label="Distribución administrativa">
+        {[["High", likelihoodCounts.high], ["Medium", likelihoodCounts.medium], ["Low", likelihoodCounts.low], ["Unknown", likelihoodCounts.unknown]].map(([label,value]) => <div key={label}><strong>{value}</strong><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
+      </section>
+      <div className="shadow-workspace">
+        <section style={{ ...card, maxHeight: "72vh", overflow: "auto" }}><h2 style={{ fontSize: 16 }}>Conversaciones sintéticas</h2>{(data?.messages || []).map((item) => <button key={item.id} onClick={() => setSelectedId(item.id)} style={{ width: "100%", textAlign: "left", border: `1px solid ${item.id===selectedId ? brand.red : brand.border}`, background: item.id===selectedId ? brand.redLight : "#fff", borderRadius: 9, padding: 10, marginBottom: 8, cursor: "pointer" }}><strong>{item.intent.replaceAll("_", " ")}</strong><div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: brand.gray }}>{item.sanitized_text}</div><small>{likelihoodLabel[item.administrative_likelihood]} · {new Date(item.occurred_at).toLocaleString("es-MX")}</small></button>)}</section>
+        <section style={card}>{selected ? <>
+          <h2 style={{ marginTop: 0 }}>Detalle del mensaje</h2><blockquote style={{ margin: "12px 0", padding: 14, background: "#f9fafb", borderLeft: `4px solid ${brand.red}` }}>{selected.sanitized_text}</blockquote>
+          <p><strong>Origen:</strong> {conversation?.provider} / {conversation?.channel} · <strong>Contacto:</strong> {conversation?.contact_hash?.slice(0,12)}…</p>
+          <p><strong>Intención:</strong> {selected.intent} · <strong>Probabilidad administrativa:</strong> {likelihoodLabel[selected.administrative_likelihood]}</p>
+          <p><strong>Reglas:</strong> {(selected.reason_codes || []).join(", ") || "Sin señales"}</p>
+          <p><strong>Contexto:</strong> {matches.length ? matches.map(x => x.display_label || x.internal_id).join(", ") : "No resuelto"}</p>
+          <p><strong>Información faltante:</strong> {selected.requires_human ? "Se requiere confirmar contexto o intención." : "Ninguna detectada."}</p>
+          {matches[0]?.context_href && <a href={matches[0].context_href}>Abrir contexto en modo lectura</a>}
+          <div style={{ ...card, background: "#f8fafc", marginTop: 14 }}><strong>Análisis IA</strong><p style={{ marginBottom: 0 }}>Estado: No ejecutado</p></div>
+          <div style={{ marginTop: 16 }}><h3>Evaluación humana</h3><select value={evaluation} onChange={(e)=>setEvaluation(e.target.value)} style={{ width: "100%", padding: 9, marginBottom: 8 }}>{EVALUATIONS.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select><textarea value={correction} onChange={(e)=>setCorrection(e.target.value)} maxLength={1000} rows={3} placeholder="Qué debió detectar" style={{ width: "100%", boxSizing: "border-box", padding: 9 }}/><button disabled={saving} onClick={saveEvaluation} style={{ marginTop: 8, background: brand.red, color: "#fff", border: 0, borderRadius: 8, padding: "9px 14px", fontWeight: 700 }}>{saving ? "Guardando…" : "Guardar evaluación"}</button>{evaluations.map(x=><p key={x.id} style={{ fontSize: 12 }}>✓ {x.classification} · {new Date(x.created_at).toLocaleString("es-MX")}</p>)}</div>
+        </> : <p>No hay mensajes.</p>}</section>
+      </div>
+      <details style={{ ...card, marginTop: 14 }}><summary>Métricas por intención</summary><pre>{JSON.stringify(intentCounts, null, 2)}</pre></details>
+      <style jsx>{`
+        .shadow-workspace { display: grid; grid-template-columns: minmax(260px,.8fr) minmax(360px,1.4fr); gap: 14px; }
+        @media (max-width: 720px) { .shadow-workspace { grid-template-columns: minmax(0,1fr); } }
+      `}</style>
+    </main>
+  </Layout>;
+}
