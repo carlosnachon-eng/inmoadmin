@@ -10,6 +10,8 @@ const EVALUATIONS = [
   ["wrong_intent", "Intención equivocada"], ["not_administration", "No era Administración"],
 ];
 const likelihoodLabel = { high: "Alta", medium: "Media", low: "Baja", unknown: "Sin determinar" };
+const providerLabel = { "360dialog": "WhatsApp Administración", synthetic: "Prueba sintética", respond: "Canal externo" };
+const directionLabel = { inbound: "Cliente", outbound: "Respuesta humana desde WhatsApp Business App" };
 
 export default function ShadowCoordinatorPage() {
   const [session, setSession] = useState(null); const [profile, setProfile] = useState(null);
@@ -57,10 +59,10 @@ export default function ShadowCoordinatorPage() {
         {[["High", likelihoodCounts.high], ["Medium", likelihoodCounts.medium], ["Low", likelihoodCounts.low], ["Unknown", likelihoodCounts.unknown]].map(([label,value]) => <div key={label}><strong>{value}</strong><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
       </section>
       <div className="shadow-workspace">
-        <section style={{ ...card, maxHeight: "72vh", overflow: "auto" }}><h2 style={{ fontSize: 16 }}>Conversaciones sintéticas</h2>{(data?.messages || []).map((item) => <button key={item.id} onClick={() => setSelectedId(item.id)} style={{ width: "100%", textAlign: "left", border: `1px solid ${item.id===selectedId ? brand.red : brand.border}`, background: item.id===selectedId ? brand.redLight : "#fff", borderRadius: 9, padding: 10, marginBottom: 8, cursor: "pointer" }}><strong>{item.intent.replaceAll("_", " ")}</strong><div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: brand.gray }}>{item.sanitized_text}</div><small>{likelihoodLabel[item.administrative_likelihood]} · {new Date(item.occurred_at).toLocaleString("es-MX")}</small></button>)}</section>
+        <section style={{ ...card, maxHeight: "72vh", overflow: "auto" }}><h2 style={{ fontSize: 16 }}>Conversaciones Shadow</h2>{(data?.messages || []).map((item) => <button key={item.id} onClick={() => setSelectedId(item.id)} style={{ width: "100%", textAlign: "left", border: `1px solid ${item.id===selectedId ? brand.red : brand.border}`, background: item.id===selectedId ? brand.redLight : "#fff", borderRadius: 9, padding: 10, marginBottom: 8, cursor: "pointer" }}><strong>{item.intent.replaceAll("_", " ")}</strong><div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: brand.gray }}>{item.sanitized_text}</div><small>{likelihoodLabel[item.administrative_likelihood]} · {new Date(item.occurred_at).toLocaleString("es-MX")}</small></button>)}</section>
         <section style={card}>{selected ? <>
           <h2 style={{ marginTop: 0 }}>Detalle del mensaje</h2><blockquote style={{ margin: "12px 0", padding: 14, background: "#f9fafb", borderLeft: `4px solid ${brand.red}` }}>{selected.sanitized_text}</blockquote>
-          <p><strong>Origen:</strong> {conversation?.provider} / {conversation?.channel} · <strong>Contacto:</strong> {conversation?.contact_hash?.slice(0,12)}…</p>
+          <p><strong>Origen:</strong> {providerLabel[conversation?.provider] || "Canal externo"} · <strong>Participante:</strong> {directionLabel[selected.direction] || "Evento"} · <strong>Contacto:</strong> {conversation?.contact_hash?.slice(0,12)}…</p>
           <p><strong>Intención:</strong> {selected.intent} · <strong>Probabilidad administrativa:</strong> {likelihoodLabel[selected.administrative_likelihood]}</p>
           <p><strong>Reglas:</strong> {(selected.reason_codes || []).join(", ") || "Sin señales"}</p>
           <p><strong>Contexto:</strong> {matches.length ? matches.map(x => x.display_label || x.internal_id).join(", ") : "No resuelto"}</p>
