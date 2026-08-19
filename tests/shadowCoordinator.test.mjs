@@ -39,6 +39,11 @@ test("intenciones específicas prevalecen sobre consulta de pago genérica", () 
   assert.equal(classifyShadowMessage(service).intent, "consulta_servicio");
 });
 
+test("detecta vencimiento contractual aunque el verbo anteceda a contrato", () => {
+  const envelope = syntheticEnvelope({ id: "contract-date", text: "¿Cuándo vence mi contrato?", metadata: { area: "administracion" } });
+  assert.equal(classifyShadowMessage(envelope).intent, "contrato");
+});
+
 test("fingerprint es determinístico para reintentos", () => {
   const first = syntheticEnvelope({ id: "same", text: "No tengo luz", metadata: {} });
   const second = syntheticEnvelope({ id: "same", text: "No tengo luz", metadata: {} });
