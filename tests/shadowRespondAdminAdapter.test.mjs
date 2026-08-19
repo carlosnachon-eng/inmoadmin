@@ -224,9 +224,13 @@ test("failure isolation no propaga error al webhook comercial", async () => {
   const beforeEnabled = process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED;
   const beforeChannel = process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID;
   const beforeEnvironment = process.env.SUPABASE_ENVIRONMENT;
+  const beforeVercelEnvironment = process.env.VERCEL_ENV;
+  const beforeSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED = "true";
   process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID = RESPOND_ADMIN_FIXTURE_CHANNELS.admin;
   process.env.SUPABASE_ENVIRONMENT = "dev";
+  process.env.VERCEL_ENV = "preview";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://hjfwjnejbcpmknvfpdcq.supabase.co";
   const admin = { rpc: async () => ({ data: null, error: new Error("shadow unavailable") }) };
   try {
     assert.deepEqual(await captureRespondAdminShadowIsolated(admin, RESPOND_ADMIN_FIXTURES.inboundAdmin), { status: "isolated_error" });
@@ -234,6 +238,8 @@ test("failure isolation no propaga error al webhook comercial", async () => {
     if (beforeEnabled === undefined) delete process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED; else process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED = beforeEnabled;
     if (beforeChannel === undefined) delete process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID; else process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID = beforeChannel;
     if (beforeEnvironment === undefined) delete process.env.SUPABASE_ENVIRONMENT; else process.env.SUPABASE_ENVIRONMENT = beforeEnvironment;
+    if (beforeVercelEnvironment === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = beforeVercelEnvironment;
+    if (beforeSupabaseUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = beforeSupabaseUrl;
   }
 });
 
@@ -241,9 +247,13 @@ test("F: fallo total del resolver queda aislado sin afectar respuesta Respond", 
   const beforeEnabled = process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED;
   const beforeChannel = process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID;
   const beforeEnvironment = process.env.SUPABASE_ENVIRONMENT;
+  const beforeVercelEnvironment = process.env.VERCEL_ENV;
+  const beforeSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED = "true";
   process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID = RESPOND_ADMIN_FIXTURE_CHANNELS.admin;
   process.env.SUPABASE_ENVIRONMENT = "dev";
+  process.env.VERCEL_ENV = "preview";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://hjfwjnejbcpmknvfpdcq.supabase.co";
   const admin = pipelineAdmin();
   try {
     const result = await captureRespondAdminShadowIsolated(admin.db, RESPOND_ADMIN_FIXTURES.inboundAdmin, {
@@ -255,6 +265,8 @@ test("F: fallo total del resolver queda aislado sin afectar respuesta Respond", 
     if (beforeEnabled === undefined) delete process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED; else process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED = beforeEnabled;
     if (beforeChannel === undefined) delete process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID; else process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID = beforeChannel;
     if (beforeEnvironment === undefined) delete process.env.SUPABASE_ENVIRONMENT; else process.env.SUPABASE_ENVIRONMENT = beforeEnvironment;
+    if (beforeVercelEnvironment === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = beforeVercelEnvironment;
+    if (beforeSupabaseUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = beforeSupabaseUrl;
   }
 });
 
