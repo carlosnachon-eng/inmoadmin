@@ -10,6 +10,7 @@ import {
   resolveRespondWebhookSigningKeys,
 } from "../../../lib/ejecutivo/respondWebhook";
 import { captureRespondAdminShadowIsolated } from "../../../lib/shadow/providers/respondAdmin";
+import { routeRespondMessageIsolated } from "../../../lib/respond/channelRouter";
 
 export const config = {
   api: {
@@ -51,6 +52,15 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, duplicate: true });
     }
     if (error) throw error;
+
+    const routing = await routeRespondMessageIsolated(event);
+    if (routing.audit && routing.reason !== "disabled") {
+      const { error: auditError } = await admin
+        .from("gv_respond_webhook_events")
+        .update({ payload_meta: { ...event.payloadMeta, routing: routing.audit } })
+        .eq("event_id", event.eventId);
+      if (auditError) console.error("[respond-channel-router-audit]", auditError.message || "audit_failed");
+    }
 
     await captureRespondAdminShadowIsolated(admin, body);
 
