@@ -101,6 +101,16 @@ test("UX humaniza Respond/Admin y distingue la respuesta humana", async () => {
   assert.match(source, /provider=respond_admin/);
 });
 
+test("UX muestra el contexto semántico pendiente sin inventar una entidad", async () => {
+  const page = await (await import("node:fs/promises")).readFile(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
+  const api = await (await import("node:fs/promises")).readFile(new URL("../pages/api/operaciones/shadow-coordinator.js", import.meta.url), "utf8");
+  assert.match(page, /semantic_context_needed/);
+  assert.match(page, /Contexto por identificar/);
+  assert.match(api, /shadowContextState/);
+  assert.match(api, /semantic_context_needed/);
+  assert.match(api, /context_status/);
+});
+
 test("pipeline contextual sólo persiste telemetría shadow", async () => {
   const source = await (await import("node:fs/promises")).readFile(new URL("../lib/shadow/pipeline.js", import.meta.url), "utf8");
   assert.doesNotMatch(source, /from\(["'](?:payments|contracts|maintenance_tickets|servicios_inmueble|pagos_servicios|llaves|owner_payments)["']\)\.(?:insert|update|upsert|delete)/);

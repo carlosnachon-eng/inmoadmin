@@ -66,7 +66,7 @@ export default function ShadowCoordinatorPage() {
           {conversation?.provider === "respond_admin" && <details><summary>Detalle técnico</summary><p><code>provider=respond_admin</code> · canal pseudorreferenciado por configuración server-side.</p></details>}
           <p><strong>Intención:</strong> {selected.intent} · <strong>Probabilidad administrativa:</strong> {likelihoodLabel[selected.administrative_likelihood]}</p>
           <p><strong>Reglas:</strong> {(selected.reason_codes || []).join(", ") || "Sin señales"}</p>
-          <p><strong>Contexto:</strong> {matches.length ? matches.map(x => x.display_label || x.internal_id).join(", ") : "No resuelto"}</p>
+          <p><strong>Contexto:</strong> {matches.length ? matches.map(x => x.display_label || x.internal_id).join(", ") : (selected.semantic_context_needed ? "Contexto por identificar" : "No aplica")}</p>
           <p><strong>Información faltante:</strong> {selected.requires_human ? "Se requiere confirmar contexto o intención." : "Ninguna detectada."}</p>
           {matches[0]?.context_href && <a href={matches[0].context_href}>Abrir contexto en modo lectura</a>}
           <div style={{ ...card, background: "#f8fafc", marginTop: 14 }}><strong>Análisis IA</strong><p style={{ marginBottom: 0 }}>Estado: No ejecutado</p></div>

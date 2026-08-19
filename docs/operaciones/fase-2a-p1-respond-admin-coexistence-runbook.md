@@ -24,6 +24,12 @@ Los errores y timeouts del fork Shadow se absorben después de que Ventas quedó
 
 Una respuesta `outbound_human` se persiste como contexto conversacional y se detiene antes de `resolveShadowContext()`: no es una solicitud, no consulta el ERP y no crea acciones ni casos.
 
+## Frontera semántica de P1
+
+P1 captura y clasifica el transporte de forma segura, pero no extrae entidades desde texto libre. Si el envelope trae identificadores determinísticos confiables (`propertyId`, `contractId`, `paymentId`, `ticketId` u otros admitidos), la pipeline compartida intenta resolverlos y audita las consultas. Si un inbound administrativo sólo contiene lenguaje humano, se conserva con `contextStatus=unresolved` y `semanticContextNeeded=true`; la UI lo presenta como **Contexto por identificar**. Esto no es un error de transporte ni implica ejecutar IA. La resolución semántica pertenece a P2/P3.
+
+No se usan regex de propiedades, direcciones, fuzzy matching indiscriminado ni búsquedas ERP por palabras. `outbound_human` permanece con `contextStatus=not_applicable`, no consulta ERP y nunca marca `semanticContextNeeded`.
+
 ## Estado previo confirmado del teléfono
 
 - iPhone.

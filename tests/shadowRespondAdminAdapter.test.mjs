@@ -29,6 +29,18 @@ function pipelineAdmin() {
         return {
           async upsert(rows) { state.matches.push(...rows); return { error: null }; },
           async insert(rows) { state.audits.push(...rows); return { error: null }; },
+          select() {
+            const query = {
+              eq() { return query; },
+              ilike() { return query; },
+              async limit() {
+                return table === "properties"
+                  ? { data: [{ id: "property-qa", name: "Inmueble QA" }], error: null }
+                  : { data: [], error: null };
+              },
+            };
+            return query;
+          },
         };
       },
     },
@@ -93,6 +105,29 @@ test("A: inbound Admin recorre pipeline P0 y persiste matches/audits", async () 
   assert.equal(admin.state.matches.length, 2);
   assert.equal(admin.state.audits.length, 2);
   assert.ok(admin.state.audits.every((item) => item.result_count <= 5));
+  assert.equal(result.contextStatus, "resolved");
+  assert.equal(result.semanticContextNeeded, false);
+});
+
+test("metadata determinística explícita activa resolución ERP y auditoría", async () => {
+  const admin = pipelineAdmin();
+  const envelope = transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.inboundAdmin);
+  envelope.providerMetadata.propertyId = "property-qa";
+  const result = await processShadowEnvelope(admin.db, envelope);
+  assert.equal(result.contextStatus, "resolved");
+  assert.equal(result.semanticContextNeeded, false);
+  assert.equal(admin.state.matches.length, 1);
+  assert.equal(admin.state.audits.length, 1);
+});
+
+test("texto humano sin claves queda unresolved sin sobreconsultar", async () => {
+  const admin = pipelineAdmin();
+  const result = await processShadowEnvelope(admin.db, transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.inboundAdmin));
+  assert.equal(result.classification.intent, "reportar_mantenimiento");
+  assert.equal(result.contextStatus, "unresolved");
+  assert.equal(result.semanticContextNeeded, true);
+  assert.equal(admin.state.matches.length, 0);
+  assert.equal(admin.state.audits.length, 0);
 });
 
 test("outgoing administrativo queda como contexto humano y nunca solicitud", () => {
@@ -116,6 +151,8 @@ test("B: outbound_human se persiste sin resolver contexto ERP", async () => {
   assert.equal(result.status, "accepted");
   assert.equal(result.classification.intent, "no_determinado");
   assert.equal(result.context, null);
+  assert.equal(result.contextStatus, "not_applicable");
+  assert.equal(result.semanticContextNeeded, false);
   assert.equal(resolverCalls, 0);
   assert.equal(admin.state.messages.size, 1);
   assert.equal(admin.state.matches.length, 0);
