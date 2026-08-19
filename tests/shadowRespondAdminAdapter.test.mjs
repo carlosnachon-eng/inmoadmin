@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { classifyShadowMessage } from "../lib/shadow/coordinator.js";
+import { processShadowEnvelope } from "../lib/shadow/pipeline.js";
 import { RESPOND_ADMIN_FIXTURE_CHANNELS, RESPOND_ADMIN_FIXTURES } from "../lib/shadow/providers/respondAdmin.fixtures.js";
 import {
   captureRespondAdminShadowIsolated,
@@ -11,6 +12,28 @@ import {
 } from "../lib/shadow/providers/respondAdmin.js";
 
 const config = { enabled: "true", adminChannelId: RESPOND_ADMIN_FIXTURE_CHANNELS.admin };
+
+function pipelineAdmin() {
+  const state = { messages: new Map(), matches: [], audits: [] };
+  return {
+    state,
+    db: {
+      async rpc(_name, { p_envelope }) {
+        const key = `${p_envelope.provider}:${p_envelope.externalMessageId || p_envelope.payloadFingerprint}`;
+        if (state.messages.has(key)) return { data: { status: "duplicate", messageId: state.messages.get(key) }, error: null };
+        const messageId = `shadow-${state.messages.size + 1}`;
+        state.messages.set(key, messageId);
+        return { data: { status: "accepted", messageId, conversationId: "shadow-conversation" }, error: null };
+      },
+      from(table) {
+        return {
+          async upsert(rows) { state.matches.push(...rows); return { error: null }; },
+          async insert(rows) { state.audits.push(...rows); return { error: null }; },
+        };
+      },
+    },
+  };
+}
 
 test("propaga channelId desde las formas soportadas", () => {
   assert.equal(respondChannelId({ message: { channelId: "message-channel" } }), "message-channel");
@@ -49,6 +72,29 @@ test("inbound administrativo produce envelope neutral y pseudonimizado", () => {
   assert.equal(Object.hasOwn(envelope, "externalContactId"), false);
 });
 
+test("A: inbound Admin recorre pipeline P0 y persiste matches/audits", async () => {
+  const admin = pipelineAdmin();
+  const envelope = transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.inboundAdmin);
+  const result = await processShadowEnvelope(admin.db, envelope, {
+    contextResolver: async () => ({
+      matches: [
+        { entityType: "property", internalId: "property-qa", label: "FASE2A-QA Casa Nube", method: "reference", confidence: 100, reasonCode: "property_reference" },
+        { entityType: "maintenance_ticket", internalId: "ticket-qa", label: "Fuga Casa Nube", method: "reference", confidence: 95, reasonCode: "maintenance_reference" },
+      ],
+      audit: [
+        { tool: "find_properties", resultCount: 1, ok: true, durationMs: 2 },
+        { tool: "get_maintenance_ticket_summary", resultCount: 1, ok: true, durationMs: 3 },
+      ],
+      ambiguous: false,
+    }),
+  });
+  assert.equal(result.status, "accepted");
+  assert.equal(result.context.matches.length, 2);
+  assert.equal(admin.state.matches.length, 2);
+  assert.equal(admin.state.audits.length, 2);
+  assert.ok(admin.state.audits.every((item) => item.result_count <= 5));
+});
+
 test("outgoing administrativo queda como contexto humano y nunca solicitud", () => {
   const envelope = transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.outboundAdmin);
   assert.equal(envelope.direction, "outbound_human");
@@ -59,6 +105,39 @@ test("outgoing administrativo queda como contexto humano y nunca solicitud", () 
     requiresHuman: false,
   });
   assert.equal(envelope.providerMetadata.echoGatePending, "true");
+});
+
+test("B: outbound_human se persiste sin resolver contexto ERP", async () => {
+  const admin = pipelineAdmin();
+  let resolverCalls = 0;
+  const result = await processShadowEnvelope(admin.db, transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.outboundAdmin), {
+    contextResolver: async () => { resolverCalls += 1; throw new Error("no debe ejecutarse"); },
+  });
+  assert.equal(result.status, "accepted");
+  assert.equal(result.classification.intent, "no_determinado");
+  assert.equal(result.context, null);
+  assert.equal(resolverCalls, 0);
+  assert.equal(admin.state.messages.size, 1);
+  assert.equal(admin.state.matches.length, 0);
+  assert.equal(admin.state.audits.length, 0);
+});
+
+test("C/D/E: Ventas, sin channelId y desconocido producen cero Shadow", async () => {
+  const beforeEnabled = process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED;
+  const beforeChannel = process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID;
+  process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED = "true";
+  process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID = RESPOND_ADMIN_FIXTURE_CHANNELS.admin;
+  let pipelineCalls = 0;
+  try {
+    for (const payload of [RESPOND_ADMIN_FIXTURES.inboundSales, RESPOND_ADMIN_FIXTURES.missingChannel, RESPOND_ADMIN_FIXTURES.unknownChannel]) {
+      const result = await captureRespondAdminShadowIsolated({}, payload, { processEnvelope: async () => { pipelineCalls += 1; } });
+      assert.equal(result.status, "skipped");
+    }
+    assert.equal(pipelineCalls, 0);
+  } finally {
+    if (beforeEnabled === undefined) delete process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED; else process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED = beforeEnabled;
+    if (beforeChannel === undefined) delete process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID; else process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID = beforeChannel;
+  }
 });
 
 test("idempotencia distingue mensajes legítimos y estabiliza reintentos", () => {
@@ -119,4 +198,41 @@ test("failure isolation no propaga error al webhook comercial", async () => {
     if (beforeChannel === undefined) delete process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID; else process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID = beforeChannel;
     if (beforeEnvironment === undefined) delete process.env.SUPABASE_ENVIRONMENT; else process.env.SUPABASE_ENVIRONMENT = beforeEnvironment;
   }
+});
+
+test("F: fallo total del resolver queda aislado sin afectar respuesta Respond", async () => {
+  const beforeEnabled = process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED;
+  const beforeChannel = process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID;
+  const beforeEnvironment = process.env.SUPABASE_ENVIRONMENT;
+  process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED = "true";
+  process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID = RESPOND_ADMIN_FIXTURE_CHANNELS.admin;
+  process.env.SUPABASE_ENVIRONMENT = "dev";
+  const admin = pipelineAdmin();
+  try {
+    const result = await captureRespondAdminShadowIsolated(admin.db, RESPOND_ADMIN_FIXTURES.inboundAdmin, {
+      processEnvelope: (db, envelope) => processShadowEnvelope(db, envelope, { contextResolver: async () => { throw new Error("context unavailable"); } }),
+    });
+    assert.deepEqual(result, { status: "isolated_error" });
+    assert.equal(admin.state.messages.size, 1);
+  } finally {
+    if (beforeEnabled === undefined) delete process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED; else process.env.SHADOW_RESPOND_ADMIN_CAPTURE_ENABLED = beforeEnabled;
+    if (beforeChannel === undefined) delete process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID; else process.env.SHADOW_RESPOND_ADMIN_CHANNEL_ID = beforeChannel;
+    if (beforeEnvironment === undefined) delete process.env.SUPABASE_ENVIRONMENT; else process.env.SUPABASE_ENVIRONMENT = beforeEnvironment;
+  }
+});
+
+test("G: duplicado conserva una sola shadow_message y no repite contexto", async () => {
+  const admin = pipelineAdmin();
+  const resolver = async () => ({
+    matches: [{ entityType: "property", internalId: "property-qa", label: "Casa Nube", method: "reference", confidence: 100, reasonCode: "property_reference" }],
+    audit: [{ tool: "find_properties", resultCount: 1, ok: true, durationMs: 1 }],
+    ambiguous: false,
+  });
+  const first = await processShadowEnvelope(admin.db, transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.inboundAdmin), { contextResolver: resolver });
+  const duplicate = await processShadowEnvelope(admin.db, transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.duplicate), { contextResolver: resolver });
+  assert.equal(first.status, "accepted");
+  assert.equal(duplicate.status, "duplicate");
+  assert.equal(admin.state.messages.size, 1);
+  assert.equal(admin.state.matches.length, 1);
+  assert.equal(admin.state.audits.length, 1);
 });
