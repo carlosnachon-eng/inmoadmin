@@ -138,6 +138,18 @@ test("el evento normalizado no persiste claves ni firmas", () => {
   assert.doesNotMatch(JSON.stringify(event), /must-not-persist/);
 });
 
+test("el evento conserva channelId estable sin conservar el body crudo", () => {
+  const event = extractRespondWebhookEvent({
+    event_id: "message-event",
+    event_type: "message.received",
+    contact: { id: "contact" },
+    message: { messageId: "message", channelId: "admin-channel", text: "PII no debe entrar en meta" },
+  });
+  assert.equal(event.channelId, "admin-channel");
+  assert.equal(event.payloadMeta.channel_id, "admin-channel");
+  assert.doesNotMatch(JSON.stringify(event.payloadMeta), /PII no debe entrar/);
+});
+
 test("receiver conserva deduplicación y no registra secretos", () => {
   assert.match(receiverSource, /resolveRespondWebhookSigningKeys\(\)/);
   assert.match(receiverSource, /error\?\.code === "23505"/);
@@ -168,6 +180,7 @@ globalThis.__respondReceiverTestDeps = {
   isValidRespondWebhookSignature,
   readRespondWebhookBody,
   resolveRespondWebhookSigningKeys,
+  async captureRespondAdminShadowIsolated() { return { status: "skipped", reason: "test" }; },
 };
 
 const receiverHarnessSource = receiverSource
@@ -182,6 +195,10 @@ const receiverHarnessSource = receiverSource
   .replace(
     /import \{[\s\S]*?\} from "\.\.\/\.\.\/\.\.\/lib\/ejecutivo\/respondWebhook";/,
     "const { extractRespondWebhookEvent, isValidRespondWebhookSignature, readRespondWebhookBody, resolveRespondWebhookSigningKeys } = globalThis.__respondReceiverTestDeps;",
+  )
+  .replace(
+    /import \{ captureRespondAdminShadowIsolated \} from "\.\.\/\.\.\/\.\.\/lib\/shadow\/providers\/respondAdmin";/,
+    "const { captureRespondAdminShadowIsolated } = globalThis.__respondReceiverTestDeps;",
   );
 const { default: receiverHandler } = await import(
   `data:text/javascript;base64,${Buffer.from(receiverHarnessSource).toString("base64")}`

@@ -10,6 +10,8 @@ const EVALUATIONS = [
   ["wrong_intent", "Intención equivocada"], ["not_administration", "No era Administración"],
 ];
 const likelihoodLabel = { high: "Alta", medium: "Media", low: "Baja", unknown: "Sin determinar" };
+const providerLabel = { respond_admin: "WhatsApp Administración", respond: "Respond.io", synthetic: "Fixture sintético" };
+const directionLabel = { inbound: "Cliente", outbound: "Salida", outbound_human: "Respuesta humana desde WhatsApp Business App" };
 
 export default function ShadowCoordinatorPage() {
   const [session, setSession] = useState(null); const [profile, setProfile] = useState(null);
@@ -57,13 +59,14 @@ export default function ShadowCoordinatorPage() {
         {[["High", likelihoodCounts.high], ["Medium", likelihoodCounts.medium], ["Low", likelihoodCounts.low], ["Unknown", likelihoodCounts.unknown]].map(([label,value]) => <div key={label}><strong>{value}</strong><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
       </section>
       <div className="shadow-workspace">
-        <section style={{ ...card, maxHeight: "72vh", overflow: "auto" }}><h2 style={{ fontSize: 16 }}>Conversaciones sintéticas</h2>{(data?.messages || []).map((item) => <button key={item.id} onClick={() => setSelectedId(item.id)} style={{ width: "100%", textAlign: "left", border: `1px solid ${item.id===selectedId ? brand.red : brand.border}`, background: item.id===selectedId ? brand.redLight : "#fff", borderRadius: 9, padding: 10, marginBottom: 8, cursor: "pointer" }}><strong>{item.intent.replaceAll("_", " ")}</strong><div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: brand.gray }}>{item.sanitized_text}</div><small>{likelihoodLabel[item.administrative_likelihood]} · {new Date(item.occurred_at).toLocaleString("es-MX")}</small></button>)}</section>
+        <section style={{ ...card, maxHeight: "72vh", overflow: "auto" }}><h2 style={{ fontSize: 16 }}>Conversaciones observadas</h2>{(data?.messages || []).map((item) => <button key={item.id} onClick={() => setSelectedId(item.id)} style={{ width: "100%", textAlign: "left", border: `1px solid ${item.id===selectedId ? brand.red : brand.border}`, background: item.id===selectedId ? brand.redLight : "#fff", borderRadius: 9, padding: 10, marginBottom: 8, cursor: "pointer" }}><strong>{item.direction === "outbound_human" ? "Respuesta humana" : item.intent.replaceAll("_", " ")}</strong><div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: brand.gray }}>{item.sanitized_text}</div><small>{directionLabel[item.direction] || item.direction} · {likelihoodLabel[item.administrative_likelihood]} · {new Date(item.occurred_at).toLocaleString("es-MX")}</small></button>)}</section>
         <section style={card}>{selected ? <>
           <h2 style={{ marginTop: 0 }}>Detalle del mensaje</h2><blockquote style={{ margin: "12px 0", padding: 14, background: "#f9fafb", borderLeft: `4px solid ${brand.red}` }}>{selected.sanitized_text}</blockquote>
-          <p><strong>Origen:</strong> {conversation?.provider} / {conversation?.channel} · <strong>Contacto:</strong> {conversation?.contact_hash?.slice(0,12)}…</p>
+          <p><strong>Origen:</strong> {providerLabel[conversation?.provider] || conversation?.provider} · <strong>Dirección:</strong> {directionLabel[selected.direction] || selected.direction} · <strong>Contacto:</strong> {conversation?.contact_hash?.slice(0,12)}…</p>
+          {conversation?.provider === "respond_admin" && <details><summary>Detalle técnico</summary><p><code>provider=respond_admin</code> · canal pseudorreferenciado por configuración server-side.</p></details>}
           <p><strong>Intención:</strong> {selected.intent} · <strong>Probabilidad administrativa:</strong> {likelihoodLabel[selected.administrative_likelihood]}</p>
           <p><strong>Reglas:</strong> {(selected.reason_codes || []).join(", ") || "Sin señales"}</p>
-          <p><strong>Contexto:</strong> {matches.length ? matches.map(x => x.display_label || x.internal_id).join(", ") : "No resuelto"}</p>
+          <p><strong>Contexto:</strong> {matches.length ? matches.map(x => x.display_label || x.internal_id).join(", ") : (selected.semantic_context_needed ? "Contexto por identificar" : "No aplica")}</p>
           <p><strong>Información faltante:</strong> {selected.requires_human ? "Se requiere confirmar contexto o intención." : "Ninguna detectada."}</p>
           {matches[0]?.context_href && <a href={matches[0].context_href}>Abrir contexto en modo lectura</a>}
           <div style={{ ...card, background: "#f8fafc", marginTop: 14 }}><strong>Análisis IA</strong><p style={{ marginBottom: 0 }}>Estado: No ejecutado</p></div>

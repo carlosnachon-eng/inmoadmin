@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { isAdministrativeWorkCenterRole } from "../../../lib/operaciones/administrativeWorkCenter";
+import { shadowContextState } from "../../../lib/shadow/pipeline";
 
 const client = (key, token) => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, key, {
   global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
@@ -37,7 +38,7 @@ export default async function handler(req, res) {
     }
     const admin = client(process.env.SUPABASE_SERVICE_ROLE_KEY);
     const [messages, conversations, events, matches, evaluations] = await Promise.all([
-      admin.from("shadow_messages").select("id,conversation_id,direction,occurred_at,sanitized_text,message_type,attachment_metadata,processing_state,intent,administrative_likelihood,reason_codes,requires_human,created_at").order("occurred_at", { ascending: false }).limit(250),
+      admin.from("shadow_messages").select("id,conversation_id,direction,occurred_at,sanitized_text,message_type,attachment_metadata,provider_metadata,processing_state,intent,administrative_likelihood,reason_codes,requires_human,created_at").order("occurred_at", { ascending: false }).limit(250),
       admin.from("shadow_conversations").select("id,provider,channel,contact_hash,first_message_at,last_message_at,administrative_likelihood,status"),
       admin.from("shadow_ingestion_events").select("status,sanitization_changed,duplicate_count"),
       admin.from("shadow_context_matches").select("message_id,internal_entity_type,internal_id,display_label,match_method,confidence_rank,ambiguous,reason_code,context_href"),
@@ -46,7 +47,18 @@ export default async function handler(req, res) {
     const failure = [messages, conversations, events, matches, evaluations].find((result) => result.error)?.error;
     if (failure) throw failure;
     const counts = (events.data || []).reduce((acc, item) => ({ ...acc, [item.status]: (acc[item.status] || 0) + 1, duplicate: acc.duplicate + Number(item.duplicate_count || 0), sanitized: acc.sanitized + (item.sanitization_changed ? 1 : 0) }), { accepted: 0, duplicate: 0, rejected: 0, error: 0, sanitized: 0 });
-    return res.status(200).json({ ok: true, messages: messages.data || [], conversations: conversations.data || [], matches: matches.data || [], evaluations: evaluations.data || [], metrics: counts, aiStatus: "not_executed" });
+    const messageMatches = new Map();
+    for (const match of matches.data || []) messageMatches.set(match.message_id, (messageMatches.get(match.message_id) || 0) + 1);
+    const enrichedMessages = (messages.data || []).map((message) => {
+      const matchCount = messageMatches.get(message.id) || 0;
+      const state = shadowContextState(
+        { direction: message.direction },
+        { intent: message.intent },
+        { matches: Array.from({ length: matchCount }), ambiguous: false },
+      );
+      return { ...message, semantic_context_needed: state.semanticContextNeeded, context_status: state.contextStatus };
+    });
+    return res.status(200).json({ ok: true, messages: enrichedMessages, conversations: conversations.data || [], matches: matches.data || [], evaluations: evaluations.data || [], metrics: counts, aiStatus: "not_executed" });
   } catch (error) {
     console.error("[shadow-coordinator]", error?.message || error);
     return res.status(500).json({ ok: false, error: "No se pudo cargar Coordinador IA — Sombra." });
