@@ -19,6 +19,7 @@ export default function ShadowCoordinatorPage() {
   const [selectedId, setSelectedId] = useState(null); const [error, setError] = useState("");
   const [saving, setSaving] = useState(false); const [evaluation, setEvaluation] = useState("correct");
   const [correction, setCorrection] = useState("");
+  const [qaRunning, setQaRunning] = useState(false); const [qaReport, setQaReport] = useState(null);
   useEffect(() => { supabase.auth.getSession().then(({ data: { session: value } }) => { setSession(value); setReady(true); }); }, []);
   useEffect(() => { if (!session?.user) return; supabase.from("profiles").select("id,role_id,active,email").eq("id", session.user.id).maybeSingle().then(({ data: value }) => setProfile(value)); }, [session?.user]);
   const authorized = profile?.active && ROLES.has(profile.role_id);
@@ -46,6 +47,12 @@ export default function ShadowCoordinatorPage() {
     const json = await response.json(); setSaving(false); if (!response.ok) return setError(json.error || "No se guardó la evaluación.");
     setCorrection(""); await load();
   };
+  const runSyntheticQa = async (fixtureIds) => {
+    setQaRunning(true); setError(""); setQaReport(null);
+    const response = await fetch("/api/operaciones/shadow-ai-run", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ fixtureIds }) });
+    const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo ejecutar QA sintética.");
+    setQaReport(json); await load();
+  };
   if (!ready || (session && !profile)) return <div style={{ padding: 32 }}>Cargando…</div>;
   if (!session) return <div style={{ padding: 32 }}>Inicia sesión para acceder.</div>;
   if (!authorized) return <div style={{ padding: 32 }}>Acceso reservado a Dirección y Coordinación de Operaciones.</div>;
@@ -54,6 +61,7 @@ export default function ShadowCoordinatorPage() {
     <Head><title>Coordinador IA — Sombra</title></Head>
     <main style={{ padding: 22 }}>
       <div style={{ marginBottom: 16 }}><h1 style={{ margin: 0, color: brand.gray }}>🌒 Coordinador IA — Sombra</h1><p style={{ color: brand.grayLight }}>Sólo observación y evaluación. No envía mensajes ni modifica el ERP.</p></div>
+      <details style={{ ...card, marginBottom: 14 }}><summary>QA sintética P3 (sólo DEV)</summary><p style={{ color: brand.grayLight }}>El servidor rechaza datos reales y cualquier entorno distinto de DEV.</p><button disabled={qaRunning} onClick={() => runSyntheticQa(["p3-01"])} style={{ marginRight: 8 }}>Ejecutar smoke 1</button><button disabled={qaRunning} onClick={() => runSyntheticQa(Array.from({length:38},(_,index)=>`p3-${String(index+1).padStart(2,"0")}`))}>Ejecutar lote 38</button>{qaRunning && <p>Ejecutando…</p>}{qaReport?.metrics && <pre style={{ overflow: "auto" }}>{JSON.stringify(qaReport.metrics, null, 2)}</pre>}</details>
       {error && <div style={{ ...card, background: "#fef2f2", color: "#991b1b", marginBottom: 12 }}>{error}</div>}
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 16 }}>
         {[["Mensajes", data?.messages?.length || 0], ["Duplicados", data?.metrics?.duplicate || 0], ["Sanitizados", data?.metrics?.sanitized || 0], ["Revisión humana", data?.messages?.filter(x=>x.requires_human).length || 0], ["Contexto ambiguo", ambiguousMessageIds.size], ["Evaluaciones", data?.evaluations?.length || 0]].map(([label,value]) => <div key={label} style={card}><div style={{ fontSize: 24, fontWeight: 800 }}>{value}</div><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
