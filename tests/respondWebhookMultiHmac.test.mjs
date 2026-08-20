@@ -150,6 +150,30 @@ test("el evento conserva channelId estable sin conservar el body crudo", () => {
   assert.doesNotMatch(JSON.stringify(event.payloadMeta), /PII no debe entrar/);
 });
 
+test("normaliza aliases New Incoming/Outgoing Message al constraint persistido", () => {
+  const incoming = extractRespondWebhookEvent({
+    event_id: "incoming-alias",
+    event_type: "new_incoming_message",
+    contact: { id: "contact" },
+    message: { id: "incoming-message", channelId: "544519" },
+  });
+  const outgoing = extractRespondWebhookEvent({
+    event_id: "outgoing-alias",
+    event_type: "New Outgoing Message",
+    contact: { id: "contact" },
+    message: { id: "outgoing-message", channelId: "498219" },
+  });
+
+  assert.equal(incoming.eventType, "message.received");
+  assert.equal(incoming.messageId, "incoming-message");
+  assert.equal(incoming.supported, true);
+  assert.equal(outgoing.eventType, "message.sent");
+  assert.equal(outgoing.messageId, "outgoing-message");
+  assert.equal(outgoing.supported, true);
+  assert.match(migrationSource, /'message\.received'/);
+  assert.match(migrationSource, /'message\.sent'/);
+});
+
 test("receiver conserva deduplicación y no registra secretos", () => {
   assert.match(receiverSource, /resolveRespondWebhookSigningKeys\(\)/);
   assert.match(receiverSource, /error\?\.code === "23505"/);
@@ -181,6 +205,7 @@ globalThis.__respondReceiverTestDeps = {
   readRespondWebhookBody,
   resolveRespondWebhookSigningKeys,
   async captureRespondAdminShadowIsolated() { return { status: "skipped", reason: "test" }; },
+  async routeRespondMessageIsolated() { return { route: false, reason: "disabled" }; },
 };
 
 const receiverHarnessSource = receiverSource
@@ -199,6 +224,10 @@ const receiverHarnessSource = receiverSource
   .replace(
     /import \{ captureRespondAdminShadowIsolated \} from "\.\.\/\.\.\/\.\.\/lib\/shadow\/providers\/respondAdmin";/,
     "const { captureRespondAdminShadowIsolated } = globalThis.__respondReceiverTestDeps;",
+  )
+  .replace(
+    /import \{ routeRespondMessageIsolated \} from "\.\.\/\.\.\/\.\.\/lib\/respond\/channelRouter";/,
+    "const { routeRespondMessageIsolated } = globalThis.__respondReceiverTestDeps;",
   );
 const { default: receiverHandler } = await import(
   `data:text/javascript;base64,${Buffer.from(receiverHarnessSource).toString("base64")}`
