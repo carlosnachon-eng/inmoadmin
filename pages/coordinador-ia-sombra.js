@@ -6,8 +6,8 @@ import { supabase } from "../lib/supabase";
 const ROLES = new Set(["admin", "coord_operaciones"]);
 const EVALUATIONS = [
   ["correct", "Correcto"], ["partially_correct", "Parcialmente correcto"],
-  ["incorrect", "Incorrecto"], ["wrong_context", "Contexto equivocado"],
-  ["wrong_intent", "Intención equivocada"], ["not_administration", "No era Administración"],
+  ["wrong_intent", "Intención incorrecta"], ["wrong_context", "Contexto incorrecto"],
+  ["wrong_action", "Acción incorrecta"], ["wrong_response", "Respuesta incorrecta"], ["unsafe", "Inseguro"],
 ];
 const likelihoodLabel = { high: "Alta", medium: "Media", low: "Baja", unknown: "Sin determinar" };
 const providerLabel = { respond_admin: "WhatsApp Administración", respond: "Respond.io", synthetic: "Fixture sintético" };
@@ -35,6 +35,9 @@ export default function ShadowCoordinatorPage() {
   const conversation = data?.conversations?.find((item) => item.id === selected?.conversation_id);
   const matches = useMemo(() => (data?.matches || []).filter((item) => item.message_id === selectedId), [data, selectedId]);
   const evaluations = useMemo(() => (data?.evaluations || []).filter((item) => item.message_id === selectedId), [data, selectedId]);
+  const aiRun = useMemo(() => (data?.aiRuns || []).find((item) => item.message_id === selectedId), [data, selectedId]);
+  const aiDecision = useMemo(() => (data?.aiDecisions || []).find((item) => item.ai_run_id === aiRun?.id), [data, aiRun?.id]);
+  const aiTools = aiDecision?.tool_summary || [];
   const intentCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.intent]: (acc[item.intent] || 0) + 1 }), {}), [data]);
   const likelihoodCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.administrative_likelihood]: (acc[item.administrative_likelihood] || 0) + 1 }), { high: 0, medium: 0, low: 0, unknown: 0 }), [data]);
   const ambiguousMessageIds = useMemo(() => new Set((data?.matches || []).filter((item) => item.ambiguous).map((item) => item.message_id)), [data]);
@@ -73,7 +76,18 @@ export default function ShadowCoordinatorPage() {
           <p><strong>Contexto:</strong> {matches.length ? matches.map(x => x.display_label || x.internal_id).join(", ") : (selected.semantic_context_needed ? "Contexto por identificar" : "No aplica")}</p>
           <p><strong>Información faltante:</strong> {selected.requires_human ? "Se requiere confirmar contexto o intención." : "Ninguna detectada."}</p>
           {matches[0]?.context_href && <a href={matches[0].context_href}>Abrir contexto en modo lectura</a>}
-          <div style={{ ...card, background: "#f8fafc", marginTop: 14 }}><strong>Análisis IA</strong><p style={{ marginBottom: 0 }}>Estado: No ejecutado</p></div>
+          <div style={{ ...card, background: "#f8fafc", marginTop: 14 }}><h3 style={{marginTop:0}}>Administradora IA</h3>
+            {!aiDecision ? <p style={{marginBottom:0}}>Estado: {aiRun?.status || "No ejecutado"}</p> : <>
+              <p><strong>Análisis:</strong> {aiDecision.decision_json?.summary}</p>
+              <p><strong>Herramientas consultadas:</strong> {aiTools.length ? aiTools.map(x=>`${x.name} (${x.resultCount})`).join(", ") : "Ninguna"}</p>
+              <p><strong>Contexto encontrado:</strong> {aiDecision.decision_json?.contextAssessment}</p>
+              <p><strong>Acción propuesta:</strong> {aiDecision.proposed_action}</p>
+              <p><strong>Respuesta propuesta:</strong> {aiDecision.proposed_response}</p>
+              <p><strong>Confianza:</strong> {Math.round(Number(aiDecision.confidence||0)*100)}% · <strong>Requiere humano:</strong> {aiDecision.requires_human ? "Sí" : "No"}</p>
+              {aiDecision.escalation_reason && <p><strong>Motivo:</strong> {aiDecision.escalation_reason}</p>}
+              <small>{aiRun.model} · {aiRun.prompt_version} · {aiRun.latency_ms || 0} ms</small>
+            </>}
+          </div>
           <div style={{ marginTop: 16 }}><h3>Evaluación humana</h3><select value={evaluation} onChange={(e)=>setEvaluation(e.target.value)} style={{ width: "100%", padding: 9, marginBottom: 8 }}>{EVALUATIONS.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select><textarea value={correction} onChange={(e)=>setCorrection(e.target.value)} maxLength={1000} rows={3} placeholder="Qué debió detectar" style={{ width: "100%", boxSizing: "border-box", padding: 9 }}/><button disabled={saving} onClick={saveEvaluation} style={{ marginTop: 8, background: brand.red, color: "#fff", border: 0, borderRadius: 8, padding: "9px 14px", fontWeight: 700 }}>{saving ? "Guardando…" : "Guardar evaluación"}</button>{evaluations.map(x=><p key={x.id} style={{ fontSize: 12 }}>✓ {x.classification} · {new Date(x.created_at).toLocaleString("es-MX")}</p>)}</div>
         </> : <p>No hay mensajes.</p>}</section>
       </div>
