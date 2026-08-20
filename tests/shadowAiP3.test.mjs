@@ -11,10 +11,16 @@ import { runShadowAi } from "../lib/shadow/ai/runner.js";
 const devEnv = { SHADOW_AI_ENABLED:"true", SHADOW_AI_ALLOW_REAL_MESSAGES:"false", SHADOW_OUTBOUND_ENABLED:"false", SUPABASE_ENVIRONMENT:"dev", NEXT_PUBLIC_SUPABASE_URL:"https://hjfwjnejbcpmknvfpdcq.supabase.co", ANTHROPIC_API_KEY:"fixture" };
 const synthetic = { provider:"synthetic", providerMetadata:{syntheticScenario:"p3-01"} };
 const validDecision={intent:"mantenimiento",secondaryIntents:[],urgency:"normal",summary:"Fuga",entitiesMentioned:[],informationNeeded:[],proposedToolCalls:[],contextAssessment:"Sin contexto",proposedAction:"Escalar",proposedResponse:"Lo revisará el equipo.",confidence:.8,requiresHuman:true,escalationReason:"Revisión",safetyFlags:[]};
-function fakeAiDb(existing=null){
-  const writes=[];
-  return {writes,from(table){let action="select",payload;
-    const q={select(){return q;},eq(){return q;},maybeSingle:async()=>({data:existing,error:null}),insert(value){action="insert";payload=value;writes.push({table,action,payload});return q;},update(value){action="update";payload=value;writes.push({table,action,payload});return q;},single:async()=>({data:{id:"run-1"},error:null}),then(resolve){resolve({data:null,error:null});}}; return q;
+function fakeAiDb(initialRuns=[], options={}){
+  const writes=[]; const runs=(Array.isArray(initialRuns) ? initialRuns : initialRuns ? [initialRuns] : []).map((row,index)=>({attempt_number:index+1,created_at:`2026-08-20T10:0${index}:00Z`,...row}));
+  const decisions=[...(options.decisions || [])]; let nextRun=runs.length+1;
+  return {writes,runs,decisions,from(table){let action="select",payload,filter={};
+    const q={select(){return q;},eq(column,value){if(column!=="idempotency_key")filter[column]=value;return q;},order(){return q;},limit(){return q;},
+      maybeSingle:async()=>{const rows=table==="shadow_ai_decisions" ? decisions : runs;const found=rows.find(row=>Object.entries(filter).every(([key,value])=>row[key]===value));return{data:found||null,error:null};},
+      insert(value){action="insert";payload=value;writes.push({table,action,payload});return q;},
+      update(value){action="update";payload=value;writes.push({table,action,payload});return q;},
+      single:async()=>{if(table==="shadow_ai_runs"&&action==="insert"){if(options.insertError)return{data:null,error:options.insertError};const row={id:`run-${nextRun++}`,created_at:new Date().toISOString(),...payload};runs.unshift(row);return{data:{id:row.id},error:null};}return{data:{id:"fixture"},error:null};},
+      then(resolve){if(action!=="select")return resolve({data:null,error:null});const rows=(table==="shadow_ai_runs"?runs:decisions).filter(row=>Object.entries(filter).every(([key,value])=>row[key]===value));return resolve({data:rows,error:null});}}; return q;
   }};
 }
 
@@ -88,13 +94,56 @@ test("migración DEV conserva RLS y no abre anon",()=>{
   assert.doesNotMatch(sql,/using\s*\(\s*true\s*\)|with check\s*\(\s*true\s*\)/i);
 });
 
+test("patch DEV de retries conserva RLS, limita intentos y cambia unicidad sólo para activos/completados",()=>{
+  const sql=fs.readFileSync(new URL("../supabase/dev/bootstrap/202608200002_fase_2a_p3_ai_run_retries.sql",import.meta.url),"utf8");
+  assert.match(sql,/DEV only/); assert.match(sql,/attempt_number between 1 and 3/);
+  assert.match(sql,/status in \('running','completed'\)/); assert.match(sql,/on delete restrict/);
+  assert.match(sql,/revoke all .* anon/); assert.doesNotMatch(sql,/using\s*\(\s*true\s*\)|with check\s*\(\s*true\s*\)/i);
+});
+
 test("runner persiste decisión estructurada e idempotencia evita segunda llamada",async()=>{
   const db=fakeAiDb(); let calls=0;
   const result=await runShadowAi(db,{messageId:"message-1",envelope:{...synthetic,sanitizedText:"Sigue la fuga"},deterministic:{}},{env:devEnv,modelCall:async()=>{calls++;return{text:JSON.stringify(validDecision),usage:{input_tokens:100,output_tokens:50}};}});
   assert.equal(result.status,"completed"); assert.equal(calls,1);
   assert.ok(db.writes.some(x=>x.table==="shadow_ai_decisions")); assert.ok(db.writes.some(x=>x.payload?.estimated_cost_usd>0));
-  const duplicate=await runShadowAi(fakeAiDb({id:"existing",status:"completed"}),{messageId:"message-1",envelope:{...synthetic,sanitizedText:"Sigue la fuga"},deterministic:{}},{env:devEnv,modelCall:async()=>{throw new Error("must_not_run");}});
+  const duplicate=await runShadowAi(fakeAiDb([{id:"existing",status:"completed"}]),{messageId:"message-1",envelope:{...synthetic,sanitizedText:"Sigue la fuga"},deterministic:{}},{env:devEnv,modelCall:async()=>{throw new Error("must_not_run");}});
   assert.equal(duplicate.status,"duplicate");
+});
+
+test("runner bloquea completed y running sin llamar al modelo",async()=>{
+  for(const [prior,status] of [["completed","duplicate"],["running","running"]]){
+    let calls=0; const result=await runShadowAi(fakeAiDb([{id:`run-${prior}`,status:prior}]),{messageId:"same",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>{calls++;return{text:JSON.stringify(validDecision)}}});
+    assert.equal(result.status,status); assert.equal(calls,0);
+  }
+});
+
+test("runner permite error explícito, crea run encadenado y conserva prompt/modelo",async()=>{
+  const previous={id:"run-error",status:"error",attempt_number:1}; const db=fakeAiDb([previous]);
+  const result=await runShadowAi(db,{messageId:"retry",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>({text:JSON.stringify(validDecision),usage:{}})});
+  assert.equal(result.status,"completed"); assert.equal(db.runs.some(row=>row.id==="run-error"),true);
+  const insert=db.writes.find(x=>x.table==="shadow_ai_runs"&&x.action==="insert");
+  assert.equal(insert.payload.retry_of_run_id,"run-error"); assert.equal(insert.payload.attempt_number,2);
+  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v1");
+  assert.equal(db.writes.filter(x=>x.table==="shadow_ai_decisions"&&x.action==="insert").length,1);
+});
+
+test("runner detecta decision anómala ligada a error antes del retry",async()=>{
+  const db=fakeAiDb([{id:"run-error",status:"error"}],{decisions:[{id:"decision-bad",ai_run_id:"run-error"}]}); let calls=0;
+  const result=await runShadowAi(db,{messageId:"inconsistent",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>{calls++;}});
+  assert.equal(result.status,"retry_inconsistent"); assert.equal(result.decisionId,"decision-bad"); assert.equal(calls,0);
+  assert.equal(db.writes.some(x=>x.table==="shadow_ai_runs"&&x.action==="insert"),false);
+});
+
+test("runner limita a tres intentos y no auto-reintenta",async()=>{
+  const db=fakeAiDb([{id:"run-3",status:"error",attempt_number:3},{id:"run-2",status:"error",attempt_number:2},{id:"run-1",status:"error",attempt_number:1}]); let calls=0;
+  const result=await runShadowAi(db,{messageId:"limited",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>{calls++;}});
+  assert.equal(result.status,"retry_limit_reached"); assert.equal(result.attempts,3); assert.equal(calls,0);
+});
+
+test("índice convierte dos requests concurrentes en un solo run",async()=>{
+  const db=fakeAiDb([],{insertError:{code:"23505",message:"unique active run"}}); let calls=0;
+  const result=await runShadowAi(db,{messageId:"race",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>{calls++;}});
+  assert.equal(result.status,"running"); assert.equal(calls,0);
 });
 
 test("runner contiene salida malformada y timeout",async()=>{

@@ -85,7 +85,7 @@ export default function ShadowCoordinatorPage() {
           <p><strong>Información faltante:</strong> {selected.requires_human ? "Se requiere confirmar contexto o intención." : "Ninguna detectada."}</p>
           {matches[0]?.context_href && <a href={matches[0].context_href}>Abrir contexto en modo lectura</a>}
           <div style={{ ...card, background: "#f8fafc", marginTop: 14 }}><h3 style={{marginTop:0}}>Administradora IA</h3>
-            {!aiDecision ? <p style={{marginBottom:0}}>Estado: {aiRun?.status || "No ejecutado"}</p> : <>
+            {!aiDecision ? <><p style={{marginBottom:0}}>Estado: {aiRun?.status || "No ejecutado"}</p>{["error","timeout"].includes(aiRun?.status) && Number(aiRun?.attempt_number || 1) < 3 && <p style={{color:"#92400e",marginBottom:0}}>Intento anterior falló — reintento disponible.</p>}</> : <>
               <p><strong>Análisis:</strong> {aiDecision.decision_json?.summary}</p>
               <p><strong>Herramientas consultadas:</strong> {aiTools.length ? aiTools.map(x=>`${x.name} (${x.resultCount})`).join(", ") : "Ninguna"}</p>
               <p><strong>Contexto encontrado:</strong> {aiDecision.decision_json?.contextAssessment}</p>
