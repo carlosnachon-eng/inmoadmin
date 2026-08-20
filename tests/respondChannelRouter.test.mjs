@@ -9,8 +9,8 @@ import {
 
 const ADMIN = "544519";
 const COMMERCIAL = ["497382", "497385", "498219", "515318"];
-const ADMIN_URL = "https://webhook.respond.io/admin-fixture";
-const COMMERCIAL_URL = "https://webhook.respond.io/commercial-fixture";
+const ADMIN_URL = "https://hooks.respond.io/admin-fixture";
+const COMMERCIAL_URL = "https://hooks.respond.io/commercial-fixture";
 
 function config(overrides = {}) {
   return resolveRespondChannelRouterConfig({
@@ -130,6 +130,37 @@ test("configuración falla cerrada ante URLs, JSON o allowlists inseguros", () =
   assert.equal(config({ commercialChannelIds: "498219,515318" }).reason, "invalid_commercial_channel_ids");
   assert.equal(config({ commercialChannelIds: JSON.stringify([ADMIN]) }).reason, "channel_allowlists_overlap");
   assert.equal(config({ commercialWorkflowUrl: ADMIN_URL }).reason, "invalid_workflow_urls");
+});
+
+test("acepta exclusivamente HTTPS en el host exacto hooks.respond.io", () => {
+  const opaqueUrl = "https://hooks.respond.io/workflows/opaque-fixture";
+  const resolved = config({ adminWorkflowUrl: opaqueUrl });
+  assert.equal(resolved.valid, true);
+  assert.equal(resolved.adminWorkflowUrl, opaqueUrl);
+});
+
+test("rechaza hosts parecidos, userinfo, loopback, esquemas inseguros y URL malformada", () => {
+  for (const unsafeUrl of [
+    "https://evil.respond.io.example.com/workflow",
+    "https://respond.io.evil.com/workflow",
+    "https://hooks.respond.io.evil.com/workflow",
+    "https://sub.hooks.respond.io/workflow",
+    "https://localhost/workflow",
+    "https://127.0.0.1/workflow",
+    "https://user@hooks.respond.io/workflow",
+    "https://user:password@hooks.respond.io/workflow",
+    "not a url",
+    "http://hooks.respond.io/workflow",
+    "ftp://hooks.respond.io/workflow",
+    "javascript:alert(1)",
+    "data:text/plain,workflow",
+  ]) {
+    assert.equal(
+      config({ adminWorkflowUrl: unsafeUrl }).reason,
+      "invalid_workflow_urls",
+      unsafeUrl,
+    );
+  }
 });
 
 test("adapter envía sólo identificadores y decisión sanitizada", async () => {

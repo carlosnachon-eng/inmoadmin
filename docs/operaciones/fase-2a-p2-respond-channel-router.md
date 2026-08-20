@@ -68,7 +68,7 @@ RESPOND_CHANNEL_ROUTER_ADMIN_WORKFLOW_URL=
 RESPOND_CHANNEL_ROUTER_COMMERCIAL_WORKFLOW_URL=
 ```
 
-Las URLs se validan como HTTPS bajo `webhook.respond.io`, deben ser distintas y
+Las URLs se validan como HTTPS bajo el host exacto `hooks.respond.io`, deben ser distintas y
 nunca se exponen al frontend. El router se niega a iniciar si las allowlists se
 solapan o están mal formadas.
 
