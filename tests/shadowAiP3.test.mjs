@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
 import { shadowAiGuard, SHADOW_AI_LIMITS } from "../lib/shadow/ai/guards.js";
-import { validateShadowAiDecision } from "../lib/shadow/ai/schema.js";
+import { anthropicShadowAiDecisionJsonSchema, validateShadowAiDecision } from "../lib/shadow/ai/schema.js";
+import { createAnthropicShadowResponse } from "../lib/shadow/ai/anthropic.js";
 import { SHADOW_AI_QA_DATASET, evaluateShadowAiQa } from "../lib/shadow/ai/qaDataset.js";
 import { READ_ONLY_SHADOW_TOOLS, SHADOW_TOOL_ARGUMENT_SCHEMAS } from "../lib/shadow/context.js";
 import { runShadowAi } from "../lib/shadow/ai/runner.js";
@@ -29,6 +30,23 @@ test("schema estructurado rechaza texto libre y campos desconocidos", () => {
   assert.throws(()=>validateShadowAiDecision("texto"),/invalid_structured_output/);
   assert.equal(validateShadowAiDecision(validDecision),validDecision);
   assert.throws(()=>validateShadowAiDecision({...validDecision,sql:"delete"}),/invalid_structured_output/);
+  assert.throws(()=>validateShadowAiDecision({...validDecision,summary:"x".repeat(501)}),/invalid_structured_output/);
+  assert.throws(()=>validateShadowAiDecision({...validDecision,entitiesMentioned:["x".repeat(121)]}),/invalid_structured_output/);
+});
+
+test("contrato Anthropic usa output_config vigente y elimina constraints no soportados", async()=>{
+  let request;
+  const response=await createAnthropicShadowResponse([{role:"system",content:"s"},{role:"user",content:"u"}],{env:devEnv,fetchImpl:async(url,options)=>{request={url,options,body:JSON.parse(options.body)};return{ok:true,json:async()=>({id:"msg-fixture",model:"claude-haiku-4-5-20251001",content:[{type:"text",text:JSON.stringify(validDecision)}],usage:{}})};}});
+  assert.equal(response.id,"msg-fixture"); assert.equal(request.body.output_config.format.type,"json_schema");
+  assert.deepEqual(request.body.output_config.format.schema,anthropicShadowAiDecisionJsonSchema);
+  assert.doesNotMatch(JSON.stringify(request.body.output_config.format.schema),/maxLength|maxItems|minimum|maximum/);
+  assert.equal(request.body.model,"claude-haiku-4-5-20251001"); assert.equal(request.options.headers["anthropic-version"],"2023-06-01");
+});
+
+test("error Anthropic conserva sólo metadata sanitizada y request id",async()=>{
+  await assert.rejects(()=>createAnthropicShadowResponse([{role:"user",content:"fixture"}],{env:devEnv,fetchImpl:async()=>({ok:false,status:400,headers:{get:(name)=>name==="request-id"?"req_fixture":null},json:async()=>({type:"error",error:{type:"invalid_request_error",message:"Invalid schema at output_config.format.schema.properties.summary: sk-ant-secret"},request_id:"req_fixture"})})}),error=>{
+    assert.equal(error.message,"model_http_400"); assert.equal(error.providerError.provider_status,400); assert.equal(error.providerError.provider_error_type,"invalid_request_error"); assert.equal(error.providerError.provider_request_id,"req_fixture"); assert.doesNotMatch(JSON.stringify(error.providerError),/sk-ant-secret/); return true;
+  });
 });
 
 test("tool layer es cerrado, read-only y limitado", () => {
@@ -84,6 +102,13 @@ test("runner contiene salida malformada y timeout",async()=>{
   assert.equal(malformed.status,"error"); assert.equal(malformed.error.includes("QA"),false);
   const timeout=await runShadowAi(fakeAiDb(),{messageId:"slow",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:{...devEnv,SHADOW_AI_TIMEOUT_MS:"1"},modelCall:(_, {signal})=>new Promise((_,reject)=>signal.addEventListener("abort",()=>{const e=new Error("timeout");e.name="AbortError";reject(e);} ))});
   assert.equal(timeout.status,"timeout");
+});
+
+test("runner persiste latencia y detalle provider sanitizado en error",async()=>{
+  const db=fakeAiDb(); const providerError=new Error("model_http_400"); providerError.providerError={provider_status:400,provider_error_type:"invalid_request_error",provider_error_code:"error",provider_error_field:"output_config",provider_request_id:"req_fixture",provider_error_message:"schema inválido"};
+  const result=await runShadowAi(db,{messageId:"provider-error",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>{throw providerError;}});
+  assert.equal(result.status,"error"); assert.equal(result.providerError.provider_status,400); assert.equal(typeof result.latencyMs,"number");
+  const update=db.writes.find(x=>x.table==="shadow_ai_runs"&&x.action==="update"); assert.equal(typeof update.payload.latency_ms,"number"); assert.match(update.payload.error_sanitized,/invalid_request_error/);
 });
 
 test("integración documental Anthropic existente permanece intacta",()=>{
