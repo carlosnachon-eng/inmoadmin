@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
-import { aggregatePersistedShadowQa, executionDisposition, remainingRunBudget, SHADOW_QA_MAX_MICRO_BATCH, SHADOW_QA_MIN_RUN_BUDGET_MS, SHADOW_QA_REQUEST_BUDGET_MS, validateExplicitFixtureIds } from "../lib/shadow/ai/qaOrchestrator.js";
+import { aggregatePersistedShadowQa, executionDisposition, qaCampaignCompatibility, remainingRunBudget, SHADOW_QA_FINAL_CAMPAIGN_ID, SHADOW_QA_MAX_MICRO_BATCH, SHADOW_QA_MIN_RUN_BUDGET_MS, SHADOW_QA_REQUEST_BUDGET_MS, validateExplicitFixtureIds, validateQaCampaignId } from "../lib/shadow/ai/qaOrchestrator.js";
 import { SHADOW_AI_QA_DATASET, SHADOW_AI_QA_REGRESSION_FIXTURES } from "../lib/shadow/ai/qaDataset.js";
 
 test("completed se omite y running se bloquea",()=>{
@@ -34,6 +34,12 @@ test("acepta sólo IDs explícitos y limita micro-lote",()=>{
   assert.throws(()=>validateExplicitFixtureIds(["p3-99"]),/invalid_fixture_ids/);
 });
 
+test("campaign ID es obligatorio, namespaced y cerrado",()=>{
+  assert.equal(SHADOW_QA_FINAL_CAMPAIGN_ID,"p3-v8-final-20260820");
+  assert.equal(validateQaCampaignId(SHADOW_QA_FINAL_CAMPAIGN_ID),SHADOW_QA_FINAL_CAMPAIGN_ID);
+  for(const invalid of [null,"","legacy","p3_bad","P3-v8","p3-v8/other"]) assert.throws(()=>validateQaCampaignId(invalid),/invalid_campaign_id/);
+});
+
 test("regresión 02 conserva contexto sintético pero tiene idempotencia independiente",()=>{
   const [historical,fresh]=SHADOW_AI_QA_REGRESSION_FIXTURES;
   assert.equal(historical.id,"p3-reg-payment-grounding-01");
@@ -59,6 +65,24 @@ test("agregación lee los 38 runs persistidos y reporta faltantes",()=>{
   const missing=aggregatePersistedShadowQa({messages:messages.slice(1),runs:runs.slice(1),decisions:decisions.slice(1)}); assert.ok(missing.missingFixtures.includes("p3-01"));
 });
 
+test("agregación no mezcla legacy ni campañas distintas",()=>{
+  const scenario=SHADOW_AI_QA_DATASET[0]; const message={id:"message-campaign",provider_metadata:{syntheticScenario:scenario.id}};
+  const base={message_id:message.id,status:"completed",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v8",created_at:"2026-08-20T12:00:00Z"};
+  const runs=[{...base,id:"legacy",campaign_id:null},{...base,id:"campaign-a",campaign_id:"p3-campaign-a"},{...base,id:"campaign-b",campaign_id:"p3-campaign-b"}];
+  const decisions=runs.map((run)=>({ai_run_id:run.id,decision_json:{intent:scenario.golden.intent},tool_summary:[]}));
+  const aggregate=aggregatePersistedShadowQa({messages:[message],runs,decisions},{campaignId:"p3-campaign-a"});
+  assert.equal(aggregate.results[0].runId,"campaign-a"); assert.equal(aggregate.campaignId,"p3-campaign-a");
+  assert.equal(qaCampaignCompatibility(runs.slice(1,2)).compatible,true);
+  assert.equal(qaCampaignCompatibility([{...runs[1],prompt_version:"otra-version"}]).compatible,false);
+});
+
+test("campaña final nueva inicia limpia con 38 pendientes",()=>{
+  const messages=SHADOW_AI_QA_DATASET.map((scenario,index)=>({id:`message-clean-${index}`,provider_metadata:{syntheticScenario:scenario.id}}));
+  const legacyRuns=messages.map((message,index)=>({id:`legacy-${index}`,message_id:message.id,status:"completed",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v8",campaign_id:null}));
+  const aggregate=aggregatePersistedShadowQa({messages,runs:legacyRuns,decisions:[]},{campaignId:SHADOW_QA_FINAL_CAMPAIGN_ID});
+  assert.equal(aggregate.completed,0); assert.equal(aggregate.results.length,0); assert.equal(aggregate.missingFixtures.length,38);
+});
+
 test("métricas semánticas excluyen timeout y runs sin decision",()=>{
   const scenarios=SHADOW_AI_QA_DATASET.slice(0,2);
   const messages=scenarios.map((scenario,index)=>({id:`message-quality-${index}`,provider_metadata:{syntheticScenario:scenario.id}}));
@@ -80,6 +104,7 @@ test("ruta QA queda DEV-only, sintética, sin outbound ni write tools",()=>{
   assert.match(route,/DEV_PROJECT_REF/); assert.match(route,/SHADOW_AI_ALLOW_REAL_MESSAGES!=="false"/); assert.match(route,/SHADOW_OUTBOUND_ENABLED!=="false"/);
   assert.match(route,/validateExplicitFixtureIds/); assert.match(route,/executionDisposition/); assert.match(route,/external_message_id/); assert.match(route,/maxDuration:\s*120/);
   assert.match(route,/retryFailed=req\.body\?\.retryFailed===true/); assert.match(route,/explicit_user_authorized/);
+  assert.match(route,/validateQaCampaignId/); assert.match(route,/\.eq\("campaign_id",campaignId\)/); assert.match(route,/qaCampaignCompatibility/);
   assert.match(route,/shadow_ai_decisions/); assert.match(route,/attempt_number/);
   assert.doesNotMatch(route,/respond|whatsapp/i); assert.doesNotMatch(context,/\.(?:insert|update|upsert|delete)\s*\(/);
 });

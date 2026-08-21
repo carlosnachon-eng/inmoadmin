@@ -77,6 +77,14 @@ Auditoría de los 38 goldens para v4: `p3-36` cambia de `juridico_conflicto` a `
 
 `/api/operaciones/shadow-ai-qa` acepta exactamente un ID `p3-*` explícito por request. Antes de ejecutarlo consulta el último run del modelo/prompt vigente: omite `completed`, bloquea `running` y reporta `error`/`timeout` sin reintentarlos. Un fixture diferido no crea run. La operación GET calcula pendientes y métricas agregadas desde los runs y decisiones persistidos de los 38 goldens; no depende del resultado de la última request. La UI ofrece “Ejecutar fixture seleccionado” y no contiene ejecución masiva.
 
+### Campaña final v8
+
+La evaluación final usa `campaign_id=p3-v8-final-20260820`. La identidad QA efectiva es `fixture/message + model + prompt_version + campaign_id`; por ello un run legacy o de otra campaña no bloquea una ejecución nueva, mientras que `completed`, `running` y `error/timeout` conservan la semántica estricta dentro de la misma campaña. `campaign_id` es nullable: los runs históricos permanecen en `NULL` y la idempotencia de mensajes reales no cambia.
+
+La ruta QA exige una campaña `p3-*` válida, sólo opera en DEV con fixtures sintéticos y rechaza una campaña que ya contenga otro modelo o prompt. GET, pendientes y métricas filtran por campaña/modelo/prompt. Las continuaciones comparan el `campaign_id` persistido con el solicitado y no permiten cambiarlo. La UI muestra la campaña y el avance sobre 38 goldens.
+
+El parche `supabase/dev/bootstrap/202608200005_fase_2a_p3_qa_campaigns.sql` agrega únicamente la columna nullable, su constraint y un índice parcial. No se aplica a Producción. Antes de aplicarlo, la campaña no debe ejecutarse; tras aplicarlo y correr sus checks, el estado inicial esperado es 0/38 completados y 38 pendientes.
+
 La evaluación v6 completa queda preservada: 38 intentados, 37 completed y un error aislado en `p3-02`. V7 no reintenta ese run ni modifica su telemetría.
 
 ## Activación DEV controlada

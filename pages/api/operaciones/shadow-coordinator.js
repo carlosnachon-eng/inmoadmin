@@ -43,7 +43,7 @@ export default async function handler(req, res) {
       admin.from("shadow_ingestion_events").select("status,sanitization_changed,duplicate_count"),
       admin.from("shadow_context_matches").select("message_id,internal_entity_type,internal_id,display_label,match_method,confidence_rank,ambiguous,reason_code,context_href"),
       admin.from("shadow_human_evaluations").select("id,message_id,classification,expected_correction,notes,actor_profile_id,created_at").order("created_at", { ascending: false }),
-      admin.from("shadow_ai_runs").select("id,message_id,status,execution_state,current_round,max_rounds,evidence_ledger,model,prompt_version,schema_version,started_at,completed_at,state_updated_at,latency_ms,input_tokens,output_tokens,estimated_cost_usd,error_sanitized,attempt_number,retry_of_run_id").order("created_at", { ascending: false }),
+      admin.from("shadow_ai_runs").select("id,message_id,status,execution_state,current_round,max_rounds,evidence_ledger,model,prompt_version,schema_version,campaign_id,started_at,completed_at,state_updated_at,latency_ms,input_tokens,output_tokens,estimated_cost_usd,error_sanitized,attempt_number,retry_of_run_id").order("created_at", { ascending: false }),
       admin.from("shadow_ai_decisions").select("id,ai_run_id,status,intent,urgency,proposed_action,proposed_response,confidence,requires_human,escalation_reason,decision_json,tool_summary,created_at").order("created_at", { ascending: false }),
       admin.from("shadow_context_query_audit").select("message_id,tool_name,result_count,succeeded,duration_ms,created_at").order("created_at", { ascending: false }),
     ]);
