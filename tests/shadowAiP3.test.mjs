@@ -402,12 +402,13 @@ test("runner bloquea completed y running sin llamar al modelo",async()=>{
 
 test("runner permite error explícito, crea run encadenado y conserva prompt/modelo",async()=>{
   const previous={id:"run-error",status:"error",attempt_number:1}; const db=fakeAiDb([previous]);
-  const result=await runShadowAi(db,{messageId:"retry",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>({text:JSON.stringify(validDecision),usage:{}})});
+  const result=await runShadowAi(db,{messageId:"retry",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,retryAuthorization:"explicit_user_authorized",modelCall:async()=>({text:JSON.stringify(validDecision),usage:{}})});
   assert.equal(result.status,"completed"); assert.equal(db.runs.some(row=>row.id==="run-error"),true);
   const insert=db.writes.find(x=>x.table==="shadow_ai_runs"&&x.action==="insert");
   assert.equal(insert.payload.retry_of_run_id,"run-error"); assert.equal(insert.payload.attempt_number,2);
   assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v8");
   assert.equal(db.writes.filter(x=>x.table==="shadow_ai_decisions"&&x.action==="insert").length,1);
+  assert.equal(result.telemetry.retry_authorization,"explicit_user_authorized");
 });
 
 test("runner detecta decision anómala ligada a error antes del retry",async()=>{

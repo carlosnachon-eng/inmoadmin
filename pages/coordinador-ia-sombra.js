@@ -48,10 +48,10 @@ export default function ShadowCoordinatorPage() {
     const json = await response.json(); setSaving(false); if (!response.ok) return setError(json.error || "No se guardó la evaluación.");
     setCorrection(""); await load();
   };
-  const qaOrchestrator = async (method = "GET") => {
+  const qaOrchestrator = async (method = "GET", { retryFailed = false, fixtureIdsOverride = null } = {}) => {
     setQaRunning(true); setError("");
-    const fixtureIds = qaFixtureIds.split(",").map((item)=>item.trim()).filter(Boolean);
-    const response = await fetch("/api/operaciones/shadow-ai-qa", { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, ...(method === "POST" ? { body: JSON.stringify({ fixtureIds }) } : {}) });
+    const fixtureIds = fixtureIdsOverride || qaFixtureIds.split(",").map((item)=>item.trim()).filter(Boolean);
+    const response = await fetch("/api/operaciones/shadow-ai-qa", { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, ...(method === "POST" ? { body: JSON.stringify({ fixtureIds, retryFailed }) } : {}) });
     const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo operar QA P3.");
     setQaReport(json); if (json.missingFixtures) setQaFixtureIds(json.missingFixtures.slice(0,1).join(",")); await load();
   };
@@ -59,6 +59,8 @@ export default function ShadowCoordinatorPage() {
   if (!session) return <div style={{ padding: 32 }}>Inicia sesión para acceder.</div>;
   if (!authorized) return <div style={{ padding: 32 }}>Acceso reservado a Dirección y Coordinación de Operaciones.</div>;
   const card = { background: "#fff", border: `1px solid ${brand.border}`, borderRadius: 12, padding: 14 };
+  const selectedFixtureId = selected?.provider_metadata?.syntheticScenario;
+  const retryAvailable = Boolean(selectedFixtureId?.startsWith("p3-") && ["error","timeout"].includes(aiRun?.status) && Number(aiRun?.attempt_number || 1) < 3);
   return <Layout view="coordinador_ia_sombra" profile={profile} onLogout={async () => { await supabase.auth.signOut(); window.location.href = "/"; }}>
     <Head><title>Coordinador IA — Sombra</title></Head>
     <main style={{ padding: 22 }}>
@@ -83,7 +85,7 @@ export default function ShadowCoordinatorPage() {
           <p><strong>Información faltante:</strong> {selected.requires_human ? "Se requiere confirmar contexto o intención." : "Ninguna detectada."}</p>
           {matches[0]?.context_href && <a href={matches[0].context_href}>Abrir contexto en modo lectura</a>}
           <div style={{ ...card, background: "#f8fafc", marginTop: 14 }}><h3 style={{marginTop:0}}>Administradora IA</h3>
-            {!aiDecision ? <><p style={{marginBottom:0}}>Estado: {aiRun?.status || "No ejecutado"}</p>{["error","timeout"].includes(aiRun?.status) && Number(aiRun?.attempt_number || 1) < 3 && <p style={{color:"#92400e",marginBottom:0}}>Intento anterior falló — reintento disponible.</p>}</> : <>
+            {!aiDecision ? <><p style={{marginBottom:0}}>Estado: {aiRun?.status || "No ejecutado"}</p>{retryAvailable && <div style={{background:"#fff7ed",border:"1px solid #fdba74",borderRadius:8,padding:10}}><p style={{color:"#9a3412",marginTop:0}}>Intento {Number(aiRun.attempt_number||1)} de 3 falló. Run previo: <code>{aiRun.id}</code></p><button disabled={qaRunning} onClick={()=>qaOrchestrator("POST",{retryFailed:true,fixtureIdsOverride:[selectedFixtureId]})} style={{background:"#9a3412",color:"#fff",border:0,borderRadius:8,padding:"8px 12px",fontWeight:700}}>Reintentar run fallido</button></div>}</> : <>
               <p><strong>Análisis:</strong> {aiDecision.decision_json?.summary}</p>
               <p><strong>Herramientas consultadas:</strong> {aiTools.length ? aiTools.map(x=>`${x.name} (${x.resultCount})`).join(", ") : "Ninguna"}</p>
               <p><strong>Contexto encontrado:</strong> {aiDecision.decision_json?.contextAssessment}</p>
