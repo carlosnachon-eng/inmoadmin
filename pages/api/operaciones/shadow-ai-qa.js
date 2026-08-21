@@ -31,16 +31,23 @@ export default async function handler(req,res) {
     if(process.env.SHADOW_AI_ALLOW_REAL_MESSAGES!=="false"||process.env.SHADOW_OUTBOUND_ENABLED!=="false")return res.status(403).json({ok:false,error:"Guardas QA inválidas."});
     if(!await authorize(req))return res.status(403).json({ok:false,error:"No autorizado."});
     const admin=getAdminSupabase(); if(req.method==="GET")return res.status(200).json({ok:true,...await audit(admin)});
-    const fixtureIds=validateExplicitFixtureIds(req.body?.fixtureIds); const requested=new Map(SHADOW_AI_QA_DATASET.filter((item)=>fixtureIds.includes(item.id)).map((item)=>[item.id,item]));
+    const fixtureIds=validateExplicitFixtureIds(req.body?.fixtureIds); const retryFailed=req.body?.retryFailed===true;
+    if(retryFailed&&fixtureIds.length!==1)return res.status(400).json({ok:false,error:"Retry requiere exactamente un fixture."});
+    const requested=new Map(SHADOW_AI_QA_DATASET.filter((item)=>fixtureIds.includes(item.id)).map((item)=>[item.id,item]));
     const startedAt=Date.now(); const results=[];
     for(const fixtureId of fixtureIds){
       const scenario=requested.get(fixtureId); const envelope=syntheticEnvelope({id:scenario.id,text:scenario.text,metadata:scenario.metadata});
       const {data:existing,error:messageLookupError}=await admin.from("shadow_messages").select("id").eq("provider","synthetic").eq("external_message_id",envelope.externalMessageId).maybeSingle(); if(messageLookupError)throw messageLookupError;
       const ingested=existing?{messageId:existing.id}:await processShadowEnvelope(admin,envelope); if(!ingested?.messageId){results.push({fixtureId,status:"message_not_ingested",runId:null});continue;}
-      const {data:latest,error}=await admin.from("shadow_ai_runs").select("id,status").eq("message_id",ingested.messageId).eq("model",process.env.SHADOW_AI_MODEL||DEFAULT_SHADOW_AI_MODEL).eq("prompt_version",SHADOW_AI_PROMPT_VERSION).order("created_at",{ascending:false}).limit(1).maybeSingle(); if(error)throw error;
-      const disposition=executionDisposition(latest?.status); if(disposition!=="execute"){results.push({fixtureId,status:disposition,runId:latest?.id||null,previousStatus:latest?.status||null});continue;}
+      const {data:latest,error}=await admin.from("shadow_ai_runs").select("id,status,attempt_number").eq("message_id",ingested.messageId).eq("model",process.env.SHADOW_AI_MODEL||DEFAULT_SHADOW_AI_MODEL).eq("prompt_version",SHADOW_AI_PROMPT_VERSION).order("created_at",{ascending:false}).limit(1).maybeSingle(); if(error)throw error;
+      let failedDecision=null;
+      if(retryFailed&&["error","timeout"].includes(latest?.status)){
+        const {data,error:decisionError}=await admin.from("shadow_ai_decisions").select("id,ai_run_id").eq("ai_run_id",latest.id).limit(1).maybeSingle();if(decisionError)throw decisionError;failedDecision=data;
+      }
+      const disposition=executionDisposition(latest?.status,{retryFailed,attemptNumber:latest?.attempt_number,hasDecision:Boolean(failedDecision)});
+      if(!["execute","execute_retry"].includes(disposition)){results.push({fixtureId,status:disposition,runId:latest?.id||null,previousStatus:latest?.status||null,attemptNumber:latest?.attempt_number||null});continue;}
       const budget=remainingRunBudget(startedAt,Date.now()); if(budget<SHADOW_QA_MIN_RUN_BUDGET_MS){results.push({fixtureId,status:"deferred_request_budget",runId:null});continue;}
-      const outcome=await runShadowAi(admin,{messageId:ingested.messageId,envelope,deterministic:classifyShadowMessage(envelope)},{env:{...process.env,SHADOW_AI_GLOBAL_TIMEOUT_MS:String(budget)}});
+      const outcome=await runShadowAi(admin,{messageId:ingested.messageId,envelope,deterministic:classifyShadowMessage(envelope)},{env:{...process.env,SHADOW_AI_GLOBAL_TIMEOUT_MS:String(budget)},retryAuthorization:disposition==="execute_retry"?"explicit_user_authorized":null});
       results.push({fixtureId,status:outcome.status,runId:outcome.runId||null});
     }
     return res.status(200).json({ok:true,requested:fixtureIds,results,pending:(await audit(admin)).missingFixtures});

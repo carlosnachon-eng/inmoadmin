@@ -14,6 +14,16 @@ test("error y timeout se reportan sin retry automático",()=>{
   assert.equal(executionDisposition("timeout"),"report_failed_no_retry");
 });
 
+test("retry explícito sólo habilita error/timeout válidos",()=>{
+  assert.equal(executionDisposition("timeout",{retryFailed:true,attemptNumber:1}),"execute_retry");
+  assert.equal(executionDisposition("error",{retryFailed:true,attemptNumber:2}),"execute_retry");
+  assert.equal(executionDisposition("completed",{retryFailed:true,attemptNumber:1}),"reject_retry_completed");
+  assert.equal(executionDisposition("running",{retryFailed:true,attemptNumber:1}),"reject_retry_running");
+  assert.equal(executionDisposition("timeout",{retryFailed:true,attemptNumber:3}),"retry_limit_reached");
+  assert.equal(executionDisposition("error",{retryFailed:true,attemptNumber:1,hasDecision:true}),"retry_inconsistent");
+  assert.equal(executionDisposition(undefined,{retryFailed:true}),"reject_retry_without_failed_run");
+});
+
 test("acepta sólo IDs explícitos y limita micro-lote",()=>{
   assert.equal(SHADOW_QA_MAX_MICRO_BATCH,1);
   assert.deepEqual(validateExplicitFixtureIds(["p3-02"]),["p3-02"]);
@@ -57,5 +67,14 @@ test("ruta QA queda DEV-only, sintética, sin outbound ni write tools",()=>{
   const context=fs.readFileSync(new URL("../lib/shadow/context.js",import.meta.url),"utf8");
   assert.match(route,/DEV_PROJECT_REF/); assert.match(route,/SHADOW_AI_ALLOW_REAL_MESSAGES!=="false"/); assert.match(route,/SHADOW_OUTBOUND_ENABLED!=="false"/);
   assert.match(route,/validateExplicitFixtureIds/); assert.match(route,/executionDisposition/); assert.match(route,/external_message_id/); assert.match(route,/maxDuration:\s*120/);
+  assert.match(route,/retryFailed=req\.body\?\.retryFailed===true/); assert.match(route,/explicit_user_authorized/);
+  assert.match(route,/shadow_ai_decisions/); assert.match(route,/attempt_number/);
   assert.doesNotMatch(route,/respond|whatsapp/i); assert.doesNotMatch(context,/\.(?:insert|update|upsert|delete)\s*\(/);
+});
+
+test("UI separa ejecución normal del retry fallido explícito",()=>{
+  const page=fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js",import.meta.url),"utf8");
+  assert.match(page,/Reintentar run fallido/); assert.match(page,/retryFailed:true/);
+  assert.match(page,/Intento \{Number\(aiRun\.attempt_number\|\|1\)\} de 3/);
+  assert.match(page,/retryFailed = false/);
 });
