@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
-import { aggregatePersistedShadowQa, executionDisposition, qaCampaignCompatibility, remainingRunBudget, SHADOW_QA_FINAL_CAMPAIGN_ID, SHADOW_QA_MAX_MICRO_BATCH, SHADOW_QA_MIN_RUN_BUDGET_MS, SHADOW_QA_REQUEST_BUDGET_MS, validateExplicitFixtureIds, validateQaCampaignId } from "../lib/shadow/ai/qaOrchestrator.js";
+import { aggregatePersistedShadowQa, auditQaResolvablePolicyContext, executionDisposition, prepareQaFixtureExecutionContext, qaCampaignCompatibility, remainingRunBudget, SHADOW_QA_FINAL_CAMPAIGN_ID, SHADOW_QA_MAX_MICRO_BATCH, SHADOW_QA_MIN_RUN_BUDGET_MS, SHADOW_QA_REQUEST_BUDGET_MS, validateExplicitFixtureIds, validateQaCampaignId } from "../lib/shadow/ai/qaOrchestrator.js";
 import { SHADOW_AI_QA_DATASET, SHADOW_AI_QA_REGRESSION_FIXTURES } from "../lib/shadow/ai/qaDataset.js";
 
 test("completed se omite y running se bloquea",()=>{
@@ -81,6 +81,44 @@ test("campaña final nueva inicia limpia con 38 pendientes",()=>{
   const legacyRuns=messages.map((message,index)=>({id:`legacy-${index}`,message_id:message.id,status:"completed",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v8",campaign_id:null}));
   const aggregate=aggregatePersistedShadowQa({messages,runs:legacyRuns,decisions:[]},{campaignId:SHADOW_QA_FINAL_CAMPAIGN_ID});
   assert.equal(aggregate.completed,0); assert.equal(aggregate.results.length,0); assert.equal(aggregate.missingFixtures.length,38);
+});
+
+test("campaign path propaga 11/11 contextos resolubles sin leer goldens como input",()=>{
+  const expected={
+    "p3-01":["propertyId"], "p3-02":["propertyId","ticketId"], "p3-03":["ticketId","workCenterContextKey"],
+    "p3-06":["paymentId"], "p3-07":["contractId"], "p3-11":["propertyId","serviceId"],
+    "p3-12":["serviceId"], "p3-17":["ownerPaymentId"], "p3-21":["propertyId"],
+    "p3-25":["keyId"], "p3-26":["keyId"],
+  };
+  const resolvable=SHADOW_AI_QA_DATASET.filter((scenario)=>scenario.golden.entityExpectation==="resolvable");
+  assert.equal(resolvable.length,11);
+  for(const scenario of resolvable){
+    const envelope={provider:"synthetic",sanitizedText:scenario.text,providerMetadata:{syntheticScenario:scenario.id}};
+    const prepared=prepareQaFixtureExecutionContext(scenario,envelope);
+    assert.deepEqual(expected[scenario.id].every((key)=>prepared.availableIdentifierKeys.includes(key)),true,scenario.id);
+    const audit=auditQaResolvablePolicyContext(scenario);
+    assert.ok(audit.policy.requiredNowTools.length>=1,scenario.id);
+    assert.equal(JSON.stringify(audit.resolvedOperationalContext).includes("golden"),false);
+  }
+});
+
+test("contexto QA autorizado reemplaza metadata histórica incompleta del mensaje",()=>{
+  const scenario=SHADOW_AI_QA_DATASET.find((item)=>item.id==="p3-07");
+  const stale={provider:"synthetic",sanitizedText:scenario.text,providerMetadata:{syntheticScenario:scenario.id}};
+  const prepared=prepareQaFixtureExecutionContext(scenario,stale);
+  assert.equal(prepared.envelope.providerMetadata.contractId,"f2a30000-0000-4000-8200-000000000001");
+  assert.equal(stale.providerMetadata.contractId,undefined);
+  assert.deepEqual(auditQaResolvablePolicyContext(scenario).policy.requiredNowTools.map(({name,args})=>({name,args})),[
+    {name:"get_payment_summary",args:{contractId:"f2a30000-0000-4000-8200-000000000001"}},
+  ]);
+});
+
+test("agregación separa disponibilidad, derivación y ejecución policy",()=>{
+  const aggregate=aggregatePersistedShadowQa({messages:[],runs:[],decisions:[]},{campaignId:SHADOW_QA_FINAL_CAMPAIGN_ID});
+  assert.equal(aggregate.metrics.contextIdentifierAvailabilityRate,1);
+  assert.equal(aggregate.metrics.policyDerivationRate,1);
+  assert.equal(aggregate.metrics.policyRequiredToolExecutionRate,1);
+  assert.equal(aggregate.metrics.overallRequiredToolExecutionRate,1);
 });
 
 test("métricas semánticas excluyen timeout y runs sin decision",()=>{

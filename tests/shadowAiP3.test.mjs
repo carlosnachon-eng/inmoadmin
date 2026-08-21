@@ -10,6 +10,7 @@ import { classifyExplicitShadowAiIntent, runShadowAi } from "../lib/shadow/ai/ru
 import { SHADOW_AI_PROMPT_VERSION, SHADOW_AI_SYSTEM_PROMPT } from "../lib/shadow/ai/prompt.js";
 import { buildEvidenceLedger, groundAndRenderDecision } from "../lib/shadow/ai/grounding.js";
 import { combinePolicyAndModelTools, deriveRequiredTools } from "../lib/shadow/ai/toolPolicy.js";
+import { buildResolvedOperationalContext } from "../lib/shadow/ai/operationalContext.js";
 import { startShadowAiStateMachine } from "../lib/shadow/ai/stateMachine.js";
 
 const devEnv = { SHADOW_AI_ENABLED:"true", SHADOW_AI_ALLOW_REAL_MESSAGES:"false", SHADOW_OUTBOUND_ENABLED:"false", SUPABASE_ENVIRONMENT:"dev", NEXT_PUBLIC_SUPABASE_URL:"https://hjfwjnejbcpmknvfpdcq.supabase.co", ANTHROPIC_API_KEY:"fixture" };
@@ -113,6 +114,29 @@ test("policy engine deriva tools required-now sin depender de Claude",()=>{
   assert.deepEqual(deriveRequiredTools({intent:"pago_renta",message:"¿Cuánto debo de renta?"}).expectedAfterClarificationTools,["get_payment_summary"]);
   assert.deepEqual(deriveRequiredTools({intent:"llaves",message:"Necesito las llaves"}).requiredNowTools,[]);
   assert.deepEqual(deriveRequiredTools({intent:"llaves",message:"Necesito las llaves"}).expectedAfterClarificationTools,["get_key_custody_status"]);
+});
+
+test("resolvedOperationalContext valida IDs y descarta aliases o valores inventados",()=>{
+  const context=buildResolvedOperationalContext({metadata:{contractId:"f2a30000-0000-4000-8200-000000000001",payment_id:"inventado",propertyId:"no-uuid",service:"Agua",period:"2026-08"}});
+  assert.deepEqual(context,{contractId:"f2a30000-0000-4000-8200-000000000001",serviceType:"agua",period:"2026-08"});
+  assert.equal(Object.hasOwn(context,"payment_id"),false);
+});
+
+test("policy consume una sola fuente normalizada para todos los dominios read-only",()=>{
+  const ids={propertyId:"f2a30000-0000-4000-8100-000000000001",contractId:"f2a30000-0000-4000-8200-000000000001",paymentId:"f2a30000-0000-4000-8300-000000000001",serviceId:"f2a30000-0000-4000-8500-000000000001",ticketId:"f2a30000-0000-4000-8400-000000000001",ownerPaymentId:"f2a30000-0000-4000-8700-000000000001",keyId:"f2a30000-0000-4000-8800-000000000001",workCenterContextKey:"maintenance_ticket:f2a30000-0000-4000-8400-000000000001"};
+  const cases=[
+    ["pago_renta","¿Cuánto debo?","get_payment_summary",{paymentId:ids.paymentId}],
+    ["mantenimiento","Sigue la reparación","get_maintenance_ticket_summary",{ticketId:ids.ticketId}],
+    ["servicio","Recibo de agua","get_service_period_status",{serviceId:ids.serviceId}],
+    ["contrato","Vence mi contrato","find_active_contracts",{contractId:ids.contractId}],
+    ["llaves","Necesito las llaves","get_key_custody_status",{keyId:ids.keyId}],
+    ["propietario_liquidacion","Detalle de liquidación","get_owner_liquidation_summary",{ownerPaymentId:ids.ownerPaymentId}],
+  ];
+  for(const [intent,message,name,args] of cases){
+    const policy=deriveRequiredTools({intent,message,resolvedOperationalContext:ids});
+    assert.deepEqual(policy.requiredNowTools.find((tool)=>tool.name===name)?.args,args);
+  }
+  assert.deepEqual(deriveRequiredTools({intent:"mantenimiento",message:"Reparación",resolvedOperationalContext:ids}).requiredNowTools.find((tool)=>tool.name==="get_work_center_case")?.args,{contextKey:ids.workCenterContextKey});
 });
 
 test("policies conservadoras cubren servicio, mantenimiento, contrato, llaves y liquidación",()=>{
@@ -314,8 +338,8 @@ test("dataset tiene 38 goldens y cubre safety", () => {
   for(const row of SHADOW_AI_QA_DATASET){assert.ok(row.golden.intent);assert.equal(typeof row.golden.requiresHuman,"boolean");assert.ok(["resolvable","intentionally_unresolved","ambiguous"].includes(row.golden.entityExpectation));}
   for(const phrase of ["Descuéntame $5,000","Devuélveme mi depósito hoy","Cancela mi contrato","Dile al dueño que ya pagamos","Corta el agua","Entrégale las llaves al técnico","demandarlos","otro inquilino"]) assert.ok(SHADOW_AI_QA_DATASET.some(x=>x.text.includes(phrase)));
   for(const id of ["p3-16","p3-22"]){const row=SHADOW_AI_QA_DATASET.find(x=>x.id===id);assert.deepEqual(row.golden.requiredNowTools,[]);assert.deepEqual(row.golden.expectedAfterClarificationTools,row.golden.expectedTools);}
-  assert.deepEqual(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-01").golden.requiredNowTools,["find_properties","get_maintenance_ticket_summary"]);
-  assert.deepEqual(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-11").golden.requiredNowTools,["find_properties","get_service_period_status"]);
+  assert.deepEqual(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-01").golden.requiredNowTools,["get_maintenance_ticket_summary"]);
+  assert.deepEqual(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-11").golden.requiredNowTools,["get_service_period_status"]);
   assert.deepEqual(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-07").golden.requiredNowTools,["get_payment_summary"]);
   assert.equal(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-34").golden.entityExpectation,"ambiguous");
 });
@@ -509,6 +533,19 @@ test("campañas QA tienen idempotencia independiente y legacy conserva semántic
   const inserts=db.writes.filter(x=>x.table==="shadow_ai_runs"&&x.action==="insert");
   assert.deepEqual(inserts.map(x=>x.payload.campaign_id),["p3-campaign-a","p3-campaign-b"]);
   assert.notEqual(inserts[0].payload.idempotency_key,inserts[1].payload.idempotency_key);
+});
+
+test("state machine preserva resolvedOperationalContext aunque shadow_messages sea legacy",async()=>{
+  const contractId="f2a30000-0000-4000-8200-000000000001";
+  const storedMessage={id:"legacy-metadata",provider:"synthetic",direction:"inbound",sanitized_text:"¿Cuánto debo de renta?",provider_metadata:{syntheticScenario:"p3-07"},external_message_id:"FASE2A-P0-p3-07",occurred_at:"2026-08-20T12:00:00Z"};
+  const db=fakeAiDb([],{filterIdempotencyKey:true,tableRows:{shadow_messages:[storedMessage]}});
+  const paymentDecision={...validDecision,intent:"pago_renta",requiresHuman:false,escalationReason:null,proposedToolCalls:[]};
+  const result=await startShadowAiStateMachine(db,{messageId:storedMessage.id,envelope:{...synthetic,sanitizedText:storedMessage.sanitized_text,providerMetadata:{syntheticScenario:"p3-07",contractId}}},{env:devEnv,campaignId:"p3-wiring",resolvedOperationalContext:{contractId},modelCall:sequenceModel([paymentDecision]),executeTool:async()=>[]});
+  assert.equal(result.status,"awaiting_model_round");
+  assert.deepEqual(result.tools.map(({name,args,source})=>({name,args,source})),[{name:"get_payment_summary",args:{contractId},source:"policy_required"}]);
+  const insert=db.writes.find((item)=>item.table==="shadow_ai_runs"&&item.action==="insert");
+  assert.deepEqual(insert.payload.round_state_json.resolvedOperationalContext,{contractId});
+  assert.deepEqual(insert.payload.telemetry_json.context_identifier_keys,["contractId"]);
 });
 
 test("runner permite error explícito, crea run encadenado y conserva prompt/modelo",async()=>{
