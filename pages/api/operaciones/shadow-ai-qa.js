@@ -4,7 +4,7 @@ import { classifyShadowMessage, syntheticEnvelope } from "../../../lib/shadow/co
 import { DEFAULT_SHADOW_AI_MODEL } from "../../../lib/shadow/ai/anthropic";
 import { SHADOW_AI_PROMPT_VERSION } from "../../../lib/shadow/ai/prompt";
 import { SHADOW_AI_QA_DATASET, SHADOW_AI_QA_REGRESSION_FIXTURES } from "../../../lib/shadow/ai/qaDataset";
-import { aggregatePersistedShadowQa, executionDisposition, remainingRunBudget, SHADOW_QA_MIN_RUN_BUDGET_MS, validateExplicitFixtureIds } from "../../../lib/shadow/ai/qaOrchestrator";
+import { aggregatePersistedShadowQa, executionDisposition, qaCampaignCompatibility, remainingRunBudget, SHADOW_QA_MIN_RUN_BUDGET_MS, validateExplicitFixtureIds, validateQaCampaignId } from "../../../lib/shadow/ai/qaOrchestrator";
 import { startShadowAiStateMachine } from "../../../lib/shadow/ai/stateMachine";
 import { processShadowEnvelope } from "../../../lib/shadow/pipeline";
 
@@ -15,13 +15,14 @@ async function authorize(req) {
   const {data:{user}}=await auth.auth.getUser(token); if(!user)return false;
   const {data}=await auth.from("profiles").select("role_id,active").eq("id",user.id).maybeSingle(); return Boolean(data?.active&&["admin","coord_operaciones"].includes(data.role_id));
 }
-async function audit(admin) {
+async function audit(admin, campaignId) {
   const [messages,runs,decisions]=await Promise.all([
     admin.from("shadow_messages").select("id,provider_metadata").eq("provider","synthetic").limit(250),
-    admin.from("shadow_ai_runs").select("id,message_id,status,model,prompt_version,started_at,created_at,latency_ms,input_tokens,output_tokens,estimated_cost_usd,telemetry_json").eq("model",process.env.SHADOW_AI_MODEL||DEFAULT_SHADOW_AI_MODEL).eq("prompt_version",SHADOW_AI_PROMPT_VERSION).order("created_at",{ascending:false}).limit(250),
+    admin.from("shadow_ai_runs").select("id,message_id,status,model,prompt_version,campaign_id,started_at,created_at,latency_ms,input_tokens,output_tokens,estimated_cost_usd,telemetry_json").eq("campaign_id",campaignId).order("created_at",{ascending:false}).limit(250),
     admin.from("shadow_ai_decisions").select("ai_run_id,decision_json,tool_summary").limit(250),
   ]); const failure=[messages,runs,decisions].find((item)=>item.error)?.error;if(failure)throw failure;
-  return aggregatePersistedShadowQa({messages:messages.data||[],runs:runs.data||[],decisions:decisions.data||[]});
+  const expected={model:process.env.SHADOW_AI_MODEL||DEFAULT_SHADOW_AI_MODEL,promptVersion:SHADOW_AI_PROMPT_VERSION};
+  return {...aggregatePersistedShadowQa({messages:messages.data||[],runs:runs.data||[],decisions:decisions.data||[]},{...expected,campaignId}),campaignCompatibility:qaCampaignCompatibility(runs.data||[],expected)};
 }
 export default async function handler(req,res) {
   res.setHeader("Cache-Control","private, no-store, max-age=0");
@@ -30,7 +31,9 @@ export default async function handler(req,res) {
     const environment=assertSupabaseEnvironment(); if(environment.projectRef!==DEV_PROJECT_REF||environment.env==="production")return res.status(403).json({ok:false,error:"QA P3 bloqueada fuera de DEV."});
     if(process.env.SHADOW_AI_ALLOW_REAL_MESSAGES!=="false"||process.env.SHADOW_OUTBOUND_ENABLED!=="false")return res.status(403).json({ok:false,error:"Guardas QA inválidas."});
     if(!await authorize(req))return res.status(403).json({ok:false,error:"No autorizado."});
-    const admin=getAdminSupabase(); if(req.method==="GET")return res.status(200).json({ok:true,...await audit(admin)});
+    const campaignId=validateQaCampaignId(req.method==="GET"?req.query?.campaignId:req.body?.campaignId);
+    const admin=getAdminSupabase(); if(req.method==="GET")return res.status(200).json({ok:true,...await audit(admin,campaignId)});
+    const existingCampaign=await audit(admin,campaignId); if(!existingCampaign.campaignCompatibility.compatible)return res.status(409).json({ok:false,error:"La campaña ya contiene otro modelo o prompt.",campaignId,campaignCompatibility:existingCampaign.campaignCompatibility});
     const fixtureIds=validateExplicitFixtureIds(req.body?.fixtureIds); const retryFailed=req.body?.retryFailed===true;
     if(retryFailed&&fixtureIds.length!==1)return res.status(400).json({ok:false,error:"Retry requiere exactamente un fixture."});
     const requested=new Map([...SHADOW_AI_QA_DATASET,...SHADOW_AI_QA_REGRESSION_FIXTURES].filter((item)=>fixtureIds.includes(item.id)).map((item)=>[item.id,item]));
@@ -39,7 +42,7 @@ export default async function handler(req,res) {
       const scenario=requested.get(fixtureId); const envelope=syntheticEnvelope({id:scenario.id,text:scenario.text,metadata:scenario.metadata});
       const {data:existing,error:messageLookupError}=await admin.from("shadow_messages").select("id").eq("provider","synthetic").eq("external_message_id",envelope.externalMessageId).maybeSingle(); if(messageLookupError)throw messageLookupError;
       const ingested=existing?{messageId:existing.id}:await processShadowEnvelope(admin,envelope); if(!ingested?.messageId){results.push({fixtureId,status:"message_not_ingested",runId:null});continue;}
-      const {data:latest,error}=await admin.from("shadow_ai_runs").select("id,status,attempt_number").eq("message_id",ingested.messageId).eq("model",process.env.SHADOW_AI_MODEL||DEFAULT_SHADOW_AI_MODEL).eq("prompt_version",SHADOW_AI_PROMPT_VERSION).order("created_at",{ascending:false}).limit(1).maybeSingle(); if(error)throw error;
+      const {data:latest,error}=await admin.from("shadow_ai_runs").select("id,status,attempt_number,campaign_id").eq("message_id",ingested.messageId).eq("model",process.env.SHADOW_AI_MODEL||DEFAULT_SHADOW_AI_MODEL).eq("prompt_version",SHADOW_AI_PROMPT_VERSION).eq("campaign_id",campaignId).order("created_at",{ascending:false}).limit(1).maybeSingle(); if(error)throw error;
       let failedDecision=null;
       if(retryFailed&&["error","timeout"].includes(latest?.status)){
         const {data,error:decisionError}=await admin.from("shadow_ai_decisions").select("id,ai_run_id").eq("ai_run_id",latest.id).limit(1).maybeSingle();if(decisionError)throw decisionError;failedDecision=data;
@@ -47,9 +50,9 @@ export default async function handler(req,res) {
       const disposition=executionDisposition(latest?.status,{retryFailed,attemptNumber:latest?.attempt_number,hasDecision:Boolean(failedDecision)});
       if(!["execute","execute_retry"].includes(disposition)){results.push({fixtureId,status:disposition,runId:latest?.id||null,previousStatus:latest?.status||null,attemptNumber:latest?.attempt_number||null});continue;}
       const budget=remainingRunBudget(startedAt,Date.now()); if(budget<SHADOW_QA_MIN_RUN_BUDGET_MS){results.push({fixtureId,status:"deferred_request_budget",runId:null});continue;}
-      const outcome=await startShadowAiStateMachine(admin,{messageId:ingested.messageId,envelope,deterministic:classifyShadowMessage(envelope)},{env:{...process.env,SHADOW_AI_GLOBAL_TIMEOUT_MS:String(budget)},retryAuthorization:disposition==="execute_retry"?"explicit_user_authorized":null});
+      const outcome=await startShadowAiStateMachine(admin,{messageId:ingested.messageId,envelope,deterministic:classifyShadowMessage(envelope)},{env:{...process.env,SHADOW_AI_GLOBAL_TIMEOUT_MS:String(budget)},campaignId,retryAuthorization:disposition==="execute_retry"?"explicit_user_authorized":null});
       results.push({fixtureId,status:outcome.status,runId:outcome.runId||null});
     }
-    return res.status(200).json({ok:true,requested:fixtureIds,results,pending:(await audit(admin)).missingFixtures});
-  } catch(error){const bad=/^invalid_fixture_/.test(error?.message||"");return res.status(bad?400:500).json({ok:false,error:bad?"Lista de fixtures inválida.":"Falló orquestación QA P3."});}
+    return res.status(200).json({ok:true,campaignId,requested:fixtureIds,results,pending:(await audit(admin,campaignId)).missingFixtures});
+  } catch(error){const bad=/^(?:invalid_fixture_|invalid_campaign_id)/.test(error?.message||"");return res.status(bad?400:500).json({ok:false,error:bad?"Campaña o lista de fixtures inválida.":"Falló orquestación QA P3."});}
 }

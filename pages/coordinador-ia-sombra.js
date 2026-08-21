@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Head from "next/head";
 import Layout, { brand } from "../components/Layout";
 import { supabase } from "../lib/supabase";
+import { SHADOW_QA_FINAL_CAMPAIGN_ID } from "../lib/shadow/ai/qaOrchestrator";
 
 const ROLES = new Set(["admin", "coord_operaciones"]);
 const EVALUATIONS = [
@@ -22,6 +23,7 @@ export default function ShadowCoordinatorPage() {
   const [shadowView, setShadowView] = useState("conversations");
   const [qaRunning, setQaRunning] = useState(false); const [qaReport, setQaReport] = useState(null);
   const [qaFixtureIds, setQaFixtureIds] = useState("");
+  const qaCampaignId = SHADOW_QA_FINAL_CAMPAIGN_ID;
   useEffect(() => { supabase.auth.getSession().then(({ data: { session: value } }) => { setSession(value); setReady(true); }); }, []);
   useEffect(() => { if (!session?.user) return; supabase.from("profiles").select("id,role_id,active,email").eq("id", session.user.id).maybeSingle().then(({ data: value }) => setProfile(value)); }, [session?.user]);
   const authorized = profile?.active && ROLES.has(profile.role_id);
@@ -37,7 +39,8 @@ export default function ShadowCoordinatorPage() {
   const conversation = data?.conversations?.find((item) => item.id === selected?.conversation_id);
   const matches = useMemo(() => (data?.matches || []).filter((item) => item.message_id === selectedId), [data, selectedId]);
   const evaluations = useMemo(() => (data?.evaluations || []).filter((item) => item.message_id === selectedId), [data, selectedId]);
-  const aiRun = useMemo(() => (data?.aiRuns || []).find((item) => item.message_id === selectedId), [data, selectedId]);
+  const selectedFixtureId = selected?.provider_metadata?.syntheticScenario;
+  const aiRun = useMemo(() => (data?.aiRuns || []).find((item) => item.message_id === selectedId && (!selectedFixtureId || item.campaign_id === qaCampaignId)), [data, selectedId, selectedFixtureId, qaCampaignId]);
   const aiDecision = useMemo(() => (data?.aiDecisions || []).find((item) => item.ai_run_id === aiRun?.id), [data, aiRun?.id]);
   const aiTools = aiDecision?.tool_summary || [];
   const intentCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.intent]: (acc[item.intent] || 0) + 1 }), {}), [data]);
@@ -52,13 +55,14 @@ export default function ShadowCoordinatorPage() {
   const qaOrchestrator = async (method = "GET", { retryFailed = false, fixtureIdsOverride = null } = {}) => {
     setQaRunning(true); setError("");
     const fixtureIds = fixtureIdsOverride || qaFixtureIds.split(",").map((item)=>item.trim()).filter(Boolean);
-    const response = await fetch("/api/operaciones/shadow-ai-qa", { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, ...(method === "POST" ? { body: JSON.stringify({ fixtureIds, retryFailed }) } : {}) });
+    const url = method === "GET" ? `/api/operaciones/shadow-ai-qa?campaignId=${encodeURIComponent(qaCampaignId)}` : "/api/operaciones/shadow-ai-qa";
+    const response = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, ...(method === "POST" ? { body: JSON.stringify({ fixtureIds, retryFailed, campaignId: qaCampaignId }) } : {}) });
     const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo operar QA P3.");
     setQaReport(json); if (json.missingFixtures) setQaFixtureIds(json.missingFixtures.slice(0,1).join(",")); await load();
   };
   const continueRun = async () => {
     if (!aiRun?.id) return; setQaRunning(true); setError("");
-    const response = await fetch("/api/operaciones/shadow-ai-continue", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ runId: aiRun.id }) });
+    const response = await fetch("/api/operaciones/shadow-ai-continue", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ runId: aiRun.id, campaignId: qaCampaignId }) });
     const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo continuar el run.");
     setQaReport(json); await load();
   };
@@ -66,13 +70,12 @@ export default function ShadowCoordinatorPage() {
   if (!session) return <div style={{ padding: 32 }}>Inicia sesión para acceder.</div>;
   if (!authorized) return <div style={{ padding: 32 }}>Acceso reservado a Dirección y Coordinación de Operaciones.</div>;
   const card = { background: "#fff", border: `1px solid ${brand.border}`, borderRadius: 12, padding: 14 };
-  const selectedFixtureId = selected?.provider_metadata?.syntheticScenario;
   const retryAvailable = Boolean(selectedFixtureId?.startsWith("p3-") && ["error","timeout"].includes(aiRun?.status) && Number(aiRun?.attempt_number || 1) < 3);
   return <Layout view="coordinador_ia_sombra" profile={profile} onLogout={async () => { await supabase.auth.signOut(); window.location.href = "/"; }}>
     <Head><title>Coordinador IA — Sombra</title></Head>
     <main style={{ padding: 22 }}>
       <div style={{ marginBottom: 16 }}><h1 style={{ margin: 0, color: brand.gray }}>🌒 Coordinador IA — Sombra</h1><p style={{ color: brand.grayLight }}>Sólo observación y evaluación. No envía mensajes ni modifica el ERP.</p></div>
-      <details style={{ ...card, marginBottom: 14 }}><summary>QA sintética P3 (sólo DEV)</summary><p style={{ color: brand.grayLight }}>Una request ejecuta como máximo un fixture explícito. El servidor rechaza datos reales, reintentos automáticos y cualquier entorno distinto de DEV.</p><input value={qaFixtureIds} onChange={(event)=>setQaFixtureIds(event.target.value)} placeholder="p3-11" style={{width:"100%",boxSizing:"border-box",padding:9,marginBottom:8}}/><button disabled={qaRunning||!qaFixtureIds.trim()} onClick={()=>qaOrchestrator("POST")} style={{marginRight:8}}>Ejecutar fixture seleccionado</button><button disabled={qaRunning} onClick={()=>qaOrchestrator("GET")} style={{marginRight:8}}>Mostrar pendientes</button><button disabled={qaRunning} onClick={()=>qaOrchestrator("GET")}>Agregar métricas QA</button>{qaRunning&&<p>Ejecutando fixture…</p>}{qaReport&&<pre style={{overflow:"auto",maxHeight:360}}>{JSON.stringify(qaReport,null,2)}</pre>}</details>
+      <details style={{ ...card, marginBottom: 14 }}><summary>QA sintética P3 (sólo DEV)</summary><p><strong>Campaña:</strong> <code>{qaCampaignId}</code></p><p><strong>Estado:</strong> {qaReport?.completed || 0}/38 completados</p><p style={{ color: brand.grayLight }}>Una request ejecuta como máximo un fixture explícito. El servidor rechaza datos reales, reintentos automáticos y cualquier entorno distinto de DEV.</p><input value={qaFixtureIds} onChange={(event)=>setQaFixtureIds(event.target.value)} placeholder="p3-11" style={{width:"100%",boxSizing:"border-box",padding:9,marginBottom:8}}/><button disabled={qaRunning||!qaFixtureIds.trim()} onClick={()=>qaOrchestrator("POST")} style={{marginRight:8}}>Ejecutar fixture seleccionado</button><button disabled={qaRunning} onClick={()=>qaOrchestrator("GET")} style={{marginRight:8}}>Mostrar pendientes</button><button disabled={qaRunning} onClick={()=>qaOrchestrator("GET")}>Agregar métricas QA</button>{qaRunning&&<p>Ejecutando fixture…</p>}{qaReport&&<pre style={{overflow:"auto",maxHeight:360}}>{JSON.stringify(qaReport,null,2)}</pre>}</details>
       {error && <div style={{ ...card, background: "#fef2f2", color: "#991b1b", marginBottom: 12 }}>{error}</div>}
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 16 }}>
         {[["Mensajes", data?.messages?.length || 0], ["Eventos operativos", data?.operationalEvents?.length || 0], ["Duplicados", data?.metrics?.duplicate || 0], ["Sanitizados", data?.metrics?.sanitized || 0], ["Revisión humana", data?.messages?.filter(x=>x.requires_human).length || 0], ["Contexto ambiguo", ambiguousMessageIds.size]].map(([label,value]) => <div key={label} style={card}><div style={{ fontSize: 24, fontWeight: 800 }}>{value}</div><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}

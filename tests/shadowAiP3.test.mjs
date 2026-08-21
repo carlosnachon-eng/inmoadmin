@@ -10,6 +10,7 @@ import { classifyExplicitShadowAiIntent, runShadowAi } from "../lib/shadow/ai/ru
 import { SHADOW_AI_PROMPT_VERSION, SHADOW_AI_SYSTEM_PROMPT } from "../lib/shadow/ai/prompt.js";
 import { buildEvidenceLedger, groundAndRenderDecision } from "../lib/shadow/ai/grounding.js";
 import { combinePolicyAndModelTools, deriveRequiredTools } from "../lib/shadow/ai/toolPolicy.js";
+import { startShadowAiStateMachine } from "../lib/shadow/ai/stateMachine.js";
 
 const devEnv = { SHADOW_AI_ENABLED:"true", SHADOW_AI_ALLOW_REAL_MESSAGES:"false", SHADOW_OUTBOUND_ENABLED:"false", SUPABASE_ENVIRONMENT:"dev", NEXT_PUBLIC_SUPABASE_URL:"https://hjfwjnejbcpmknvfpdcq.supabase.co", ANTHROPIC_API_KEY:"fixture" };
 const synthetic = { provider:"synthetic", providerMetadata:{syntheticScenario:"p3-01"} };
@@ -18,8 +19,8 @@ function fakeAiDb(initialRuns=[], options={}){
   const writes=[]; const reads=[]; const runs=(Array.isArray(initialRuns) ? initialRuns : initialRuns ? [initialRuns] : []).map((row,index)=>({attempt_number:index+1,created_at:`2026-08-20T10:0${index}:00Z`,...row}));
   const decisions=[...(options.decisions || [])]; let nextRun=runs.length+1;
   return {writes,reads,runs,decisions,from(table){let action="select",payload,filter={};reads.push(table);
-    const q={select(){return q;},eq(column,value){if(column!=="idempotency_key")filter[column]=value;return q;},ilike(){return q;},in(){return q;},order(){return q;},limit(){return q;},
-      maybeSingle:async()=>{const rows=table==="shadow_ai_decisions" ? decisions : runs;const found=rows.find(row=>Object.entries(filter).every(([key,value])=>row[key]===value));return{data:found||null,error:null};},
+    const q={select(){return q;},eq(column,value){if(column!=="idempotency_key"||options.filterIdempotencyKey)filter[column]=value;return q;},ilike(){return q;},in(){return q;},order(){return q;},limit(){return q;},
+      maybeSingle:async()=>{const rows=table==="shadow_ai_decisions" ? decisions : table==="shadow_ai_runs" ? runs : (options.tableRows?.[table]||[]);const found=rows.find(row=>Object.entries(filter).every(([key,value])=>row[key]===value));return{data:found||null,error:null};},
       insert(value){action="insert";payload=value;writes.push({table,action,payload});return q;},
       update(value){action="update";payload=value;writes.push({table,action,payload});return q;},
       single:async()=>{if(table==="shadow_ai_runs"&&action==="insert"){if(options.insertError)return{data:null,error:options.insertError};const row={id:`run-${nextRun++}`,created_at:new Date().toISOString(),...payload};runs.unshift(row);return{data:{id:row.id},error:null};}return{data:{id:"fixture"},error:null};},
@@ -363,6 +364,16 @@ test("patch DEV de telemetría es mínimo, cerrado y versionado",()=>{
   assert.match(rollback,/is not owned by this bootstrap/); assert.doesNotMatch(sql,/using\s*\(\s*true\s*\)|with check\s*\(\s*true\s*\)/i);
 });
 
+test("campañas QA tienen bootstrap DEV-only, checks y rollback conservador",()=>{
+  const sql=fs.readFileSync(new URL("../supabase/dev/bootstrap/202608200005_fase_2a_p3_qa_campaigns.sql",import.meta.url),"utf8");
+  const checks=fs.readFileSync(new URL("../supabase/dev/tests/202608200005_fase_2a_p3_qa_campaigns_tests.sql",import.meta.url),"utf8");
+  const rollback=fs.readFileSync(new URL("../supabase/dev/rollback/202608200005_fase_2a_p3_qa_campaigns_rollback.sql",import.meta.url),"utf8");
+  assert.match(sql,/DEV only/); assert.match(sql,/add column if not exists campaign_id text/); assert.match(sql,/campaign_id is null/);
+  assert.match(sql,/enable row level security/); assert.match(sql,/revoke all on public\.shadow_ai_runs from public, anon/);
+  assert.match(checks,/campaign_id missing or incompatible/); assert.match(checks,/anon has unsafe grants/); assert.match(checks,/authenticated has unsafe writes/);
+  assert.match(rollback,/campaign audit exists; preserve it and do not rollback/); assert.match(rollback,/drop column campaign_id/);
+});
+
 test("fixtures ERP v7 son DEV-only, namespaced, resolubles y tienen cleanup/checks",()=>{
   const seed=fs.readFileSync(new URL("../supabase/dev/seed/202608200004_fase_2a_p3_qa_erp_fixtures.sql",import.meta.url),"utf8");
   const checks=fs.readFileSync(new URL("../supabase/dev/tests/202608200004_fase_2a_p3_qa_erp_fixtures_checks.sql",import.meta.url),"utf8");
@@ -486,6 +497,18 @@ test("runner bloquea completed y running sin llamar al modelo",async()=>{
     let calls=0; const result=await runShadowAi(fakeAiDb([{id:`run-${prior}`,status:prior}]),{messageId:"same",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>{calls++;return{text:JSON.stringify(validDecision)}}});
     assert.equal(result.status,status); assert.equal(calls,0);
   }
+});
+
+test("campañas QA tienen idempotencia independiente y legacy conserva semántica",async()=>{
+  const storedMessage={id:"campaign-message",provider:"synthetic",direction:"inbound",sanitized_text:"QA",provider_metadata:{syntheticScenario:"p3-01"},external_message_id:"synthetic:campaign",occurred_at:"2026-08-20T12:00:00Z"};
+  const db=fakeAiDb([],{filterIdempotencyKey:true,tableRows:{shadow_messages:[storedMessage]}}); const options={env:devEnv,modelCall:async()=>({text:JSON.stringify(validDecision),usage:{}})};
+  const first=await startShadowAiStateMachine(db,{messageId:"campaign-message",envelope:{...synthetic,sanitizedText:"QA"}},{...options,campaignId:"p3-campaign-a"});
+  const same=await startShadowAiStateMachine(db,{messageId:"campaign-message",envelope:{...synthetic,sanitizedText:"QA"}},{...options,campaignId:"p3-campaign-a"});
+  const other=await startShadowAiStateMachine(db,{messageId:"campaign-message",envelope:{...synthetic,sanitizedText:"QA"}},{...options,campaignId:"p3-campaign-b"});
+  assert.equal(first.status,"completed"); assert.equal(same.status,"running"); assert.equal(other.status,"completed");
+  const inserts=db.writes.filter(x=>x.table==="shadow_ai_runs"&&x.action==="insert");
+  assert.deepEqual(inserts.map(x=>x.payload.campaign_id),["p3-campaign-a","p3-campaign-b"]);
+  assert.notEqual(inserts[0].payload.idempotency_key,inserts[1].payload.idempotency_key);
 });
 
 test("runner permite error explícito, crea run encadenado y conserva prompt/modelo",async()=>{
