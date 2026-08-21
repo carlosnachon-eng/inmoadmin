@@ -4,7 +4,7 @@ import { classifyShadowMessage, syntheticEnvelope } from "../../../lib/shadow/co
 import { DEFAULT_SHADOW_AI_MODEL } from "../../../lib/shadow/ai/anthropic";
 import { SHADOW_AI_PROMPT_VERSION } from "../../../lib/shadow/ai/prompt";
 import { SHADOW_AI_QA_DATASET, SHADOW_AI_QA_REGRESSION_FIXTURES } from "../../../lib/shadow/ai/qaDataset";
-import { aggregatePersistedShadowQa, executionDisposition, prepareQaFixtureExecutionContext, qaCampaignCompatibility, remainingRunBudget, SHADOW_QA_MIN_RUN_BUDGET_MS, validateExplicitFixtureIds, validateQaCampaignId } from "../../../lib/shadow/ai/qaOrchestrator";
+import { aggregatePersistedShadowQa, executionDisposition, prepareQaFixtureExecutionContext, qaCampaignCompatibility, remainingRunBudget, SHADOW_QA_MIN_RUN_BUDGET_MS, validateExplicitFixtureIds, validateQaCampaignFixtureIds, validateQaCampaignId } from "../../../lib/shadow/ai/qaOrchestrator";
 import { startShadowAiStateMachine } from "../../../lib/shadow/ai/stateMachine";
 import { processShadowEnvelope } from "../../../lib/shadow/pipeline";
 
@@ -34,7 +34,7 @@ export default async function handler(req,res) {
     const campaignId=validateQaCampaignId(req.method==="GET"?req.query?.campaignId:req.body?.campaignId);
     const admin=getAdminSupabase(); if(req.method==="GET")return res.status(200).json({ok:true,...await audit(admin,campaignId)});
     const existingCampaign=await audit(admin,campaignId); if(!existingCampaign.campaignCompatibility.compatible)return res.status(409).json({ok:false,error:"La campaña ya contiene otro modelo o prompt.",campaignId,campaignCompatibility:existingCampaign.campaignCompatibility});
-    const fixtureIds=validateExplicitFixtureIds(req.body?.fixtureIds); const retryFailed=req.body?.retryFailed===true;
+    const fixtureIds=validateQaCampaignFixtureIds(campaignId,validateExplicitFixtureIds(req.body?.fixtureIds)); const retryFailed=req.body?.retryFailed===true;
     if(retryFailed&&fixtureIds.length!==1)return res.status(400).json({ok:false,error:"Retry requiere exactamente un fixture."});
     const requested=new Map([...SHADOW_AI_QA_DATASET,...SHADOW_AI_QA_REGRESSION_FIXTURES].filter((item)=>fixtureIds.includes(item.id)).map((item)=>[item.id,item]));
     const startedAt=Date.now(); const results=[];
