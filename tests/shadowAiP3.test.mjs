@@ -7,6 +7,7 @@ import { createAnthropicShadowResponse } from "../lib/shadow/ai/anthropic.js";
 import { SHADOW_AI_QA_DATASET, evaluateShadowAiQa } from "../lib/shadow/ai/qaDataset.js";
 import { READ_ONLY_SHADOW_TOOLS, SHADOW_TOOL_ARGUMENT_SCHEMAS, validateShadowToolArguments } from "../lib/shadow/context.js";
 import { runShadowAi } from "../lib/shadow/ai/runner.js";
+import { SHADOW_AI_PROMPT_VERSION, SHADOW_AI_SYSTEM_PROMPT } from "../lib/shadow/ai/prompt.js";
 
 const devEnv = { SHADOW_AI_ENABLED:"true", SHADOW_AI_ALLOW_REAL_MESSAGES:"false", SHADOW_OUTBOUND_ENABLED:"false", SUPABASE_ENVIRONMENT:"dev", NEXT_PUBLIC_SUPABASE_URL:"https://hjfwjnejbcpmknvfpdcq.supabase.co", ANTHROPIC_API_KEY:"fixture" };
 const synthetic = { provider:"synthetic", providerMetadata:{syntheticScenario:"p3-01"} };
@@ -73,6 +74,12 @@ test("cada tool tiene schema nominal estricto y rechaza argumentos faltantes o e
   assert.throws(()=>validateShadowToolArguments("find_properties",{}),/invalid_tool_arguments/);
   assert.throws(()=>validateShadowToolArguments("find_properties",{query:"Montpellier"}),/invalid_tool_arguments/);
   assert.throws(()=>validateShadowToolArguments("get_maintenance_ticket_summary",{propertyId:"not-an-id"}),/invalid_tool_arguments/);
+});
+
+test("prompt v3 prohíbe dependencias anticipadas y promesas de acción Shadow",()=>{
+  assert.equal(SHADOW_AI_PROMPT_VERSION,"administradora-ia-emporio-v3");
+  assert.match(SHADOW_AI_SYSTEM_PROMPT,/prohibido anticipar la herramienta dependiente en la misma ronda/i);
+  for(const phrase of ["voy a registrar","vamos a registrar","voy a enviar","voy a programar","voy a solicitar","voy a realizar","procederemos"]) assert.match(SHADOW_AI_SYSTEM_PROMPT,new RegExp(phrase,"i"));
 });
 
 test("dataset tiene 38 goldens y cubre safety", () => {
@@ -175,6 +182,16 @@ test("G/J: afirmación ERP sin evidencia cuenta como unsupported/hallucination y
   assert.equal(metrics.unsupportedFactRate,1); assert.equal(metrics.hallucinationRate,1);
 });
 
+test("promesas operativas de Shadow se bloquean determinísticamente",async()=>{
+  for(const proposedResponse of ["Vamos a registrar el reporte de inmediato.","Voy a enviar la solicitud hoy.","Procederemos con la devolución.","Confírmame la dirección para que podamos registrar el caso."]){
+    const promised={...validDecision,proposedResponse,requiresHuman:false,safetyFlags:[]};
+    const result=await runShadowAi(fakeAiDb(),{messageId:`promise-${proposedResponse}`,envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([promised])});
+    assert.equal(result.decision.requiresHuman,true);
+    assert.equal(result.decision.safetyFlags.includes("shadow_action_promise_blocked"),true);
+    assert.doesNotMatch(result.decision.proposedResponse,/voy a|vamos a|proceder|podamos registrar/i);
+  }
+});
+
 test("H: loop nunca supera tres rondas ni ejecuta tools nuevas en la última",async()=>{
   const invalid={...validDecision,proposedToolCalls:[toolCall("find_properties",{})]}; let calls=0;
   const result=await runShadowAi(fakeAiDb(),{messageId:"three-rounds",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>{calls++;return{text:JSON.stringify(invalid),usage:{}};}});
@@ -194,7 +211,7 @@ test("runner permite error explícito, crea run encadenado y conserva prompt/mod
   assert.equal(result.status,"completed"); assert.equal(db.runs.some(row=>row.id==="run-error"),true);
   const insert=db.writes.find(x=>x.table==="shadow_ai_runs"&&x.action==="insert");
   assert.equal(insert.payload.retry_of_run_id,"run-error"); assert.equal(insert.payload.attempt_number,2);
-  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v2");
+  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v3");
   assert.equal(db.writes.filter(x=>x.table==="shadow_ai_decisions"&&x.action==="insert").length,1);
 });
 
