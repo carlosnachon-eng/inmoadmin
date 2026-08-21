@@ -63,7 +63,7 @@ Inmoadmin deriva server-side las consultas `required_now` después de que Claude
 
 Las tools finales son la unión segura de `policy_required` y `model_proposed`. Una coincidencia exacta queda marcada `both`, se ejecuta una sola vez y nunca sale de la allowlist read-only. Si la política exige una consulta, la state machine no puede completar antes de ejecutarla y persistir su evidence ledger para la ronda siguiente. La auditoría y UI muestran la fuente; las métricas separan `policyRequiredToolExecutionRate`, `modelSuggestedToolRecall` y `overallRequiredToolExecutionRate`.
 
-`p3-reg-payment-grounding-01` conserva la semántica de p3-07 con identidad QA nueva. p3-07 y sus tres intentos permanecen como histórico y no deben reejecutarse.
+`p3-reg-payment-grounding-01` conserva la semántica de p3-07 y su run completado permanece como histórico inmutable. `p3-reg-payment-grounding-02` aporta una identidad sintética independiente para validar el renderer canónico sin alterar idempotencia ni duplicar datos ERP: ambos reutilizan el contrato y pago namespaced `FASE2A-P3-QA`. Ninguno forma parte de los 38 goldens originales.
 
 ## Fixtures ERP resolubles v7
 

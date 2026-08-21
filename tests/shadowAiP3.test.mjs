@@ -143,9 +143,15 @@ test("regresión determinística p3-07 ejecuta pago y no completa antes de groun
 });
 
 test("fixture de regresión tiene identidad nueva sin alterar los 38 goldens",()=>{
-  assert.equal(SHADOW_AI_QA_DATASET.length,38); assert.equal(SHADOW_AI_QA_REGRESSION_FIXTURES.length,1);
+  assert.equal(SHADOW_AI_QA_DATASET.length,38); assert.equal(SHADOW_AI_QA_REGRESSION_FIXTURES.length,2);
   assert.equal(SHADOW_AI_QA_REGRESSION_FIXTURES[0].id,"p3-reg-payment-grounding-01");
-  assert.equal(SHADOW_AI_QA_REGRESSION_FIXTURES[0].golden.requiredNowTools[0],"get_payment_summary");
+  assert.equal(SHADOW_AI_QA_REGRESSION_FIXTURES[1].id,"p3-reg-payment-grounding-02");
+  for (const fixture of SHADOW_AI_QA_REGRESSION_FIXTURES) {
+    assert.equal(fixture.metadata.contractId,"f2a30000-0000-4000-8200-000000000001");
+    assert.equal(fixture.golden.expectedFixtureId,"f2a30000-0000-4000-8300-000000000001");
+    assert.deepEqual(fixture.golden.requiredNowTools,["get_payment_summary"]);
+  }
+  assert.notEqual(SHADOW_AI_QA_REGRESSION_FIXTURES[0].metadata.syntheticScenario,SHADOW_AI_QA_REGRESSION_FIXTURES[1].metadata.syntheticScenario);
 });
 
 test("grounding valida estados, fechas y montos de contrato, servicio y mantenimiento",()=>{

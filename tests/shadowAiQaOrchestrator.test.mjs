@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
 import { aggregatePersistedShadowQa, executionDisposition, remainingRunBudget, SHADOW_QA_MAX_MICRO_BATCH, SHADOW_QA_MIN_RUN_BUDGET_MS, SHADOW_QA_REQUEST_BUDGET_MS, validateExplicitFixtureIds } from "../lib/shadow/ai/qaOrchestrator.js";
-import { SHADOW_AI_QA_DATASET } from "../lib/shadow/ai/qaDataset.js";
+import { SHADOW_AI_QA_DATASET, SHADOW_AI_QA_REGRESSION_FIXTURES } from "../lib/shadow/ai/qaDataset.js";
 
 test("completed se omite y running se bloquea",()=>{
   assert.equal(executionDisposition("completed"),"skip_completed");
@@ -28,9 +28,20 @@ test("acepta sólo IDs explícitos y limita micro-lote",()=>{
   assert.equal(SHADOW_QA_MAX_MICRO_BATCH,1);
   assert.deepEqual(validateExplicitFixtureIds(["p3-02"]),["p3-02"]);
   assert.deepEqual(validateExplicitFixtureIds(["p3-reg-payment-grounding-01"]),["p3-reg-payment-grounding-01"]);
+  assert.deepEqual(validateExplicitFixtureIds(["p3-reg-payment-grounding-02"]),["p3-reg-payment-grounding-02"]);
   assert.throws(()=>validateExplicitFixtureIds([]),/invalid_fixture_batch/);
   assert.throws(()=>validateExplicitFixtureIds(["p3-01","p3-02"]),/invalid_fixture_batch/);
   assert.throws(()=>validateExplicitFixtureIds(["p3-99"]),/invalid_fixture_ids/);
+});
+
+test("regresión 02 conserva contexto sintético pero tiene idempotencia independiente",()=>{
+  const [historical,fresh]=SHADOW_AI_QA_REGRESSION_FIXTURES;
+  assert.equal(historical.id,"p3-reg-payment-grounding-01");
+  assert.equal(fresh.id,"p3-reg-payment-grounding-02");
+  assert.equal(historical.metadata.contractId,fresh.metadata.contractId);
+  assert.equal(historical.golden.expectedFixtureId,fresh.golden.expectedFixtureId);
+  assert.equal(executionDisposition("completed"),"skip_completed");
+  assert.equal(executionDisposition(undefined),"execute");
 });
 
 test("presupuesto reserva cierre de Function y difiere nuevos runs",()=>{
