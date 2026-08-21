@@ -10,14 +10,22 @@ OpenAI `gpt-5.6-luna` fue comparado (USD 0.20/1M entrada y USD 1.20/1M salida), 
 
 ## Contratos
 
-- Prompt: `administradora-ia-emporio-v1`.
-- Salida: JSON Schema estricto con intención, urgencia, resumen, entidades, información faltante, herramientas propuestas, evaluación contextual, acción/respuesta propuestas, confianza, escalamiento y safety flags.
+- Prompt: `administradora-ia-emporio-v2`. El cambio de versión conserva separados los runs auditados bajo el contrato anterior.
+- Salida: JSON Schema estricto con intención, urgencia, resumen, `entitiesMentioned`, `resolvedEntities`, estado de resolución, información faltante, herramientas estructuradas, evaluación contextual, acción/respuesta propuestas, confianza, escalamiento y safety flags.
 - Tools: las diez capacidades `READ_ONLY_SHADOW_TOOLS`; argumentos cerrados, sin SQL libre, máximo 5 resultados y ejecución server-side con service role.
 - Persistencia: sólo `shadow_ai_runs`, `shadow_ai_decisions` y auditoría Shadow. Nunca se guarda chain-of-thought.
 
 ## Dataset y evaluación
 
 `SHADOW_AI_QA_DATASET` contiene 38 escenarios sintéticos con golden expectations para mantenimiento, rentas, servicios, propietarios, contratos, llaves, jurídico, ambigüedad y multintención. Las métricas separan exactitud de intención, resolución/escalamiento, herramientas innecesarias, alucinación y recomendaciones inseguras. La evaluación humana no contiene botón Aplicar.
+
+## Tool loop v2
+
+`proposedToolCalls` usa objetos `{tool, arguments, reason}`. Cada herramienta tiene schema propio y cerrado: referencias de inmueble para `find_properties`; IDs UUID nominales para inmueble, contrato, pago, servicio, ticket, llave, liquidación, expediente o unidad; y `contextKey` para Work Center. No se acepta `{query}`, argumentos adicionales ni IDs sin formato válido.
+
+Los IDs dependientes deben provenir de metadata determinística o de una herramienta exitosa en una ronda anterior. Una dependencia ambigua, ausente o una tool inválida se registra sanitizada y no se ejecuta; Claude puede corregirla en la siguiente ronda. La tercera ronda es final y no ejecuta nuevas herramientas.
+
+El runner reemplaza cualquier `resolvedEntities` no respaldada por resultados ERP, marca `unsupported_erp_fact` y neutraliza afirmaciones como “ya revisé” cuando no existe evidencia. `unsupportedFactRate` también alimenta `hallucinationRate`. El golden `p3-01` exige `find_properties` en ronda 1, mantenimiento por `propertyId` en ronda 2 y respuesta final sin nuevas tools en ronda 3.
 
 ## Activación DEV controlada
 
@@ -31,7 +39,7 @@ Este artefacto no es una migración productiva.
 
 ## Diagnóstico del primer HTTP 400
 
-El primer y único intento real descartó el body de error y guardó sólo `model_http_400`; por ello su `error.type`, mensaje, campo y `request_id` originales no son recuperables sin repetir una llamada. El payload auditado sí confirma endpoint Messages, modelo `claude-haiku-4-5-20251001`, versión `2023-06-01`, `max_tokens=1400`, un mensaje `user` y la forma vigente `output_config.format.schema`. P3 no envía definiciones `tools` al proveedor: ofrece nombres cerrados dentro del contexto y ejecuta las consultas read-only localmente después de validar el JSON.
+El primer intento real descartó el body de error y guardó sólo `model_http_400`; por ello su `error.type`, mensaje, campo y `request_id` originales no son recuperables. El payload auditado sí confirma endpoint Messages, modelo `claude-haiku-4-5-20251001`, versión `2023-06-01`, `max_tokens=1400`, un mensaje `user` y la forma vigente `output_config.format.schema`. P3 no habilita tools nativas del proveedor: exige tool calls estructuradas dentro de la salida validada y ejecuta consultas read-only localmente.
 
 La diferencia reproducible frente al contrato oficial era el envío directo de restricciones JSON Schema no soportadas que los SDK oficiales eliminan antes de llamar a la API (`minimum`, `maximum`, `minLength`, `maxLength`; el esquema también llevaba límites de arrays). El adapter ahora envía una variante compatible sin esos constraints y conserva todos los límites como validación local posterior. Un error futuro conserva status, tipo, código/campo, request ID y mensaje truncado/sanitizado, además de latencia, sin persistir el body crudo.
 

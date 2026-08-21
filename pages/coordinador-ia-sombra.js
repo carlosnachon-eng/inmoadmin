@@ -85,6 +85,7 @@ export default function ShadowCoordinatorPage() {
               <p><strong>Análisis:</strong> {aiDecision.decision_json?.summary}</p>
               <p><strong>Herramientas consultadas:</strong> {aiTools.length ? aiTools.map(x=>`${x.name} (${x.resultCount})`).join(", ") : "Ninguna"}</p>
               <p><strong>Contexto encontrado:</strong> {aiDecision.decision_json?.contextAssessment}</p>
+              <p><strong>Resolución de entidades:</strong> {aiDecision.decision_json?.entityResolutionStatus || "Sin determinar"} · {(aiDecision.decision_json?.resolvedEntities || []).map(x=>x.label).join(", ") || "Sin entidades ERP confirmadas"}</p>
               <p><strong>Acción propuesta:</strong> {aiDecision.proposed_action}</p>
               <p><strong>Respuesta propuesta:</strong> {aiDecision.proposed_response}</p>
               <p><strong>Confianza:</strong> {Math.round(Number(aiDecision.confidence||0)*100)}% · <strong>Requiere humano:</strong> {aiDecision.requires_human ? "Sí" : "No"}</p>

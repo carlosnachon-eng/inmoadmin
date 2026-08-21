@@ -5,24 +5,26 @@ import { shadowAiGuard, SHADOW_AI_LIMITS } from "../lib/shadow/ai/guards.js";
 import { anthropicShadowAiDecisionJsonSchema, validateShadowAiDecision } from "../lib/shadow/ai/schema.js";
 import { createAnthropicShadowResponse } from "../lib/shadow/ai/anthropic.js";
 import { SHADOW_AI_QA_DATASET, evaluateShadowAiQa } from "../lib/shadow/ai/qaDataset.js";
-import { READ_ONLY_SHADOW_TOOLS, SHADOW_TOOL_ARGUMENT_SCHEMAS } from "../lib/shadow/context.js";
+import { READ_ONLY_SHADOW_TOOLS, SHADOW_TOOL_ARGUMENT_SCHEMAS, validateShadowToolArguments } from "../lib/shadow/context.js";
 import { runShadowAi } from "../lib/shadow/ai/runner.js";
 
 const devEnv = { SHADOW_AI_ENABLED:"true", SHADOW_AI_ALLOW_REAL_MESSAGES:"false", SHADOW_OUTBOUND_ENABLED:"false", SUPABASE_ENVIRONMENT:"dev", NEXT_PUBLIC_SUPABASE_URL:"https://hjfwjnejbcpmknvfpdcq.supabase.co", ANTHROPIC_API_KEY:"fixture" };
 const synthetic = { provider:"synthetic", providerMetadata:{syntheticScenario:"p3-01"} };
-const validDecision={intent:"mantenimiento",secondaryIntents:[],urgency:"normal",summary:"Fuga",entitiesMentioned:[],informationNeeded:[],proposedToolCalls:[],contextAssessment:"Sin contexto",proposedAction:"Escalar",proposedResponse:"Lo revisará el equipo.",confidence:.8,requiresHuman:true,escalationReason:"Revisión",safetyFlags:[]};
+const validDecision={intent:"mantenimiento",secondaryIntents:[],urgency:"normal",summary:"Fuga",entitiesMentioned:[],resolvedEntities:[],entityResolutionStatus:"not_applicable",informationNeeded:[],proposedToolCalls:[],contextAssessment:"Sin contexto",proposedAction:"Escalar",proposedResponse:"Lo revisará el equipo.",confidence:.8,requiresHuman:true,escalationReason:"Revisión",safetyFlags:[]};
 function fakeAiDb(initialRuns=[], options={}){
-  const writes=[]; const runs=(Array.isArray(initialRuns) ? initialRuns : initialRuns ? [initialRuns] : []).map((row,index)=>({attempt_number:index+1,created_at:`2026-08-20T10:0${index}:00Z`,...row}));
+  const writes=[]; const reads=[]; const runs=(Array.isArray(initialRuns) ? initialRuns : initialRuns ? [initialRuns] : []).map((row,index)=>({attempt_number:index+1,created_at:`2026-08-20T10:0${index}:00Z`,...row}));
   const decisions=[...(options.decisions || [])]; let nextRun=runs.length+1;
-  return {writes,runs,decisions,from(table){let action="select",payload,filter={};
-    const q={select(){return q;},eq(column,value){if(column!=="idempotency_key")filter[column]=value;return q;},order(){return q;},limit(){return q;},
+  return {writes,reads,runs,decisions,from(table){let action="select",payload,filter={};reads.push(table);
+    const q={select(){return q;},eq(column,value){if(column!=="idempotency_key")filter[column]=value;return q;},ilike(){return q;},in(){return q;},order(){return q;},limit(){return q;},
       maybeSingle:async()=>{const rows=table==="shadow_ai_decisions" ? decisions : runs;const found=rows.find(row=>Object.entries(filter).every(([key,value])=>row[key]===value));return{data:found||null,error:null};},
       insert(value){action="insert";payload=value;writes.push({table,action,payload});return q;},
       update(value){action="update";payload=value;writes.push({table,action,payload});return q;},
       single:async()=>{if(table==="shadow_ai_runs"&&action==="insert"){if(options.insertError)return{data:null,error:options.insertError};const row={id:`run-${nextRun++}`,created_at:new Date().toISOString(),...payload};runs.unshift(row);return{data:{id:row.id},error:null};}return{data:{id:"fixture"},error:null};},
-      then(resolve){if(action!=="select")return resolve({data:null,error:null});const rows=(table==="shadow_ai_runs"?runs:decisions).filter(row=>Object.entries(filter).every(([key,value])=>row[key]===value));return resolve({data:rows,error:null});}}; return q;
+      then(resolve){if(action!=="select")return resolve({data:null,error:null});const source=table==="shadow_ai_runs"?runs:table==="shadow_ai_decisions"?decisions:(options.tableRows?.[table]||[]);const rows=source.filter(row=>Object.entries(filter).every(([key,value])=>row[key]===value));return resolve({data:rows,error:null});}}; return q;
   }};
 }
+const toolCall=(tool,arguments_,reason="Contexto necesario")=>({tool,arguments:arguments_,reason});
+const sequenceModel=(decisions)=>{let index=0;return async()=>({text:JSON.stringify(decisions[Math.min(index++,decisions.length-1)]),usage:{input_tokens:10,output_tokens:5}});};
 
 test("guard P3 requiere DEV exacto, flag, key y mensaje sintético", () => {
   assert.equal(shadowAiGuard(synthetic, devEnv).allowed,true);
@@ -63,6 +65,15 @@ test("tool layer es cerrado, read-only y limitado", () => {
   assert.doesNotMatch(context,/rpc\s*\(/); assert.match(context,/MAX_RESULTS = 5/);
 });
 
+test("cada tool tiene schema nominal estricto y rechaza argumentos faltantes o extra",()=>{
+  assert.deepEqual(Object.keys(SHADOW_TOOL_ARGUMENT_SCHEMAS),READ_ONLY_SHADOW_TOOLS);
+  assert.deepEqual(validateShadowToolArguments("find_properties",{propertyReference:"Montpellier"}),{propertyReference:"Montpellier"});
+  assert.deepEqual(validateShadowToolArguments("get_maintenance_ticket_summary",{propertyId:"f1000000-0000-4000-8100-000000000001"}),{propertyId:"f1000000-0000-4000-8100-000000000001"});
+  assert.throws(()=>validateShadowToolArguments("find_properties",{}),/invalid_tool_arguments/);
+  assert.throws(()=>validateShadowToolArguments("find_properties",{query:"Montpellier"}),/invalid_tool_arguments/);
+  assert.throws(()=>validateShadowToolArguments("get_maintenance_ticket_summary",{propertyId:"not-an-id"}),/invalid_tool_arguments/);
+});
+
 test("dataset tiene 38 goldens y cubre safety", () => {
   assert.equal(SHADOW_AI_QA_DATASET.length,38);
   for(const row of SHADOW_AI_QA_DATASET){assert.ok(row.golden.intent);assert.equal(typeof row.golden.requiresHuman,"boolean");}
@@ -71,7 +82,7 @@ test("dataset tiene 38 goldens y cubre safety", () => {
 
 test("métricas no colapsan seguridad en un promedio",()=>{
   const one=SHADOW_AI_QA_DATASET.slice(0,1); const metrics=evaluateShadowAiQa(one,[{fixtureId:one[0].id,status:"completed",decision:{intent:one[0].golden.intent,requiresHuman:one[0].golden.requiresHuman,safetyFlags:[]},tools:[{name:"find_properties",ok:true,result:[{id:"property-qa"}]}],latencyMs:120,usage:{input_tokens:100,output_tokens:20},estimatedCostUsd:.0002}]);
-  for (const key of ["intentAccuracy","entityResolutionAccuracy","toolSelectionPrecision","toolSelectionRecall","hallucinationRate","unnecessaryToolRate","correctEscalationRate","unsafeRecommendationRate","malformedOutputRate","timeoutErrorRate","schemaValidityRate","averageToolCallsPerRun","latencyMsP50","latencyMsP95","inputTokens","outputTokens","estimatedCostUsd"]) assert.ok(Object.hasOwn(metrics,key),key);
+  for (const key of ["intentAccuracy","entityResolutionAccuracy","toolSelectionPrecision","toolSelectionRecall","hallucinationRate","unsupportedFactRate","unnecessaryToolRate","correctEscalationRate","unsafeRecommendationRate","malformedOutputRate","timeoutErrorRate","schemaValidityRate","averageToolCallsPerRun","latencyMsP50","latencyMsP95","inputTokens","outputTokens","estimatedCostUsd"]) assert.ok(Object.hasOwn(metrics,key),key);
   assert.equal(metrics.entityResolutionAccuracy,1); assert.equal(metrics.latencyMsP95,120); assert.equal(metrics.inputTokens,100);
 });
 
@@ -110,6 +121,54 @@ test("runner persiste decisión estructurada e idempotencia evita segunda llamad
   assert.equal(duplicate.status,"duplicate");
 });
 
+test("A/C: loop ejecuta argumentos válidos y espera IDs de la ronda anterior",async()=>{
+  const propertyId="f1000000-0000-4000-8100-000000000001";
+  const db=fakeAiDb([], {tableRows:{properties:[{id:propertyId,name:"Montpellier"}],maintenance_tickets:[{id:"f1000000-0000-4000-8200-000000000001",property_id:propertyId,property_name:"Montpellier",status:"abierto",priority:"alta",created_at:"2026-08-20"}]}});
+  const round1={...validDecision,entitiesMentioned:["Montpellier"],entityResolutionStatus:"unresolved",proposedToolCalls:[toolCall("find_properties",{propertyReference:"Montpellier"}),toolCall("get_maintenance_ticket_summary",{propertyId})]};
+  const round2={...validDecision,entitiesMentioned:["Montpellier"],proposedToolCalls:[toolCall("get_maintenance_ticket_summary",{propertyId})]};
+  const round3={...validDecision,entitiesMentioned:["Montpellier"],resolvedEntities:[{entityType:"property",internalId:propertyId,label:"Montpellier"}],entityResolutionStatus:"resolved",proposedToolCalls:[],contextAssessment:"Propiedad y mantenimiento confirmados"};
+  const result=await runShadowAi(db,{messageId:"tool-loop",envelope:{...synthetic,sanitizedText:"Sigue la fuga",providerMetadata:{...synthetic.providerMetadata,propertyReference:"Montpellier"}},deterministic:{}},{env:devEnv,modelCall:sequenceModel([round1,round2,round3])});
+  assert.equal(result.status,"completed"); assert.equal(result.rounds,3);
+  assert.equal(result.tools.filter(x=>x.ok).map(x=>x.name).join(","),"find_properties,get_maintenance_ticket_summary");
+  assert.equal(result.tools.some(x=>x.error==="missing_dependency:propertyId"),true);
+  assert.equal(result.decision.entityResolutionStatus,"resolved"); assert.equal(result.decision.resolvedEntities.some(x=>x.internalId===propertyId),true);
+});
+
+test("B: tool sin required no ejecuta y Claude puede corregir en ronda siguiente",async()=>{
+  const db=fakeAiDb(); const invalid={...validDecision,proposedToolCalls:[toolCall("find_properties",{})]};
+  const result=await runShadowAi(db,{messageId:"invalid-args",envelope:{...synthetic,sanitizedText:"Montpellier"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([invalid,validDecision])});
+  assert.equal(result.status,"completed"); assert.equal(result.rounds,2); assert.equal(result.tools[0].ok,false); assert.equal(result.tools[0].error,"invalid_tool_arguments");
+  assert.equal(db.reads.filter(x=>x==="properties").length,0);
+});
+
+test("D/E/F: entidades mencionadas sólo se resuelven con evidencia y distinguen ambiguous/unresolved",async()=>{
+  const propertyCall={...validDecision,entitiesMentioned:["Montpellier"],entityResolutionStatus:"unresolved",proposedToolCalls:[toolCall("find_properties",{propertyReference:"Montpellier"})]};
+  const final={...validDecision,entitiesMentioned:["Montpellier"],proposedToolCalls:[]};
+  const multiple=fakeAiDb([],{tableRows:{properties:[{id:"f1000000-0000-4000-8100-000000000001",name:"Montpellier 1"},{id:"f1000000-0000-4000-8100-000000000002",name:"Montpellier 2"}]}});
+  const dependent={...validDecision,entitiesMentioned:["Montpellier"],proposedToolCalls:[toolCall("get_maintenance_ticket_summary",{propertyId:"f1000000-0000-4000-8100-000000000001"})]};
+  const ambiguous=await runShadowAi(multiple,{messageId:"ambiguous",envelope:{...synthetic,sanitizedText:"Montpellier"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([propertyCall,dependent,final])});
+  assert.equal(ambiguous.decision.entityResolutionStatus,"ambiguous"); assert.equal(ambiguous.decision.resolvedEntities.length,2);
+  assert.equal(ambiguous.tools.some((tool)=>tool.error==="ambiguous_dependency:propertyId"),true);
+  assert.equal(multiple.reads.filter((table)=>table==="maintenance_tickets").length,0);
+  const absent=await runShadowAi(fakeAiDb([],{tableRows:{properties:[]}}),{messageId:"absent",envelope:{...synthetic,sanitizedText:"Montpellier"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([propertyCall,final])});
+  assert.equal(absent.decision.entityResolutionStatus,"unresolved"); assert.deepEqual(absent.decision.resolvedEntities,[]); assert.deepEqual(absent.decision.entitiesMentioned,["Montpellier"]);
+});
+
+test("G/J: afirmación ERP sin evidencia cuenta como unsupported/hallucination y se neutraliza",async()=>{
+  const unsupported={...validDecision,entitiesMentioned:["Montpellier"],resolvedEntities:[{entityType:"property",internalId:"f1000000-0000-4000-8100-000000000001",label:"Montpellier"}],entityResolutionStatus:"resolved",proposedResponse:"Ya revisé y veo que tenemos registrado el caso. ¿Cuándo empezó? ¿Dónde está la fuga?"};
+  const result=await runShadowAi(fakeAiDb(),{messageId:"unsupported",envelope:{...synthetic,sanitizedText:"Montpellier"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([unsupported])});
+  assert.equal(result.decision.safetyFlags.includes("unsupported_erp_fact"),true); assert.equal(result.decision.entityResolutionStatus,"unresolved"); assert.deepEqual(result.decision.resolvedEntities,[]);
+  assert.doesNotMatch(result.decision.proposedResponse,/Ya revisé|veo que|tenemos registrado/i); assert.equal((result.decision.proposedResponse.match(/\?/g)||[]).length,1);
+  const metrics=evaluateShadowAiQa([{id:"p3-x",metadata:{propertyReference:"Montpellier"},golden:{intent:"mantenimiento",expectedTools:[],requiresHuman:true}}],[{fixtureId:"p3-x",status:"completed",decision:result.decision,tools:[]}]);
+  assert.equal(metrics.unsupportedFactRate,1); assert.equal(metrics.hallucinationRate,1);
+});
+
+test("H: loop nunca supera tres rondas ni ejecuta tools nuevas en la última",async()=>{
+  const invalid={...validDecision,proposedToolCalls:[toolCall("find_properties",{})]}; let calls=0;
+  const result=await runShadowAi(fakeAiDb(),{messageId:"three-rounds",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>{calls++;return{text:JSON.stringify(invalid),usage:{}};}});
+  assert.equal(calls,3); assert.equal(result.rounds,3); assert.equal(result.tools.length,3); assert.equal(result.tools.every(x=>!x.ok),true);
+});
+
 test("runner bloquea completed y running sin llamar al modelo",async()=>{
   for(const [prior,status] of [["completed","duplicate"],["running","running"]]){
     let calls=0; const result=await runShadowAi(fakeAiDb([{id:`run-${prior}`,status:prior}]),{messageId:"same",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>{calls++;return{text:JSON.stringify(validDecision)}}});
@@ -123,7 +182,7 @@ test("runner permite error explícito, crea run encadenado y conserva prompt/mod
   assert.equal(result.status,"completed"); assert.equal(db.runs.some(row=>row.id==="run-error"),true);
   const insert=db.writes.find(x=>x.table==="shadow_ai_runs"&&x.action==="insert");
   assert.equal(insert.payload.retry_of_run_id,"run-error"); assert.equal(insert.payload.attempt_number,2);
-  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v1");
+  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v2");
   assert.equal(db.writes.filter(x=>x.table==="shadow_ai_decisions"&&x.action==="insert").length,1);
 });
 
