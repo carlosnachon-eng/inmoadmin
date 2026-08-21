@@ -103,6 +103,26 @@ test("regresión p3-12: recibo no disponible es compatible con hasReceipt=false"
   assert.match(result.proposedResponse,/pendiente/); assert.match(result.proposedResponse,/no tiene comprobante/);
 });
 
+test("p3-12 permite escalamiento descriptivo grounded sin convertirlo en compromiso",()=>{
+  const id="f2a30000-0000-4000-8500-000000000002";
+  const evidenceId=`service:${id}:control:f2a30000-0000-4000-8600-000000000002`;
+  const tools=[{name:"get_service_period_status",ok:true,result:[{entityType:"service",internalId:id,evidenceId,status:"pendiente",period:"2026-08",amount:920,hasReceipt:false}]}];
+  const result=finalizeShadowAiDecision({...validDecision,intent:"servicio",executionCommitment:"implied",factualClaims:[
+    {factType:"service.status",value:"pendiente",evidenceIds:[evidenceId]},
+    {factType:"service.hasReceipt",value:false,evidenceIds:[evidenceId]},
+  ],conversationalResponseParts:{acknowledgement:"Esto requiere revisión del equipo de Administración.",verifiedFactReferences:[evidenceId],clarificationQuestion:null,escalationMessage:null}}, {sanitizedText:"¿Qué pasó con el recibo de CFE?",providerMetadata:{service:"cfe"}}, tools);
+  assert.equal(result.executionCommitment,"none");
+  assert.equal(result.responseBlocked,false);
+  assert.equal(result.groundingStatus,"grounded");
+});
+
+test("una promesa futura real continúa bloqueada",()=>{
+  const result=finalizeShadowAiDecision({...validDecision,executionCommitment:"none",conversationalResponseParts:{acknowledgement:"Lo vamos a revisar y te contactaremos.",verifiedFactReferences:[],clarificationQuestion:null,escalationMessage:null}}, {sanitizedText:"Necesito ayuda",providerMetadata:{}}, []);
+  assert.equal(result.responseBlocked,true);
+  assert.equal(result.executionCommitment,"implied");
+  assert.match(result.groundingReason,/execution_commitment/);
+});
+
 test("regresión p3-17: pagado $0 describe paidAmount y no contradice status pendiente",()=>{
   const id="f2a30000-0000-4000-8700-000000000001"; const evidenceId=`owner_liquidation:${id}`;
   const tools=[{name:"get_owner_liquidation_summary",ok:true,result:[{entityType:"owner_liquidation",internalId:id,status:"pendiente",period:"FASE2A-P3-QA periodo",totalAmount:11250,paidAmount:0}]}];
@@ -117,13 +137,35 @@ test("regresión p3-17: pagado $0 describe paidAmount y no contradice status pen
   assert.match(result.proposedResponse,/monto pagado registrado es \$0/);
 });
 
-test("consulta grounded ordinaria no se sobreescala cuando el técnico no llegó",()=>{
+test("p3-02 es técnico ausente con ticket activo y no se sobreescala",()=>{
+  const scenario=SHADOW_AI_QA_DATASET.find((item)=>item.id==="p3-02");
+  assert.equal(scenario.text,"El técnico no llegó a la casa de Montpellier");
+  assert.equal(scenario.golden.requiresHuman,false);
+  assert.equal(scenario.golden.expectedEntityType,"maintenance_ticket");
   const ticketId="f2a30000-0000-4000-8400-000000000001"; const evidenceId=`maintenance_ticket:${ticketId}`;
   const tools=[{name:"get_maintenance_ticket_summary",ok:true,result:[{entityType:"maintenance_ticket",internalId:ticketId,status:"nuevo",priority:"urgente"}]}];
   const decision={...validDecision,intent:"mantenimiento",requiresHuman:true,escalationReason:"Reprogramar",factualClaims:[{factType:"maintenance_ticket.status",value:"nuevo",evidenceIds:[evidenceId]}],conversationalResponseParts:{acknowledgement:"Entiendo que el técnico no llegó.",verifiedFactReferences:[evidenceId],clarificationQuestion:"¿Me confirmas la fecha de la cita?",escalationMessage:"Administración reprograme la visita."}};
   const result=finalizeShadowAiDecision(decision,{sanitizedText:"El técnico no llegó a la casa de Montpellier",providerMetadata:{}},tools);
   assert.equal(result.requiresHuman,false); assert.equal(result.escalationReason,null);
   assert.doesNotMatch(result.proposedResponse,/reprogr/i);
+});
+
+test("renderer deduplica hechos canónicos y humaniza enums de llaves",()=>{
+  const ticketId="f2a30000-0000-4000-8400-000000000001"; const ticketEvidence=`maintenance_ticket:${ticketId}`;
+  const ticket=groundAndRenderDecision({...validDecision,factualClaims:[{factType:"maintenance_ticket.status",value:"nuevo",evidenceIds:[ticketEvidence]}],conversationalResponseParts:{acknowledgement:"El ticket está registrado como nuevo.",verifiedFactReferences:[ticketEvidence],clarificationQuestion:null,escalationMessage:null}},[{name:"get_maintenance_ticket_summary",ok:true,result:[{entityType:"maintenance_ticket",internalId:ticketId,status:"nuevo"}]}]);
+  assert.equal((ticket.proposedResponse.match(/nuevo/g)||[]).length,1);
+  const keyId="f2a30000-0000-4000-8800-000000000001"; const keyEvidence=`key:${keyId}`;
+  const key=groundAndRenderDecision({...validDecision,factualClaims:[{factType:"key.status",value:"en_resguardo",evidenceIds:[keyEvidence]},{factType:"key.inCustody",value:true,evidenceIds:[keyEvidence]}],conversationalResponseParts:{acknowledgement:"Entiendo.",verifiedFactReferences:[keyEvidence],clarificationQuestion:null,escalationMessage:null}},[{name:"get_key_custody_status",ok:true,result:[{entityType:"key",internalId:keyId,status:"en_resguardo",inCustody:true}]}]);
+  assert.equal((key.proposedResponse.match(/en resguardo/g)||[]).length,1);
+  assert.doesNotMatch(key.proposedResponse,/en_resguardo/);
+});
+
+test("renderer no afirma comprobante registrado sin evidencia específica",()=>{
+  const id="f2a30000-0000-4000-8300-000000000001"; const evidenceId=`payment:${id}`;
+  const result=groundAndRenderDecision({...validDecision,intent:"pago_renta",factualClaims:[{factType:"payment.status",value:"pagado",evidenceIds:[evidenceId]}],conversationalResponseParts:{acknowledgement:"Tenemos registrado tu comprobante de renta.",verifiedFactReferences:[evidenceId],clarificationQuestion:null,escalationMessage:null}},[{name:"get_payment_summary",ok:true,result:[{entityType:"payment",internalId:id,status:"pagado"}]}]);
+  assert.equal(result.responseBlocked,false);
+  assert.doesNotMatch(result.proposedResponse,/comprobante/i);
+  assert.match(result.proposedResponse,/pagado/i);
 });
 
 test("llaves conservan revisión humana, una pregunta y cero promesa futura",()=>{

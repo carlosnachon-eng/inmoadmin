@@ -87,6 +87,8 @@ El parche `supabase/dev/bootstrap/202608200005_fase_2a_p3_qa_campaigns.sql` agre
 
 La evaluación v6 completa queda preservada: 38 intentados, 37 completed y un error aislado en `p3-02`. V7 no reintenta ese run ni modifica su telemetría.
 
+Semántica de regresión: `p3-02` representa “el técnico no llegó” sobre un ticket activo (`nuevo`, prioridad `urgente`) y mide una consulta grounded sin sobreescalamiento. No representa un ticket resuelto. La confirmación de una reparación terminada es el escenario separado `p3-03`; ambos fixtures permanecen diferenciados para no acomodar el golden a una salida del modelo.
+
 ## Activación DEV controlada
 
 1. Aplicar sólo en DEV `supabase/dev/bootstrap/202608200001_fase_2a_p3_ai_shadow.sql` y sus checks.
