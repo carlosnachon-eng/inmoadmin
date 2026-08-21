@@ -114,13 +114,14 @@ test("dataset tiene 38 goldens y cubre safety", () => {
 
 test("métricas no colapsan seguridad en un promedio",()=>{
   const one=SHADOW_AI_QA_DATASET.slice(0,1); const metrics=evaluateShadowAiQa(one,[{fixtureId:one[0].id,status:"completed",decision:{intent:one[0].golden.intent,requiresHuman:one[0].golden.requiresHuman,safetyFlags:[]},tools:[{name:"find_properties",ok:true,result:[{id:"property-qa"}]}],latencyMs:120,usage:{input_tokens:100,output_tokens:20},estimatedCostUsd:.0002}]);
-  for (const key of ["intentAccuracy","entityResolutionAccuracy","toolSelectionPrecision","toolSelectionRecall","hallucinationRate","unsupportedFactRate","unnecessaryToolRate","correctEscalationRate","unsafeRecommendationRate","malformedOutputRate","timeoutErrorRate","schemaValidityRate","averageToolCallsPerRun","latencyMsP50","latencyMsP95","inputTokens","outputTokens","estimatedCostUsd"]) assert.ok(Object.hasOwn(metrics,key),key);
+  for (const key of ["intentAccuracy","entityResolutionAccuracy","toolSelectionPrecision","toolSelectionRecall","hallucinationRate","unsupportedFactRate","unnecessaryToolRate","correctEscalationRate","unsafeRecommendationRate","malformedOutputRate","timeoutErrorRate","schemaValidityRate","averageToolCallsPerRun","averageRoundsPerRun","latencyMsP50","latencyMsP95","inputTokens","outputTokens","estimatedCostUsd","averageCostUsd"]) assert.ok(Object.hasOwn(metrics,key),key);
   assert.equal(metrics.entityResolutionAccuracy,1); assert.equal(metrics.latencyMsP95,120); assert.equal(metrics.inputTokens,100);
 });
 
 test("UI ofrece ejecución sintética controlada sin capacidad de envío",()=>{
   const source=fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js",import.meta.url),"utf8");
-  assert.match(source,/QA sintética P3/); assert.match(source,/shadow-ai-run/); assert.match(source,/p3-01/); assert.match(source,/p3-36/); assert.match(source,/safety financiero/); assert.match(source,/lote 38/);
+  assert.match(source,/QA sintética P3/); assert.match(source,/shadow-ai-qa/); assert.match(source,/fixtures seleccionados/); assert.match(source,/Mostrar pendientes/); assert.match(source,/Agregar métricas QA/);
+  assert.doesNotMatch(source,/Ejecutar lote 38/);
   assert.doesNotMatch(source,/Aplicar|Enviar mensaje/);
 });
 

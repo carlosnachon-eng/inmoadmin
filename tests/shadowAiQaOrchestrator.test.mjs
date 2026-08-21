@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import fs from "node:fs";
+import { aggregatePersistedShadowQa, executionDisposition, remainingRunBudget, SHADOW_QA_MAX_MICRO_BATCH, SHADOW_QA_MIN_RUN_BUDGET_MS, SHADOW_QA_REQUEST_BUDGET_MS, validateExplicitFixtureIds } from "../lib/shadow/ai/qaOrchestrator.js";
+import { SHADOW_AI_QA_DATASET } from "../lib/shadow/ai/qaDataset.js";
+
+test("completed se omite y running se bloquea",()=>{
+  assert.equal(executionDisposition("completed"),"skip_completed");
+  assert.equal(executionDisposition("running"),"block_running");
+});
+
+test("error y timeout se reportan sin retry automático",()=>{
+  assert.equal(executionDisposition("error"),"report_failed_no_retry");
+  assert.equal(executionDisposition("timeout"),"report_failed_no_retry");
+});
+
+test("acepta sólo IDs explícitos y limita micro-lote",()=>{
+  assert.equal(SHADOW_QA_MAX_MICRO_BATCH,4);
+  assert.deepEqual(validateExplicitFixtureIds(["p3-02","p3-03"]),["p3-02","p3-03"]);
+  assert.throws(()=>validateExplicitFixtureIds([]),/invalid_fixture_batch/);
+  assert.throws(()=>validateExplicitFixtureIds(["p3-01","p3-02","p3-03","p3-04","p3-05"]),/invalid_fixture_batch/);
+  assert.throws(()=>validateExplicitFixtureIds(["p3-02","p3-99"]),/invalid_fixture_ids/);
+  assert.throws(()=>validateExplicitFixtureIds(["p3-02","p3-02"]),/invalid_fixture_ids/);
+});
+
+test("presupuesto reserva cierre de Function y difiere nuevos runs",()=>{
+  assert.ok(SHADOW_QA_REQUEST_BUDGET_MS<120000);
+  assert.ok(remainingRunBudget(0,100000)<SHADOW_QA_MIN_RUN_BUDGET_MS);
+  assert.ok(remainingRunBudget(0,1000)>SHADOW_QA_MIN_RUN_BUDGET_MS);
+});
+
+test("agregación lee los 38 runs persistidos y reporta faltantes",()=>{
+  const messages=SHADOW_AI_QA_DATASET.map((scenario,index)=>({id:`message-${index}`,provider_metadata:{syntheticScenario:scenario.id}}));
+  const runs=SHADOW_AI_QA_DATASET.map((scenario,index)=>({id:`run-${index}`,message_id:`message-${index}`,status:"completed",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v4",created_at:`2026-08-20T12:${String(index).padStart(2,"0")}:00Z`,latency_ms:100,input_tokens:10,output_tokens:5,estimated_cost_usd:.001,telemetry_json:{rounds:[{round:1}]}}));
+  const decisions=SHADOW_AI_QA_DATASET.map((scenario,index)=>({ai_run_id:`run-${index}`,decision_json:{intent:scenario.golden.intent,requiresHuman:scenario.golden.requiresHuman,safetyFlags:[]},tool_summary:scenario.golden.expectedTools.map((name)=>({name,ok:true,resultCount:1}))}));
+  const all=aggregatePersistedShadowQa({messages,runs,decisions}); assert.equal(all.results.length,38); assert.equal(all.completed,38); assert.deepEqual(all.missingFixtures,[]); assert.equal(all.metrics.count,38); assert.equal(all.metrics.averageRoundsPerRun,1);
+  const missing=aggregatePersistedShadowQa({messages:messages.slice(1),runs:runs.slice(1),decisions:decisions.slice(1)}); assert.ok(missing.missingFixtures.includes("p3-01"));
+});
+
+test("ruta QA queda DEV-only, sintética, sin outbound ni write tools",()=>{
+  const route=fs.readFileSync(new URL("../pages/api/operaciones/shadow-ai-qa.js",import.meta.url),"utf8");
+  const context=fs.readFileSync(new URL("../lib/shadow/context.js",import.meta.url),"utf8");
+  assert.match(route,/DEV_PROJECT_REF/); assert.match(route,/SHADOW_AI_ALLOW_REAL_MESSAGES!=="false"/); assert.match(route,/SHADOW_OUTBOUND_ENABLED!=="false"/);
+  assert.match(route,/validateExplicitFixtureIds/); assert.match(route,/executionDisposition/); assert.match(route,/external_message_id/); assert.match(route,/maxDuration:\s*120/);
+  assert.doesNotMatch(route,/respond|whatsapp/i); assert.doesNotMatch(context,/\.(?:insert|update|upsert|delete)\s*\(/);
+});
