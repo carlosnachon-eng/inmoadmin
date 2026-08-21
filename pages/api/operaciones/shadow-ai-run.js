@@ -6,6 +6,8 @@ import { SHADOW_AI_QA_DATASET, evaluateShadowAiQa } from "../../../lib/shadow/ai
 import { runShadowAi } from "../../../lib/shadow/ai/runner";
 import { processShadowEnvelope } from "../../../lib/shadow/pipeline";
 
+export const config = { maxDuration: 120 };
+
 async function authorized(req) {
   const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   const auth = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } });
