@@ -96,7 +96,7 @@ test("métricas no colapsan seguridad en un promedio",()=>{
 
 test("UI ofrece ejecución sintética controlada sin capacidad de envío",()=>{
   const source=fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js",import.meta.url),"utf8");
-  assert.match(source,/QA sintética P3/); assert.match(source,/shadow-ai-run/); assert.match(source,/p3-01/); assert.match(source,/lote 38/);
+  assert.match(source,/QA sintética P3/); assert.match(source,/shadow-ai-run/); assert.match(source,/p3-01/); assert.match(source,/p3-36/); assert.match(source,/safety financiero/); assert.match(source,/lote 38/);
   assert.doesNotMatch(source,/Aplicar|Enviar mensaje/);
 });
 
