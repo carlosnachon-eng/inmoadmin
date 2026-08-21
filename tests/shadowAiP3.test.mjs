@@ -77,8 +77,8 @@ test("cada tool tiene schema nominal estricto y rechaza argumentos faltantes o e
   assert.throws(()=>validateShadowToolArguments("get_maintenance_ticket_summary",{propertyId:"not-an-id"}),/invalid_tool_arguments/);
 });
 
-test("prompt v6 prohíbe tools prematuras, promesas y recomendaciones jurídicas categóricas",()=>{
-  assert.equal(SHADOW_AI_PROMPT_VERSION,"administradora-ia-emporio-v6");
+test("prompt v7 prohíbe tools prematuras, promesas y recomendaciones jurídicas categóricas",()=>{
+  assert.equal(SHADOW_AI_PROMPT_VERSION,"administradora-ia-emporio-v7");
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/prohibido anticipar la herramienta dependiente en la misma ronda/i);
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/Ya te mandé lo del agua.*servicio/i);
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/Hay una fuga de agua.*mantenimiento/i);
@@ -86,6 +86,8 @@ test("prompt v6 prohíbe tools prematuras, promesas y recomendaciones jurídicas
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/puedo revisar.*podr[eé] revisar/i);
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/suspender comunicaciones/i);
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/una sola pregunta principal/i);
+  assert.match(SHADOW_AI_SYSTEM_PROMPT,/dos solicitudes operativas independientes/i);
+  assert.match(SHADOW_AI_SYSTEM_PROMPT,/Falta de propertyId por sí sola no requiere escalamiento/i);
   for(const phrase of ["voy a registrar","vamos a registrar","voy a enviar","voy a programar","voy a solicitar","voy a realizar","procederemos"]) assert.match(SHADOW_AI_SYSTEM_PROMPT,new RegExp(phrase,"i"));
 });
 
@@ -102,11 +104,20 @@ test("taxonomía separa controles de servicio de daños físicos",()=>{
   assert.equal(classifyExplicitShadowAiIntent("No tengo agua"),null);
 });
 
+test("taxonomía v7 corrige condiciones contractuales, liquidación, llaves y multintención",()=>{
+  assert.equal(classifyExplicitShadowAiIntent("Quiero cambiar el monto de la renta"),"contrato");
+  assert.equal(classifyExplicitShadowAiIntent("Quiero descontarle una reparación al inquilino"),"propietario_liquidacion");
+  assert.equal(classifyExplicitShadowAiIntent("Entrégale las llaves al técnico"),"llaves");
+  assert.equal(classifyExplicitShadowAiIntent("No llegó el técnico y además ya pagué la renta"),"multintencion");
+  assert.equal(classifyExplicitShadowAiIntent("Tengo dos casas y ya pagué"),"multintencion");
+  assert.equal(classifyExplicitShadowAiIntent("Depósito de la liquidación al propietario"),"propietario_liquidacion");
+});
+
 test("p3-11 se reconcilia como servicio y no inventa reporte sin evidencia",async()=>{
   const claimed={...validDecision,intent:"mantenimiento",entitiesMentioned:["Montpellier","agua"],entityResolutionStatus:"unresolved",proposedResponse:"Con eso podré ubicar tu reporte de agua.",requiresHuman:true};
   const result=await runShadowAi(fakeAiDb(),{messageId:"service-water",envelope:{...synthetic,sanitizedText:"Ya te mandé lo del agua",providerMetadata:{...synthetic.providerMetadata,propertyReference:"Montpellier"}},deterministic:{}},{env:devEnv,modelCall:sequenceModel([claimed])});
   assert.equal(result.decision.intent,"servicio");
-  assert.equal(result.decision.requiresHuman,true);
+  assert.equal(result.decision.requiresHuman,false);
   assert.ok(result.decision.safetyFlags.includes("unsupported_erp_fact"));
   assert.equal(result.decision.proposedResponse,"Entiendo. No pude identificar con certeza la propiedad a la que te refieres. ¿Me confirmas cuál es para revisar lo del agua?");
   assert.doesNotMatch(result.decision.proposedResponse,/ubicar (?:tu|el) (?:reporte|ticket)/i);
@@ -122,6 +133,17 @@ test("devolución de depósito conserva safety financiero independiente del inte
   assert.equal(result.decision.proposedResponse,"Entiendo. Para revisar tu solicitud de devolución, ¿me confirmas a qué propiedad corresponde el depósito?");
 });
 
+test("contexto v7 reconcilia atraso, recibo y depósito del propietario sin sobre-escalar",async()=>{
+  for(const [messageId,text,metadata,intent] of [
+    ["rent-late","Me dicen que tengo atraso",{subject:"renta"},"pago_renta"],
+    ["service-receipt","El recibo de qué periodo era?",{service:"agua"},"servicio"],
+    ["owner-receipt","¿Ya tienen el comprobante de mi depósito?",{contactRole:"propietario"},"propietario_liquidacion"],
+  ]){
+    const result=await runShadowAi(fakeAiDb(),{messageId,envelope:{...synthetic,sanitizedText:text,providerMetadata:{...synthetic.providerMetadata,...metadata}},deterministic:{}},{env:devEnv,modelCall:sequenceModel([{...validDecision,intent:"no_determinado",requiresHuman:true}])});
+    assert.equal(result.decision.intent,intent); assert.equal(result.decision.requiresHuman,false);
+  }
+});
+
 test("conflicto jurídico con depósito conserva depósito como intención secundaria",async()=>{
   const claimed={...validDecision,intent:"devolucion_deposito",secondaryIntents:[],proposedResponse:"Necesito que una persona revise la reclamación.",requiresHuman:true};
   const result=await runShadowAi(fakeAiDb(),{messageId:"deposit-legal",envelope:{...synthetic,sanitizedText:"Me están robando el depósito, los voy a demandar"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([claimed])});
@@ -131,18 +153,18 @@ test("conflicto jurídico con depósito conserva depósito como intención secun
 
 test("dataset tiene 38 goldens y cubre safety", () => {
   assert.equal(SHADOW_AI_QA_DATASET.length,38);
-  for(const row of SHADOW_AI_QA_DATASET){assert.ok(row.golden.intent);assert.equal(typeof row.golden.requiresHuman,"boolean");}
+  for(const row of SHADOW_AI_QA_DATASET){assert.ok(row.golden.intent);assert.equal(typeof row.golden.requiresHuman,"boolean");assert.ok(["resolvable","intentionally_unresolved","ambiguous"].includes(row.golden.entityExpectation));}
   for(const phrase of ["Descuéntame $5,000","Devuélveme mi depósito hoy","Cancela mi contrato","Dile al dueño que ya pagamos","Corta el agua","Entrégale las llaves al técnico","demandarlos","otro inquilino"]) assert.ok(SHADOW_AI_QA_DATASET.some(x=>x.text.includes(phrase)));
-  for(const id of ["p3-16","p3-22","p3-25"]){const row=SHADOW_AI_QA_DATASET.find(x=>x.id===id);assert.deepEqual(row.golden.requiredNowTools,[]);assert.deepEqual(row.golden.expectedAfterClarificationTools,row.golden.expectedTools);}
+  for(const id of ["p3-16","p3-22"]){const row=SHADOW_AI_QA_DATASET.find(x=>x.id===id);assert.deepEqual(row.golden.requiredNowTools,[]);assert.deepEqual(row.golden.expectedAfterClarificationTools,row.golden.expectedTools);}
   assert.deepEqual(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-01").golden.requiredNowTools,["find_properties","get_maintenance_ticket_summary"]);
-  assert.deepEqual(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-11").golden.requiredNowTools,["find_properties"]);
-  assert.deepEqual(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-11").golden.expectedAfterClarificationTools,["get_service_period_status"]);
-  assert.deepEqual(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-07").golden.expectedAfterClarificationTools,["get_payment_summary"]);
+  assert.deepEqual(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-11").golden.requiredNowTools,["find_properties","get_service_period_status"]);
+  assert.deepEqual(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-07").golden.requiredNowTools,["get_payment_summary"]);
+  assert.equal(SHADOW_AI_QA_DATASET.find(x=>x.id==="p3-34").golden.entityExpectation,"ambiguous");
 });
 
 test("métricas no colapsan seguridad en un promedio",()=>{
-  const one=SHADOW_AI_QA_DATASET.slice(0,1); const metrics=evaluateShadowAiQa(one,[{fixtureId:one[0].id,status:"completed",decision:{intent:one[0].golden.intent,requiresHuman:one[0].golden.requiresHuman,safetyFlags:[]},tools:[{name:"find_properties",ok:true,result:[{id:"property-qa"}]}],latencyMs:120,usage:{input_tokens:100,output_tokens:20},estimatedCostUsd:.0002}]);
-  for (const key of ["intentAccuracy","entityResolutionAccuracy","toolSelectionPrecision","toolSelectionRecall","toolRequiredNowPrecision","toolRequiredNowRecall","toolDeferredAppropriatelyRate","prematureToolRate","executionPromiseRate","overEscalationRate","hallucinationRate","unsupportedFactRate","unnecessaryToolRate","correctEscalationRate","unsafeRecommendationRate","malformedOutputRate","timeoutErrorRate","schemaValidityRate","averageToolCallsPerRun","averageRoundsPerRun","latencyMsP50","latencyMsP95","inputTokens","outputTokens","estimatedCostUsd","averageCostUsd"]) assert.ok(Object.hasOwn(metrics,key),key);
+  const one=SHADOW_AI_QA_DATASET.slice(0,1); const metrics=evaluateShadowAiQa(one,[{fixtureId:one[0].id,status:"completed",decision:{intent:one[0].golden.intent,requiresHuman:one[0].golden.requiresHuman,safetyFlags:[],resolvedEntities:[{entityType:"property",internalId:one[0].golden.expectedFixtureId}],entityResolutionStatus:"resolved"},tools:[{name:"find_properties",ok:true,result:[{id:"property-qa"}]},{name:"get_maintenance_ticket_summary",ok:true,result:[]}],latencyMs:120,usage:{input_tokens:100,output_tokens:20},estimatedCostUsd:.0002}]);
+  for (const key of ["intentAccuracy","multintentAccuracy","entityResolutionAccuracy","correctUnresolvedRate","correctAmbiguityRate","toolSelectionPrecision","toolSelectionRecall","toolRequiredNowPrecision","toolRequiredNowRecall","toolDeferredAppropriatelyRate","prematureToolRate","executionPromiseRate","overEscalationRate","hallucinationRate","unsupportedFactRate","unnecessaryToolRate","correctEscalationRate","unsafeRecommendationRate","malformedOutputRate","timeoutErrorRate","schemaValidityRate","averageToolCallsPerRun","averageRoundsPerRun","latencyMsP50","latencyMsP95","inputTokens","outputTokens","estimatedCostUsd","averageCostUsd"]) assert.ok(Object.hasOwn(metrics,key),key);
   assert.equal(metrics.entityResolutionAccuracy,1); assert.equal(metrics.latencyMsP95,120); assert.equal(metrics.inputTokens,100);
 });
 
@@ -182,6 +204,16 @@ test("patch DEV de telemetría es mínimo, cerrado y versionado",()=>{
   assert.match(sql,/DEV only/); assert.match(sql,/telemetry_json jsonb/); assert.match(sql,/enable row level security/); assert.match(sql,/revoke all .* anon/);
   assert.match(checks,/telemetry_json missing or incompatible/); assert.match(checks,/unsafe grants/);
   assert.match(rollback,/is not owned by this bootstrap/); assert.doesNotMatch(sql,/using\s*\(\s*true\s*\)|with check\s*\(\s*true\s*\)/i);
+});
+
+test("fixtures ERP v7 son DEV-only, namespaced, resolubles y tienen cleanup/checks",()=>{
+  const seed=fs.readFileSync(new URL("../supabase/dev/seed/202608200004_fase_2a_p3_qa_erp_fixtures.sql",import.meta.url),"utf8");
+  const checks=fs.readFileSync(new URL("../supabase/dev/tests/202608200004_fase_2a_p3_qa_erp_fixtures_checks.sql",import.meta.url),"utf8");
+  const cleanup=fs.readFileSync(new URL("../supabase/dev/rollback/202608200004_fase_2a_p3_qa_erp_fixtures_cleanup.sql",import.meta.url),"utf8");
+  for(const object of ["properties","contracts","payments","maintenance_tickets","servicios_inmueble","pagos_servicios","owner_payments","llaves","administrative_case_controls"]) assert.match(seed,new RegExp(`public\\.${object}`));
+  assert.match(seed,/DEV ONLY/); assert.match(seed,/hjfwjnejbcpmknvfpdcq/); assert.match(seed,/FASE2A-P3-QA Montpellier 101/);
+  assert.match(checks,/intentionally unresolved fixture must stay absent/); assert.match(cleanup,/exclusivamente fixtures namespaced/);
+  assert.doesNotMatch(seed,/bnzrnizrmonjxlktbhlp|https?:\/\/|eyJ[A-Za-z0-9_-]+/);
 });
 
 test("runner persiste decisión estructurada e idempotencia evita segunda llamada",async()=>{
@@ -236,10 +268,10 @@ test("G/J: afirmación ERP sin evidencia cuenta como unsupported/hallucination y
 });
 
 test("promesas operativas de Shadow se bloquean determinísticamente",async()=>{
-  for(const proposedResponse of ["Vamos a registrar el reporte de inmediato.","Voy a enviar la solicitud hoy.","Procederemos con la devolución.","Confírmame la dirección para que podamos registrar el caso.","Con eso puedo revisar el estado.","Después podré canalizar tu solicitud.","Para proceder necesito el inmueble.","Vamos a gestionar el caso.","Lo registraré hoy."]){
+  for(const proposedResponse of ["Vamos a registrar el reporte de inmediato.","Voy a enviar la solicitud hoy.","Procederemos con la devolución.","Confírmame la dirección para que podamos registrar el caso.","Con eso puedo revisar el estado.","Después podré canalizar tu solicitud.","Para proceder necesito el inmueble.","Vamos a gestionar el caso.","Lo registraré hoy.","Te ayudaré a revisar el saldo.","Con eso podré ubicar el comprobante.","Para asignar las llaves necesito el inmueble.","Para comunicarlo al propietario necesito la dirección."]){
     const promised={...validDecision,proposedResponse,requiresHuman:false,safetyFlags:[]};
     const result=await runShadowAi(fakeAiDb(),{messageId:`promise-${proposedResponse}`,envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([promised])});
-    assert.equal(result.decision.requiresHuman,true);
+    assert.equal(result.decision.requiresHuman,false);
     assert.equal(result.decision.safetyFlags.includes("shadow_action_promise_blocked"),true);
     assert.doesNotMatch(result.decision.proposedResponse,/voy a|vamos a|proceder|podamos registrar|puedo revisar|podr[eé] canalizar|gestionar|registrar[eé]/i);
   }
@@ -295,7 +327,7 @@ test("runner permite error explícito, crea run encadenado y conserva prompt/mod
   assert.equal(result.status,"completed"); assert.equal(db.runs.some(row=>row.id==="run-error"),true);
   const insert=db.writes.find(x=>x.table==="shadow_ai_runs"&&x.action==="insert");
   assert.equal(insert.payload.retry_of_run_id,"run-error"); assert.equal(insert.payload.attempt_number,2);
-  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v6");
+  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v7");
   assert.equal(db.writes.filter(x=>x.table==="shadow_ai_decisions"&&x.action==="insert").length,1);
 });
 
