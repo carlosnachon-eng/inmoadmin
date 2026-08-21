@@ -1,6 +1,6 @@
 # Fase 2A — Shadow Operational Events: mantenimiento
 
-Estado: implementación DEV-only. Producción no autorizada.
+Estado: implementación validada en DEV. Artefactos Production preparados para revisión; no aplicados.
 
 ## Arquitectura anterior
 
@@ -39,14 +39,34 @@ Operational events no se convierten en mensajes: `source=inmoadmin`, `kind=opera
 - ningún trigger o write tool hacia el ERP desde Shadow.
 - IA y outbound deben permanecer apagados.
 
-## Rollout Production futuro (no ejecutar)
+## Artefactos Production (no ejecutar desde este PR)
 
-1. Auditar nuevamente schema y filas legacy; no backfill automático.
-2. Preparar migración productiva explícita equivalente, separada de `supabase/dev/`.
-3. Desplegar primero schema/outbox con consumidor apagado.
-4. Desplegar código de escritura transaccional y validar un ticket controlado no financiero.
-5. Activar worker para un único evento, verificar idempotencia y `processed_at`.
-6. Aprobar una cotización de prueba controlada y verificar correlación.
-7. Mantener `SHADOW_AI_ENABLED=false`, real messages AI=false y outbound=false.
+- Migración: `supabase/migrations/202608210002_fase_2a_shadow_operational_maintenance.sql`.
+- Checks read-only: `supabase/production/tests/202608210002_fase_2a_shadow_operational_maintenance_checks.sql`.
+- Rollback conservador: `supabase/production/rollback/202608210002_fase_2a_shadow_operational_maintenance_rollback.sql`.
 
-Rollback: detener worker; conservar outbox; revertir código. El DDL sólo se retira si las tablas están vacías o después de respaldo y revisión explícita. No usar automáticamente el rollback DEV.
+La migración no contiene seed, fixtures ni backfill. Las filas históricas mantienen `maintenance_scope=NULL`. El rollback verifica marcadores de ownership y se niega si encuentra outbox, eventos Shadow, ingestión `provider=inmoadmin` o tickets estructurados.
+
+## Worker y smoke manual
+
+`/api/cron/shadow-operational-events` no está registrado en `vercel.json`; por tanto el merge no habilita procesamiento automático. Conserva el lote máximo de 10 para una futura decisión explícita. Para el rollout controlado, una llamada autenticada con `CRON_SECRET` y un `eventId` UUID exacto procesa únicamente ese evento. Si Shadow falla, la RPC no marca `processed_at` y el evento queda pendiente.
+
+## Compatibilidad con Shadow conversacional
+
+Operational Events es un carril independiente. La migración no altera `shadow_messages`, `shadow_conversations`, webhooks Respond, channel `544519`, router P2, WhatsApp ni Ivonne. Tampoco crea `shadow_ai_runs` o `shadow_ai_decisions`. Durante todo el rollout deben permanecer `SHADOW_AI_ENABLED=false`, `SHADOW_AI_ALLOW_REAL_MESSAGES=false` y `SHADOW_OUTBOUND_ENABLED=false`.
+
+## Plan exacto de rollout Production (pendiente de autorización)
+
+A. Aplicar únicamente la migración Production `202608210002` como transacción.
+B. Ejecutar los checks SQL read-only y confirmar schema vacío, RLS/grants y filas legacy con scope NULL.
+C. Hacer merge/deploy Production del código validado.
+D. Confirmar que el worker automático continúa OFF.
+E. Crear un único ticket real/controlado, no financiero.
+F. Comprobar su outbox pendiente y capturar el `event_id` exacto.
+G. Procesar manualmente sólo ese `event_id` mediante el endpoint autenticado.
+H. Comprobar un único `shadow_operational_event`, correlación e idempotencia.
+I. Aprobar una única cotización controlada asociada.
+J. Repetir la comprobación manual y validar ticket/quote/property o `external_job` sin propiedad.
+K. Decidir en una autorización posterior si se habilita procesamiento automático.
+
+Rollback: detener el worker y conservar auditoría. El artefacto Production sólo permite retirar DDL si no existe ningún evento ni ticket estructurado; cualquier otro caso exige respaldo y procedimiento explícito separado.

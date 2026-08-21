@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { operationalContextForPolicy, processOperationalOutbox, validateMaintenanceScope, validateOperationalPayload } from "../lib/shadow/operationalEvents.js";
+import { operationalContextForPolicy, processOperationalOutbox, processOperationalOutboxEvent, validateMaintenanceScope, validateOperationalPayload } from "../lib/shadow/operationalEvents.js";
 
 const base = { eventType:"maintenance_ticket_created", ticketId:"f2a-op-ticket-1", maintenanceScope:"managed_property", propertyId:"f2a-op-property-1", priority:"media", payer:"propietario", status:"nuevo", occurredAt:"2026-08-21T12:00:00Z" };
 
@@ -34,4 +34,11 @@ test("worker limita lote y no contiene write tools/outbound/AI",async()=>{
   let requested=0; const query={select(){return this},is(){return this},lte(){return this},order(){return this},async limit(value){requested=value;return {data:[],error:null}}};
   await processOperationalOutbox({from(){return query},rpc(){throw new Error("unexpected")}}, {limit:99});
   assert.equal(requested,10);
+});
+test("smoke manual procesa exclusivamente el eventId indicado",async()=>{
+  const calls=[];
+  const db={async rpc(name,args){calls.push({name,args});return {data:{status:"accepted"},error:null}}};
+  assert.deepEqual(await processOperationalOutboxEvent(db,"f2000000-0000-4000-8000-000000000001"),[{eventId:"f2000000-0000-4000-8000-000000000001",status:"accepted"}]);
+  assert.deepEqual(calls,[{name:"process_operational_event",args:{p_event_id:"f2000000-0000-4000-8000-000000000001"}}]);
+  await assert.rejects(()=>processOperationalOutboxEvent(db,"not-an-event"),/eventId inválido/);
 });
