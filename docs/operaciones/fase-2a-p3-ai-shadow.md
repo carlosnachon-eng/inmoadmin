@@ -37,6 +37,10 @@ El runner reemplaza cualquier `resolvedEntities` no respaldada por resultados ER
 
 Auditoría de los 38 goldens para v4: `p3-36` cambia de `juridico_conflicto` a `devolucion_deposito`, porque solicita una devolución sin amenaza o disputa jurídica. `p3-29` cambia de `juridico_conflicto` a `contrato`, porque solicita un contrato y datos privados de un tercero sin una señal jurídica; conserva revisión humana por privacidad. Los otros 36 goldens mantienen su intención por corresponder a su semántica operativa original.
 
+## Orquestación QA DEV-only
+
+`/api/operaciones/shadow-ai-qa` acepta únicamente una lista explícita de hasta cuatro IDs `p3-*`. Antes de cada ejecución consulta el último run del modelo/prompt vigente: omite `completed`, bloquea `running` y reporta `error`/`timeout` sin reintentarlos. Un presupuesto de 110 segundos, con ocho segundos reservados para persistencia y respuesta, difiere fixtures que ya no caben en la Function. La operación GET calcula pendientes y métricas agregadas desde los runs y decisiones persistidos de los 38 goldens; no depende del resultado de la última request. La UI ya no ofrece un botón monolítico para ejecutar los 38 casos.
+
 ## Activación DEV controlada
 
 1. Aplicar sólo en DEV `supabase/dev/bootstrap/202608200001_fase_2a_p3_ai_shadow.sql` y sus checks.
