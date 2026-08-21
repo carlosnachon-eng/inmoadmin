@@ -23,7 +23,8 @@ test("acepta sólo IDs explícitos y limita micro-lote",()=>{
 });
 
 test("presupuesto reserva cierre de Function y difiere nuevos runs",()=>{
-  assert.ok(SHADOW_QA_REQUEST_BUDGET_MS<120000);
+  assert.equal(SHADOW_QA_REQUEST_BUDGET_MS,118000);
+  assert.equal(remainingRunBudget(0,0),110000);
   assert.ok(remainingRunBudget(0,100000)<SHADOW_QA_MIN_RUN_BUDGET_MS);
   assert.ok(remainingRunBudget(0,1000)>SHADOW_QA_MIN_RUN_BUDGET_MS);
 });
