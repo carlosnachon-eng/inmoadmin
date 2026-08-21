@@ -42,16 +42,8 @@ export default function CotizacionPublica() {
 
   const aprobar = async () => {
     setSaving(true);
-    await supabase.from("maintenance_quotes").update({
-      status: "aprobada",
-      updated_at: new Date().toISOString(),
-    }).eq("id", id);
-
-    await supabase.from("maintenance_tickets").update({
-      status: "aprobado",
-      charged_amount: cotizacion.monto_final,
-      updated_at: new Date().toISOString(),
-    }).eq("id", cotizacion.ticket_id);
+    const response = await fetch("/api/operaciones/maintenance-operational-events", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"approve_quote",quoteId:id}) });
+    if (!response.ok) { setSaving(false); return; }
 
     // Notificar a Emporio
     try {

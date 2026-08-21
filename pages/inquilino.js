@@ -151,13 +151,12 @@ export default function InquilinoPortal() {
       }
     } catch (e) { console.error("Error subiendo fotos:", e); }
 
-    const { error } = await supabase.from("maintenance_tickets").insert([{
-      property_name: contract.property_name, tenant_name: contract.tenant_name,
-      title: ticketForm.title, description: ticketForm.description,
-      category: ticketForm.category, priority: ticketForm.priority, status: "nuevo",
-      created_by: session.user.email,
-      fotos: fotosUrls,
-    }]);
+    const { data: property } = await supabase.from("properties").select("id").eq("name", contract.property_name).maybeSingle();
+    const response = property?.id ? await fetch("/api/operaciones/maintenance-operational-events", {
+      method:"POST", headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`},
+      body:JSON.stringify({action:"create_ticket",ticket:{maintenanceScope:"managed_property",propertyId:property.id,propertyName:contract.property_name,tenantName:contract.tenant_name,title:ticketForm.title,description:ticketForm.description,category:ticketForm.category,priority:ticketForm.priority,payer:"propietario",photos:fotosUrls}}),
+    }) : null;
+    const error = !property?.id ? { message:"La propiedad no tiene identificador estructurado." } : (!response.ok ? { message:(await response.json()).error||"No se creó el ticket" } : null);
     setSaving(false);
     if (error) { showToast("Error al enviar: " + error.message, false); return; }
     showToast("✅ Reporte enviado, te contactaremos pronto");

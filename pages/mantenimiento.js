@@ -184,6 +184,7 @@ export default function Mantenimiento() {
 
   const emptyTicket = {
     property_name: "", tenant_name: "", title: "", description: "",
+    maintenance_scope: "managed_property", external_job_reference: "",
     category: "otro", priority: "media", payer: "propietario",
     provider_cost: "", charged_amount: "", advance_amount: "", advance_paid: false,
     status: "nuevo",
@@ -243,8 +244,22 @@ export default function Mantenimiento() {
       if (error) { showToast("Error: " + error.message, false); setSaving(false); return; }
       showToast("Ticket actualizado");
     } else {
-      const { error } = await supabase.from("maintenance_tickets").insert([data]);
-      if (error) { showToast("Error: " + error.message, false); setSaving(false); return; }
+      const selectedProperty = properties.find((item) => item.name === data.property_name);
+      const response = await fetch("/api/operaciones/maintenance-operational-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
+        body: JSON.stringify({ action: "create_ticket", ticket: {
+          maintenanceScope: data.maintenance_scope,
+          propertyId: data.maintenance_scope === "managed_property" ? selectedProperty?.id : null,
+          workReference: data.maintenance_scope === "external_job" ? data.external_job_reference : null,
+          propertyName: data.property_name, tenantName: data.tenant_name, title: data.title,
+          description: data.description, category: data.category, priority: data.priority,
+          payer: data.payer, providerCost: data.provider_cost, chargedAmount: data.charged_amount,
+          advanceAmount: data.advance_amount, advancePaid: data.advance_paid,
+        } }),
+      });
+      const created = await response.json();
+      if (!response.ok) { showToast("Error: " + (created.error || "No se creó el ticket"), false); setSaving(false); return; }
       try {
         await fetch("/api/send-email", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -322,6 +337,7 @@ export default function Mantenimiento() {
   const openEdit = (t) => {
     setForm({
       property_name: t.property_name || "", tenant_name: t.tenant_name || "",
+      maintenance_scope: t.maintenance_scope || "managed_property", external_job_reference: t.external_job_reference || "",
       title: t.title || "", description: t.description || "",
       category: t.category || "otro", priority: t.priority || "media",
       payer: t.payer || "propietario", provider_cost: t.provider_cost || "",
@@ -722,12 +738,14 @@ export default function Mantenimiento() {
       {showModal && (
         <Modal title={editing ? "Editar Ticket" : "Nuevo Ticket"} onClose={() => { setShowModal(false); setEditing(null); setForm(emptyTicket); }}>
           <Field label="Título *"><Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Ej: Fuga en baño" /></Field>
-          <Field label="Propiedad">
+          {!editing && <Field label="Alcance del trabajo"><Sel value={form.maintenance_scope} onChange={e => setForm({ ...form, maintenance_scope: e.target.value, property_name: "", external_job_reference: "" })}><option value="managed_property">Propiedad administrada</option><option value="external_job">Trabajo externo</option></Sel></Field>}
+          {form.maintenance_scope === "managed_property" && <Field label="Propiedad">
             <Sel value={form.property_name} onChange={e => setForm({ ...form, property_name: e.target.value })}>
               <option value="">-- Selecciona --</option>
               {properties.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
             </Sel>
-          </Field>
+          </Field>}
+          {form.maintenance_scope === "external_job" && <Field label="Referencia del trabajo externo" hint="Referencia operativa, sin teléfono, email ni URL"><Input value={form.external_job_reference} maxLength={120} onChange={e => setForm({ ...form, external_job_reference: e.target.value })} placeholder="Ej: FASE2A-EXT-OBRA-01" /></Field>}
           <Field label="Inquilino"><Input value={form.tenant_name} onChange={e => setForm({ ...form, tenant_name: e.target.value })} placeholder="Nombre del inquilino" /></Field>
           <Field label="Descripción">
             <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
