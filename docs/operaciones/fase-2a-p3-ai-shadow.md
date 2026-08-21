@@ -8,11 +8,13 @@ Se reutiliza la integración Anthropic server-side ya existente (`ANTHROPIC_API_
 
 ## Timeouts y telemetría
 
-El timeout global anterior de 20 segundos se eliminó: ese `AbortController` único cortó el primer request de `administradora-ia-emporio-v2` a los 20,081 ms, antes de recibir output o tool calls. P3 ahora usa límites separados y finitos: 50 s por request Anthropic, 5 s por herramienta y 105 s por run completo. La API route declara `maxDuration=120`, dejando 15 s de margen para autenticación, ingesta y persistencia. El proyecto usa Next.js/Node y Vercel documenta 300 s por defecto con Fluid Compute; la cota explícita de esta función es deliberadamente menor.
+El timeout global anterior de 20 segundos se eliminó: ese `AbortController` único cortó el primer request de `administradora-ia-emporio-v2` a los 20,081 ms, antes de recibir output o tool calls. La latencia real posterior fue 44,921 ms en un caso completado y 50,080 ms en un timeout, por lo que P3 usa límites separados y finitos: 75 s por request Anthropic, 5 s por herramienta y 102 s por run completo. La API route conserva `maxDuration=120`, con 110 s de presupuesto de orquestación y ocho segundos reservados para persistencia y respuesta. La metadata accesible del proyecto confirma que `120` está desplegado, pero no demuestra de forma inequívoca una cota contratada superior; P3 no aumenta `maxDuration` por suposición.
+
+Con este runtime una ronda lenta de 45–70 s es el máximo práctico. Una segunda ronda sólo empieza si restan al menos 55 s; con la latencia observada normalmente se detendrá como `insufficient_round_budget`. Dos rondas son posibles únicamente cuando la primera llamada y sus tools consumen menos de aproximadamente 47 s. Tres rondas lentas no caben de forma segura en 120 s y el runner no finge que las soporta.
 
 La integración usa `fetch` directo, no el SDK de Anthropic: no existen retries automáticos ocultos. Cada ronda produce como máximo una llamada HTTP; un timeout no dispara otra. Structured Outputs puede añadir latencia en la primera solicitud de un schema mientras compila su grammar; Anthropic cachea ese grammar hasta 24 horas. No se hacen warmups artificiales.
 
-`shadow_ai_runs.telemetry_json` registra por run: inicio y duración de cada request Anthropic, `anthropic_first_response_ms=null` porque P3 no usa streaming, duración de herramientas y rondas, duración total y `timeout_stage`. Los valores posibles de timeout son `anthropic_request_timeout`, `tool_timeout` y `global_run_timeout`. El cambio de columna está en el bootstrap DEV `202608200003_fase_2a_p3_ai_run_telemetry.sql` y debe aplicarse y validarse en DEV antes de autorizar otro run; no pertenece a Producción.
+`shadow_ai_runs.telemetry_json` registra por run: `request_number`, `round_number`, inicio y duración de cada request Anthropic, `anthropic_first_response_ms=null` porque P3 no usa streaming, duración de herramientas y rondas, duración total y `timeout_stage`. Los valores posibles de timeout incluyen `anthropic_request_timeout`, `tool_timeout`, `global_run_timeout` e `insufficient_round_budget`. No se guarda contenido adicional. El cambio de columna está en el bootstrap DEV `202608200003_fase_2a_p3_ai_run_telemetry.sql` y debe aplicarse y validarse en DEV antes de autorizar otro run; no pertenece a Producción.
 
 OpenAI `gpt-5.6-luna` fue comparado (USD 0.20/1M entrada y USD 1.20/1M salida), pero no se incorpora para evitar una segunda credencial/proveedor antes de medir calidad con la infraestructura vigente.
 
@@ -25,7 +27,7 @@ OpenAI `gpt-5.6-luna` fue comparado (USD 0.20/1M entrada y USD 1.20/1M salida), 
 
 ## Dataset y evaluación
 
-`SHADOW_AI_QA_DATASET` contiene 38 escenarios sintéticos con golden expectations para mantenimiento, rentas, servicios, propietarios, contratos, llaves, jurídico, ambigüedad y multintención. Las métricas separan exactitud de intención, resolución/escalamiento, herramientas innecesarias, alucinación y recomendaciones inseguras. La evaluación humana no contiene botón Aplicar.
+`SHADOW_AI_QA_DATASET` contiene 38 escenarios sintéticos con golden expectations para mantenimiento, rentas, servicios, propietarios, contratos, llaves, jurídico, ambigüedad y multintención. Las métricas semánticas —intención, resolución, selección de tools, escalamiento, alucinación y seguridad— usan exclusivamente runs `completed` con decisión. Un timeout sólo afecta `timeoutErrorRate`; no se interpreta como intención o entidad incorrecta. La evaluación humana no contiene botón Aplicar.
 
 ## Tool loop v2
 
@@ -39,7 +41,9 @@ Auditoría de los 38 goldens para v4: `p3-36` cambia de `juridico_conflicto` a `
 
 ## Orquestación QA DEV-only
 
-`/api/operaciones/shadow-ai-qa` acepta únicamente una lista explícita de hasta cuatro IDs `p3-*`. Antes de cada ejecución consulta el último run del modelo/prompt vigente: omite `completed`, bloquea `running` y reporta `error`/`timeout` sin reintentarlos. Un presupuesto de 110 segundos, con ocho segundos reservados para persistencia y respuesta, difiere fixtures que ya no caben en la Function. La operación GET calcula pendientes y métricas agregadas desde los runs y decisiones persistidos de los 38 goldens; no depende del resultado de la última request. La UI ya no ofrece un botón monolítico para ejecutar los 38 casos.
+`/api/operaciones/shadow-ai-qa` acepta exactamente un ID `p3-*` explícito por request. Antes de ejecutarlo consulta el último run del modelo/prompt vigente: omite `completed`, bloquea `running` y reporta `error`/`timeout` sin reintentarlos. Un fixture diferido no crea run. La operación GET calcula pendientes y métricas agregadas desde los runs y decisiones persistidos de los 38 goldens; no depende del resultado de la última request. La UI ofrece “Ejecutar fixture seleccionado” y no contiene ejecución masiva.
+
+El resultado `p3-07` se conserva sin reejecución: intención `pago_renta` correcta, sin alucinación y prudente al solicitar identificación antes de consultar. La frase “Con eso podré consultar” queda registrada como posible mejora de tono por expectativa implícita, no como promesa de mutación ni blocker de seguridad.
 
 ## Activación DEV controlada
 

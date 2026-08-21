@@ -27,6 +27,7 @@ function fakeAiDb(initialRuns=[], options={}){
 const toolCall=(tool,arguments_,reason="Contexto necesario")=>({tool,arguments:arguments_,reason});
 const sequenceModel=(decisions)=>{let index=0;return async()=>({text:JSON.stringify(decisions[Math.min(index++,decisions.length-1)]),usage:{input_tokens:10,output_tokens:5}});};
 const advancingClock=(initial=Date.parse("2026-08-20T12:00:00Z"))=>{let current=initial;return{now:()=>current,setTimeout,clearTimeout,advance:(ms)=>{current+=ms;}};};
+const scheduledClock=(initial=Date.parse("2026-08-20T12:00:00Z"))=>{let current=initial;let id=0;const timers=new Map();return{now:()=>current,setTimeout:(callback,ms)=>{const timer=++id;timers.set(timer,{at:current+ms,callback});return timer;},clearTimeout:(timer)=>timers.delete(timer),advance:(ms)=>{current+=ms;for(const [timer,entry] of [...timers])if(entry.at<=current){timers.delete(timer);entry.callback();}}};};
 
 test("guard P3 requiere DEV exacto, flag, key y mensaje sintético", () => {
   assert.equal(shadowAiGuard(synthetic, devEnv).allowed,true);
@@ -120,7 +121,7 @@ test("métricas no colapsan seguridad en un promedio",()=>{
 
 test("UI ofrece ejecución sintética controlada sin capacidad de envío",()=>{
   const source=fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js",import.meta.url),"utf8");
-  assert.match(source,/QA sintética P3/); assert.match(source,/shadow-ai-qa/); assert.match(source,/fixtures seleccionados/); assert.match(source,/Mostrar pendientes/); assert.match(source,/Agregar métricas QA/);
+  assert.match(source,/QA sintética P3/); assert.match(source,/shadow-ai-qa/); assert.match(source,/fixture seleccionado/); assert.match(source,/Mostrar pendientes/); assert.match(source,/Agregar métricas QA/);
   assert.doesNotMatch(source,/Ejecutar lote 38/);
   assert.doesNotMatch(source,/Aplicar|Enviar mensaje/);
 });
@@ -273,6 +274,34 @@ test("respuesta Anthropic simulada a 25s supera el límite antiguo y conserva te
   const result=await runShadowAi(fakeAiDb(),{messageId:"cold-schema",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,clock,modelCall:async()=>{clock.advance(25000);return{text:JSON.stringify(validDecision),usage:{input_tokens:20,output_tokens:10}};}});
   assert.equal(result.status,"completed"); assert.equal(result.telemetry.anthropic_requests[0].anthropic_duration_ms,25000);
   assert.equal(result.telemetry.total_run_duration_ms,25000); assert.equal(result.telemetry.timeout_stage,null);
+});
+
+test("request Anthropic simulada a 65s queda dentro del nuevo límite y numera telemetría",async()=>{
+  const clock=advancingClock();
+  const result=await runShadowAi(fakeAiDb(),{messageId:"real-latency",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,clock,modelCall:async()=>{clock.advance(65000);return{text:JSON.stringify(validDecision),usage:{input_tokens:20,output_tokens:10}};}});
+  assert.equal(SHADOW_AI_LIMITS.anthropicRequestTimeoutMs,75000);
+  assert.equal(result.status,"completed");
+  assert.equal(result.telemetry.anthropic_requests[0].anthropic_duration_ms,65000);
+  assert.equal(result.telemetry.anthropic_requests[0].request_number,1);
+  assert.equal(result.telemetry.anthropic_requests[0].round_number,1);
+  assert.equal(result.telemetry.rounds[0].round_number,1);
+});
+
+test("request que excede 75s termina como anthropic_request_timeout",async()=>{
+  const clock=scheduledClock(); let calls=0;
+  const result=await runShadowAi(fakeAiDb(),{messageId:"over-new-limit",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,clock,modelCall:async()=>{calls++;clock.advance(76000);return{text:JSON.stringify(validDecision),usage:{}};}});
+  assert.equal(result.status,"timeout");
+  assert.equal(result.timeoutStage,"anthropic_request_timeout");
+  assert.equal(calls,1);
+});
+
+test("presupuesto global impide iniciar otra ronda sin margen",async()=>{
+  const clock=advancingClock(); let calls=0;
+  const requestTool={...validDecision,proposedToolCalls:[toolCall("find_properties",{propertyReference:"Montpellier"})]};
+  const result=await runShadowAi(fakeAiDb([],{tableRows:{properties:[]}}),{messageId:"no-next-round",envelope:{...synthetic,sanitizedText:"Montpellier"},deterministic:{}},{env:{...devEnv,SHADOW_AI_GLOBAL_TIMEOUT_MS:"102000"},clock,modelCall:async()=>{calls++;clock.advance(60000);return{text:JSON.stringify(requestTool),usage:{}};}});
+  assert.equal(result.status,"timeout");
+  assert.equal(result.timeoutStage,"insufficient_round_budget");
+  assert.equal(calls,1);
 });
 
 test("tool lenta termina como tool_timeout sin segunda llamada al modelo",async()=>{
