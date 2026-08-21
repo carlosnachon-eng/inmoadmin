@@ -55,6 +55,14 @@ La UI separa evidencia ERP, afirmaciones del modelo y estado de grounding. Una s
 
 Los goldens v7 clasifican cada tool como `requiredNowTools`, `expectedAfterClarificationTools` o `notApplicableTools`. Además, cada escenario declara `entityExpectation=resolvable|intentionally_unresolved|ambiguous`; los resolubles especifican tipo e ID namespaced esperado. Una tool dependiente de un ID ausente queda diferida y no reduce recall; ejecutarla prematuramente sí penaliza. Las métricas incluyen `multintentAccuracy`, `entityResolutionAccuracy` sólo para resolubles, `correctUnresolvedRate`, `correctAmbiguityRate`, `toolRequiredNowPrecision/Recall`, `toolDeferredAppropriatelyRate`, `prematureToolRate`, `executionPromiseRate` y `overEscalationRate`, sin retirar las métricas de seguridad.
 
+### Policy engine de herramientas obligatorias
+
+Inmoadmin deriva server-side las consultas `required_now` después de que Claude clasifica intención y extrae semántica. La política sólo usa identificadores validados del contexto Shadow, entidades respaldadas por evidencia, resultados anteriores o fixtures QA autorizados. Las reglas iniciales cubren pago de renta, mantenimiento, servicio, contrato, llaves, liquidación del propietario y, únicamente con `contextKey` explícito, Work Center.
+
+Las tools finales son la unión segura de `policy_required` y `model_proposed`. Una coincidencia exacta queda marcada `both`, se ejecuta una sola vez y nunca sale de la allowlist read-only. Si la política exige una consulta, la state machine no puede completar antes de ejecutarla y persistir su evidence ledger para la ronda siguiente. La auditoría y UI muestran la fuente; las métricas separan `policyRequiredToolExecutionRate`, `modelSuggestedToolRecall` y `overallRequiredToolExecutionRate`.
+
+`p3-reg-payment-grounding-01` conserva la semántica de p3-07 con identidad QA nueva. p3-07 y sus tres intentos permanecen como histórico y no deben reejecutarse.
+
 ## Fixtures ERP resolubles v7
 
 `202608200004_fase_2a_p3_qa_erp_fixtures.sql` crea sólo en DEV un dataset `FASE2A-P3-QA`: dos propiedades Montpellier (una referencia exacta resoluble y una referencia amplia ambigua), contrato activo, pago, ticket de mantenimiento, servicio/periodo, liquidación, llave y control de Work Center. No copia PII, archivos ni datos productivos. Sus checks validan relaciones e IDs exactos; el cleanup elimina únicamente esos IDs y marcadores.

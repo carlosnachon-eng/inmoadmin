@@ -27,6 +27,7 @@ test("retry explícito sólo habilita error/timeout válidos",()=>{
 test("acepta sólo IDs explícitos y limita micro-lote",()=>{
   assert.equal(SHADOW_QA_MAX_MICRO_BATCH,1);
   assert.deepEqual(validateExplicitFixtureIds(["p3-02"]),["p3-02"]);
+  assert.deepEqual(validateExplicitFixtureIds(["p3-reg-payment-grounding-01"]),["p3-reg-payment-grounding-01"]);
   assert.throws(()=>validateExplicitFixtureIds([]),/invalid_fixture_batch/);
   assert.throws(()=>validateExplicitFixtureIds(["p3-01","p3-02"]),/invalid_fixture_batch/);
   assert.throws(()=>validateExplicitFixtureIds(["p3-99"]),/invalid_fixture_ids/);
