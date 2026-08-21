@@ -6,6 +6,14 @@ Estado inicial y final seguro: `SHADOW_AI_ENABLED=false`, `SHADOW_AI_ALLOW_REAL_
 
 Se reutiliza la integración Anthropic server-side ya existente (`ANTHROPIC_API_KEY`) sin modificar `pages/api/analizar-solicitud.js`. Modelo fijado: `claude-haiku-4-5-20251001`, por baja latencia, español/multilingüe, tool use y Structured Outputs. Precio oficial auditado el 20/08/2026: USD 1 por millón de tokens de entrada y USD 5 por millón de salida; 200k de contexto y 64k máximo de salida. P3 limita la salida a 1,400 tokens, 3 rondas, 5 herramientas por ronda y 40 escenarios por lote.
 
+## Ejecución multi-request (state machine)
+
+Desde P3 v8, un run no intenta completar varias rondas dentro de una sola Function. Cada request hace como máximo una llamada al proveedor y las consultas read-only derivadas de esa ronda. Si obtiene evidencia y necesita otra ronda, persiste `awaiting_model_round` y termina exitosamente; la siguiente ronda exige una llamada humana explícita a `POST /api/operaciones/shadow-ai-continue` con el `runId`.
+
+Estados auditables: `created`, `model_round_running`, `awaiting_tool_execution`, `awaiting_model_round`, `completed`, `blocked`, `error` y `timeout`. El claim condicional `awaiting_model_round → model_round_running` permite un solo continuador. La identidad de tool por ronda, nombre y argumentos evita repetir una consulta ya persistida.
+
+Se persisten exclusivamente output estructurado validado, llamadas propuestas, resultados sanitizados de tools, evidence ledger, grounding y telemetría por request/ronda. No se guarda chain-of-thought ni respuesta cruda de Anthropic. No se incorpora cron, queue, tool de escritura, outbound ni mensajes reales. El bootstrap `202608200004_fase_2a_p3_ai_state_machine.sql` es DEV-only: este PR lo versiona para revisión y no lo aplica.
+
 ## Timeouts y telemetría
 
 El timeout global anterior de 20 segundos se eliminó: ese `AbortController` único cortó el primer request de `administradora-ia-emporio-v2` a los 20,081 ms, antes de recibir output o tool calls. Después, p3-07 v8 agotó el límite de 75 s sin output. Para QA DEV el presupuesto queda finito en 90 s por request Anthropic, 5 s por herramienta y 110 s por run completo. La API route conserva `maxDuration=120`; el orquestador usa una ventana de 118 s y reserva ocho segundos, por lo que entrega como máximo 110 s al runner y conserva aproximadamente diez segundos del límite Vercel para autorización, cierre, persistencia y respuesta. Estos valores no habilitan mensajes reales ni cambian Producción.
