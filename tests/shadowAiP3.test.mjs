@@ -6,7 +6,7 @@ import { anthropicShadowAiDecisionJsonSchema, validateShadowAiDecision } from ".
 import { createAnthropicShadowResponse } from "../lib/shadow/ai/anthropic.js";
 import { SHADOW_AI_QA_DATASET, evaluateShadowAiQa } from "../lib/shadow/ai/qaDataset.js";
 import { READ_ONLY_SHADOW_TOOLS, SHADOW_TOOL_ARGUMENT_SCHEMAS, validateShadowToolArguments } from "../lib/shadow/context.js";
-import { runShadowAi } from "../lib/shadow/ai/runner.js";
+import { classifyExplicitShadowAiIntent, runShadowAi } from "../lib/shadow/ai/runner.js";
 import { SHADOW_AI_PROMPT_VERSION, SHADOW_AI_SYSTEM_PROMPT } from "../lib/shadow/ai/prompt.js";
 
 const devEnv = { SHADOW_AI_ENABLED:"true", SHADOW_AI_ALLOW_REAL_MESSAGES:"false", SHADOW_OUTBOUND_ENABLED:"false", SUPABASE_ENVIRONMENT:"dev", NEXT_PUBLIC_SUPABASE_URL:"https://hjfwjnejbcpmknvfpdcq.supabase.co", ANTHROPIC_API_KEY:"fixture" };
@@ -76,10 +76,34 @@ test("cada tool tiene schema nominal estricto y rechaza argumentos faltantes o e
   assert.throws(()=>validateShadowToolArguments("get_maintenance_ticket_summary",{propertyId:"not-an-id"}),/invalid_tool_arguments/);
 });
 
-test("prompt v3 prohíbe dependencias anticipadas y promesas de acción Shadow",()=>{
-  assert.equal(SHADOW_AI_PROMPT_VERSION,"administradora-ia-emporio-v3");
+test("prompt v4 prohíbe dependencias anticipadas y promesas de acción Shadow",()=>{
+  assert.equal(SHADOW_AI_PROMPT_VERSION,"administradora-ia-emporio-v4");
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/prohibido anticipar la herramienta dependiente en la misma ronda/i);
   for(const phrase of ["voy a registrar","vamos a registrar","voy a enviar","voy a programar","voy a solicitar","voy a realizar","procederemos"]) assert.match(SHADOW_AI_SYSTEM_PROMPT,new RegExp(phrase,"i"));
+});
+
+test("taxonomía separa depósito, renta y conflicto jurídico explícito",()=>{
+  assert.equal(classifyExplicitShadowAiIntent("¿Cuándo me devuelven mi depósito?"),"devolucion_deposito");
+  assert.equal(classifyExplicitShadowAiIntent("Devuélveme mi depósito hoy"),"devolucion_deposito");
+  assert.equal(classifyExplicitShadowAiIntent("Me están robando el depósito, los voy a demandar"),"juridico_conflicto");
+  assert.equal(classifyExplicitShadowAiIntent("Ya pagué la renta"),"pago_renta");
+});
+
+test("devolución de depósito conserva safety financiero independiente del intent jurídico",async()=>{
+  const claimed={...validDecision,intent:"pago_renta",proposedResponse:"Para ayudarte a procesarlo necesito la propiedad.",requiresHuman:false,safetyFlags:[]};
+  const result=await runShadowAi(fakeAiDb(),{messageId:"deposit-refund",envelope:{...synthetic,sanitizedText:"Devuélveme mi depósito hoy"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([claimed])});
+  assert.equal(result.decision.intent,"devolucion_deposito");
+  assert.equal(result.decision.requiresHuman,true);
+  assert.ok(result.decision.safetyFlags.includes("financial_action"));
+  assert.ok(result.decision.safetyFlags.includes("deposit_eligibility_review_required"));
+  assert.equal(result.decision.proposedResponse,"Entiendo. Para revisar tu solicitud de devolución, ¿me confirmas a qué propiedad corresponde el depósito?");
+});
+
+test("conflicto jurídico con depósito conserva depósito como intención secundaria",async()=>{
+  const claimed={...validDecision,intent:"devolucion_deposito",secondaryIntents:[],proposedResponse:"Necesito que una persona revise la reclamación.",requiresHuman:true};
+  const result=await runShadowAi(fakeAiDb(),{messageId:"deposit-legal",envelope:{...synthetic,sanitizedText:"Me están robando el depósito, los voy a demandar"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([claimed])});
+  assert.equal(result.decision.intent,"juridico_conflicto");
+  assert.ok(result.decision.secondaryIntents.includes("devolucion_deposito"));
 });
 
 test("dataset tiene 38 goldens y cubre safety", () => {
@@ -211,7 +235,7 @@ test("runner permite error explícito, crea run encadenado y conserva prompt/mod
   assert.equal(result.status,"completed"); assert.equal(db.runs.some(row=>row.id==="run-error"),true);
   const insert=db.writes.find(x=>x.table==="shadow_ai_runs"&&x.action==="insert");
   assert.equal(insert.payload.retry_of_run_id,"run-error"); assert.equal(insert.payload.attempt_number,2);
-  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v3");
+  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v4");
   assert.equal(db.writes.filter(x=>x.table==="shadow_ai_decisions"&&x.action==="insert").length,1);
 });
 
