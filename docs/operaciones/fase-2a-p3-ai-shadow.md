@@ -4,7 +4,15 @@ Estado inicial y final seguro: `SHADOW_AI_ENABLED=false`, `SHADOW_AI_ALLOW_REAL_
 
 ## Proveedor y modelo
 
-Se reutiliza la integración Anthropic server-side ya existente (`ANTHROPIC_API_KEY`) sin modificar `pages/api/analizar-solicitud.js`. Modelo fijado: `claude-haiku-4-5-20251001`, por baja latencia, español/multilingüe, tool use y Structured Outputs. Precio oficial auditado el 20/08/2026: USD 1 por millón de tokens de entrada y USD 5 por millón de salida; 200k de contexto y 64k máximo de salida. P3 limita la salida a 1,400 tokens, 3 rondas, 5 herramientas por ronda, 40 escenarios por lote y timeout de 20s.
+Se reutiliza la integración Anthropic server-side ya existente (`ANTHROPIC_API_KEY`) sin modificar `pages/api/analizar-solicitud.js`. Modelo fijado: `claude-haiku-4-5-20251001`, por baja latencia, español/multilingüe, tool use y Structured Outputs. Precio oficial auditado el 20/08/2026: USD 1 por millón de tokens de entrada y USD 5 por millón de salida; 200k de contexto y 64k máximo de salida. P3 limita la salida a 1,400 tokens, 3 rondas, 5 herramientas por ronda y 40 escenarios por lote.
+
+## Timeouts y telemetría
+
+El timeout global anterior de 20 segundos se eliminó: ese `AbortController` único cortó el primer request de `administradora-ia-emporio-v2` a los 20,081 ms, antes de recibir output o tool calls. P3 ahora usa límites separados y finitos: 50 s por request Anthropic, 5 s por herramienta y 105 s por run completo. La API route declara `maxDuration=120`, dejando 15 s de margen para autenticación, ingesta y persistencia. El proyecto usa Next.js/Node y Vercel documenta 300 s por defecto con Fluid Compute; la cota explícita de esta función es deliberadamente menor.
+
+La integración usa `fetch` directo, no el SDK de Anthropic: no existen retries automáticos ocultos. Cada ronda produce como máximo una llamada HTTP; un timeout no dispara otra. Structured Outputs puede añadir latencia en la primera solicitud de un schema mientras compila su grammar; Anthropic cachea ese grammar hasta 24 horas. No se hacen warmups artificiales.
+
+`shadow_ai_runs.telemetry_json` registra por run: inicio y duración de cada request Anthropic, `anthropic_first_response_ms=null` porque P3 no usa streaming, duración de herramientas y rondas, duración total y `timeout_stage`. Los valores posibles de timeout son `anthropic_request_timeout`, `tool_timeout` y `global_run_timeout`. El cambio de columna está en el bootstrap DEV `202608200003_fase_2a_p3_ai_run_telemetry.sql` y debe aplicarse y validarse en DEV antes de autorizar otro run; no pertenece a Producción.
 
 OpenAI `gpt-5.6-luna` fue comparado (USD 0.20/1M entrada y USD 1.20/1M salida), pero no se incorpora para evitar una segunda credencial/proveedor antes de medir calidad con la infraestructura vigente.
 

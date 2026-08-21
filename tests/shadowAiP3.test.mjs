@@ -25,6 +25,7 @@ function fakeAiDb(initialRuns=[], options={}){
 }
 const toolCall=(tool,arguments_,reason="Contexto necesario")=>({tool,arguments:arguments_,reason});
 const sequenceModel=(decisions)=>{let index=0;return async()=>({text:JSON.stringify(decisions[Math.min(index++,decisions.length-1)]),usage:{input_tokens:10,output_tokens:5}});};
+const advancingClock=(initial=Date.parse("2026-08-20T12:00:00Z"))=>{let current=initial;return{now:()=>current,setTimeout,clearTimeout,advance:(ms)=>{current+=ms;}};};
 
 test("guard P3 requiere DEV exacto, flag, key y mensaje sintético", () => {
   assert.equal(shadowAiGuard(synthetic, devEnv).allowed,true);
@@ -97,6 +98,8 @@ test("privacidad y ausencia de capacidad outbound",()=>{
   assert.doesNotMatch(files,/RESPOND_IO_TOKEN|RESPOND_CHANNEL_ROUTER|sendMessage|message\.send/);
   assert.doesNotMatch(files,/from\(["'](?:payments|contracts|cash_movements)["']\)\.(?:insert|update|upsert|delete)/);
   assert.match(files,/SHADOW_OUTBOUND_ENABLED/);
+  const route=fs.readFileSync(new URL("../pages/api/operaciones/shadow-ai-run.js",import.meta.url),"utf8");
+  assert.match(route,/maxDuration:\s*120/);
 });
 
 test("migración DEV conserva RLS y no abre anon",()=>{
@@ -110,6 +113,15 @@ test("patch DEV de retries conserva RLS, limita intentos y cambia unicidad sólo
   assert.match(sql,/DEV only/); assert.match(sql,/attempt_number between 1 and 3/);
   assert.match(sql,/status in \('running','completed'\)/); assert.match(sql,/on delete restrict/);
   assert.match(sql,/revoke all .* anon/); assert.doesNotMatch(sql,/using\s*\(\s*true\s*\)|with check\s*\(\s*true\s*\)/i);
+});
+
+test("patch DEV de telemetría es mínimo, cerrado y versionado",()=>{
+  const sql=fs.readFileSync(new URL("../supabase/dev/bootstrap/202608200003_fase_2a_p3_ai_run_telemetry.sql",import.meta.url),"utf8");
+  const checks=fs.readFileSync(new URL("../supabase/dev/tests/202608200003_fase_2a_p3_ai_run_telemetry_tests.sql",import.meta.url),"utf8");
+  const rollback=fs.readFileSync(new URL("../supabase/dev/rollback/202608200003_fase_2a_p3_ai_run_telemetry_rollback.sql",import.meta.url),"utf8");
+  assert.match(sql,/DEV only/); assert.match(sql,/telemetry_json jsonb/); assert.match(sql,/enable row level security/); assert.match(sql,/revoke all .* anon/);
+  assert.match(checks,/telemetry_json missing or incompatible/); assert.match(checks,/unsafe grants/);
+  assert.match(rollback,/is not owned by this bootstrap/); assert.doesNotMatch(sql,/using\s*\(\s*true\s*\)|with check\s*\(\s*true\s*\)/i);
 });
 
 test("runner persiste decisión estructurada e idempotencia evita segunda llamada",async()=>{
@@ -205,11 +217,34 @@ test("índice convierte dos requests concurrentes en un solo run",async()=>{
   assert.equal(result.status,"running"); assert.equal(calls,0);
 });
 
-test("runner contiene salida malformada y timeout",async()=>{
+test("runner contiene salida malformada y timeout Anthropic explícito",async()=>{
   const malformed=await runShadowAi(fakeAiDb(),{messageId:"bad",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>({text:"no-json",usage:{}})});
   assert.equal(malformed.status,"error"); assert.equal(malformed.error.includes("QA"),false);
-  const timeout=await runShadowAi(fakeAiDb(),{messageId:"slow",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:{...devEnv,SHADOW_AI_TIMEOUT_MS:"1"},modelCall:(_, {signal})=>new Promise((_,reject)=>signal.addEventListener("abort",()=>{const e=new Error("timeout");e.name="AbortError";reject(e);} ))});
-  assert.equal(timeout.status,"timeout");
+  let calls=0;
+  const timeout=await runShadowAi(fakeAiDb(),{messageId:"slow",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:{...devEnv,SHADOW_AI_ANTHROPIC_TIMEOUT_MS:"1",SHADOW_AI_GLOBAL_TIMEOUT_MS:"100"},modelCall:()=>{calls++;return new Promise(()=>{});}});
+  assert.equal(timeout.status,"timeout"); assert.equal(timeout.timeoutStage,"anthropic_request_timeout"); assert.equal(calls,1);
+  assert.equal(timeout.telemetry.anthropic_requests[0].anthropic_first_response_ms,null);
+});
+
+test("respuesta Anthropic simulada a 25s supera el límite antiguo y conserva telemetría",async()=>{
+  const clock=advancingClock();
+  const result=await runShadowAi(fakeAiDb(),{messageId:"cold-schema",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,clock,modelCall:async()=>{clock.advance(25000);return{text:JSON.stringify(validDecision),usage:{input_tokens:20,output_tokens:10}};}});
+  assert.equal(result.status,"completed"); assert.equal(result.telemetry.anthropic_requests[0].anthropic_duration_ms,25000);
+  assert.equal(result.telemetry.total_run_duration_ms,25000); assert.equal(result.telemetry.timeout_stage,null);
+});
+
+test("tool lenta termina como tool_timeout sin segunda llamada al modelo",async()=>{
+  let modelCalls=0;
+  const requestTool={...validDecision,proposedToolCalls:[toolCall("find_properties",{propertyReference:"Montpellier"})]};
+  const result=await runShadowAi(fakeAiDb(),{messageId:"slow-tool",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:{...devEnv,SHADOW_AI_TOOL_TIMEOUT_MS:"1"},modelCall:async()=>{modelCalls++;return{text:JSON.stringify(requestTool),usage:{}};},executeTool:()=>new Promise(()=>{})});
+  assert.equal(result.status,"timeout"); assert.equal(result.timeoutStage,"tool_timeout"); assert.equal(modelCalls,1);
+  assert.equal(result.telemetry.tools[0].error,"tool_timeout");
+});
+
+test("deadline total prevalece y reporta global_run_timeout",async()=>{
+  let modelCalls=0;
+  const result=await runShadowAi(fakeAiDb(),{messageId:"global-timeout",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:{...devEnv,SHADOW_AI_ANTHROPIC_TIMEOUT_MS:"100",SHADOW_AI_GLOBAL_TIMEOUT_MS:"1"},modelCall:()=>{modelCalls++;return new Promise(()=>{});}});
+  assert.equal(result.status,"timeout"); assert.equal(result.timeoutStage,"global_run_timeout"); assert.equal(modelCalls,1);
 });
 
 test("runner persiste latencia y detalle provider sanitizado en error",async()=>{
