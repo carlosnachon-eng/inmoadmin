@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
-import { aggregatePersistedShadowQa, auditQaResolvablePolicyContext, executionDisposition, prepareQaFixtureExecutionContext, qaCampaignCompatibility, remainingRunBudget, SHADOW_QA_FINAL_CAMPAIGN_ID, SHADOW_QA_MAX_MICRO_BATCH, SHADOW_QA_MIN_RUN_BUDGET_MS, SHADOW_QA_REQUEST_BUDGET_MS, validateExplicitFixtureIds, validateQaCampaignId } from "../lib/shadow/ai/qaOrchestrator.js";
+import { aggregatePersistedShadowQa, auditQaResolvablePolicyContext, executionDisposition, isQaDevUiEnabled, prepareQaFixtureExecutionContext, qaCampaignCompatibility, qaCampaignFixtureScope, remainingRunBudget, SHADOW_QA_FINAL_CAMPAIGN_ID, SHADOW_QA_MAX_MICRO_BATCH, SHADOW_QA_MIN_RUN_BUDGET_MS, SHADOW_QA_REQUEST_BUDGET_MS, SHADOW_QA_RESOLVABLE_CAMPAIGN_ID, SHADOW_QA_RESOLVABLE_FIXTURE_IDS, validateExplicitFixtureIds, validateQaCampaignFixtureIds, validateQaCampaignId } from "../lib/shadow/ai/qaOrchestrator.js";
 import { SHADOW_AI_QA_DATASET, SHADOW_AI_QA_REGRESSION_FIXTURES } from "../lib/shadow/ai/qaDataset.js";
 
 test("completed se omite y running se bloquea",()=>{
@@ -37,7 +37,15 @@ test("acepta sólo IDs explícitos y limita micro-lote",()=>{
 test("campaign ID es obligatorio, namespaced y cerrado",()=>{
   assert.equal(SHADOW_QA_FINAL_CAMPAIGN_ID,"p3-v8-final-20260820");
   assert.equal(validateQaCampaignId(SHADOW_QA_FINAL_CAMPAIGN_ID),SHADOW_QA_FINAL_CAMPAIGN_ID);
-  for(const invalid of [null,"","legacy","p3_bad","P3-v8","p3-v8/other"]) assert.throws(()=>validateQaCampaignId(invalid),/invalid_campaign_id/);
+  assert.equal(validateQaCampaignId("p3_v8.resolvable-wiring"),"p3_v8.resolvable-wiring");
+  for(const invalid of [null,"","a","P3-v8","p3 v8","https://example.com","../p3-v8","p3-v8/other","p3-💥"]) assert.throws(()=>validateQaCampaignId(invalid),/invalid_campaign_id/);
+});
+
+test("selector QA se habilita únicamente para el project ref DEV exacto",()=>{
+  assert.equal(isQaDevUiEnabled("https://hjfwjnejbcpmknvfpdcq.supabase.co"),true);
+  assert.equal(isQaDevUiEnabled("https://bnzrnizrmonjxlktbhlp.supabase.co"),false);
+  assert.equal(isQaDevUiEnabled("https://hjfwjnejbcpmknvfpdcq.supabase.co.evil.example"),false);
+  assert.equal(isQaDevUiEnabled("not-a-url"),false);
 });
 
 test("regresión 02 conserva contexto sintético pero tiene idempotencia independiente",()=>{
@@ -81,6 +89,18 @@ test("campaña final nueva inicia limpia con 38 pendientes",()=>{
   const legacyRuns=messages.map((message,index)=>({id:`legacy-${index}`,message_id:message.id,status:"completed",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v8",campaign_id:null}));
   const aggregate=aggregatePersistedShadowQa({messages,runs:legacyRuns,decisions:[]},{campaignId:SHADOW_QA_FINAL_CAMPAIGN_ID});
   assert.equal(aggregate.completed,0); assert.equal(aggregate.results.length,0); assert.equal(aggregate.missingFixtures.length,38);
+});
+
+test("campaña resolvable inicia 0/11 y no mezcla históricos ni campaña completa",()=>{
+  assert.equal(SHADOW_QA_RESOLVABLE_CAMPAIGN_ID,"p3-v8-resolvable-wiring-20260821");
+  assert.equal(SHADOW_QA_RESOLVABLE_FIXTURE_IDS.length,11);
+  assert.deepEqual(qaCampaignFixtureScope(SHADOW_QA_RESOLVABLE_CAMPAIGN_ID),[...SHADOW_QA_RESOLVABLE_FIXTURE_IDS]);
+  const messages=SHADOW_AI_QA_DATASET.map((scenario,index)=>({id:`message-resolvable-${index}`,provider_metadata:{syntheticScenario:scenario.id}}));
+  const historicalRuns=messages.map((message,index)=>({id:`historical-${index}`,message_id:message.id,status:"completed",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v8",campaign_id:SHADOW_QA_FINAL_CAMPAIGN_ID}));
+  const aggregate=aggregatePersistedShadowQa({messages,runs:historicalRuns,decisions:[]},{campaignId:SHADOW_QA_RESOLVABLE_CAMPAIGN_ID});
+  assert.equal(aggregate.completed,0); assert.equal(aggregate.totalFixtures,11); assert.equal(aggregate.missingFixtures.length,11); assert.equal(aggregate.results.length,0);
+  assert.deepEqual(validateQaCampaignFixtureIds(SHADOW_QA_RESOLVABLE_CAMPAIGN_ID,["p3-07"]),["p3-07"]);
+  assert.throws(()=>validateQaCampaignFixtureIds(SHADOW_QA_RESOLVABLE_CAMPAIGN_ID,["p3-04"]),/invalid_fixture_campaign_scope/);
 });
 
 test("campaign path propaga 11/11 contextos resolubles sin leer goldens como input",()=>{
@@ -145,6 +165,14 @@ test("ruta QA queda DEV-only, sintética, sin outbound ni write tools",()=>{
   assert.match(route,/validateQaCampaignId/); assert.match(route,/\.eq\("campaign_id",campaignId\)/); assert.match(route,/qaCampaignCompatibility/);
   assert.match(route,/shadow_ai_decisions/); assert.match(route,/attempt_number/);
   assert.doesNotMatch(route,/respond|whatsapp/i); assert.doesNotMatch(context,/\.(?:insert|update|upsert|delete)\s*\(/);
+});
+
+test("UI usa campaña seleccionada con sesión existente y no expone bearer",()=>{
+  const page=fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js",import.meta.url),"utf8");
+  assert.match(page,/isQaDevUiEnabled/); assert.match(page,/qaDevUiEnabled && authorized/);
+  assert.match(page,/validateQaCampaignId\(qaCampaignId\)/); assert.match(page,/Campaign ID QA/);
+  assert.match(page,/Authorization: `Bearer \$\{session\.access_token\}`/);
+  assert.doesNotMatch(page,/console\.(?:log|debug).*access_token|localStorage|sessionStorage/);
 });
 
 test("UI separa ejecución normal del retry fallido explícito",()=>{

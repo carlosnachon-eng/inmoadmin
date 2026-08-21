@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Head from "next/head";
 import Layout, { brand } from "../components/Layout";
 import { supabase } from "../lib/supabase";
-import { SHADOW_QA_FINAL_CAMPAIGN_ID } from "../lib/shadow/ai/qaOrchestrator";
+import { isQaDevUiEnabled, qaCampaignFixtureScope, SHADOW_QA_FINAL_CAMPAIGN_ID, validateQaCampaignId } from "../lib/shadow/ai/qaOrchestrator";
 
 const ROLES = new Set(["admin", "coord_operaciones"]);
 const EVALUATIONS = [
@@ -23,7 +23,9 @@ export default function ShadowCoordinatorPage() {
   const [shadowView, setShadowView] = useState("conversations");
   const [qaRunning, setQaRunning] = useState(false); const [qaReport, setQaReport] = useState(null);
   const [qaFixtureIds, setQaFixtureIds] = useState("");
-  const qaCampaignId = SHADOW_QA_FINAL_CAMPAIGN_ID;
+  const [qaCampaignId, setQaCampaignId] = useState(SHADOW_QA_FINAL_CAMPAIGN_ID);
+  const qaDevUiEnabled = isQaDevUiEnabled(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const qaFixtureScope = useMemo(() => qaCampaignFixtureScope(qaCampaignId), [qaCampaignId]);
   useEffect(() => { supabase.auth.getSession().then(({ data: { session: value } }) => { setSession(value); setReady(true); }); }, []);
   useEffect(() => { if (!session?.user) return; supabase.from("profiles").select("id,role_id,active,email").eq("id", session.user.id).maybeSingle().then(({ data: value }) => setProfile(value)); }, [session?.user]);
   const authorized = profile?.active && ROLES.has(profile.role_id);
@@ -54,9 +56,12 @@ export default function ShadowCoordinatorPage() {
   };
   const qaOrchestrator = async (method = "GET", { retryFailed = false, fixtureIdsOverride = null } = {}) => {
     setQaRunning(true); setError("");
+    let validatedCampaignId;
+    try { validatedCampaignId = validateQaCampaignId(qaCampaignId); }
+    catch { setQaRunning(false); setError("Campaign ID inválido."); return; }
     const fixtureIds = fixtureIdsOverride || qaFixtureIds.split(",").map((item)=>item.trim()).filter(Boolean);
-    const url = method === "GET" ? `/api/operaciones/shadow-ai-qa?campaignId=${encodeURIComponent(qaCampaignId)}` : "/api/operaciones/shadow-ai-qa";
-    const response = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, ...(method === "POST" ? { body: JSON.stringify({ fixtureIds, retryFailed, campaignId: qaCampaignId }) } : {}) });
+    const url = method === "GET" ? `/api/operaciones/shadow-ai-qa?campaignId=${encodeURIComponent(validatedCampaignId)}` : "/api/operaciones/shadow-ai-qa";
+    const response = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, ...(method === "POST" ? { body: JSON.stringify({ fixtureIds, retryFailed, campaignId: validatedCampaignId }) } : {}) });
     const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo operar QA P3.");
     setQaReport(json); if (json.missingFixtures) setQaFixtureIds(json.missingFixtures.slice(0,1).join(",")); await load();
   };
@@ -75,7 +80,7 @@ export default function ShadowCoordinatorPage() {
     <Head><title>Coordinador IA — Sombra</title></Head>
     <main style={{ padding: 22 }}>
       <div style={{ marginBottom: 16 }}><h1 style={{ margin: 0, color: brand.gray }}>🌒 Coordinador IA — Sombra</h1><p style={{ color: brand.grayLight }}>Sólo observación y evaluación. No envía mensajes ni modifica el ERP.</p></div>
-      <details style={{ ...card, marginBottom: 14 }}><summary>QA sintética P3 (sólo DEV)</summary><p><strong>Campaña:</strong> <code>{qaCampaignId}</code></p><p><strong>Estado:</strong> {qaReport?.completed || 0}/38 completados</p><p style={{ color: brand.grayLight }}>Una request ejecuta como máximo un fixture explícito. El servidor rechaza datos reales, reintentos automáticos y cualquier entorno distinto de DEV.</p><input value={qaFixtureIds} onChange={(event)=>setQaFixtureIds(event.target.value)} placeholder="p3-11" style={{width:"100%",boxSizing:"border-box",padding:9,marginBottom:8}}/><button disabled={qaRunning||!qaFixtureIds.trim()} onClick={()=>qaOrchestrator("POST")} style={{marginRight:8}}>Ejecutar fixture seleccionado</button><button disabled={qaRunning} onClick={()=>qaOrchestrator("GET")} style={{marginRight:8}}>Mostrar pendientes</button><button disabled={qaRunning} onClick={()=>qaOrchestrator("GET")}>Agregar métricas QA</button>{qaRunning&&<p>Ejecutando fixture…</p>}{qaReport&&<pre style={{overflow:"auto",maxHeight:360}}>{JSON.stringify(qaReport,null,2)}</pre>}</details>
+      {qaDevUiEnabled && authorized && <details style={{ ...card, marginBottom: 14 }}><summary>QA sintética P3 (sólo DEV)</summary><label htmlFor="qa-campaign-id"><strong>Campaña</strong></label><input id="qa-campaign-id" aria-label="Campaign ID QA" value={qaCampaignId} onChange={(event)=>{setQaCampaignId(event.target.value);setQaReport(null);}} maxLength={80} autoComplete="off" spellCheck={false} style={{width:"100%",boxSizing:"border-box",padding:9,margin:"6px 0 8px"}}/><p><strong>Estado:</strong> {qaReport?.completed || 0}/{qaReport?.totalFixtures || qaFixtureScope.length} completados · {qaReport?.missingFixtures?.length ?? qaFixtureScope.length} pendientes · {(qaReport?.results || []).filter((item)=>item.status==="error").length} error · {(qaReport?.results || []).filter((item)=>item.status==="timeout").length} timeout</p><p style={{ color: brand.grayLight }}>Una request ejecuta como máximo un fixture explícito. El servidor valida campaña, autenticación, entorno DEV, fixtures sintéticos y bloqueos de mensajes reales/outbound.</p><input aria-label="Fixture QA" value={qaFixtureIds} onChange={(event)=>setQaFixtureIds(event.target.value)} placeholder="p3-11" style={{width:"100%",boxSizing:"border-box",padding:9,marginBottom:8}}/><button disabled={qaRunning||!qaFixtureIds.trim()} onClick={()=>qaOrchestrator("POST")} style={{marginRight:8}}>Ejecutar fixture seleccionado</button><button disabled={qaRunning} onClick={()=>qaOrchestrator("GET")} style={{marginRight:8}}>Mostrar pendientes</button><button disabled={qaRunning} onClick={()=>qaOrchestrator("GET")}>Agregar métricas QA</button>{qaRunning&&<p>Ejecutando fixture…</p>}{qaReport&&<pre style={{overflow:"auto",maxHeight:360}}>{JSON.stringify(qaReport,null,2)}</pre>}</details>}
       {error && <div style={{ ...card, background: "#fef2f2", color: "#991b1b", marginBottom: 12 }}>{error}</div>}
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 16 }}>
         {[["Mensajes", data?.messages?.length || 0], ["Eventos operativos", data?.operationalEvents?.length || 0], ["Duplicados", data?.metrics?.duplicate || 0], ["Sanitizados", data?.metrics?.sanitized || 0], ["Revisión humana", data?.messages?.filter(x=>x.requires_human).length || 0], ["Contexto ambiguo", ambiguousMessageIds.size]].map(([label,value]) => <div key={label} style={card}><div style={{ fontSize: 24, fontWeight: 800 }}>{value}</div><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
