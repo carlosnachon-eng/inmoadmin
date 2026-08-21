@@ -4,7 +4,7 @@ import { classifyShadowMessage, syntheticEnvelope } from "../../../lib/shadow/co
 import { DEFAULT_SHADOW_AI_MODEL } from "../../../lib/shadow/ai/anthropic";
 import { SHADOW_AI_PROMPT_VERSION } from "../../../lib/shadow/ai/prompt";
 import { SHADOW_AI_QA_DATASET, SHADOW_AI_QA_REGRESSION_FIXTURES } from "../../../lib/shadow/ai/qaDataset";
-import { aggregatePersistedShadowQa, executionDisposition, qaCampaignCompatibility, remainingRunBudget, SHADOW_QA_MIN_RUN_BUDGET_MS, validateExplicitFixtureIds, validateQaCampaignId } from "../../../lib/shadow/ai/qaOrchestrator";
+import { aggregatePersistedShadowQa, executionDisposition, prepareQaFixtureExecutionContext, qaCampaignCompatibility, remainingRunBudget, SHADOW_QA_MIN_RUN_BUDGET_MS, validateExplicitFixtureIds, validateQaCampaignId } from "../../../lib/shadow/ai/qaOrchestrator";
 import { startShadowAiStateMachine } from "../../../lib/shadow/ai/stateMachine";
 import { processShadowEnvelope } from "../../../lib/shadow/pipeline";
 
@@ -39,7 +39,7 @@ export default async function handler(req,res) {
     const requested=new Map([...SHADOW_AI_QA_DATASET,...SHADOW_AI_QA_REGRESSION_FIXTURES].filter((item)=>fixtureIds.includes(item.id)).map((item)=>[item.id,item]));
     const startedAt=Date.now(); const results=[];
     for(const fixtureId of fixtureIds){
-      const scenario=requested.get(fixtureId); const envelope=syntheticEnvelope({id:scenario.id,text:scenario.text,metadata:scenario.metadata});
+      const scenario=requested.get(fixtureId); const prepared=prepareQaFixtureExecutionContext(scenario,syntheticEnvelope({id:scenario.id,text:scenario.text,metadata:scenario.metadata})); const envelope=prepared.envelope;
       const {data:existing,error:messageLookupError}=await admin.from("shadow_messages").select("id").eq("provider","synthetic").eq("external_message_id",envelope.externalMessageId).maybeSingle(); if(messageLookupError)throw messageLookupError;
       const ingested=existing?{messageId:existing.id}:await processShadowEnvelope(admin,envelope); if(!ingested?.messageId){results.push({fixtureId,status:"message_not_ingested",runId:null});continue;}
       const {data:latest,error}=await admin.from("shadow_ai_runs").select("id,status,attempt_number,campaign_id").eq("message_id",ingested.messageId).eq("model",process.env.SHADOW_AI_MODEL||DEFAULT_SHADOW_AI_MODEL).eq("prompt_version",SHADOW_AI_PROMPT_VERSION).eq("campaign_id",campaignId).order("created_at",{ascending:false}).limit(1).maybeSingle(); if(error)throw error;
@@ -50,7 +50,7 @@ export default async function handler(req,res) {
       const disposition=executionDisposition(latest?.status,{retryFailed,attemptNumber:latest?.attempt_number,hasDecision:Boolean(failedDecision)});
       if(!["execute","execute_retry"].includes(disposition)){results.push({fixtureId,status:disposition,runId:latest?.id||null,previousStatus:latest?.status||null,attemptNumber:latest?.attempt_number||null});continue;}
       const budget=remainingRunBudget(startedAt,Date.now()); if(budget<SHADOW_QA_MIN_RUN_BUDGET_MS){results.push({fixtureId,status:"deferred_request_budget",runId:null});continue;}
-      const outcome=await startShadowAiStateMachine(admin,{messageId:ingested.messageId,envelope,deterministic:classifyShadowMessage(envelope)},{env:{...process.env,SHADOW_AI_GLOBAL_TIMEOUT_MS:String(budget)},campaignId,retryAuthorization:disposition==="execute_retry"?"explicit_user_authorized":null});
+      const outcome=await startShadowAiStateMachine(admin,{messageId:ingested.messageId,envelope,deterministic:classifyShadowMessage(envelope)},{env:{...process.env,SHADOW_AI_GLOBAL_TIMEOUT_MS:String(budget)},campaignId,resolvedOperationalContext:prepared.resolvedOperationalContext,retryAuthorization:disposition==="execute_retry"?"explicit_user_authorized":null});
       results.push({fixtureId,status:outcome.status,runId:outcome.runId||null});
     }
     return res.status(200).json({ok:true,campaignId,requested:fixtureIds,results,pending:(await audit(admin,campaignId)).missingFixtures});
