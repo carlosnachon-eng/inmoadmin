@@ -67,6 +67,44 @@ test("regresión p3-07: ERP pagado nunca puede renderizarse como pendiente",()=>
   assert.equal(result.responseBlocked,true); assert.doesNotMatch(result.proposedResponse,/pendiente/i); assert.ok(result.safetyFlags.includes("critical_fact_contradiction"));
 });
 
+test("renderer canonicaliza texto crítico consistente y usa exclusivamente el ledger",()=>{
+  const id="f2a30000-0000-4000-8300-000000000001"; const evidenceId=`payment:${id}`;
+  const tools=[{name:"get_payment_summary",ok:true,result:[{entityType:"payment",internalId:id,status:"pagado",period:"2026-08-05",amount:12500}]}];
+  const decision={...validDecision,factualClaims:[{factType:"payment.status",value:"pagado",evidenceIds:[evidenceId]},{factType:"payment.period",value:"2026-08-05",evidenceIds:[evidenceId]}],conversationalResponseParts:{acknowledgement:"Tu renta más reciente está completamente pagada.",verifiedFactReferences:[evidenceId],clarificationQuestion:null,escalationMessage:null}};
+  const result=groundAndRenderDecision(decision,tools);
+  assert.equal(result.responseBlocked,false); assert.equal(result.groundingStatus,"grounded");
+  assert.equal(result.canonicalizedCriticalFact,true); assert.equal(result.freeTextCriticalFactAction,"canonicalized");
+  assert.equal(result.conversationalResponseParts.acknowledgement,"Entiendo.");
+  assert.doesNotMatch(result.proposedResponse,/completamente pagada/i); assert.match(result.proposedResponse,/registrado como pagado/i); assert.match(result.proposedResponse,/2026-08-05/);
+  assert.equal(result.safetyFlags.includes("unsupported_erp_fact"),false);
+});
+
+test("texto crítico contradictorio continúa bloqueado aunque el claim sea correcto",()=>{
+  const id="f2a30000-0000-4000-8300-000000000001"; const evidenceId=`payment:${id}`;
+  const tools=[{name:"get_payment_summary",ok:true,result:[{entityType:"payment",internalId:id,status:"pagado"}]}];
+  const result=groundAndRenderDecision({...validDecision,factualClaims:[{factType:"payment.status",value:"pagado",evidenceIds:[evidenceId]}],conversationalResponseParts:{acknowledgement:"Tienes una renta pendiente.",verifiedFactReferences:[evidenceId],clarificationQuestion:null,escalationMessage:null}},tools);
+  assert.equal(result.responseBlocked,true); assert.match(result.groundingReason,/critical_fact_text_contradiction/); assert.ok(result.safetyFlags.includes("hallucination"));
+});
+
+test("texto crítico sin claim o evidencia sigue bloqueado",()=>{
+  const id="f2a30000-0000-4000-8300-000000000001";
+  const tools=[{name:"get_payment_summary",ok:true,result:[{entityType:"payment",internalId:id,status:"pagado"}]}];
+  const result=groundAndRenderDecision({...validDecision,factualClaims:[],conversationalResponseParts:{acknowledgement:"Tu renta está pagada.",verifiedFactReferences:[],clarificationQuestion:null,escalationMessage:null}},tools);
+  assert.equal(result.responseBlocked,true); assert.match(result.groundingReason,/critical_fact_in_free_text/); assert.ok(result.safetyFlags.includes("unsupported_erp_fact"));
+});
+
+test("monto libre distinto del claim se considera contradicción",()=>{
+  const id="f2a30000-0000-4000-8300-000000000001"; const evidenceId=`payment:${id}`;
+  const tools=[{name:"get_payment_summary",ok:true,result:[{entityType:"payment",internalId:id,amount:12500}]}];
+  const result=groundAndRenderDecision({...validDecision,factualClaims:[{factType:"payment.amount",value:12500,evidenceIds:[evidenceId]}],conversationalResponseParts:{acknowledgement:"Debes 15000.",verifiedFactReferences:[evidenceId],clarificationQuestion:null,escalationMessage:null}},tools);
+  assert.equal(result.responseBlocked,true); assert.match(result.groundingReason,/critical_fact_text_contradiction/);
+});
+
+test("texto conversacional sin hechos críticos permanece intacto",()=>{
+  const result=groundAndRenderDecision({...validDecision,conversationalResponseParts:{acknowledgement:"Entiendo tu consulta.",verifiedFactReferences:[],clarificationQuestion:null,escalationMessage:null}},[]);
+  assert.equal(result.responseBlocked,false); assert.equal(result.canonicalizedCriticalFact,false); assert.equal(result.proposedResponse,"Entiendo tu consulta.");
+});
+
 test("policy engine deriva tools required-now sin depender de Claude",()=>{
   const contractId="f2a30000-0000-4000-8200-000000000001";
   const payment=deriveRequiredTools({intent:"pago_renta",message:"¿Cuánto debo de renta?",metadata:{contractId}});
@@ -277,7 +315,7 @@ test("dataset tiene 38 goldens y cubre safety", () => {
 
 test("métricas no colapsan seguridad en un promedio",()=>{
   const one=SHADOW_AI_QA_DATASET.slice(0,1); const metrics=evaluateShadowAiQa(one,[{fixtureId:one[0].id,status:"completed",decision:{intent:one[0].golden.intent,requiresHuman:one[0].golden.requiresHuman,safetyFlags:[],resolvedEntities:[{entityType:"property",internalId:one[0].golden.expectedFixtureId}],entityResolutionStatus:"resolved"},tools:[{name:"find_properties",ok:true,result:[{id:"property-qa"}]},{name:"get_maintenance_ticket_summary",ok:true,result:[]}],latencyMs:120,usage:{input_tokens:100,output_tokens:20},estimatedCostUsd:.0002}]);
-  for (const key of ["intentAccuracy","multintentAccuracy","entityResolutionAccuracy","correctUnresolvedRate","correctAmbiguityRate","toolSelectionPrecision","toolSelectionRecall","toolRequiredNowPrecision","toolRequiredNowRecall","policyRequiredToolExecutionRate","modelSuggestedToolRecall","overallRequiredToolExecutionRate","toolDeferredAppropriatelyRate","prematureToolRate","executionPromiseRate","overEscalationRate","hallucinationRate","unsupportedFactRate","unnecessaryToolRate","correctEscalationRate","unsafeRecommendationRate","malformedOutputRate","timeoutErrorRate","schemaValidityRate","averageToolCallsPerRun","averageRoundsPerRun","latencyMsP50","latencyMsP95","inputTokens","outputTokens","estimatedCostUsd","averageCostUsd"]) assert.ok(Object.hasOwn(metrics,key),key);
+  for (const key of ["intentAccuracy","multintentAccuracy","entityResolutionAccuracy","correctUnresolvedRate","correctAmbiguityRate","toolSelectionPrecision","toolSelectionRecall","toolRequiredNowPrecision","toolRequiredNowRecall","policyRequiredToolExecutionRate","modelSuggestedToolRecall","overallRequiredToolExecutionRate","toolDeferredAppropriatelyRate","prematureToolRate","executionPromiseRate","overEscalationRate","hallucinationRate","unsupportedFactRate","unnecessaryToolRate","correctEscalationRate","unsafeRecommendationRate","groundedFactAccuracy","criticalFactContradictionRate","contradictionBlockRate","unsupportedCriticalFactRate","criticalFactCanonicalizationRate","canonicalizedCriticalFactRate","groundingBlockRate","malformedOutputRate","timeoutErrorRate","schemaValidityRate","averageToolCallsPerRun","averageRoundsPerRun","latencyMsP50","latencyMsP95","inputTokens","outputTokens","estimatedCostUsd","averageCostUsd"]) assert.ok(Object.hasOwn(metrics,key),key);
   assert.equal(metrics.entityResolutionAccuracy,1); assert.equal(metrics.latencyMsP95,120); assert.equal(metrics.inputTokens,100);
 });
 
