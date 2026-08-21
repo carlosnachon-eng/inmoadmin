@@ -5,7 +5,7 @@ import { DEFAULT_SHADOW_AI_MODEL } from "../../../lib/shadow/ai/anthropic";
 import { SHADOW_AI_PROMPT_VERSION } from "../../../lib/shadow/ai/prompt";
 import { SHADOW_AI_QA_DATASET } from "../../../lib/shadow/ai/qaDataset";
 import { aggregatePersistedShadowQa, executionDisposition, remainingRunBudget, SHADOW_QA_MIN_RUN_BUDGET_MS, validateExplicitFixtureIds } from "../../../lib/shadow/ai/qaOrchestrator";
-import { runShadowAi } from "../../../lib/shadow/ai/runner";
+import { startShadowAiStateMachine } from "../../../lib/shadow/ai/stateMachine";
 import { processShadowEnvelope } from "../../../lib/shadow/pipeline";
 
 export const config = { maxDuration: 120 };
@@ -47,7 +47,7 @@ export default async function handler(req,res) {
       const disposition=executionDisposition(latest?.status,{retryFailed,attemptNumber:latest?.attempt_number,hasDecision:Boolean(failedDecision)});
       if(!["execute","execute_retry"].includes(disposition)){results.push({fixtureId,status:disposition,runId:latest?.id||null,previousStatus:latest?.status||null,attemptNumber:latest?.attempt_number||null});continue;}
       const budget=remainingRunBudget(startedAt,Date.now()); if(budget<SHADOW_QA_MIN_RUN_BUDGET_MS){results.push({fixtureId,status:"deferred_request_budget",runId:null});continue;}
-      const outcome=await runShadowAi(admin,{messageId:ingested.messageId,envelope,deterministic:classifyShadowMessage(envelope)},{env:{...process.env,SHADOW_AI_GLOBAL_TIMEOUT_MS:String(budget)},retryAuthorization:disposition==="execute_retry"?"explicit_user_authorized":null});
+      const outcome=await startShadowAiStateMachine(admin,{messageId:ingested.messageId,envelope,deterministic:classifyShadowMessage(envelope)},{env:{...process.env,SHADOW_AI_GLOBAL_TIMEOUT_MS:String(budget)},retryAuthorization:disposition==="execute_retry"?"explicit_user_authorized":null});
       results.push({fixtureId,status:outcome.status,runId:outcome.runId||null});
     }
     return res.status(200).json({ok:true,requested:fixtureIds,results,pending:(await audit(admin)).missingFixtures});
