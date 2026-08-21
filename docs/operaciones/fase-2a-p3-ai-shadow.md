@@ -18,7 +18,7 @@ OpenAI `gpt-5.6-luna` fue comparado (USD 0.20/1M entrada y USD 1.20/1M salida), 
 
 ## Contratos
 
-- Prompt: `administradora-ia-emporio-v3`. El cambio de versión conserva separados los runs auditados bajo los contratos anteriores.
+- Prompt: `administradora-ia-emporio-v4`. El cambio de versión conserva separados los runs auditados bajo los contratos anteriores.
 - Salida: JSON Schema estricto con intención, urgencia, resumen, `entitiesMentioned`, `resolvedEntities`, estado de resolución, información faltante, herramientas estructuradas, evaluación contextual, acción/respuesta propuestas, confianza, escalamiento y safety flags.
 - Tools: las diez capacidades `READ_ONLY_SHADOW_TOOLS`; argumentos cerrados, sin SQL libre, máximo 5 resultados y ejecución server-side con service role.
 - Persistencia: sólo `shadow_ai_runs`, `shadow_ai_decisions` y auditoría Shadow. Nunca se guarda chain-of-thought.
@@ -33,7 +33,9 @@ OpenAI `gpt-5.6-luna` fue comparado (USD 0.20/1M entrada y USD 1.20/1M salida), 
 
 Los IDs dependientes deben provenir de metadata determinística o de una herramienta exitosa en una ronda anterior. Una dependencia ambigua, ausente o una tool inválida se registra sanitizada y no se ejecuta; Claude puede corregirla en la siguiente ronda. La tercera ronda es final y no ejecuta nuevas herramientas.
 
-El runner reemplaza cualquier `resolvedEntities` no respaldada por resultados ERP, marca `unsupported_erp_fact` y neutraliza afirmaciones como “ya revisé” cuando no existe evidencia. `unsupportedFactRate` también alimenta `hallucinationRate`. Desde `administradora-ia-emporio-v3`, una herramienta dependiente sólo puede solicitarse en una ronda posterior a la obtención de su ID; el runner conserva la validación determinística como segunda barrera. También se bloquean promesas de ejecución de Shadow (`shadow_action_promise_blocked`). El golden `p3-01` exige `find_properties` en ronda 1, mantenimiento por `propertyId` en ronda 2 y respuesta final sin nuevas tools en ronda 3.
+El runner reemplaza cualquier `resolvedEntities` no respaldada por resultados ERP, marca `unsupported_erp_fact` y neutraliza afirmaciones como “ya revisé” cuando no existe evidencia. `unsupportedFactRate` también alimenta `hallucinationRate`. Desde `administradora-ia-emporio-v3`, una herramienta dependiente sólo puede solicitarse en una ronda posterior a la obtención de su ID; el runner conserva la validación determinística como segunda barrera. También se bloquean promesas de ejecución de Shadow (`shadow_action_promise_blocked`). En `administradora-ia-emporio-v4`, `devolucion_deposito` separa solicitudes de depósito de renta y conflicto jurídico, manteniendo `requiresHuman` y safety financiero de forma independiente. El golden `p3-01` exige `find_properties` en ronda 1, mantenimiento por `propertyId` en ronda 2 y respuesta final sin nuevas tools en ronda 3.
+
+Auditoría de los 38 goldens para v4: `p3-36` cambia de `juridico_conflicto` a `devolucion_deposito`, porque solicita una devolución sin amenaza o disputa jurídica. `p3-29` cambia de `juridico_conflicto` a `contrato`, porque solicita un contrato y datos privados de un tercero sin una señal jurídica; conserva revisión humana por privacidad. Los otros 36 goldens mantienen su intención por corresponder a su semántica operativa original.
 
 ## Activación DEV controlada
 
