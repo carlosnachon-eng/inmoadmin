@@ -20,8 +20,8 @@ OpenAI `gpt-5.6-luna` fue comparado (USD 0.20/1M entrada y USD 1.20/1M salida), 
 
 ## Contratos
 
-- Prompt: `administradora-ia-emporio-v7`. Los 38 runs v6 auditados permanecen históricos y no se reejecutan ni sobrescriben durante este tuning.
-- Salida: JSON Schema estricto con intención, urgencia, resumen, `entitiesMentioned`, `resolvedEntities`, estado de resolución, información faltante, herramientas estructuradas, evaluación contextual, acción/respuesta propuestas, confianza, escalamiento y safety flags.
+- Prompt: `administradora-ia-emporio-v8`. Los runs v6/v7 auditados permanecen históricos y no se reejecutan ni sobrescriben durante este cambio.
+- Salida: JSON Schema estricto con intención, urgencia, resumen, entidades, herramientas, evaluación contextual, acción propuesta, `factualClaims`, `conversationalResponseParts`, `executionCommitment`, confianza, escalamiento y safety flags. La respuesta final ya no es texto factual libre del modelo.
 - Tools: las diez capacidades `READ_ONLY_SHADOW_TOOLS`; argumentos cerrados, sin SQL libre, máximo 5 resultados y ejecución server-side con service role.
 - Persistencia: sólo `shadow_ai_runs`, `shadow_ai_decisions` y auditoría Shadow. Nunca se guarda chain-of-thought.
 
@@ -36,6 +36,14 @@ OpenAI `gpt-5.6-luna` fue comparado (USD 0.20/1M entrada y USD 1.20/1M salida), 
 Los IDs dependientes deben provenir de metadata determinística o de una herramienta exitosa en una ronda anterior. Una dependencia ambigua, ausente o una tool inválida se registra sanitizada y no se ejecuta; Claude puede corregirla en la siguiente ronda. La tercera ronda es final y no ejecuta nuevas herramientas.
 
 El runner reemplaza cualquier `resolvedEntities` no respaldada por resultados ERP, marca `unsupported_erp_fact` y neutraliza afirmaciones como “ya revisé” cuando no existe evidencia. `unsupportedFactRate` también alimenta `hallucinationRate`. Desde `administradora-ia-emporio-v3`, una herramienta dependiente sólo puede solicitarse en una ronda posterior a la obtención de su ID; el runner conserva la validación determinística como segunda barrera. También se bloquean promesas de ejecución de Shadow (`shadow_action_promise_blocked`). En v4, `devolucion_deposito` separa solicitudes de depósito de renta y conflicto jurídico. En v5 se separan `servicio` y `mantenimiento`. En v6 se neutralizan promesas de capacidad futura, se limita la aclaración a una pregunta principal y `juridico_conflicto` sólo escala para revisión humana sin recomendar medidas jurídicas u operativas categóricas. V7 añade taxonomía contextual para depósitos al propietario, cambios contractuales, llaves para técnicos y multintención; neutraliza también promesas semánticas como “te ayudaré a revisar”, “podré ubicar”, “para gestionar/asignar” o “comunicarlo”; neutralizar lenguaje ya no fuerza escalamiento por sí solo.
+
+## Grounding determinístico v8
+
+Después de cada tool read-only, el servidor construye un ledger canónico con `evidenceId`, dominio, sujeto, hechos críticos y tool de origen. Cubre estado/periodo/monto de pagos y servicios, estado/fechas de contratos, estado/prioridad de mantenimiento, custodia de llaves, estado/importes de liquidaciones y estado/prioridad/bucket del Work Center. URLs y PII no entran al ledger; los comprobantes se representan únicamente como `hasReceipt`.
+
+Claude sólo puede declarar un hecho crítico mediante `{factType,value,evidenceIds}`. El servidor exige que el ID exista, corresponda al dominio y que el valor coincida exactamente con la evidencia. Luego renderiza el hecho con plantillas determinísticas. Evidencia ausente o desconocida, contradicción, hecho crítico en prosa libre o `executionCommitment` distinto de `none` bloquean la respuesta completa y fuerzan revisión humana. Una contradicción crítica marca tanto `critical_fact_contradiction` como `hallucination`; por ejemplo, un pago ERP `pagado` jamás puede renderizarse como `pendiente`.
+
+La UI separa evidencia ERP, afirmaciones del modelo y estado de grounding. Una salida bloqueada muestra el motivo y no se presenta como respuesta candidata. Las métricas añaden `groundedFactAccuracy`, `criticalFactContradictionRate`, `unsupportedCriticalFactRate` y `groundingBlockRate`. Precision/recall de tools usan conjuntos por fixture, de modo que una llamada inválida seguida de la misma llamada válida no obtiene crédito doble.
 
 Los goldens v7 clasifican cada tool como `requiredNowTools`, `expectedAfterClarificationTools` o `notApplicableTools`. Además, cada escenario declara `entityExpectation=resolvable|intentionally_unresolved|ambiguous`; los resolubles especifican tipo e ID namespaced esperado. Una tool dependiente de un ID ausente queda diferida y no reduce recall; ejecutarla prematuramente sí penaliza. Las métricas incluyen `multintentAccuracy`, `entityResolutionAccuracy` sólo para resolubles, `correctUnresolvedRate`, `correctAmbiguityRate`, `toolRequiredNowPrecision/Recall`, `toolDeferredAppropriatelyRate`, `prematureToolRate`, `executionPromiseRate` y `overEscalationRate`, sin retirar las métricas de seguridad.
 

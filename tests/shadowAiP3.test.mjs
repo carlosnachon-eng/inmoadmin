@@ -8,10 +8,11 @@ import { SHADOW_AI_QA_DATASET, evaluateShadowAiQa } from "../lib/shadow/ai/qaDat
 import { READ_ONLY_SHADOW_TOOLS, SHADOW_TOOL_ARGUMENT_SCHEMAS, validateShadowToolArguments } from "../lib/shadow/context.js";
 import { classifyExplicitShadowAiIntent, runShadowAi } from "../lib/shadow/ai/runner.js";
 import { SHADOW_AI_PROMPT_VERSION, SHADOW_AI_SYSTEM_PROMPT } from "../lib/shadow/ai/prompt.js";
+import { buildEvidenceLedger, groundAndRenderDecision } from "../lib/shadow/ai/grounding.js";
 
 const devEnv = { SHADOW_AI_ENABLED:"true", SHADOW_AI_ALLOW_REAL_MESSAGES:"false", SHADOW_OUTBOUND_ENABLED:"false", SUPABASE_ENVIRONMENT:"dev", NEXT_PUBLIC_SUPABASE_URL:"https://hjfwjnejbcpmknvfpdcq.supabase.co", ANTHROPIC_API_KEY:"fixture" };
 const synthetic = { provider:"synthetic", providerMetadata:{syntheticScenario:"p3-01"} };
-const validDecision={intent:"mantenimiento",secondaryIntents:[],urgency:"normal",summary:"Fuga",entitiesMentioned:[],resolvedEntities:[],entityResolutionStatus:"not_applicable",informationNeeded:[],proposedToolCalls:[],contextAssessment:"Sin contexto",proposedAction:"Escalar",proposedResponse:"Lo revisará el equipo.",confidence:.8,requiresHuman:true,escalationReason:"Revisión",safetyFlags:[]};
+const validDecision={intent:"mantenimiento",secondaryIntents:[],urgency:"normal",summary:"Fuga",entitiesMentioned:[],resolvedEntities:[],entityResolutionStatus:"not_applicable",informationNeeded:[],proposedToolCalls:[],contextAssessment:"Sin contexto",proposedAction:"Escalar",factualClaims:[],conversationalResponseParts:{acknowledgement:"Entiendo.",verifiedFactReferences:[],clarificationQuestion:null,escalationMessage:"Esto requiere revisión del equipo."},executionCommitment:"none",confidence:.8,requiresHuman:true,escalationReason:"Revisión",safetyFlags:[]};
 function fakeAiDb(initialRuns=[], options={}){
   const writes=[]; const reads=[]; const runs=(Array.isArray(initialRuns) ? initialRuns : initialRuns ? [initialRuns] : []).map((row,index)=>({attempt_number:index+1,created_at:`2026-08-20T10:0${index}:00Z`,...row}));
   const decisions=[...(options.decisions || [])]; let nextRun=runs.length+1;
@@ -25,7 +26,8 @@ function fakeAiDb(initialRuns=[], options={}){
   }};
 }
 const toolCall=(tool,arguments_,reason="Contexto necesario")=>({tool,arguments:arguments_,reason});
-const sequenceModel=(decisions)=>{let index=0;return async()=>({text:JSON.stringify(decisions[Math.min(index++,decisions.length-1)]),usage:{input_tokens:10,output_tokens:5}});};
+const toV8=(decision)=>{const {proposedResponse,...rest}=decision;return proposedResponse===undefined?decision:{...rest,conversationalResponseParts:{acknowledgement:proposedResponse,verifiedFactReferences:[],clarificationQuestion:null,escalationMessage:null}};};
+const sequenceModel=(decisions)=>{let index=0;return async()=>({text:JSON.stringify(toV8(decisions[Math.min(index++,decisions.length-1)])),usage:{input_tokens:10,output_tokens:5}});};
 const advancingClock=(initial=Date.parse("2026-08-20T12:00:00Z"))=>{let current=initial;return{now:()=>current,setTimeout,clearTimeout,advance:(ms)=>{current+=ms;}};};
 const scheduledClock=(initial=Date.parse("2026-08-20T12:00:00Z"))=>{let current=initial;let id=0;const timers=new Map();return{now:()=>current,setTimeout:(callback,ms)=>{const timer=++id;timers.set(timer,{at:current+ms,callback});return timer;},clearTimeout:(timer)=>timers.delete(timer),advance:(ms)=>{current+=ms;for(const [timer,entry] of [...timers])if(entry.at<=current){timers.delete(timer);entry.callback();}}};};
 
@@ -43,6 +45,69 @@ test("schema estructurado rechaza texto libre y campos desconocidos", () => {
   assert.throws(()=>validateShadowAiDecision({...validDecision,sql:"delete"}),/invalid_structured_output/);
   assert.throws(()=>validateShadowAiDecision({...validDecision,summary:"x".repeat(501)}),/invalid_structured_output/);
   assert.throws(()=>validateShadowAiDecision({...validDecision,entitiesMentioned:["x".repeat(121)]}),/invalid_structured_output/);
+});
+
+test("grounding determinístico bloquea contradicciones críticas y conserva evidencia canónica",()=>{
+  const paymentId="f2a30000-0000-4000-8300-000000000001";
+  const tools=[{name:"get_payment_summary",ok:true,result:[{entityType:"payment",internalId:paymentId,status:"pagado",period:"2026-08",amount:12500}]}];
+  const evidenceId=`payment:${paymentId}`;
+  assert.deepEqual(buildEvidenceLedger(tools)[0].facts,{status:"pagado",period:"2026-08",amount:12500});
+  for(const [factType,value] of [["payment.status","pendiente"],["payment.amount",12000]]){
+    const grounded=groundAndRenderDecision({...validDecision,factualClaims:[{factType,value,evidenceIds:[evidenceId]}]},tools);
+    assert.equal(grounded.responseBlocked,true); assert.equal(grounded.groundingStatus,"blocked");
+    assert.match(grounded.groundingReason,/critical_fact_contradiction/); assert.ok(grounded.safetyFlags.includes("hallucination"));
+    assert.match(grounded.proposedResponse,/Respuesta bloqueada/);
+  }
+});
+
+test("regresión p3-07: ERP pagado nunca puede renderizarse como pendiente",()=>{
+  const id="f2a30000-0000-4000-8300-000000000001";
+  const result=groundAndRenderDecision({...validDecision,factualClaims:[{factType:"payment.status",value:"pendiente",evidenceIds:[`payment:${id}`]}]},[{name:"get_payment_summary",ok:true,result:[{entityType:"payment",internalId:id,status:"pagado",period:"2026-08",amount:12500}]}]);
+  assert.equal(result.responseBlocked,true); assert.doesNotMatch(result.proposedResponse,/pendiente/i); assert.ok(result.safetyFlags.includes("critical_fact_contradiction"));
+});
+
+test("grounding valida estados, fechas y montos de contrato, servicio y mantenimiento",()=>{
+  const tools=[
+    {name:"find_active_contracts",ok:true,result:[{entityType:"contract",internalId:"c1",status:"activo",startDate:"2026-01-01",endDate:"2026-12-31"}]},
+    {name:"get_service_period_status",ok:true,result:[{entityType:"service",internalId:"s1",status:"pagado",period:"2026-08",amount:800,hasReceipt:true}]},
+    {name:"get_maintenance_ticket_summary",ok:true,result:[{entityType:"maintenance_ticket",internalId:"t1",status:"abierto",priority:"alta"}]},
+  ];
+  const claims=[
+    {factType:"contract.endDate",value:"2026-12-31",evidenceIds:["contract:c1"]},
+    {factType:"service.amount",value:800,evidenceIds:["service:s1"]},
+    {factType:"maintenance_ticket.status",value:"abierto",evidenceIds:["maintenance_ticket:t1"]},
+  ];
+  const grounded=groundAndRenderDecision({...validDecision,factualClaims:claims,conversationalResponseParts:{...validDecision.conversationalResponseParts,verifiedFactReferences:claims.flatMap(x=>x.evidenceIds)}},tools);
+  assert.equal(grounded.responseBlocked,false); assert.equal(grounded.groundingStatus,"grounded"); assert.match(grounded.proposedResponse,/2026-12-31/); assert.match(grounded.proposedResponse,/\$800/);
+});
+
+test("B/C/D/E: grounding bloquea inversiones de estado y montos distintos en dominios críticos",()=>{
+  for(const [entityType,id,actual,factType,claimed] of [
+    ["payment","p2",{status:"pendiente"},"payment.status","pagado"],
+    ["contract","c2",{status:"activo"},"contract.status","vencido"],
+    ["maintenance_ticket","t2",{status:"cerrado"},"maintenance_ticket.status","abierto"],
+    ["owner_liquidation","o2",{totalAmount:5000},"owner_liquidation.totalAmount",5500],
+  ]){
+    const tools=[{name:"fixture",ok:true,result:[{entityType,internalId:id,...actual}]}];
+    const result=groundAndRenderDecision({...validDecision,factualClaims:[{factType,value:claimed,evidenceIds:[`${entityType}:${id}`]}]},tools);
+    assert.equal(result.responseBlocked,true,`${factType} debe bloquear`); assert.match(result.groundingReason,/critical_fact_contradiction/);
+  }
+});
+
+test("estado crítico ambiguo entre evidencias falla cerrado",()=>{
+  const tools=[{name:"get_payment_summary",ok:true,result:[{entityType:"payment",internalId:"p1",status:"pagado"},{entityType:"payment",internalId:"p2",status:"pendiente"}]}];
+  const result=groundAndRenderDecision({...validDecision,factualClaims:[{factType:"payment.status",value:"pagado",evidenceIds:["payment:p1","payment:p2"]}]},tools);
+  assert.equal(result.responseBlocked,true); assert.match(result.groundingReason,/ambiguous_critical_fact/);
+});
+
+test("grounding falla cerrado por evidencia ausente/desconocida, texto crítico o compromiso",()=>{
+  const cases=[
+    {...validDecision,factualClaims:[{factType:"key.inCustody",value:true,evidenceIds:[]}]},
+    {...validDecision,factualClaims:[{factType:"key.inCustody",value:true,evidenceIds:["key:missing"]}]},
+    {...validDecision,conversationalResponseParts:{...validDecision.conversationalResponseParts,acknowledgement:"El pago está pendiente."}},
+    {...validDecision,executionCommitment:"explicit"},
+  ];
+  for(const decision of cases) assert.equal(groundAndRenderDecision(decision,[]).responseBlocked,true);
 });
 
 test("contrato Anthropic usa output_config vigente y elimina constraints no soportados", async()=>{
@@ -77,8 +142,11 @@ test("cada tool tiene schema nominal estricto y rechaza argumentos faltantes o e
   assert.throws(()=>validateShadowToolArguments("get_maintenance_ticket_summary",{propertyId:"not-an-id"}),/invalid_tool_arguments/);
 });
 
-test("prompt v7 prohíbe tools prematuras, promesas y recomendaciones jurídicas categóricas",()=>{
-  assert.equal(SHADOW_AI_PROMPT_VERSION,"administradora-ia-emporio-v7");
+test("prompt v8 exige grounding y prohíbe tools prematuras, promesas y recomendaciones jurídicas categóricas",()=>{
+  assert.equal(SHADOW_AI_PROMPT_VERSION,"administradora-ia-emporio-v8");
+  assert.match(SHADOW_AI_SYSTEM_PROMPT,/evidenceLedger canónico/i);
+  assert.match(SHADOW_AI_SYSTEM_PROMPT,/factualClaims/i);
+  assert.match(SHADOW_AI_SYSTEM_PROMPT,/executionCommitment debe ser none/i);
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/prohibido anticipar la herramienta dependiente en la misma ronda/i);
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/Ya te mandé lo del agua.*servicio/i);
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/Hay una fuga de agua.*mantenimiento/i);
@@ -104,7 +172,7 @@ test("taxonomía separa controles de servicio de daños físicos",()=>{
   assert.equal(classifyExplicitShadowAiIntent("No tengo agua"),null);
 });
 
-test("taxonomía v7 corrige condiciones contractuales, liquidación, llaves y multintención",()=>{
+test("taxonomía v8 corrige condiciones contractuales, liquidación, llaves y multintención",()=>{
   assert.equal(classifyExplicitShadowAiIntent("Quiero cambiar el monto de la renta"),"contrato");
   assert.equal(classifyExplicitShadowAiIntent("Quiero descontarle una reparación al inquilino"),"propietario_liquidacion");
   assert.equal(classifyExplicitShadowAiIntent("Entrégale las llaves al técnico"),"llaves");
@@ -130,7 +198,8 @@ test("devolución de depósito conserva safety financiero independiente del inte
   assert.equal(result.decision.requiresHuman,true);
   assert.ok(result.decision.safetyFlags.includes("financial_action"));
   assert.ok(result.decision.safetyFlags.includes("deposit_eligibility_review_required"));
-  assert.equal(result.decision.proposedResponse,"Entiendo. Para revisar tu solicitud de devolución, ¿me confirmas a qué propiedad corresponde el depósito?");
+  assert.equal(result.decision.responseBlocked,true);
+  assert.match(result.decision.proposedResponse,/Respuesta bloqueada/);
 });
 
 test("contexto v7 reconcilia atraso, recibo y depósito del propietario sin sobre-escalar",async()=>{
@@ -271,7 +340,8 @@ test("promesas operativas de Shadow se bloquean determinísticamente",async()=>{
   for(const proposedResponse of ["Vamos a registrar el reporte de inmediato.","Voy a enviar la solicitud hoy.","Procederemos con la devolución.","Confírmame la dirección para que podamos registrar el caso.","Con eso puedo revisar el estado.","Después podré canalizar tu solicitud.","Para proceder necesito el inmueble.","Vamos a gestionar el caso.","Lo registraré hoy.","Te ayudaré a revisar el saldo.","Con eso podré ubicar el comprobante.","Para asignar las llaves necesito el inmueble.","Para comunicarlo al propietario necesito la dirección."]){
     const promised={...validDecision,proposedResponse,requiresHuman:false,safetyFlags:[]};
     const result=await runShadowAi(fakeAiDb(),{messageId:`promise-${proposedResponse}`,envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([promised])});
-    assert.equal(result.decision.requiresHuman,false);
+    assert.equal(result.decision.requiresHuman,true);
+    assert.equal(result.decision.responseBlocked,true);
     assert.equal(result.decision.safetyFlags.includes("shadow_action_promise_blocked"),true);
     assert.doesNotMatch(result.decision.proposedResponse,/voy a|vamos a|proceder|podamos registrar|puedo revisar|podr[eé] canalizar|gestionar|registrar[eé]/i);
   }
@@ -284,7 +354,7 @@ test("promesas por intención se neutralizan con una sola pregunta principal",as
     ["llaves","Para proceder necesito identificar el inmueble.","¿Me confirmas de qué inmueble necesitas las llaves?"],
   ]){
     const result=await runShadowAi(fakeAiDb(),{messageId:`future-${intent}`,envelope:{...synthetic,sanitizedText:"Sin identificador"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([{...validDecision,intent,proposedResponse:response,requiresHuman:intent!=="propietario_liquidacion"}])});
-    assert.equal(result.decision.proposedResponse,expected); assert.equal((expected.match(/\?/g)||[]).length,1);
+    assert.equal(result.decision.responseBlocked,true); assert.match(result.decision.proposedResponse,/Respuesta bloqueada/); assert.equal((expected.match(/\?/g)||[]).length,1);
   }
 });
 
@@ -293,7 +363,7 @@ test("jurídico escala sin recomendar suspender comunicaciones",async()=>{
   const result=await runShadowAi(fakeAiDb(),{messageId:"legal-safe",envelope:{...synthetic,sanitizedText:"Voy a demandarlos y hablar con mi abogado"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([claimed])});
   assert.equal(result.decision.requiresHuman,true); assert.ok(result.decision.safetyFlags.includes("unsafe_recommendation_blocked"));
   assert.equal(result.decision.proposedAction,"Escalar a Administración/Jurídico para revisión humana y preservar el contexto de la conversación.");
-  assert.equal(result.decision.proposedResponse,"Entiendo. Para que el equipo correspondiente pueda revisar tu caso, ¿me indicas brevemente cuál es el motivo principal de tu inconformidad?");
+  assert.equal(result.decision.proposedResponse,"Entiendo. ¿Me indicas brevemente cuál es el motivo principal de tu inconformidad? Esto requiere revisión del equipo de Administración/Jurídico.");
   assert.doesNotMatch(result.decision.proposedAction,/suspender/i); assert.equal((result.decision.proposedResponse.match(/\?/g)||[]).length,1);
 });
 
@@ -306,6 +376,15 @@ test("tools diferidas no penalizan recall y una tool prematura sí",()=>{
   const required={id:"required",metadata:{propertyReference:"Montpellier"},golden:{intent:"mantenimiento",expectedTools:["find_properties"],requiredNowTools:["find_properties"],expectedAfterClarificationTools:[],requiresHuman:true}};
   assert.equal(evaluateShadowAiQa([required],[{fixtureId:"required",status:"completed",decision:{...decision,intent:"mantenimiento",requiresHuman:true},tools:[]}]).toolRequiredNowRecall,0);
   assert.equal(evaluateShadowAiQa([required],[{fixtureId:"required",status:"completed",decision:{...decision,intent:"mantenimiento",requiresHuman:true},tools:[{name:"find_properties",ok:true}]}]).toolRequiredNowRecall,1);
+});
+
+test("I: recall usa tools únicas, no duplica crédito y detecta omisión p3-03",()=>{
+  const scenario=SHADOW_AI_QA_DATASET.find((item)=>item.id==="p3-03");
+  const decision={...validDecision,intent:scenario.golden.intent};
+  const partial=evaluateShadowAiQa([scenario],[{fixtureId:"p3-03",status:"completed",decision,tools:[{name:"get_maintenance_ticket_summary",ok:false},{name:"get_maintenance_ticket_summary",ok:true}]}]);
+  assert.equal(partial.toolRequiredNowRecall,0.5); assert.equal(partial.averageToolCallsPerRun,1);
+  const complete=evaluateShadowAiQa([scenario],[{fixtureId:"p3-03",status:"completed",decision,tools:[{name:"get_maintenance_ticket_summary",ok:false},{name:"get_maintenance_ticket_summary",ok:true},{name:"get_work_center_case",ok:true}]}]);
+  assert.equal(complete.toolRequiredNowRecall,1); assert.equal(complete.toolRequiredNowPrecision,1);
 });
 
 test("H: loop nunca supera tres rondas ni ejecuta tools nuevas en la última",async()=>{
@@ -327,7 +406,7 @@ test("runner permite error explícito, crea run encadenado y conserva prompt/mod
   assert.equal(result.status,"completed"); assert.equal(db.runs.some(row=>row.id==="run-error"),true);
   const insert=db.writes.find(x=>x.table==="shadow_ai_runs"&&x.action==="insert");
   assert.equal(insert.payload.retry_of_run_id,"run-error"); assert.equal(insert.payload.attempt_number,2);
-  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v7");
+  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v8");
   assert.equal(db.writes.filter(x=>x.table==="shadow_ai_decisions"&&x.action==="insert").length,1);
 });
 
