@@ -88,8 +88,11 @@ export default function ShadowCoordinatorPage() {
               <p><strong>Herramientas consultadas:</strong> {aiTools.length ? aiTools.map(x=>`${x.name} (${x.resultCount})`).join(", ") : "Ninguna"}</p>
               <p><strong>Contexto encontrado:</strong> {aiDecision.decision_json?.contextAssessment}</p>
               <p><strong>Resolución de entidades:</strong> {aiDecision.decision_json?.entityResolutionStatus || "Sin determinar"} · {(aiDecision.decision_json?.resolvedEntities || []).map(x=>x.label).join(", ") || "Sin entidades ERP confirmadas"}</p>
+              <p><strong>Grounding:</strong> {aiDecision.decision_json?.groundingStatus === "blocked" ? (aiDecision.decision_json?.groundingReason?.includes("contradiction") ? "Bloqueada — contradice Inmoadmin" : "Bloqueada — sin respaldo suficiente en Inmoadmin") : aiDecision.decision_json?.groundingStatus === "grounded" ? "Respaldada por evidencia ERP" : "Sin hechos ERP críticos"}</p>
+              {(aiDecision.decision_json?.evidenceLedger || []).length > 0 && <details><summary>Evidencia ERP canónica</summary>{aiDecision.decision_json.evidenceLedger.map(item=><p key={item.evidenceId}><code>{item.evidenceId}</code> · {Object.entries(item.facts || {}).map(([key,value])=>`${key}=${String(value)}`).join(", ")}</p>)}</details>}
+              {(aiDecision.decision_json?.factualClaims || []).length > 0 && <details><summary>Afirmaciones del modelo</summary>{aiDecision.decision_json.factualClaims.map((claim,index)=><p key={`${claim.factType}-${index}`}><code>{claim.factType}</code>={String(claim.value)} · evidencia: {(claim.evidenceIds || []).join(", ") || "ninguna"}</p>)}</details>}
               <p><strong>Acción propuesta:</strong> {aiDecision.proposed_action}</p>
-              <p><strong>Respuesta propuesta:</strong> {aiDecision.proposed_response}</p>
+              {aiDecision.decision_json?.responseBlocked ? <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:10,color:"#991b1b"}}><strong>Respuesta bloqueada</strong><p style={{marginBottom:0}}>{aiDecision.proposed_response}</p></div> : <p><strong>Respuesta propuesta:</strong> {aiDecision.proposed_response}</p>}
               <p><strong>Confianza:</strong> {Math.round(Number(aiDecision.confidence||0)*100)}% · <strong>Requiere humano:</strong> {aiDecision.requires_human ? "Sí" : "No"}</p>
               {aiDecision.escalation_reason && <p><strong>Motivo:</strong> {aiDecision.escalation_reason}</p>}
               <small>{aiRun.model} · {aiRun.prompt_version} · {aiRun.latency_ms || 0} ms</small>
