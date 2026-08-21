@@ -30,7 +30,7 @@ test("presupuesto reserva cierre de Function y difiere nuevos runs",()=>{
 
 test("agregación lee los 38 runs persistidos y reporta faltantes",()=>{
   const messages=SHADOW_AI_QA_DATASET.map((scenario,index)=>({id:`message-${index}`,provider_metadata:{syntheticScenario:scenario.id}}));
-  const runs=SHADOW_AI_QA_DATASET.map((scenario,index)=>({id:`run-${index}`,message_id:`message-${index}`,status:"completed",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v4",created_at:`2026-08-20T12:${String(index).padStart(2,"0")}:00Z`,latency_ms:100,input_tokens:10,output_tokens:5,estimated_cost_usd:.001,telemetry_json:{rounds:[{round:1}]}}));
+  const runs=SHADOW_AI_QA_DATASET.map((scenario,index)=>({id:`run-${index}`,message_id:`message-${index}`,status:"completed",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v5",created_at:`2026-08-20T12:${String(index).padStart(2,"0")}:00Z`,latency_ms:100,input_tokens:10,output_tokens:5,estimated_cost_usd:.001,telemetry_json:{rounds:[{round:1}]}}));
   const decisions=SHADOW_AI_QA_DATASET.map((scenario,index)=>({ai_run_id:`run-${index}`,decision_json:{intent:scenario.golden.intent,requiresHuman:scenario.golden.requiresHuman,safetyFlags:[]},tool_summary:scenario.golden.expectedTools.map((name)=>({name,ok:true,resultCount:1}))}));
   const all=aggregatePersistedShadowQa({messages,runs,decisions}); assert.equal(all.results.length,38); assert.equal(all.completed,38); assert.deepEqual(all.missingFixtures,[]); assert.equal(all.metrics.count,38); assert.equal(all.metrics.averageRoundsPerRun,1);
   const missing=aggregatePersistedShadowQa({messages:messages.slice(1),runs:runs.slice(1),decisions:decisions.slice(1)}); assert.ok(missing.missingFixtures.includes("p3-01"));
@@ -40,8 +40,8 @@ test("métricas semánticas excluyen timeout y runs sin decision",()=>{
   const scenarios=SHADOW_AI_QA_DATASET.slice(0,2);
   const messages=scenarios.map((scenario,index)=>({id:`message-quality-${index}`,provider_metadata:{syntheticScenario:scenario.id}}));
   const runs=[
-    {id:"run-timeout",message_id:messages[0].id,status:"timeout",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v4",created_at:"2026-08-20T12:00:00Z",latency_ms:50080,telemetry_json:{rounds:[{round:1}]}},
-    {id:"run-completed",message_id:messages[1].id,status:"completed",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v4",created_at:"2026-08-20T12:01:00Z",latency_ms:44921,telemetry_json:{rounds:[{round:1}]}},
+    {id:"run-timeout",message_id:messages[0].id,status:"timeout",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v5",created_at:"2026-08-20T12:00:00Z",latency_ms:50080,telemetry_json:{rounds:[{round:1}]}},
+    {id:"run-completed",message_id:messages[1].id,status:"completed",model:"claude-haiku-4-5-20251001",prompt_version:"administradora-ia-emporio-v5",created_at:"2026-08-20T12:01:00Z",latency_ms:44921,telemetry_json:{rounds:[{round:1}]}},
   ];
   const decisions=[{ai_run_id:"run-completed",decision_json:{intent:scenarios[1].golden.intent,requiresHuman:scenarios[1].golden.requiresHuman,safetyFlags:[]},tool_summary:[]}];
   const aggregate=aggregatePersistedShadowQa({messages,runs,decisions});
