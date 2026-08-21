@@ -32,6 +32,8 @@ test("continuation endpoint is DEV-only, explicit and one provider call per requ
 test("start persists awaiting instead of insufficient-round timeout",()=>{
   const core=fs.readFileSync(new URL("../lib/shadow/ai/stateMachine.js",import.meta.url),"utf8");
   assert.match(core,/execution_state: "awaiting_model_round"/);assert.doesNotMatch(core,/insufficient_round_budget/);
+  assert.match(core,/deriveRequiredTools/); assert.match(core,/combinePolicyAndModelTools/);
+  assert.match(core,/policy_required_tools/); assert.match(core,/source/);
 });
 test("state persistence excludes raw provider output and chain of thought",()=>{
   const core=fs.readFileSync(new URL("../lib/shadow/ai/stateMachine.js",import.meta.url),"utf8");

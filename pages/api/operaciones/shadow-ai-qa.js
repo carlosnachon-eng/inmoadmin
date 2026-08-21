@@ -3,7 +3,7 @@ import { DEV_PROJECT_REF, assertSupabaseEnvironment, getAdminSupabase } from "..
 import { classifyShadowMessage, syntheticEnvelope } from "../../../lib/shadow/coordinator";
 import { DEFAULT_SHADOW_AI_MODEL } from "../../../lib/shadow/ai/anthropic";
 import { SHADOW_AI_PROMPT_VERSION } from "../../../lib/shadow/ai/prompt";
-import { SHADOW_AI_QA_DATASET } from "../../../lib/shadow/ai/qaDataset";
+import { SHADOW_AI_QA_DATASET, SHADOW_AI_QA_REGRESSION_FIXTURES } from "../../../lib/shadow/ai/qaDataset";
 import { aggregatePersistedShadowQa, executionDisposition, remainingRunBudget, SHADOW_QA_MIN_RUN_BUDGET_MS, validateExplicitFixtureIds } from "../../../lib/shadow/ai/qaOrchestrator";
 import { startShadowAiStateMachine } from "../../../lib/shadow/ai/stateMachine";
 import { processShadowEnvelope } from "../../../lib/shadow/pipeline";
@@ -33,7 +33,7 @@ export default async function handler(req,res) {
     const admin=getAdminSupabase(); if(req.method==="GET")return res.status(200).json({ok:true,...await audit(admin)});
     const fixtureIds=validateExplicitFixtureIds(req.body?.fixtureIds); const retryFailed=req.body?.retryFailed===true;
     if(retryFailed&&fixtureIds.length!==1)return res.status(400).json({ok:false,error:"Retry requiere exactamente un fixture."});
-    const requested=new Map(SHADOW_AI_QA_DATASET.filter((item)=>fixtureIds.includes(item.id)).map((item)=>[item.id,item]));
+    const requested=new Map([...SHADOW_AI_QA_DATASET,...SHADOW_AI_QA_REGRESSION_FIXTURES].filter((item)=>fixtureIds.includes(item.id)).map((item)=>[item.id,item]));
     const startedAt=Date.now(); const results=[];
     for(const fixtureId of fixtureIds){
       const scenario=requested.get(fixtureId); const envelope=syntheticEnvelope({id:scenario.id,text:scenario.text,metadata:scenario.metadata});

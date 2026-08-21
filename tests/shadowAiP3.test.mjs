@@ -4,11 +4,12 @@ import fs from "node:fs";
 import { shadowAiGuard, SHADOW_AI_LIMITS } from "../lib/shadow/ai/guards.js";
 import { anthropicShadowAiDecisionJsonSchema, validateShadowAiDecision } from "../lib/shadow/ai/schema.js";
 import { createAnthropicShadowResponse } from "../lib/shadow/ai/anthropic.js";
-import { SHADOW_AI_QA_DATASET, evaluateShadowAiQa } from "../lib/shadow/ai/qaDataset.js";
+import { SHADOW_AI_QA_DATASET, SHADOW_AI_QA_REGRESSION_FIXTURES, evaluateShadowAiQa } from "../lib/shadow/ai/qaDataset.js";
 import { READ_ONLY_SHADOW_TOOLS, SHADOW_TOOL_ARGUMENT_SCHEMAS, validateShadowToolArguments } from "../lib/shadow/context.js";
 import { classifyExplicitShadowAiIntent, runShadowAi } from "../lib/shadow/ai/runner.js";
 import { SHADOW_AI_PROMPT_VERSION, SHADOW_AI_SYSTEM_PROMPT } from "../lib/shadow/ai/prompt.js";
 import { buildEvidenceLedger, groundAndRenderDecision } from "../lib/shadow/ai/grounding.js";
+import { combinePolicyAndModelTools, deriveRequiredTools } from "../lib/shadow/ai/toolPolicy.js";
 
 const devEnv = { SHADOW_AI_ENABLED:"true", SHADOW_AI_ALLOW_REAL_MESSAGES:"false", SHADOW_OUTBOUND_ENABLED:"false", SUPABASE_ENVIRONMENT:"dev", NEXT_PUBLIC_SUPABASE_URL:"https://hjfwjnejbcpmknvfpdcq.supabase.co", ANTHROPIC_API_KEY:"fixture" };
 const synthetic = { provider:"synthetic", providerMetadata:{syntheticScenario:"p3-01"} };
@@ -64,6 +65,49 @@ test("regresión p3-07: ERP pagado nunca puede renderizarse como pendiente",()=>
   const id="f2a30000-0000-4000-8300-000000000001";
   const result=groundAndRenderDecision({...validDecision,factualClaims:[{factType:"payment.status",value:"pendiente",evidenceIds:[`payment:${id}`]}]},[{name:"get_payment_summary",ok:true,result:[{entityType:"payment",internalId:id,status:"pagado",period:"2026-08",amount:12500}]}]);
   assert.equal(result.responseBlocked,true); assert.doesNotMatch(result.proposedResponse,/pendiente/i); assert.ok(result.safetyFlags.includes("critical_fact_contradiction"));
+});
+
+test("policy engine deriva tools required-now sin depender de Claude",()=>{
+  const contractId="f2a30000-0000-4000-8200-000000000001";
+  const payment=deriveRequiredTools({intent:"pago_renta",message:"¿Cuánto debo de renta?",metadata:{contractId}});
+  assert.deepEqual(payment.requiredNowTools.map(({name,args})=>({name,args})),[{name:"get_payment_summary",args:{contractId}}]);
+  assert.deepEqual(deriveRequiredTools({intent:"pago_renta",message:"¿Cuánto debo de renta?"}).expectedAfterClarificationTools,["get_payment_summary"]);
+  assert.deepEqual(deriveRequiredTools({intent:"llaves",message:"Necesito las llaves"}).requiredNowTools,[]);
+  assert.deepEqual(deriveRequiredTools({intent:"llaves",message:"Necesito las llaves"}).expectedAfterClarificationTools,["get_key_custody_status"]);
+});
+
+test("policies conservadoras cubren servicio, mantenimiento, contrato, llaves y liquidación",()=>{
+  const ids={propertyId:"f2a30000-0000-4000-8100-000000000001",serviceId:"f2a30000-0000-4000-8500-000000000001",keyId:"f2a30000-0000-4000-8800-000000000001",ownerPaymentId:"f2a30000-0000-4000-8700-000000000001"};
+  assert.equal(deriveRequiredTools({intent:"servicio",message:"¿Qué pasó con el recibo de agua?",metadata:ids}).requiredNowTools[0].name,"get_service_period_status");
+  assert.equal(deriveRequiredTools({intent:"mantenimiento",message:"Seguimiento de la reparación",metadata:ids}).requiredNowTools[0].name,"get_maintenance_ticket_summary");
+  assert.equal(deriveRequiredTools({intent:"contrato",message:"¿Cuándo vence mi contrato?",metadata:ids}).requiredNowTools[0].name,"find_active_contracts");
+  assert.equal(deriveRequiredTools({intent:"llaves",message:"Necesito las llaves",metadata:ids}).requiredNowTools[0].name,"get_key_custody_status");
+  assert.equal(deriveRequiredTools({intent:"propietario_liquidacion",message:"Detalle de mi liquidación",metadata:ids}).requiredNowTools[0].name,"get_owner_liquidation_summary");
+});
+
+test("union policy/model deduplica y conserva fuente auditable",()=>{
+  const call={name:"get_payment_summary",args:{contractId:"f2a30000-0000-4000-8200-000000000001"},reason:"contexto"};
+  const both=combinePolicyAndModelTools([{...call,source:"policy_required"}],[call]);
+  assert.equal(both.length,1); assert.equal(both[0].source,"both");
+  const separate=combinePolicyAndModelTools([{...call,source:"policy_required"}],[{name:"find_properties",args:{propertyReference:"Montpellier"},reason:"buscar"}]);
+  assert.deepEqual(separate.map((item)=>item.source),["policy_required","model_proposed"]);
+});
+
+test("regresión determinística p3-07 ejecuta pago y no completa antes de grounding",async()=>{
+  const contractId="f2a30000-0000-4000-8200-000000000001"; const paymentId="f2a30000-0000-4000-8300-000000000001";
+  const db=fakeAiDb([],{tableRows:{payments:[{id:paymentId,contract_id:contractId,status:"pagado",due_date:"2026-08",amount:12500}]}});
+  const interpret={...validDecision,intent:"pago_renta",summary:"Consulta de saldo",requiresHuman:false,escalationReason:null,proposedToolCalls:[]};
+  const grounded={...interpret,factualClaims:[{factType:"payment.status",value:"pagado",evidenceIds:[`payment:${paymentId}`]}],conversationalResponseParts:{acknowledgement:"Entiendo.",verifiedFactReferences:[`payment:${paymentId}`],clarificationQuestion:null,escalationMessage:null}};
+  const result=await runShadowAi(db,{messageId:"p3-reg-payment-grounding-01",envelope:{...synthetic,sanitizedText:"¿Cuánto debo de renta?",providerMetadata:{...synthetic.providerMetadata,syntheticScenario:"p3-reg-payment-grounding-01",contractId}},deterministic:{}},{env:devEnv,modelCall:sequenceModel([interpret,grounded])});
+  assert.equal(result.status,"completed"); assert.equal(result.rounds,2); assert.equal(result.tools.length,1);
+  assert.equal(result.tools[0].name,"get_payment_summary"); assert.equal(result.tools[0].source,"policy_required");
+  assert.equal(result.decision.evidenceLedger[0].facts.status,"pagado"); assert.equal(result.decision.groundingStatus,"grounded");
+});
+
+test("fixture de regresión tiene identidad nueva sin alterar los 38 goldens",()=>{
+  assert.equal(SHADOW_AI_QA_DATASET.length,38); assert.equal(SHADOW_AI_QA_REGRESSION_FIXTURES.length,1);
+  assert.equal(SHADOW_AI_QA_REGRESSION_FIXTURES[0].id,"p3-reg-payment-grounding-01");
+  assert.equal(SHADOW_AI_QA_REGRESSION_FIXTURES[0].golden.requiredNowTools[0],"get_payment_summary");
 });
 
 test("grounding valida estados, fechas y montos de contrato, servicio y mantenimiento",()=>{
@@ -233,7 +277,7 @@ test("dataset tiene 38 goldens y cubre safety", () => {
 
 test("métricas no colapsan seguridad en un promedio",()=>{
   const one=SHADOW_AI_QA_DATASET.slice(0,1); const metrics=evaluateShadowAiQa(one,[{fixtureId:one[0].id,status:"completed",decision:{intent:one[0].golden.intent,requiresHuman:one[0].golden.requiresHuman,safetyFlags:[],resolvedEntities:[{entityType:"property",internalId:one[0].golden.expectedFixtureId}],entityResolutionStatus:"resolved"},tools:[{name:"find_properties",ok:true,result:[{id:"property-qa"}]},{name:"get_maintenance_ticket_summary",ok:true,result:[]}],latencyMs:120,usage:{input_tokens:100,output_tokens:20},estimatedCostUsd:.0002}]);
-  for (const key of ["intentAccuracy","multintentAccuracy","entityResolutionAccuracy","correctUnresolvedRate","correctAmbiguityRate","toolSelectionPrecision","toolSelectionRecall","toolRequiredNowPrecision","toolRequiredNowRecall","toolDeferredAppropriatelyRate","prematureToolRate","executionPromiseRate","overEscalationRate","hallucinationRate","unsupportedFactRate","unnecessaryToolRate","correctEscalationRate","unsafeRecommendationRate","malformedOutputRate","timeoutErrorRate","schemaValidityRate","averageToolCallsPerRun","averageRoundsPerRun","latencyMsP50","latencyMsP95","inputTokens","outputTokens","estimatedCostUsd","averageCostUsd"]) assert.ok(Object.hasOwn(metrics,key),key);
+  for (const key of ["intentAccuracy","multintentAccuracy","entityResolutionAccuracy","correctUnresolvedRate","correctAmbiguityRate","toolSelectionPrecision","toolSelectionRecall","toolRequiredNowPrecision","toolRequiredNowRecall","policyRequiredToolExecutionRate","modelSuggestedToolRecall","overallRequiredToolExecutionRate","toolDeferredAppropriatelyRate","prematureToolRate","executionPromiseRate","overEscalationRate","hallucinationRate","unsupportedFactRate","unnecessaryToolRate","correctEscalationRate","unsafeRecommendationRate","malformedOutputRate","timeoutErrorRate","schemaValidityRate","averageToolCallsPerRun","averageRoundsPerRun","latencyMsP50","latencyMsP95","inputTokens","outputTokens","estimatedCostUsd","averageCostUsd"]) assert.ok(Object.hasOwn(metrics,key),key);
   assert.equal(metrics.entityResolutionAccuracy,1); assert.equal(metrics.latencyMsP95,120); assert.equal(metrics.inputTokens,100);
 });
 
