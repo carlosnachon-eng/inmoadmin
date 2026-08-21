@@ -77,9 +77,12 @@ test("cada tool tiene schema nominal estricto y rechaza argumentos faltantes o e
   assert.throws(()=>validateShadowToolArguments("get_maintenance_ticket_summary",{propertyId:"not-an-id"}),/invalid_tool_arguments/);
 });
 
-test("prompt v4 prohíbe dependencias anticipadas y promesas de acción Shadow",()=>{
-  assert.equal(SHADOW_AI_PROMPT_VERSION,"administradora-ia-emporio-v4");
+test("prompt v5 prohíbe dependencias anticipadas, promesas y separa servicio/mantenimiento",()=>{
+  assert.equal(SHADOW_AI_PROMPT_VERSION,"administradora-ia-emporio-v5");
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/prohibido anticipar la herramienta dependiente en la misma ronda/i);
+  assert.match(SHADOW_AI_SYSTEM_PROMPT,/Ya te mandé lo del agua.*servicio/i);
+  assert.match(SHADOW_AI_SYSTEM_PROMPT,/Hay una fuga de agua.*mantenimiento/i);
+  assert.match(SHADOW_AI_SYSTEM_PROMPT,/No tengo agua.*ambiguo/i);
   for(const phrase of ["voy a registrar","vamos a registrar","voy a enviar","voy a programar","voy a solicitar","voy a realizar","procederemos"]) assert.match(SHADOW_AI_SYSTEM_PROMPT,new RegExp(phrase,"i"));
 });
 
@@ -88,6 +91,22 @@ test("taxonomía separa depósito, renta y conflicto jurídico explícito",()=>{
   assert.equal(classifyExplicitShadowAiIntent("Devuélveme mi depósito hoy"),"devolucion_deposito");
   assert.equal(classifyExplicitShadowAiIntent("Me están robando el depósito, los voy a demandar"),"juridico_conflicto");
   assert.equal(classifyExplicitShadowAiIntent("Ya pagué la renta"),"pago_renta");
+});
+
+test("taxonomía separa controles de servicio de daños físicos",()=>{
+  for(const text of ["Ya te mandé lo del agua","Pagué el recibo del agua","Me van a cortar el agua"]) assert.equal(classifyExplicitShadowAiIntent(text),"servicio",text);
+  for(const text of ["Hay una fuga de agua","El técnico no arregló la fuga"]) assert.equal(classifyExplicitShadowAiIntent(text),"mantenimiento",text);
+  assert.equal(classifyExplicitShadowAiIntent("No tengo agua"),null);
+});
+
+test("p3-11 se reconcilia como servicio y no inventa reporte sin evidencia",async()=>{
+  const claimed={...validDecision,intent:"mantenimiento",entitiesMentioned:["Montpellier","agua"],entityResolutionStatus:"unresolved",proposedResponse:"Con eso podré ubicar tu reporte de agua.",requiresHuman:true};
+  const result=await runShadowAi(fakeAiDb(),{messageId:"service-water",envelope:{...synthetic,sanitizedText:"Ya te mandé lo del agua",providerMetadata:{...synthetic.providerMetadata,propertyReference:"Montpellier"}},deterministic:{}},{env:devEnv,modelCall:sequenceModel([claimed])});
+  assert.equal(result.decision.intent,"servicio");
+  assert.equal(result.decision.requiresHuman,true);
+  assert.ok(result.decision.safetyFlags.includes("unsupported_erp_fact"));
+  assert.equal(result.decision.proposedResponse,"Entiendo. No pude identificar con certeza la propiedad a la que te refieres. ¿Me confirmas cuál es para revisar lo del agua?");
+  assert.doesNotMatch(result.decision.proposedResponse,/ubicar (?:tu|el) (?:reporte|ticket)/i);
 });
 
 test("devolución de depósito conserva safety financiero independiente del intent jurídico",async()=>{
@@ -237,7 +256,7 @@ test("runner permite error explícito, crea run encadenado y conserva prompt/mod
   assert.equal(result.status,"completed"); assert.equal(db.runs.some(row=>row.id==="run-error"),true);
   const insert=db.writes.find(x=>x.table==="shadow_ai_runs"&&x.action==="insert");
   assert.equal(insert.payload.retry_of_run_id,"run-error"); assert.equal(insert.payload.attempt_number,2);
-  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v4");
+  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v5");
   assert.equal(db.writes.filter(x=>x.table==="shadow_ai_decisions"&&x.action==="insert").length,1);
 });
 
