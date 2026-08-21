@@ -6,7 +6,7 @@ import { anthropicShadowAiDecisionJsonSchema, validateShadowAiDecision } from ".
 import { createAnthropicShadowResponse } from "../lib/shadow/ai/anthropic.js";
 import { SHADOW_AI_QA_DATASET, SHADOW_AI_QA_REGRESSION_FIXTURES, evaluateShadowAiQa } from "../lib/shadow/ai/qaDataset.js";
 import { READ_ONLY_SHADOW_TOOLS, SHADOW_TOOL_ARGUMENT_SCHEMAS, validateShadowToolArguments } from "../lib/shadow/context.js";
-import { classifyExplicitShadowAiIntent, runShadowAi } from "../lib/shadow/ai/runner.js";
+import { classifyExplicitShadowAiIntent, finalizeShadowAiDecision, runShadowAi } from "../lib/shadow/ai/runner.js";
 import { SHADOW_AI_PROMPT_VERSION, SHADOW_AI_SYSTEM_PROMPT } from "../lib/shadow/ai/prompt.js";
 import { buildEvidenceLedger, groundAndRenderDecision } from "../lib/shadow/ai/grounding.js";
 import { combinePolicyAndModelTools, deriveRequiredTools } from "../lib/shadow/ai/toolPolicy.js";
@@ -86,6 +86,63 @@ test("texto crítico contradictorio continúa bloqueado aunque el claim sea corr
   const tools=[{name:"get_payment_summary",ok:true,result:[{entityType:"payment",internalId:id,status:"pagado"}]}];
   const result=groundAndRenderDecision({...validDecision,factualClaims:[{factType:"payment.status",value:"pagado",evidenceIds:[evidenceId]}],conversationalResponseParts:{acknowledgement:"Tienes una renta pendiente.",verifiedFactReferences:[evidenceId],clarificationQuestion:null,escalationMessage:null}},tools);
   assert.equal(result.responseBlocked,true); assert.match(result.groundingReason,/critical_fact_text_contradiction/); assert.ok(result.safetyFlags.includes("hallucination"));
+});
+
+test("regresión p3-12: recibo no disponible es compatible con hasReceipt=false",()=>{
+  const id="f2a30000-0000-4000-8500-000000000002";
+  const evidenceId=`service:${id}:control:f2a30000-0000-4000-8600-000000000002`;
+  const tools=[{name:"get_service_period_status",ok:true,result:[{entityType:"service",internalId:id,evidenceId,status:"pendiente",period:"2026-08",amount:920,hasReceipt:false}]}];
+  const result=groundAndRenderDecision({...validDecision,intent:"servicio",factualClaims:[
+    {factType:"service.status",value:"pendiente",evidenceIds:[evidenceId]},
+    {factType:"service.period",value:"2026-08",evidenceIds:[evidenceId]},
+    {factType:"service.amount",value:920,evidenceIds:[evidenceId]},
+    {factType:"service.hasReceipt",value:false,evidenceIds:[evidenceId]},
+  ],conversationalResponseParts:{acknowledgement:"Revisé el estado de tu servicio de CFE.",verifiedFactReferences:[evidenceId],clarificationQuestion:null,escalationMessage:"El servicio del periodo agosto 2026 está pendiente de pago (monto: $920) y aún no tiene recibo disponible."}},tools);
+  assert.equal(result.responseBlocked,false); assert.equal(result.groundingStatus,"grounded");
+  assert.doesNotMatch(result.groundingReason||"",/critical_fact_text_contradiction/);
+  assert.match(result.proposedResponse,/pendiente/); assert.match(result.proposedResponse,/no tiene comprobante/);
+});
+
+test("regresión p3-17: pagado $0 describe paidAmount y no contradice status pendiente",()=>{
+  const id="f2a30000-0000-4000-8700-000000000001"; const evidenceId=`owner_liquidation:${id}`;
+  const tools=[{name:"get_owner_liquidation_summary",ok:true,result:[{entityType:"owner_liquidation",internalId:id,status:"pendiente",period:"FASE2A-P3-QA periodo",totalAmount:11250,paidAmount:0}]}];
+  const result=groundAndRenderDecision({...validDecision,intent:"propietario_liquidacion",requiresHuman:false,escalationReason:null,factualClaims:[
+    {factType:"owner_liquidation.status",value:"pendiente",evidenceIds:[evidenceId]},
+    {factType:"owner_liquidation.period",value:"FASE2A-P3-QA periodo",evidenceIds:[evidenceId]},
+    {factType:"owner_liquidation.totalAmount",value:11250,evidenceIds:[evidenceId]},
+    {factType:"owner_liquidation.paidAmount",value:0,evidenceIds:[evidenceId]},
+  ],conversationalResponseParts:{acknowledgement:"Confirmo que tengo acceso a tu liquidación.",verifiedFactReferences:[evidenceId],clarificationQuestion:null,escalationMessage:"Aquí está el detalle: Período FASE2A-P3-QA, monto total $11,250.00, pagado $0.00, estado pendiente."}},tools);
+  assert.equal(result.responseBlocked,false); assert.equal(result.requiresHuman,false);
+  assert.doesNotMatch(result.groundingReason||"",/critical_fact_text_contradiction/);
+  assert.match(result.proposedResponse,/monto pagado registrado es \$0/);
+});
+
+test("consulta grounded ordinaria no se sobreescala cuando el técnico no llegó",()=>{
+  const ticketId="f2a30000-0000-4000-8400-000000000001"; const evidenceId=`maintenance_ticket:${ticketId}`;
+  const tools=[{name:"get_maintenance_ticket_summary",ok:true,result:[{entityType:"maintenance_ticket",internalId:ticketId,status:"nuevo",priority:"urgente"}]}];
+  const decision={...validDecision,intent:"mantenimiento",requiresHuman:true,escalationReason:"Reprogramar",factualClaims:[{factType:"maintenance_ticket.status",value:"nuevo",evidenceIds:[evidenceId]}],conversationalResponseParts:{acknowledgement:"Entiendo que el técnico no llegó.",verifiedFactReferences:[evidenceId],clarificationQuestion:"¿Me confirmas la fecha de la cita?",escalationMessage:"Administración reprograme la visita."}};
+  const result=finalizeShadowAiDecision(decision,{sanitizedText:"El técnico no llegó a la casa de Montpellier",providerMetadata:{}},tools);
+  assert.equal(result.requiresHuman,false); assert.equal(result.escalationReason,null);
+  assert.doesNotMatch(result.proposedResponse,/reprogr/i);
+});
+
+test("llaves conservan revisión humana, una pregunta y cero promesa futura",()=>{
+  const keyId="f2a30000-0000-4000-8800-000000000001"; const evidenceId=`key:${keyId}`;
+  const tools=[{name:"get_key_custody_status",ok:true,result:[{entityType:"key",internalId:keyId,status:"en_resguardo",inCustody:true}]}];
+  const base={...validDecision,intent:"llaves",requiresHuman:true,factualClaims:[{factType:"key.status",value:"en_resguardo",evidenceIds:[evidenceId]}],conversationalResponseParts:{acknowledgement:"Entiendo.",verifiedFactReferences:[evidenceId],clarificationQuestion:"¿Para qué la necesitas y cuánto tiempo?",escalationMessage:"El equipo verificará y actualizará el registro."}};
+  const request=finalizeShadowAiDecision(base,{sanitizedText:"Necesito que me presten las llaves",providerMetadata:{}},tools);
+  assert.equal(request.requiresHuman,true); assert.equal((request.proposedResponse.match(/\?/g)||[]).length,1);
+  assert.doesNotMatch(request.proposedResponse,/verificar[aá]|actualizar[aá]|se canaliza/i);
+  assert.match(request.proposedResponse,/requiere revisión y autorización/i);
+  const returned=finalizeShadowAiDecision(base,{sanitizedText:"Ya devolví las llaves",providerMetadata:{}},tools);
+  assert.equal(returned.requiresHuman,true); assert.equal((returned.proposedResponse.match(/\?/g)||[]).length,0);
+  assert.doesNotMatch(returned.proposedResponse,/verificar[aá]|actualizar[aá]|se canaliza/i);
+});
+
+test("p3-01 cuenta propiedad validada en contexto aunque la tool resuelva el ticket",()=>{
+  const scenario=SHADOW_AI_QA_DATASET.find((item)=>item.id==="p3-01");
+  const metrics=evaluateShadowAiQa([scenario],[{fixtureId:"p3-01",status:"completed",decision:{intent:"mantenimiento",requiresHuman:true,safetyFlags:[],resolvedEntities:[{entityType:"maintenance_ticket",internalId:"f2a30000-0000-4000-8400-000000000001"}],entityResolutionStatus:"resolved"},tools:[{name:"get_maintenance_ticket_summary",args:{propertyId:scenario.metadata.propertyId},ok:true}],latencyMs:1,usage:{},estimatedCostUsd:0}]);
+  assert.equal(metrics.entityResolutionAccuracy,1);
 });
 
 test("texto crítico sin claim o evidencia sigue bloqueado",()=>{
