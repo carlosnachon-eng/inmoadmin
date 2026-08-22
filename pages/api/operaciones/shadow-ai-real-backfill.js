@@ -1,6 +1,6 @@
 import { getAdminSupabase } from "../../../lib/ejecutivo/workCenter";
 import { authorizeShadowAdministrator } from "../../../lib/shadow/ai/apiAuth";
-import { AUTO_REAL_LOOKBACK_DAYS_MAX, estimateAutoRealVolume, loadAutoRealTurns, processNextAutoRealTurn } from "../../../lib/shadow/ai/autoReal";
+import { AUTO_REAL_LOOKBACK_DAYS_MAX, assertAutoRealEnvironment, estimateAutoRealVolume, loadAutoRealTurns, processNextAutoRealTurn } from "../../../lib/shadow/ai/autoReal";
 
 export const config = { maxDuration: 120 };
 
@@ -16,7 +16,9 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const loaded = await loadAutoRealTurns(admin, { lookbackDays, env: process.env });
       const estimate = estimateAutoRealVolume(loaded.turns);
-      return res.status(200).json({ ok: true, lookbackDays, totalTurns: loaded.turns.length, pending: estimate.pendingTurns, completed: loaded.turns.filter((item)=>item.disposition==='skip_completed').length, running: loaded.turns.filter((item)=>item.disposition==='block_running').length, failed: loaded.turns.filter((item)=>item.disposition==='report_failed_no_retry').length, estimate });
+      let enabled = true; try { assertAutoRealEnvironment(process.env, { mode: "backfill" }); } catch { enabled = false; }
+      const active = loaded.turns.find((item)=>item.disposition==='block_running') || null;
+      return res.status(200).json({ ok: true, enabled, lookbackDays, totalTurns: loaded.turns.length, pending: estimate.pendingTurns, completed: loaded.turns.filter((item)=>item.disposition==='skip_completed').length, running: loaded.turns.filter((item)=>item.disposition==='block_running').length, errors: loaded.turns.filter((item)=>item.disposition==='report_failed_no_retry' && item.runState==='error').length, timeouts: loaded.turns.filter((item)=>item.disposition==='report_failed_no_retry' && item.runState==='timeout').length, activeTurn: active ? { turnKey: active.turnKey.slice(0,12), runId: active.runId, executionState: active.runState, currentRound: active.currentRound } : null, estimate });
     }
     const result = await processNextAutoRealTurn(admin, { env: process.env, lookbackDays, inputMode: "backfill_real_shadow" });
     return res.status(200).json({ ok: true, ...result });
