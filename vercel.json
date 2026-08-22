@@ -27,6 +27,10 @@
     {
       "path": "/api/cron/shadow-operational-events",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/shadow-ai-real-auto",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

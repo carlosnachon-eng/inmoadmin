@@ -23,6 +23,7 @@ export default function ShadowCoordinatorPage() {
   const [shadowView, setShadowView] = useState("conversations");
   const [qaRunning, setQaRunning] = useState(false); const [qaReport, setQaReport] = useState(null);
   const [qaFixtureIds, setQaFixtureIds] = useState("");
+  const [autoPlan, setAutoPlan] = useState(null);
   const [qaCampaignId, setQaCampaignId] = useState(SHADOW_QA_FINAL_CAMPAIGN_ID);
   const qaDevUiEnabled = isQaDevUiEnabled(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const qaFixtureScope = useMemo(() => qaCampaignFixtureScope(qaCampaignId), [qaCampaignId]);
@@ -44,7 +45,8 @@ export default function ShadowCoordinatorPage() {
   const selectedFixtureId = selected?.provider_metadata?.syntheticScenario;
   const aiRun = useMemo(() => (data?.aiRuns || []).find((item) => selected?.real_shadow?.runId ? item.id === selected.real_shadow.runId : item.message_id === selectedId && (!selectedFixtureId || item.campaign_id === qaCampaignId)), [data, selected, selectedId, selectedFixtureId, qaCampaignId]);
   const aiDecision = useMemo(() => (data?.aiDecisions || []).find((item) => item.ai_run_id === aiRun?.id), [data, aiRun?.id]);
-  const laterHumanResponse = useMemo(() => !selected ? null : (data?.messages || []).filter((item) => item.conversation_id === selected.conversation_id && item.direction === "outbound_human" && new Date(item.occurred_at) > new Date(selected.occurred_at)).sort((a,b)=>new Date(a.occurred_at)-new Date(b.occurred_at))[0] || null, [data, selected]);
+  const laterHumanResponse = useMemo(() => !selected ? null : (aiRun?.telemetry_json?.human_response_id ? (data?.messages || []).find((item)=>item.id===aiRun.telemetry_json.human_response_id) : (data?.messages || []).filter((item) => item.conversation_id === selected.conversation_id && item.direction === "outbound_human" && new Date(item.occurred_at) > new Date(selected.occurred_at)).sort((a,b)=>new Date(a.occurred_at)-new Date(b.occurred_at))[0]) || null, [data, selected, aiRun]);
+  const turnMessages = useMemo(() => (aiRun?.telemetry_json?.turn_message_ids || []).map((id)=>(data?.messages || []).find((item)=>item.id===id)).filter(Boolean), [data, aiRun]);
   const aiTools = aiDecision?.tool_summary || [];
   const intentCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.intent]: (acc[item.intent] || 0) + 1 }), {}), [data]);
   const likelihoodCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.administrative_likelihood]: (acc[item.administrative_likelihood] || 0) + 1 }), { high: 0, medium: 0, low: 0, unknown: 0 }), [data]);
@@ -75,10 +77,28 @@ export default function ShadowCoordinatorPage() {
   const runRealShadow = async (continuation = false) => {
     setQaRunning(true); setError("");
     const endpoint = continuation ? "/api/operaciones/shadow-ai-real-continue" : "/api/operaciones/shadow-ai-real-run";
-    const body = continuation ? { runId: selected?.real_shadow?.runId } : { messageId: selectedId };
+    const body = continuation ? { runId: selected?.real_shadow?.runId } : { messageId: selectedId, authorizationId: selected?.real_shadow?.authorization?.id };
     const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify(body) });
     const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo ejecutar el análisis manual.");
     await load();
+  };
+  const authorizeRealShadow = async () => {
+    setQaRunning(true); setError("");
+    const response = await fetch("/api/operaciones/shadow-ai-real-authorize", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ messageId: selectedId }) });
+    const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo autorizar el análisis manual.");
+    await load();
+  };
+  const revokeRealShadow = async () => {
+    setQaRunning(true); setError("");
+    const response = await fetch("/api/operaciones/shadow-ai-real-revoke", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ authorizationId: selected?.real_shadow?.authorization?.id }) });
+    const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo revocar la autorización.");
+    await load();
+  };
+  const loadAutoBackfillPlan = async () => {
+    setQaRunning(true); setError("");
+    const response = await fetch("/api/operaciones/shadow-ai-real-backfill?lookbackDays=5", { headers: { Authorization: `Bearer ${session.access_token}` } });
+    const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo preparar el backfill.");
+    setAutoPlan(json);
   };
   const validateRealShadowDevClone = async () => {
     setQaRunning(true); setError("");
@@ -96,6 +116,7 @@ export default function ShadowCoordinatorPage() {
     <main style={{ padding: 22 }}>
       <div style={{ marginBottom: 16 }}><h1 style={{ margin: 0, color: brand.gray }}>🌒 Coordinador IA — Sombra</h1><p style={{ color: brand.grayLight }}>Sólo observación y evaluación. No envía mensajes ni modifica el ERP.</p></div>
       {qaDevUiEnabled && authorized && <details style={{ ...card, marginBottom: 14 }}><summary>QA sintética P3 (sólo DEV)</summary><label htmlFor="qa-campaign-id"><strong>Campaña</strong></label><input id="qa-campaign-id" aria-label="Campaign ID QA" value={qaCampaignId} onChange={(event)=>{setQaCampaignId(event.target.value);setQaReport(null);}} maxLength={80} autoComplete="off" spellCheck={false} style={{width:"100%",boxSizing:"border-box",padding:9,margin:"6px 0 8px"}}/><p><strong>Estado:</strong> {qaReport?.completed || 0}/{qaReport?.totalFixtures || qaFixtureScope.length} completados · {qaReport?.missingFixtures?.length ?? qaFixtureScope.length} pendientes · {(qaReport?.results || []).filter((item)=>item.status==="error").length} error · {(qaReport?.results || []).filter((item)=>item.status==="timeout").length} timeout</p><p style={{ color: brand.grayLight }}>Una request ejecuta como máximo un fixture explícito. El servidor valida campaña, autenticación, entorno DEV, fixtures sintéticos y bloqueos de mensajes reales/outbound.</p><input aria-label="Fixture QA" value={qaFixtureIds} onChange={(event)=>setQaFixtureIds(event.target.value)} placeholder="p3-11" style={{width:"100%",boxSizing:"border-box",padding:9,marginBottom:8}}/><button disabled={qaRunning||!qaFixtureIds.trim()} onClick={()=>qaOrchestrator("POST")} style={{marginRight:8}}>Ejecutar fixture seleccionado</button><button disabled={qaRunning} onClick={()=>qaOrchestrator("GET")} style={{marginRight:8}}>Mostrar pendientes</button><button disabled={qaRunning} onClick={()=>qaOrchestrator("GET")}>Agregar métricas QA</button>{qaRunning&&<p>Ejecutando fixture…</p>}{qaReport&&<pre style={{overflow:"auto",maxHeight:360}}>{JSON.stringify(qaReport,null,2)}</pre>}</details>}
+      {qaDevUiEnabled && authorized && <details style={{ ...card, marginBottom: 14 }}><summary>Auto Shadow conversacional (DEV, preparación)</summary><p>Turnos consecutivos del cliente; una respuesta humana o una pausa mayor a cinco minutos cierra el turno. Este panel sólo calcula el plan y no ejecuta Claude.</p><button disabled={qaRunning} onClick={loadAutoBackfillPlan}>Mostrar plan de 5 días</button>{autoPlan&&<p>{autoPlan.totalTurns} turns · {autoPlan.pending} pendientes · costo estimado USD {Number(autoPlan.estimate?.estimatedCostUsd||0).toFixed(4)}</p>}</details>}
       {error && <div style={{ ...card, background: "#fef2f2", color: "#991b1b", marginBottom: 12 }}>{error}</div>}
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 16 }}>
         {[["Mensajes", data?.messages?.length || 0], ["Eventos operativos", data?.operationalEvents?.length || 0], ["Duplicados", data?.metrics?.duplicate || 0], ["Sanitizados", data?.metrics?.sanitized || 0], ["Revisión humana", data?.messages?.filter(x=>x.requires_human).length || 0], ["Contexto ambiguo", ambiguousMessageIds.size]].map(([label,value]) => <div key={label} style={card}><div style={{ fontSize: 24, fontWeight: 800 }}>{value}</div><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
@@ -118,8 +139,12 @@ export default function ShadowCoordinatorPage() {
           <p><strong>Información faltante:</strong> {selected.requires_human ? "Se requiere confirmar contexto o intención." : "Ninguna detectada."}</p>
           {matches[0]?.context_href && <a href={matches[0].context_href}>Abrir contexto en modo lectura</a>}
           <div style={{ ...card, background: "#f8fafc", marginTop: 14 }}><h3 style={{marginTop:0}}>Administradora IA</h3>
+            {turnMessages.length > 1 && <details><summary>Turno del cliente ({turnMessages.length} mensajes)</summary>{turnMessages.map((item)=><p key={item.id}>{item.sanitized_text}</p>)}</details>}
             {selected.real_shadow?.devTest && <p style={{color:"#92400e",fontWeight:800}}>DEV TEST — clone sintético, nunca se envía ni procesa como mensaje real.</p>}
+            {selected.real_shadow?.authorizable && <button disabled={qaRunning} onClick={authorizeRealShadow}>Autorizar análisis</button>}
+            {selected.real_shadow?.authorization && <p><strong>Autorización:</strong> {selected.real_shadow.authorization.state === "active" ? `Activa hasta ${new Date(selected.real_shadow.authorization.expiresAt).toLocaleTimeString("es-MX")}` : selected.real_shadow.authorization.state === "consumed" ? "Consumida" : selected.real_shadow.authorization.state === "revoked" ? "Revocada" : "Expirada"}</p>}
             {selected.real_shadow?.eligible && <button disabled={qaRunning} onClick={selected.real_shadow?.devTest ? validateRealShadowDevClone : ()=>runRealShadow(false)}>Analizar en Shadow</button>}
+            {selected.real_shadow?.authorization?.state === "active" && <button disabled={qaRunning} onClick={revokeRealShadow} style={{marginLeft:8}}>Revocar autorización</button>}
             {selected.real_shadow?.executionState === "awaiting_model_round" && <button disabled={qaRunning} onClick={()=>runRealShadow(true)}>Continuar análisis</button>}
             {!aiDecision ? <><p style={{marginBottom:0}}>Estado: {aiRun?.execution_state === "awaiting_model_round" ? "Esperando siguiente ronda" : (aiRun?.execution_state || aiRun?.status || "No ejecutado")}</p>{aiRun?.execution_state === "awaiting_model_round" && <div style={{background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:8,padding:10,marginTop:8}}><p style={{marginTop:0}}>Ronda {aiRun.current_round} de {aiRun.max_rounds}. Evidencia persistida: {(aiRun.evidence_ledger || []).length} registro(s).</p><button disabled={qaRunning} onClick={continueRun}>Continuar run</button></div>}{retryAvailable && <div style={{background:"#fff7ed",border:"1px solid #fdba74",borderRadius:8,padding:10}}><p style={{color:"#9a3412",marginTop:0}}>Intento {Number(aiRun.attempt_number||1)} de 3 falló. Run previo: <code>{aiRun.id}</code></p><button disabled={qaRunning} onClick={()=>qaOrchestrator("POST",{retryFailed:true,fixtureIdsOverride:[selectedFixtureId]})} style={{background:"#9a3412",color:"#fff",border:0,borderRadius:8,padding:"8px 12px",fontWeight:700}}>Reintentar run fallido</button></div>}</> : <>
               <p><strong>Análisis:</strong> {aiDecision.decision_json?.summary}</p>
