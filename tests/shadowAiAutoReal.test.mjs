@@ -5,6 +5,8 @@ import { AUTO_REAL_MAX_TURNS_PER_INVOCATION, assertAutoRealEnvironment, autoReal
 import { buildRealShadowConversationTurns, REAL_SHADOW_CONTEXT_MAX_CHARS, REAL_SHADOW_CONTEXT_MAX_MESSAGES, realShadowTurnEnvelope } from "../lib/shadow/ai/conversationTurns.js";
 import { isRealShadowQaMessage } from "../lib/shadow/ai/realMessage.js";
 import { minimalShadowAiContext } from "../lib/shadow/ai/runner.js";
+import { createShadowAiInputSnapshot, inputEnvelopeForShadowAiRun } from "../lib/shadow/ai/stateMachine.js";
+import { REAL_SHADOW_AUTO_AI_PROMPT_VERSION } from "../lib/shadow/ai/realPrompt.js";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => fs.readFileSync(new URL(path, root), "utf8");
@@ -78,11 +80,67 @@ test("completed/running/error-timeout conservan idempotencia sin retry", () => {
   assert.equal(autoRealRunDisposition({status:"error"}),"report_failed_no_retry"); assert.equal(autoRealRunDisposition({status:"timeout"}),"report_failed_no_retry");
 });
 
-test("prompt v2 no vuelve pendientes los turns reales ya completados con v1", () => {
+test("prompt vigente no vuelve pendientes los turns reales ya completados con una versión anterior", () => {
   const legacy={id:"legacy",status:"completed",prompt_version:"administradora-ia-emporio-real-shadow-v1"};
   assert.equal(selectAutoRealRun([legacy])?.id,"legacy");
-  const current={id:"current",status:"error",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
+  const current={id:"current",status:"error",prompt_version:REAL_SHADOW_AUTO_AI_PROMPT_VERSION};
   assert.equal(selectAutoRealRun([legacy,current])?.id,"current");
+});
+
+test("prompt/runtime v3 distingue runs posteriores sin reanalizar completed o failed previos", () => {
+  assert.equal(REAL_SHADOW_AUTO_AI_PROMPT_VERSION,"administradora-ia-emporio-real-shadow-v3");
+  const completed={id:"completed-v2",status:"completed",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
+  const failed={id:"failed-v2",status:"timeout",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
+  assert.equal(selectAutoRealRun([completed])?.id,"completed-v2");
+  assert.equal(selectAutoRealRun([failed])?.id,"failed-v2");
+});
+
+test("regresión real sanitizada conserva turn completo y 932 caracteres previos hasta el input Claude", () => {
+  const realConversation={id:"913f8fb8-d5d0-4310-a1b4-118a0bb40ecc",provider:"respond_admin",channel:"544519"};
+  const realMessages=[
+    { ...msg("prior-inbound","inbound",0,"x".repeat(11)),conversation_id:realConversation.id,occurred_at:"2026-08-22T15:00:15Z" },
+    { ...msg("prior-human","outbound_human",0,"y".repeat(921)),conversation_id:realConversation.id,occurred_at:"2026-08-22T15:00:17Z" },
+    { ...msg("57e3b8ce-9646-44fd-9987-f7030e9a652f","inbound",0,"Primer inbound sanitizado"),conversation_id:realConversation.id,occurred_at:"2026-08-22T15:01:13Z" },
+    { ...msg("59592da0-6e15-4aae-952c-8b5a2c619692","inbound",0,"Segundo inbound sanitizado"),conversation_id:realConversation.id,occurred_at:"2026-08-22T15:01:47Z" },
+    { ...msg("future-human","outbound_human",0,"RESPUESTA HUMANA POSTERIOR"),conversation_id:realConversation.id,occurred_at:"2026-08-22T15:02:03.509Z" },
+  ];
+  const turns=buildRealShadowConversationTurns({messages:realMessages,conversations:[realConversation],env,now:Date.parse("2026-08-22T15:10:00Z")});
+  const turn=turns[1];
+  assert.deepEqual(turn.messageIds,["57e3b8ce-9646-44fd-9987-f7030e9a652f","59592da0-6e15-4aae-952c-8b5a2c619692"]);
+  const snapshot=createShadowAiInputSnapshot(realShadowTurnEnvelope(turn,realConversation));
+  assert.equal(snapshot.providerMetadata.priorConversation.reduce((sum,item)=>sum+item.sanitizedText.length,0),932);
+  const run={input_kind:"conversational_message",round_state_json:{inputSnapshot:snapshot}};
+  const reloadedAnchor={provider:"respond_admin",direction:"inbound",sanitized_text:"Sólo anchor",provider_metadata:{},occurred_at:"2026-08-22T15:01:47Z"};
+  const finalEnvelope=inputEnvelopeForShadowAiRun(run,reloadedAnchor,null,realConversation);
+  const modelInput=minimalShadowAiContext(finalEnvelope,{},[],0);
+  assert.equal(modelInput.message,"Primer inbound sanitizado\nSegundo inbound sanitizado");
+  assert.equal(modelInput.metadata.priorConversation.length,2);
+  assert.equal(modelInput.metadata.priorConversation.reduce((sum,item)=>sum+item.sanitizedText.length,0),932);
+  assert.doesNotMatch(JSON.stringify(modelInput),/RESPUESTA HUMANA POSTERIOR/);
+});
+
+test("continuation reutiliza snapshot inmutable y no incorpora outbound_human posterior", () => {
+  const envelope={provider:"respond_admin",direction:"inbound",sanitizedText:"Sí, me apoyas con eso",occurredAt:"2026-08-22T15:01:47Z",externalMessageId:"turn:estable",providerMetadata:{channelId:"544519",priorConversation:[{direction:"outbound_human",sanitizedText:"¿Confirmas el asunto previo?"}],conversationTurn:{turnKey:"estable",messageIds:["a","b"],messageCount:2}}};
+  const snapshot=createShadowAiInputSnapshot(envelope); const run={input_kind:"conversational_message",round_state_json:{inputSnapshot:snapshot}};
+  const laterMessage={provider:"respond_admin",direction:"inbound",sanitized_text:"anchor",provider_metadata:{priorConversation:[{direction:"outbound_human",sanitizedText:"RESPUESTA NUEVA POSTERIOR"}]}};
+  const round1=inputEnvelopeForShadowAiRun(run,laterMessage,null,conversation);
+  const continuation=inputEnvelopeForShadowAiRun(run,laterMessage,null,conversation);
+  assert.deepEqual(continuation,round1);
+  assert.match(JSON.stringify(continuation),/asunto previo/);
+  assert.doesNotMatch(JSON.stringify(continuation),/RESPUESTA NUEVA POSTERIOR/);
+});
+
+test("state machine usa el snapshot persistido como entrada real de todas las rondas", () => {
+  const source=read("lib/shadow/ai/stateMachine.js");
+  assert.match(source,/const inputEnvelope = inputEnvelopeForShadowAiRun\(run, message, operationalInput, messageConversation\)/);
+  assert.match(source,/minimalShadowAiContext\(envelope, deterministic, previousTools, round - 1\)/);
+  assert.match(source,/round_state_json: \{ resolvedOperationalContext, \.\.\.\(inputSnapshot \? \{ inputSnapshot \} : \{\}\), rounds: \[\] \}/);
+  const prior=Array.from({length:10},(_,index)=>({direction:index%2?"outbound_human":"inbound",sanitizedText:"x".repeat(500)}));
+  const snapshot=createShadowAiInputSnapshot({provider:"respond_admin",direction:"inbound",sanitizedText:"turn actual intacto",providerMetadata:{channelId:"544519",priorConversation:prior,conversationTurn:{turnKey:"t",messageIds:["a"],messageCount:1}}});
+  assert.ok(snapshot.providerMetadata.priorConversation.length<=REAL_SHADOW_CONTEXT_MAX_MESSAGES);
+  assert.ok(snapshot.providerMetadata.priorConversation.reduce((sum,item)=>sum+item.sanitizedText.length,0)<=REAL_SHADOW_CONTEXT_MAX_CHARS);
+  assert.equal(snapshot.sanitizedText,"turn actual intacto");
+  assert.doesNotMatch(JSON.stringify(snapshot),/raw_payload|phone|email|token|attachment/);
 });
 
 test("backfill ON y auto OFF permite backfill pero bloquea cron", () => {
