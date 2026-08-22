@@ -45,6 +45,20 @@ test("clone DEV exacto es elegible sin relajar mensajes reales ni Production", (
   assert.equal(realShadowDevCloneEligibility({ message: devClone, conversation, env: { ...devEnv, SHADOW_OUTBOUND_ENABLED: "true" } }).allowed, false);
 });
 
+test("clone persistido conserva marker hasta coordinator y habilita exclusivamente la UI DEV-test", () => {
+  const coordinator = read("pages/api/operaciones/shadow-coordinator.js");
+  const ui = read("pages/coordinador-ia-sombra.js");
+  assert.match(coordinator, /select\("[^"]*external_message_id[^"]*"\)/);
+  const eligibility = realShadowDevCloneEligibility({ message: devClone, conversation, env: devEnv });
+  const realShadow = { eligible: eligibility.allowed, devTest: eligibility.allowed, reason: eligibility.reason };
+  assert.deepEqual(realShadow, { eligible: true, devTest: true, reason: "eligible_dev_clone" });
+  assert.match(coordinator, /real_shadow: \{ eligible:/);
+  assert.match(ui, /selected\.real_shadow\?\.devTest/);
+  assert.match(ui, /selected\.real_shadow\?\.eligible/);
+  assert.match(ui, />DEV TEST/);
+  assert.match(ui, />Analizar en Shadow</);
+});
+
 test("guard productivo requiere opt-ins exactos, Production correcto y outbound apagado", () => {
   assert.equal(assertRealShadowRunEnvironment(prodEnv).projectRef, "bnzrnizrmonjxlktbhlp");
   for (const override of [
