@@ -9,7 +9,9 @@ const read = (path) => fs.readFileSync(new URL(path, root), "utf8");
 const conversation = { id: "c1", provider: "respond_admin", channel: "544519" };
 const msg = (id, direction, minute, text = `mensaje ${id}`, metadata = {}) => ({ id, conversation_id: "c1", direction, occurred_at: `2026-08-21T12:${String(minute).padStart(2,"0")}:00Z`, sanitized_text: text, attachment_metadata: [], provider_metadata: metadata, external_message_id: `opaque-${id}` });
 const env = { SHADOW_RESPOND_ADMIN_CHANNEL_ID: "544519" };
-const prodAutoEnv = { VERCEL_ENV:"production",SUPABASE_ENVIRONMENT:"production",NEXT_PUBLIC_SUPABASE_URL:"https://bnzrnizrmonjxlktbhlp.supabase.co",SHADOW_AI_AUTO_REAL_ENABLED:"true",SHADOW_AI_ENABLED:"false",SHADOW_AI_PRODUCTION_ENABLED:"false",SHADOW_AI_ALLOW_REAL_MESSAGES:"false",SHADOW_AI_ALLOW_OPERATIONAL_EVENTS:"false",SHADOW_OUTBOUND_ENABLED:"false" };
+const prodBaseEnv = { VERCEL_ENV:"production",SUPABASE_ENVIRONMENT:"production",NEXT_PUBLIC_SUPABASE_URL:"https://bnzrnizrmonjxlktbhlp.supabase.co",SHADOW_AI_ENABLED:"true",SHADOW_AI_PRODUCTION_ENABLED:"true",SHADOW_AI_ALLOW_REAL_MESSAGES:"true",SHADOW_AI_ALLOW_OPERATIONAL_EVENTS:"false",SHADOW_OUTBOUND_ENABLED:"false" };
+const prodAutoEnv = { ...prodBaseEnv, SHADOW_AI_AUTO_REAL_ENABLED:"true", SHADOW_AI_BACKFILL_REAL_ENABLED:"false" };
+const prodBackfillEnv = { ...prodBaseEnv, SHADOW_AI_AUTO_REAL_ENABLED:"false", SHADOW_AI_BACKFILL_REAL_ENABLED:"true" };
 
 test("tres inbound consecutivos forman un solo turn", () => {
   const turns = buildRealShadowConversationTurns({ messages:[msg("a","inbound",0),msg("b","inbound",1),msg("c","inbound",2)], conversations:[conversation], env, now:Date.parse("2026-08-21T12:10:00Z") });
@@ -38,9 +40,31 @@ test("completed/running/error-timeout conservan idempotencia sin retry", () => {
   assert.equal(autoRealRunDisposition({status:"error"}),"report_failed_no_retry"); assert.equal(autoRealRunDisposition({status:"timeout"}),"report_failed_no_retry");
 });
 
-test("kill switch es independiente, global AI permanece OFF y outbound/operational bloquean", () => {
+test("backfill ON y auto OFF permite backfill pero bloquea cron", () => {
+  assert.equal(assertAutoRealEnvironment(prodBackfillEnv,{mode:"backfill"}).projectRef,"bnzrnizrmonjxlktbhlp");
+  assert.throws(()=>assertAutoRealEnvironment(prodBackfillEnv,{mode:"auto"}),/auto_real_kill_switch_disabled/);
+});
+
+test("auto ON y backfill OFF permite cron pero bloquea backfill", () => {
   assert.equal(assertAutoRealEnvironment(prodAutoEnv).projectRef,"bnzrnizrmonjxlktbhlp");
-  for(const override of [{SHADOW_AI_AUTO_REAL_ENABLED:"false"},{SHADOW_AI_ENABLED:"true"},{SHADOW_AI_ALLOW_REAL_MESSAGES:"true"},{SHADOW_OUTBOUND_ENABLED:"true"},{SHADOW_AI_ALLOW_OPERATIONAL_EVENTS:"true"},{NEXT_PUBLIC_SUPABASE_URL:"https://hjfwjnejbcpmknvfpdcq.supabase.co"}]) assert.throws(()=>assertAutoRealEnvironment({...prodAutoEnv,...override}));
+  assert.throws(()=>assertAutoRealEnvironment(prodAutoEnv,{mode:"backfill"}),/auto_real_backfill_disabled/);
+});
+
+test("ambos OFF bloquea ambas rutas y ambos ON habilita ambas", () => {
+  const bothOff={...prodBaseEnv,SHADOW_AI_AUTO_REAL_ENABLED:"false",SHADOW_AI_BACKFILL_REAL_ENABLED:"false"};
+  assert.throws(()=>assertAutoRealEnvironment(bothOff,{mode:"auto"}));
+  assert.throws(()=>assertAutoRealEnvironment(bothOff,{mode:"backfill"}));
+  const bothOn={...prodBaseEnv,SHADOW_AI_AUTO_REAL_ENABLED:"true",SHADOW_AI_BACKFILL_REAL_ENABLED:"true"};
+  assert.equal(assertAutoRealEnvironment(bothOn,{mode:"auto"}).mode,"production");
+  assert.equal(assertAutoRealEnvironment(bothOn,{mode:"backfill"}).mode,"production");
+});
+
+test("guardas comunes fail-closed para outbound, Operational Events, globals, entorno y Ventas", () => {
+  for(const mode of ["auto","backfill"]){
+    const source=mode==="auto"?prodAutoEnv:prodBackfillEnv;
+    for(const override of [{SHADOW_AI_ENABLED:"false"},{SHADOW_AI_PRODUCTION_ENABLED:"false"},{SHADOW_AI_ALLOW_REAL_MESSAGES:"false"},{SHADOW_OUTBOUND_ENABLED:"true"},{SHADOW_AI_ALLOW_OPERATIONAL_EVENTS:"true"},{NEXT_PUBLIC_SUPABASE_URL:"https://hjfwjnejbcpmknvfpdcq.supabase.co"}]) assert.throws(()=>assertAutoRealEnvironment({...source,...override},{mode}));
+  }
+  assert.equal(buildRealShadowConversationTurns({ messages:[msg("a","inbound",0)], conversations:[{...conversation,channel:"498219"}], env, now:Date.parse("2026-08-21T12:10:00Z") }).length,0);
 });
 
 test("procesamiento limita concurrencia a un turn por invocation y no tiene retries automáticos", () => {
