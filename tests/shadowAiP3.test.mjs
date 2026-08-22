@@ -123,6 +123,14 @@ test("una promesa futura real continúa bloqueada",()=>{
   assert.match(result.groundingReason,/execution_commitment/);
 });
 
+test("attachment no interpretado no se convierte en hecho aunque el caption sugiera contenido",()=>{
+  const result=finalizeShadowAiDecision({...validDecision,requiresHuman:false,contextAssessment:"La imagen demuestra un comprobante pagado.",factualClaims:[{factType:"payment.hasReceipt",value:true,evidenceIds:[]}],conversationalResponseParts:{acknowledgement:"Confirmo que recibimos tu comprobante pagado.",verifiedFactReferences:[],clarificationQuestion:null,escalationMessage:null}}, {sanitizedText:"Te mando el comprobante\n[IMAGEN]",providerMetadata:{attachmentContext:{present:true,interpreted:false,items:[{type:"image",mimeType:"image/jpeg"}]}}}, []);
+  assert.equal(result.requiresHuman,true);
+  assert.ok(result.safetyFlags.includes("uninterpreted_attachment"));
+  assert.deepEqual(result.factualClaims,[]);
+  assert.doesNotMatch(result.proposedResponse,/confirmo|pagado/i);
+});
+
 test("promesas operativas del backfill real se neutralizan sin compromiso ejecutable",()=>{
   for (const phrase of ["Te esperamos diez minutos.","Te avisamos mañana.","Te contactamos después.","Lo revisamos.","Lo canalizamos.","Lo gestionamos."]) {
     const result=finalizeShadowAiDecision({...validDecision,requiresHuman:false,proposedAction:phrase,conversationalResponseParts:{acknowledgement:phrase,verifiedFactReferences:[],clarificationQuestion:null,escalationMessage:null},executionCommitment:"none",safetyFlags:[]},{sanitizedText:"Voy diez minutos tarde",providerMetadata:{priorConversation:[{direction:"outbound_human",sanitizedText:"La cita es a las cuatro"}]}},[]);

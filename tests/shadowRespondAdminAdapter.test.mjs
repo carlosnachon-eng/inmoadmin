@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { classifyShadowMessage } from "../lib/shadow/coordinator.js";
+import { classifyShadowMessage, ingestShadowEnvelope } from "../lib/shadow/coordinator.js";
 import { processShadowEnvelope } from "../lib/shadow/pipeline.js";
 import { RESPOND_ADMIN_FIXTURE_CHANNELS, RESPOND_ADMIN_FIXTURES } from "../lib/shadow/providers/respondAdmin.fixtures.js";
 import {
@@ -202,6 +202,72 @@ test("PII, URL y attachment real no se persisten", () => {
   const attachment = transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.attachment);
   assert.deepEqual(attachment.attachmentMetadata, [{ type: "image" }]);
   assert.doesNotMatch(JSON.stringify(attachment), /privado\.test/);
+});
+
+test("multimedia Admin sin texto persiste marcadores y metadata allowlisted", () => {
+  const expectations = [
+    ["imageNoText", "[IMAGEN]", "image"],
+    ["pdfNoText", "[DOCUMENTO]", "document"],
+    ["audioNoText", "[AUDIO]", "audio"],
+    ["videoNoText", "[VIDEO]", "video"],
+    ["stickerNoText", "[STICKER]", "sticker"],
+    ["locationNoText", "[UBICACION]", "location"],
+    ["contactNoText", "[CONTACTO]", "contact"],
+    ["unknownMediaNoText", "[ARCHIVO]", "file"],
+  ];
+  for (const [fixture, marker, type] of expectations) {
+    const envelope = transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES[fixture]);
+    assert.equal(envelope.sanitizationRejected, false);
+    assert.equal(envelope.sanitizedText, marker);
+    assert.equal(envelope.attachmentMetadata[0].type, type);
+    assert.equal(envelope.providerMetadata.contentDisposition, "supported_media_without_text");
+  }
+});
+
+test("texto y attachment conserva texto, caption sanitizado y marcador sin confiar en contenido", () => {
+  const envelope = transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.textWithImage);
+  assert.equal(envelope.sanitizedText, "Te mando el comprobante\nReferencia [TELEFONO]\n[IMAGEN]");
+  assert.equal(envelope.attachmentMetadata[0].caption, "Referencia [TELEFONO]");
+  assert.equal(envelope.providerMetadata.hasUninterpretedAttachments, "true");
+  assert.equal(envelope.providerMetadata.contentDisposition, "text_with_supported_media");
+});
+
+test("metadata multimedia nunca conserva URL, binario, coordenadas, contacto ni referencia opaca", () => {
+  for (const fixture of ["imageNoText", "unknownMediaNoText", "locationNoText", "contactNoText"]) {
+    const serialized = JSON.stringify(transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES[fixture]));
+    assert.doesNotMatch(serialized, /private\.test|latitude|longitude|phone|opaque-/i);
+  }
+  const image = transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.imageNoText);
+  assert.equal(image.attachmentMetadata[0].fileName, "[EMAIL]");
+  assert.match(image.attachmentMetadata[0].referenceHash, /^[a-f0-9]{64}$/);
+});
+
+test("rechazos distinguen vacío, media no soportada y media soportada", () => {
+  const empty = transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.emptyNoMedia);
+  const unsupported = transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.unsupportedMedia);
+  const supported = transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.imageNoText);
+  assert.equal(empty.rejectionReason, "empty_text_no_supported_media");
+  assert.equal(unsupported.rejectionReason, "unsupported_media");
+  assert.equal(supported.rejectionReason, null);
+});
+
+test("motivo de rechazo futuro queda persistido en ingestion event", async () => {
+  const updates = [];
+  const query = { update(value) { updates.push(value); return query; }, eq() { return query; }, then(resolve) { resolve({ error:null }); } };
+  const admin = {
+    async rpc() { return { data:{ status:"rejected", eventId:"event-rejected" }, error:null }; },
+    from(table) { assert.equal(table,"shadow_ingestion_events"); return query; },
+  };
+  const result = await ingestShadowEnvelope(admin, transformRespondAdminPayload(RESPOND_ADMIN_FIXTURES.emptyNoMedia));
+  assert.equal(result.status,"rejected");
+  assert.deepEqual(updates,[{ error_code:"empty_text_no_supported_media" }]);
+});
+
+test("multimedia de Ventas continúa excluida por channel allowlist", () => {
+  assert.deepEqual(shouldCaptureRespondAdmin(RESPOND_ADMIN_FIXTURES.salesImage, config), {
+    capture: false,
+    reason: "channel_not_allowlisted",
+  });
 });
 
 test("malformed falla cerrado y multintención conserva revisión", () => {

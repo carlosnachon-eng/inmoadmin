@@ -87,12 +87,23 @@ test("prompt vigente no vuelve pendientes los turns reales ya completados con un
   assert.equal(selectAutoRealRun([legacy,current])?.id,"current");
 });
 
-test("prompt/runtime v3 distingue runs posteriores sin reanalizar completed o failed previos", () => {
-  assert.equal(REAL_SHADOW_AUTO_AI_PROMPT_VERSION,"administradora-ia-emporio-real-shadow-v3");
+test("prompt/runtime v4 distingue runs posteriores sin reanalizar completed o failed previos", () => {
+  assert.equal(REAL_SHADOW_AUTO_AI_PROMPT_VERSION,"administradora-ia-emporio-real-shadow-v4");
   const completed={id:"completed-v2",status:"completed",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
   const failed={id:"failed-v2",status:"timeout",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
   assert.equal(selectAutoRealRun([completed])?.id,"completed-v2");
   assert.equal(selectAutoRealRun([failed])?.id,"failed-v2");
+});
+
+test("turn multimedia conserva marcadores y contexto no interpretado hasta Claude", () => {
+  const media = { ...msg("media","inbound",0,"Te mando el comprobante\n[IMAGEN]"), attachment_metadata:[{ type:"image", mimeType:"image/jpeg", fileName:"omitido.jpg", referenceHash:"opaque" }] };
+  const [turn] = buildRealShadowConversationTurns({ messages:[media], conversations:[conversation], env, now:Date.parse("2026-08-21T12:10:00Z") });
+  const envelope = realShadowTurnEnvelope(turn, conversation);
+  const snapshot = createShadowAiInputSnapshot(envelope);
+  const modelInput = minimalShadowAiContext(snapshot, {}, [], 0);
+  assert.equal(modelInput.message,"Te mando el comprobante\n[IMAGEN]");
+  assert.deepEqual(modelInput.metadata.attachmentContext,{ present:true, interpreted:false, items:[{type:"image",mimeType:"image/jpeg"}] });
+  assert.doesNotMatch(JSON.stringify(modelInput),/omitido\.jpg|opaque/);
 });
 
 test("regresión real sanitizada conserva turn completo y 932 caracteres previos hasta el input Claude", () => {
@@ -140,7 +151,7 @@ test("state machine usa el snapshot persistido como entrada real de todas las ro
   assert.ok(snapshot.providerMetadata.priorConversation.length<=REAL_SHADOW_CONTEXT_MAX_MESSAGES);
   assert.ok(snapshot.providerMetadata.priorConversation.reduce((sum,item)=>sum+item.sanitizedText.length,0)<=REAL_SHADOW_CONTEXT_MAX_CHARS);
   assert.equal(snapshot.sanitizedText,"turn actual intacto");
-  assert.doesNotMatch(JSON.stringify(snapshot),/raw_payload|phone|email|token|attachment/);
+  assert.doesNotMatch(JSON.stringify(snapshot),/raw_payload|phone|email|token/);
 });
 
 test("backfill ON y auto OFF permite backfill pero bloquea cron", () => {
