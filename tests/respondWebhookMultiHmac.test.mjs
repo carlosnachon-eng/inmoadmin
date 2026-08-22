@@ -134,7 +134,7 @@ test("el evento normalizado no persiste claves ni firmas", () => {
   });
   assert.equal(event.eventId, BODY.event_id);
   assert.equal(event.respondContactId, String(BODY.contact.id));
-  assert.deepEqual(event.payloadMeta, {});
+  assert.deepEqual(event.payloadMeta, { routing_event_type: "contact.created" });
   assert.doesNotMatch(JSON.stringify(event), /must-not-persist/);
 });
 
@@ -148,6 +148,35 @@ test("el evento conserva channelId estable sin conservar el body crudo", () => {
   assert.equal(event.channelId, "admin-channel");
   assert.equal(event.payloadMeta.channel_id, "admin-channel");
   assert.doesNotMatch(JSON.stringify(event.payloadMeta), /PII no debe entrar/);
+});
+
+test("conserva sólo routing estructurado allowlisted sin cambiar el canal fuente", () => {
+  const event = extractRespondWebhookEvent({
+    event_id: "routing-event", event_type: "contact.assignee.updated",
+    timestamp: "2026-08-22T18:00:00.000Z", sourceChannelId: "497382",
+    contact: { id: "contact", assignee: { id: "assignee-opaque" }, team: { id: "team-admin" }, lifecycle: { id: "lifecycle-open" } },
+    conversation: { channelId: "497382", inbox: { id: "inbox-admin" } },
+    workflow: { id: "workflow-transfer" },
+    routing: { reason: "explicit_transfer", eventType: "team_changed", routedAt: "2026-08-22T18:00:01.000Z" },
+    customerName: "No debe persistirse", privateUrl: "https://private.test/route",
+  });
+  assert.equal(event.channelId, "497382");
+  assert.deepEqual(event.payloadMeta, {
+    channel_id: "497382", lifecycle_id: "lifecycle-open", assignee_id: "assignee-opaque",
+    source_channel_id: "497382", team_id: "team-admin", team_inbox_id: "inbox-admin",
+    workflow_id: "workflow-transfer", routing_reason: "explicit_transfer",
+    routing_event_type: "team_changed", routed_at: "2026-08-22T18:00:01.000Z",
+  });
+  assert.doesNotMatch(JSON.stringify(event), /No debe persistirse|private\.test/);
+});
+
+test("routing metadata ausente o con URL no se inventa ni se persiste", () => {
+  const event = extractRespondWebhookEvent({
+    event_id: "routing-sparse", event_type: "conversation.opened",
+    contact: { id: "contact" }, conversation: { channelId: "498219" },
+    routing: { reason: "https://private.test/reason" },
+  });
+  assert.deepEqual(event.payloadMeta, { channel_id: "498219", routing_event_type: "conversation.opened" });
 });
 
 test("normaliza aliases New Incoming/Outgoing Message al constraint persistido", () => {
