@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     if (req.method === "POST" && Object.keys(req.body || {}).some((key) => key !== "lookbackDays")) return res.status(400).json({ ok: false, error: "Solicitud inválida." });
     const admin = getAdminSupabase();
     if (req.method === "GET") {
-      const loaded = await loadAutoRealTurns(admin, { lookbackDays, env: process.env });
+      const loaded = await loadAutoRealTurns(admin, { lookbackDays, env: process.env, inputMode: "backfill_real_shadow" });
       const estimate = estimateAutoRealVolume(loaded.turns);
       let enabled = true; try { assertAutoRealEnvironment(process.env, { mode: "backfill" }); } catch { enabled = false; }
       const active = loaded.turns.find((item)=>item.disposition==='block_running') || null;
