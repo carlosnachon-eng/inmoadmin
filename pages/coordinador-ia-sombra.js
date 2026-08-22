@@ -19,6 +19,7 @@ export default function ShadowCoordinatorPage() {
   const [selectedId, setSelectedId] = useState(null); const [error, setError] = useState("");
   const [saving, setSaving] = useState(false); const [evaluation, setEvaluation] = useState("correct");
   const [correction, setCorrection] = useState("");
+  const [shadowView, setShadowView] = useState("conversations");
   useEffect(() => { supabase.auth.getSession().then(({ data: { session: value } }) => { setSession(value); setReady(true); }); }, []);
   useEffect(() => { if (!session?.user) return; supabase.from("profiles").select("id,role_id,active,email").eq("id", session.user.id).maybeSingle().then(({ data: value }) => setProfile(value)); }, [session?.user]);
   const authorized = profile?.active && ROLES.has(profile.role_id);
@@ -53,8 +54,11 @@ export default function ShadowCoordinatorPage() {
       <div style={{ marginBottom: 16 }}><h1 style={{ margin: 0, color: brand.gray }}>🌒 Coordinador IA — Sombra</h1><p style={{ color: brand.grayLight }}>Sólo observación y evaluación. No envía mensajes ni modifica el ERP.</p></div>
       {error && <div style={{ ...card, background: "#fef2f2", color: "#991b1b", marginBottom: 12 }}>{error}</div>}
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 16 }}>
-        {[["Mensajes", data?.messages?.length || 0], ["Duplicados", data?.metrics?.duplicate || 0], ["Sanitizados", data?.metrics?.sanitized || 0], ["Revisión humana", data?.messages?.filter(x=>x.requires_human).length || 0], ["Contexto ambiguo", ambiguousMessageIds.size], ["Evaluaciones", data?.evaluations?.length || 0]].map(([label,value]) => <div key={label} style={card}><div style={{ fontSize: 24, fontWeight: 800 }}>{value}</div><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
+        {[["Mensajes", data?.messages?.length || 0], ["Eventos operativos", data?.operationalEvents?.length || 0], ["Duplicados", data?.metrics?.duplicate || 0], ["Sanitizados", data?.metrics?.sanitized || 0], ["Revisión humana", data?.messages?.filter(x=>x.requires_human).length || 0], ["Contexto ambiguo", ambiguousMessageIds.size]].map(([label,value]) => <div key={label} style={card}><div style={{ fontSize: 24, fontWeight: 800 }}>{value}</div><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
       </section>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button onClick={() => setShadowView("conversations")} aria-pressed={shadowView === "conversations"}>Conversaciones</button><button onClick={() => setShadowView("operational")} aria-pressed={shadowView === "operational"}>Eventos operativos</button></div>
+      {shadowView === "operational" && <section style={{ ...card, marginBottom: 16 }}><h2>Eventos operativos</h2>{!(data?.operationalEvents || []).length ? <p>No hay eventos operativos.</p> : data.operationalEvents.map((event) => <article key={event.id} style={{ borderBottom: `1px solid ${brand.border}`, padding: "10px 0" }}><strong>{event.event_type === "maintenance_ticket_created" ? "Ticket creado" : "Cotización aprobada"}</strong><p style={{ margin: "4px 0" }}>Mantenimiento · {event.maintenance_scope === "managed_property" ? "Propiedad administrada" : "Trabajo externo"} · estado {event.payload_safe?.ticketStatus || event.payload_safe?.status}</p>{event.payload_safe?.amount != null && <p style={{ margin: "4px 0" }}>Importe: {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(Number(event.payload_safe.amount))}</p>}<small>Ticket {String(event.ticket_id).slice(0, 8)}…{event.quote_id ? ` · Cotización ${String(event.quote_id).slice(0, 8)}…` : ""} · {new Date(event.occurred_at).toLocaleString("es-MX")}</small></article>)}</section>}
+      {shadowView === "conversations" && <>
       <section style={{ ...card, display: "grid", gridTemplateColumns: "repeat(4,minmax(70px,1fr))", gap: 8, marginBottom: 16 }} aria-label="Distribución administrativa">
         {[["High", likelihoodCounts.high], ["Medium", likelihoodCounts.medium], ["Low", likelihoodCounts.low], ["Unknown", likelihoodCounts.unknown]].map(([label,value]) => <div key={label}><strong>{value}</strong><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
       </section>
@@ -74,6 +78,7 @@ export default function ShadowCoordinatorPage() {
         </> : <p>No hay mensajes.</p>}</section>
       </div>
       <details style={{ ...card, marginTop: 14 }}><summary>Métricas por intención</summary><pre>{JSON.stringify(intentCounts, null, 2)}</pre></details>
+      </>}
       <style jsx>{`
         .shadow-workspace { display: grid; grid-template-columns: minmax(260px,.8fr) minmax(360px,1.4fr); gap: 14px; }
         @media (max-width: 720px) { .shadow-workspace { grid-template-columns: minmax(0,1fr); } }

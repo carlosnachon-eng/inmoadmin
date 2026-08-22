@@ -1,0 +1,20 @@
+begin;
+do $$ begin
+  if exists(select 1 from public.inmoadmin_operational_events where idempotency_key not like 'FASE2A-OP-EVENT-QA:%') then raise exception 'Rollback abortado: outbox contiene eventos ajenos a QA'; end if;
+  if exists(select 1 from public.shadow_operational_events where payload_safe->>'ticketId' not like 'f2a40000-%') then raise exception 'Rollback abortado: Shadow contiene eventos ajenos a QA'; end if;
+end $$;
+delete from public.shadow_operational_events where payload_safe->>'ticketId' like 'f2a40000-%';
+delete from public.shadow_ingestion_events where provider='inmoadmin' and external_event_id like 'FASE2A-OP-EVENT-QA:%';
+delete from public.inmoadmin_operational_events where idempotency_key like 'FASE2A-OP-EVENT-QA:%';
+delete from public.maintenance_quotes where id::text like 'f2a40000-0000-4000-8200-%';
+delete from public.maintenance_tickets where id::text like 'f2a40000-0000-4000-8100-%';
+drop function public.process_operational_event(uuid);
+drop function public.approve_maintenance_quote_with_event(uuid);
+drop function public.create_maintenance_ticket_with_event(jsonb);
+drop function public.shadow_operational_authorized_role();
+drop table public.shadow_operational_events;
+drop table public.inmoadmin_operational_events;
+alter table public.maintenance_tickets drop constraint maintenance_tickets_scope_check;
+alter table public.maintenance_tickets drop column external_job_reference;
+alter table public.maintenance_tickets drop column maintenance_scope;
+commit;

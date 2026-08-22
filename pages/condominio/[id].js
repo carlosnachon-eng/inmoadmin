@@ -516,15 +516,9 @@ export default function CondominioDetalle() {
   const guardarTicket = async () => {
     if (!formTicket.title.trim()) { showToast("El título es requerido", false); return; }
     setSaving(true);
-    await supabase.from("maintenance_tickets").insert([{
-      condominio_id: id,
-      property_name: cond?.nombre || "",
-      title: formTicket.title,
-      description: formTicket.description,
-      status: formTicket.status,
-      payer: formTicket.payer,
-      charged_amount: parseFloat(formTicket.charged_amount) || 0,
-    }]);
+    const { data:{ session } } = await supabase.auth.getSession();
+    const response = await fetch("/api/operaciones/maintenance-operational-events", {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${session?.access_token||""}`},body:JSON.stringify({action:"create_ticket",ticket:{maintenanceScope:"external_job",propertyId:null,workReference:`condominio:${id}`,condominiumId:id,propertyName:cond?.nombre||"",title:formTicket.title,description:formTicket.description,priority:"media",payer:formTicket.payer,chargedAmount:parseFloat(formTicket.charged_amount)||0}})});
+    if(!response.ok){showToast("No se pudo crear el ticket",false);setSaving(false);return;}
     setSaving(false);
     setModalTicket(false);
     setFormTicket(emptyTicket);
