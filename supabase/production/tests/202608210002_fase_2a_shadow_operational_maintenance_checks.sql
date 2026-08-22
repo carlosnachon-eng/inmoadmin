@@ -28,17 +28,34 @@ begin
      or not exists(select 1 from pg_class where oid='public.shadow_operational_events'::regclass and relrowsecurity) then
     raise exception 'RLS no habilitado';
   end if;
-  if has_any_column_privilege('anon','public.inmoadmin_operational_events','SELECT,INSERT,UPDATE,DELETE')
-     or has_any_column_privilege('anon','public.shadow_operational_events','SELECT,INSERT,UPDATE,DELETE') then
+  if has_table_privilege('anon','public.inmoadmin_operational_events','SELECT')
+     or has_table_privilege('anon','public.inmoadmin_operational_events','INSERT')
+     or has_table_privilege('anon','public.inmoadmin_operational_events','UPDATE')
+     or has_table_privilege('anon','public.inmoadmin_operational_events','DELETE')
+     or has_table_privilege('anon','public.shadow_operational_events','SELECT')
+     or has_table_privilege('anon','public.shadow_operational_events','INSERT')
+     or has_table_privilege('anon','public.shadow_operational_events','UPDATE')
+     or has_table_privilege('anon','public.shadow_operational_events','DELETE') then
     raise exception 'anon conserva privilegios indebidos';
   end if;
-  if has_any_column_privilege('authenticated','public.inmoadmin_operational_events','SELECT,INSERT,UPDATE,DELETE')
-     or has_any_column_privilege('authenticated','public.shadow_operational_events','INSERT,UPDATE,DELETE') then
+  if has_table_privilege('authenticated','public.inmoadmin_operational_events','SELECT')
+     or has_table_privilege('authenticated','public.inmoadmin_operational_events','INSERT')
+     or has_table_privilege('authenticated','public.inmoadmin_operational_events','UPDATE')
+     or has_table_privilege('authenticated','public.inmoadmin_operational_events','DELETE')
+     or has_table_privilege('authenticated','public.shadow_operational_events','INSERT')
+     or has_table_privilege('authenticated','public.shadow_operational_events','UPDATE')
+     or has_table_privilege('authenticated','public.shadow_operational_events','DELETE') then
     raise exception 'authenticated conserva escritura/outbox indebida';
   end if;
   if not has_table_privilege('authenticated','public.shadow_operational_events','SELECT')
-     or not has_table_privilege('service_role','public.inmoadmin_operational_events','SELECT,INSERT,UPDATE,DELETE')
-     or not has_table_privilege('service_role','public.shadow_operational_events','SELECT,INSERT,UPDATE,DELETE') then
+     or not has_table_privilege('service_role','public.inmoadmin_operational_events','SELECT')
+     or not has_table_privilege('service_role','public.inmoadmin_operational_events','INSERT')
+     or not has_table_privilege('service_role','public.inmoadmin_operational_events','UPDATE')
+     or not has_table_privilege('service_role','public.inmoadmin_operational_events','DELETE')
+     or not has_table_privilege('service_role','public.shadow_operational_events','SELECT')
+     or not has_table_privilege('service_role','public.shadow_operational_events','INSERT')
+     or not has_table_privilege('service_role','public.shadow_operational_events','UPDATE')
+     or not has_table_privilege('service_role','public.shadow_operational_events','DELETE') then
     raise exception 'Grants esperados incompletos';
   end if;
   select count(*) into open_policy_count from pg_policies

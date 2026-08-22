@@ -38,6 +38,18 @@ test("seguridad Production no abre anon/authenticated ni policies",()=>{
   assert.match(checks,/anon conserva privilegios indebidos/);
   assert.match(checks,/authenticated conserva escritura\/outbox indebida/);
   assert.match(checks,/Policy abierta detectada/);
+  assert.doesNotMatch(checks,/has_(?:any_)?column_privilege\([^\n]*DELETE/i);
+  for(const role of ["anon","authenticated","service_role"]){
+    assert.match(checks,new RegExp(`has_table_privilege\\('${role}'`));
+  }
+  for(const privilege of ["SELECT","INSERT","UPDATE","DELETE"]){
+    assert.match(checks,new RegExp(`has_table_privilege\\([^\\n]*'${privilege}'\\)`));
+  }
+  assert.match(checks,/relrowsecurity/);
+  assert.match(checks,/shadow_operational_read_authorized/);
+  assert.match(checks,/has_function_privilege/);
+  assert.match(checks,/Instalación inicial no está vacía/);
+  assert.match(checks,/maintenance_scope is null/);
 });
 
 test("carril operacional no modifica Shadow conversacional, Respond ni IA",()=>{
