@@ -50,13 +50,13 @@ test("auto ON y backfill OFF permite cron pero bloquea backfill", () => {
   assert.throws(()=>assertAutoRealEnvironment(prodAutoEnv,{mode:"backfill"}),/auto_real_backfill_disabled/);
 });
 
-test("ambos OFF bloquea ambas rutas y ambos ON habilita ambas", () => {
+test("ambos OFF bloquea ambas rutas y ambos ON falla cerrado para backfill", () => {
   const bothOff={...prodBaseEnv,SHADOW_AI_AUTO_REAL_ENABLED:"false",SHADOW_AI_BACKFILL_REAL_ENABLED:"false"};
   assert.throws(()=>assertAutoRealEnvironment(bothOff,{mode:"auto"}));
   assert.throws(()=>assertAutoRealEnvironment(bothOff,{mode:"backfill"}));
   const bothOn={...prodBaseEnv,SHADOW_AI_AUTO_REAL_ENABLED:"true",SHADOW_AI_BACKFILL_REAL_ENABLED:"true"};
   assert.equal(assertAutoRealEnvironment(bothOn,{mode:"auto"}).mode,"production");
-  assert.equal(assertAutoRealEnvironment(bothOn,{mode:"backfill"}).mode,"production");
+  assert.throws(()=>assertAutoRealEnvironment(bothOn,{mode:"backfill"}),/auto_real_must_be_disabled_during_backfill/);
 });
 
 test("guardas comunes fail-closed para outbound, Operational Events, globals, entorno y Ventas", () => {
@@ -76,6 +76,14 @@ test("auto endpoint no responde, escribe ERP ni procesa Operational Events", () 
   const sources=[read("pages/api/cron/shadow-ai-real-auto.js"),read("pages/api/operaciones/shadow-ai-real-backfill.js"),read("lib/shadow/ai/autoReal.js")].join("\n");
   assert.doesNotMatch(sources,/sendMessage|respond\.io|maintenance_tickets.*(?:insert|update)|shadow_operational_events.*start/i);
   assert.match(sources,/SHADOW_AI_ALLOW_OPERATIONAL_EVENTS/); assert.match(sources,/SHADOW_OUTBOUND_ENABLED/);
+});
+
+test("UI productiva usa sesión normal, procesa una unidad y no expone credenciales", () => {
+  const page=read("pages/coordinador-ia-sombra.js"); const endpoint=read("pages/api/operaciones/shadow-ai-real-backfill.js");
+  assert.match(page,/Backfill Shadow real/); assert.match(page,/Procesar siguiente turn pendiente/); assert.match(page,/Continuar turn/);
+  assert.match(page,/Authorization: `Bearer \$\{session\.access_token\}`/); assert.doesNotMatch(page,/localStorage|sessionStorage|SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(endpoint,/authorizeShadowAdministrator/); assert.match(endpoint,/processNextAutoRealTurn/); assert.match(endpoint,/activeTurn/);
+  assert.doesNotMatch(endpoint,/sendMessage|respond\.io|maintenance_tickets.*(?:insert|update)/i);
 });
 
 test("estimación de volumen entrega tokens y costo antes del backfill", () => {
