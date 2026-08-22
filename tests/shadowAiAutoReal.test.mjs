@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import { AUTO_REAL_MAX_TURNS_PER_INVOCATION, assertAutoRealEnvironment, autoRealRunDisposition, estimateAutoRealVolume, selectAutoRealRun } from "../lib/shadow/ai/autoReal.js";
+import { AUTO_REAL_MAX_TURNS_PER_INVOCATION, assertAutoRealEnvironment, autoRealRunDisposition, estimateAutoRealVolume, filterAutoRealTurnsByCutoff, parseAutoRealCutoff, selectAutoRealRun } from "../lib/shadow/ai/autoReal.js";
 import { buildRealShadowConversationTurns, REAL_SHADOW_CONTEXT_MAX_CHARS, REAL_SHADOW_CONTEXT_MAX_MESSAGES, realShadowTurnEnvelope } from "../lib/shadow/ai/conversationTurns.js";
 import { isRealShadowQaMessage } from "../lib/shadow/ai/realMessage.js";
 import { minimalShadowAiContext } from "../lib/shadow/ai/runner.js";
@@ -12,7 +12,7 @@ const conversation = { id: "c1", provider: "respond_admin", channel: "544519" };
 const msg = (id, direction, minute, text = `mensaje ${id}`, metadata = {}) => ({ id, conversation_id: "c1", direction, occurred_at: `2026-08-21T12:${String(minute).padStart(2,"0")}:00Z`, sanitized_text: text, attachment_metadata: [], provider_metadata: metadata, external_message_id: `opaque-${id}` });
 const env = { SHADOW_RESPOND_ADMIN_CHANNEL_ID: "544519" };
 const prodBaseEnv = { VERCEL_ENV:"production",SUPABASE_ENVIRONMENT:"production",NEXT_PUBLIC_SUPABASE_URL:"https://bnzrnizrmonjxlktbhlp.supabase.co",SHADOW_AI_ENABLED:"true",SHADOW_AI_PRODUCTION_ENABLED:"true",SHADOW_AI_ALLOW_REAL_MESSAGES:"true",SHADOW_AI_ALLOW_OPERATIONAL_EVENTS:"false",SHADOW_OUTBOUND_ENABLED:"false" };
-const prodAutoEnv = { ...prodBaseEnv, SHADOW_AI_AUTO_REAL_ENABLED:"true", SHADOW_AI_BACKFILL_REAL_ENABLED:"false" };
+const prodAutoEnv = { ...prodBaseEnv, SHADOW_AI_AUTO_REAL_ENABLED:"true", SHADOW_AI_BACKFILL_REAL_ENABLED:"false", SHADOW_AI_AUTO_REAL_NOT_BEFORE:"2026-08-22T15:00:00Z" };
 const prodBackfillEnv = { ...prodBaseEnv, SHADOW_AI_AUTO_REAL_ENABLED:"false", SHADOW_AI_BACKFILL_REAL_ENABLED:"true" };
 
 test("tres inbound consecutivos forman un solo turn", () => {
@@ -95,11 +95,46 @@ test("auto ON y backfill OFF permite cron pero bloquea backfill", () => {
   assert.throws(()=>assertAutoRealEnvironment(prodAutoEnv,{mode:"backfill"}),/auto_real_backfill_disabled/);
 });
 
+test("cutoff Auto-Real usa UTC, incluye igualdad y excluye histórico", () => {
+  const turns=[
+    {id:"before",lastInboundAt:"2026-08-22T14:59:59.999Z"},
+    {id:"equal",lastInboundAt:"2026-08-22T15:00:00.000Z"},
+    {id:"after",lastInboundAt:"2026-08-22T15:00:01.000Z"},
+  ];
+  const result=filterAutoRealTurnsByCutoff(turns,prodAutoEnv);
+  assert.equal(result.cutoff.iso,"2026-08-22T15:00:00.000Z");
+  assert.deepEqual(result.before.map(x=>x.id),["before"]);
+  assert.deepEqual(result.eligible.map(x=>x.id),["equal","after"]);
+});
+
+test("cutoff ausente o inválido bloquea Auto-Real", () => {
+  for (const value of [undefined,"","hoy","2026-08-22 15:00:00Z","2026-02-30T15:00:00Z","2026-08-22T15:00:00+00:00"]){
+    const candidate={...prodAutoEnv,SHADOW_AI_AUTO_REAL_NOT_BEFORE:value};
+    assert.throws(()=>parseAutoRealCutoff(candidate),/auto_real_cutoff_(?:required|invalid)/);
+    assert.throws(()=>assertAutoRealEnvironment(candidate),/auto_real_cutoff_(?:required|invalid)/);
+  }
+});
+
+test("Backfill conserva acceso histórico sin cutoff", () => {
+  assert.equal(assertAutoRealEnvironment({...prodBackfillEnv,SHADOW_AI_AUTO_REAL_NOT_BEFORE:undefined},{mode:"backfill"}).mode,"production");
+  const source=read("pages/api/operaciones/shadow-ai-real-backfill.js");
+  assert.match(source,/loadAutoRealTurns\(admin, \{ lookbackDays, env: process\.env, inputMode: "backfill_real_shadow" \}\)/);
+});
+
+test("cutoff limita el disparador pero conserva contexto previo sanitizado", () => {
+  const messages=[msg("old","inbound",0,"La cita es en Montpellier"),msg("human","outbound_human",1,"¿Confirmas que llegarás?"),msg("new","inbound",2,"Sí")];
+  const turns=buildRealShadowConversationTurns({messages,conversations:[conversation],env,now:Date.parse("2026-08-21T12:10:00Z")});
+  const result=filterAutoRealTurnsByCutoff(turns,{SHADOW_AI_AUTO_REAL_NOT_BEFORE:"2026-08-21T12:02:00Z"});
+  assert.deepEqual(result.eligible.map(x=>x.anchorMessageId),["new"]);
+  assert.deepEqual(result.eligible[0].priorContextMessages.map(x=>x.sanitizedText),["La cita es en Montpellier","¿Confirmas que llegarás?"]);
+  assert.doesNotMatch(JSON.stringify(result.eligible[0]),/respuesta futura/);
+});
+
 test("ambos OFF bloquea ambas rutas y ambos ON falla cerrado para backfill", () => {
   const bothOff={...prodBaseEnv,SHADOW_AI_AUTO_REAL_ENABLED:"false",SHADOW_AI_BACKFILL_REAL_ENABLED:"false"};
   assert.throws(()=>assertAutoRealEnvironment(bothOff,{mode:"auto"}));
   assert.throws(()=>assertAutoRealEnvironment(bothOff,{mode:"backfill"}));
-  const bothOn={...prodBaseEnv,SHADOW_AI_AUTO_REAL_ENABLED:"true",SHADOW_AI_BACKFILL_REAL_ENABLED:"true"};
+  const bothOn={...prodBaseEnv,SHADOW_AI_AUTO_REAL_ENABLED:"true",SHADOW_AI_BACKFILL_REAL_ENABLED:"true",SHADOW_AI_AUTO_REAL_NOT_BEFORE:"2026-08-22T15:00:00Z"};
   assert.equal(assertAutoRealEnvironment(bothOn,{mode:"auto"}).mode,"production");
   assert.throws(()=>assertAutoRealEnvironment(bothOn,{mode:"backfill"}),/auto_real_must_be_disabled_during_backfill/);
 });
@@ -115,6 +150,14 @@ test("guardas comunes fail-closed para outbound, Operational Events, globals, en
 test("procesamiento limita concurrencia a un turn por invocation y no tiene retries automáticos", () => {
   assert.equal(AUTO_REAL_MAX_TURNS_PER_INVOCATION,1);
   const source=read("lib/shadow/ai/autoReal.js"); assert.match(source,/allowRetry: false/); assert.match(source,/if \(running\) return \{ status: "running"/); assert.doesNotMatch(source,/Promise\.all\([^)]*startAutoRealTurn|retryAuthorization/);
+});
+
+test("cron exige cutoff y expone observabilidad sanitizada", () => {
+  const source=read("lib/shadow/ai/autoReal.js");
+  assert.match(source,/turnsBeforeCutoffExcluded/);
+  assert.match(source,/eligibleNewTurns/);
+  assert.match(source,/lastAutomaticRun/);
+  assert.doesNotMatch(source,/sanitizedText.*observability|priorContextMessages.*observability/);
 });
 
 test("auto endpoint no responde, escribe ERP ni procesa Operational Events", () => {
