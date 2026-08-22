@@ -1,6 +1,16 @@
 # Fase 2A P3 — Administradora IA Shadow sintética
 
-Estado inicial y final seguro: `SHADOW_AI_ENABLED=false`, `SHADOW_AI_ALLOW_REAL_MESSAGES=false`, `SHADOW_OUTBOUND_ENABLED=false`. P3 sólo acepta Supabase DEV `hjfwjnejbcpmknvfpdcq`, provider `synthetic` y escenario QA namespaced. No llama Respond, no envía WhatsApp y no escribe en tablas ERP.
+Estado inicial y final seguro: `SHADOW_AI_ENABLED=false`, `SHADOW_AI_ALLOW_REAL_MESSAGES=false`, `SHADOW_AI_ALLOW_OPERATIONAL_EVENTS=false`, `SHADOW_AI_PRODUCTION_ENABLED=false`, `SHADOW_OUTBOUND_ENABLED=false`. QA sólo acepta Supabase DEV `hjfwjnejbcpmknvfpdcq`, provider `synthetic` y escenario namespaced. No llama Respond, no envía WhatsApp y no escribe en tablas ERP.
+
+## Integración sobre main y Operational Events
+
+P3 conserva dos entradas separadas. Un `shadow_message` es una entrada conversacional y puede producir una respuesta propuesta (nunca enviada). Un `shadow_operational_event` es una señal interna estructurada; no se convierte en mensaje y su salida es `operationalOutput` con interpretación, contexto, seguimiento recomendado, revisión humana, riesgo/prioridad y evidencia. Su `proposedResponse` se persiste como `NULL`.
+
+El adaptador inicial admite únicamente `maintenance_ticket_created` y `maintenance_quote_approved`. Usa `shadow_operational_events.id` como identidad estable, acepta `propertyId=NULL` para `external_job`, conserva IDs e importes estructurados y alimenta directamente `resolvedOperationalContext`. Las herramientas siguen siendo exclusivamente read-only.
+
+La migración productiva `202608210003_fase_2a_p3_shadow_ai_integration.sql` reconcilia los bootstraps P3 que sólo existen en DEV con el schema productivo creado por `202608190003`, y añade la identidad operativa. No se ha ejecutado. Debe aplicarse antes de desplegar código que consulte `input_kind` u `operational_event_id`; aborta ante instalación parcial y no debe reejecutarse tras aplicarse exitosamente.
+
+Una futura activación productiva exige coincidencia exacta con `bnzrnizrmonjxlktbhlp` y doble autorización (`SHADOW_AI_ENABLED` + `SHADOW_AI_PRODUCTION_ENABLED`). Los mensajes reales además requieren `SHADOW_AI_ALLOW_REAL_MESSAGES=true` y el channel ID administrativo exacto; los eventos operativos requieren `SHADOW_AI_ALLOW_OPERATIONAL_EVENTS=true`. Preview/DEV no puede escribir en Supabase Production.
 
 ## Proveedor y modelo
 
