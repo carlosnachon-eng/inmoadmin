@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/respond-webhook-worker",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/shadow-operational-events",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
