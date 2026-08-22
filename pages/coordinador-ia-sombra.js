@@ -42,8 +42,9 @@ export default function ShadowCoordinatorPage() {
   const matches = useMemo(() => (data?.matches || []).filter((item) => item.message_id === selectedId), [data, selectedId]);
   const evaluations = useMemo(() => (data?.evaluations || []).filter((item) => item.message_id === selectedId), [data, selectedId]);
   const selectedFixtureId = selected?.provider_metadata?.syntheticScenario;
-  const aiRun = useMemo(() => (data?.aiRuns || []).find((item) => item.message_id === selectedId && (!selectedFixtureId || item.campaign_id === qaCampaignId)), [data, selectedId, selectedFixtureId, qaCampaignId]);
+  const aiRun = useMemo(() => (data?.aiRuns || []).find((item) => selected?.real_shadow?.runId ? item.id === selected.real_shadow.runId : item.message_id === selectedId && (!selectedFixtureId || item.campaign_id === qaCampaignId)), [data, selected, selectedId, selectedFixtureId, qaCampaignId]);
   const aiDecision = useMemo(() => (data?.aiDecisions || []).find((item) => item.ai_run_id === aiRun?.id), [data, aiRun?.id]);
+  const laterHumanResponse = useMemo(() => !selected ? null : (data?.messages || []).filter((item) => item.conversation_id === selected.conversation_id && item.direction === "outbound_human" && new Date(item.occurred_at) > new Date(selected.occurred_at)).sort((a,b)=>new Date(a.occurred_at)-new Date(b.occurred_at))[0] || null, [data, selected]);
   const aiTools = aiDecision?.tool_summary || [];
   const intentCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.intent]: (acc[item.intent] || 0) + 1 }), {}), [data]);
   const likelihoodCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.administrative_likelihood]: (acc[item.administrative_likelihood] || 0) + 1 }), { high: 0, medium: 0, low: 0, unknown: 0 }), [data]);
@@ -70,6 +71,14 @@ export default function ShadowCoordinatorPage() {
     const response = await fetch("/api/operaciones/shadow-ai-continue", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ runId: aiRun.id, campaignId: qaCampaignId }) });
     const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo continuar el run.");
     setQaReport(json); await load();
+  };
+  const runRealShadow = async (continuation = false) => {
+    setQaRunning(true); setError("");
+    const endpoint = continuation ? "/api/operaciones/shadow-ai-real-continue" : "/api/operaciones/shadow-ai-real-run";
+    const body = continuation ? { runId: selected?.real_shadow?.runId } : { messageId: selectedId };
+    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify(body) });
+    const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo ejecutar el análisis manual.");
+    await load();
   };
   if (!ready || (session && !profile)) return <div style={{ padding: 32 }}>Cargando…</div>;
   if (!session) return <div style={{ padding: 32 }}>Inicia sesión para acceder.</div>;
@@ -103,6 +112,8 @@ export default function ShadowCoordinatorPage() {
           <p><strong>Información faltante:</strong> {selected.requires_human ? "Se requiere confirmar contexto o intención." : "Ninguna detectada."}</p>
           {matches[0]?.context_href && <a href={matches[0].context_href}>Abrir contexto en modo lectura</a>}
           <div style={{ ...card, background: "#f8fafc", marginTop: 14 }}><h3 style={{marginTop:0}}>Administradora IA</h3>
+            {selected.real_shadow?.eligible && <button disabled={qaRunning} onClick={()=>runRealShadow(false)}>Analizar en Shadow</button>}
+            {selected.real_shadow?.executionState === "awaiting_model_round" && <button disabled={qaRunning} onClick={()=>runRealShadow(true)}>Continuar análisis</button>}
             {!aiDecision ? <><p style={{marginBottom:0}}>Estado: {aiRun?.execution_state === "awaiting_model_round" ? "Esperando siguiente ronda" : (aiRun?.execution_state || aiRun?.status || "No ejecutado")}</p>{aiRun?.execution_state === "awaiting_model_round" && <div style={{background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:8,padding:10,marginTop:8}}><p style={{marginTop:0}}>Ronda {aiRun.current_round} de {aiRun.max_rounds}. Evidencia persistida: {(aiRun.evidence_ledger || []).length} registro(s).</p><button disabled={qaRunning} onClick={continueRun}>Continuar run</button></div>}{retryAvailable && <div style={{background:"#fff7ed",border:"1px solid #fdba74",borderRadius:8,padding:10}}><p style={{color:"#9a3412",marginTop:0}}>Intento {Number(aiRun.attempt_number||1)} de 3 falló. Run previo: <code>{aiRun.id}</code></p><button disabled={qaRunning} onClick={()=>qaOrchestrator("POST",{retryFailed:true,fixtureIdsOverride:[selectedFixtureId]})} style={{background:"#9a3412",color:"#fff",border:0,borderRadius:8,padding:"8px 12px",fontWeight:700}}>Reintentar run fallido</button></div>}</> : <>
               <p><strong>Análisis:</strong> {aiDecision.decision_json?.summary}</p>
               <p><strong>Herramientas consultadas:</strong> {aiTools.length ? aiTools.map(x=>`${x.name} (${x.resultCount}) · ${x.source === "policy_required" ? "requerida por Inmoadmin" : x.source === "both" ? "Inmoadmin + Claude" : "propuesta por Claude"}`).join(", ") : "Ninguna"}</p>
@@ -114,6 +125,7 @@ export default function ShadowCoordinatorPage() {
               <p><strong>Acción propuesta:</strong> {aiDecision.proposed_action}</p>
               {aiDecision.decision_json?.responseBlocked ? <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:10,color:"#991b1b"}}><strong>Respuesta bloqueada</strong><p style={{marginBottom:0}}>{aiDecision.proposed_response}</p></div> : <p><strong>Respuesta propuesta:</strong> {aiDecision.proposed_response}</p>}
               <p><strong>Confianza:</strong> {Math.round(Number(aiDecision.confidence||0)*100)}% · <strong>Requiere humano:</strong> {aiDecision.requires_human ? "Sí" : "No"}</p>
+              {aiRun?.prompt_version?.includes("real-shadow") && <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}><div style={{...card,background:"#fff"}}><strong>Respuesta humana posterior</strong><p>{laterHumanResponse?.sanitized_text || "No existe una respuesta humana posterior persistida."}</p></div><div style={{...card,background:"#fff"}}><strong>Propuesta de IA (no enviada)</strong><p>{aiDecision.proposed_response}</p></div></div>}
               {aiDecision.escalation_reason && <p><strong>Motivo:</strong> {aiDecision.escalation_reason}</p>}
               <small>{aiRun.model} · {aiRun.prompt_version} · {aiRun.latency_ms || 0} ms</small>
             </>}
