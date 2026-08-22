@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import { REAL_SHADOW_ADMIN_CHANNEL_ID, realShadowEnvelope, realShadowMessageEligibility } from "../lib/shadow/ai/realMessage.js";
+import { REAL_SHADOW_ADMIN_CHANNEL_ID, REAL_SHADOW_DEV_CLONE_MARKER, realShadowDevCloneEligibility, realShadowEnvelope, realShadowMessageEligibility } from "../lib/shadow/ai/realMessage.js";
 import { REAL_SHADOW_AI_PROMPT_VERSION, REAL_SHADOW_AI_SYSTEM_PROMPT } from "../lib/shadow/ai/realPrompt.js";
 import { assertRealShadowRunEnvironment } from "../lib/shadow/ai/realRun.js";
 import { shadowAiIdempotencyKey } from "../lib/shadow/ai/runner.js";
@@ -18,6 +18,8 @@ const prodEnv = {
 };
 const message = { id: "00000000-0000-4000-8000-000000000001", direction: "inbound", occurred_at: "2026-08-21T12:00:00Z", sanitized_text: "Sigue pendiente el mantenimiento", attachment_metadata: [], provider_metadata: {}, external_message_id: "respond-message-opaque" };
 const conversation = { provider: "respond_admin", channel: REAL_SHADOW_ADMIN_CHANNEL_ID };
+const devEnv = { VERCEL_ENV: "preview", SUPABASE_ENVIRONMENT: "dev", NEXT_PUBLIC_SUPABASE_URL: "https://hjfwjnejbcpmknvfpdcq.supabase.co", SHADOW_REAL_MANUAL_DEV_TEST_ENABLED: "true", SHADOW_AI_ALLOW_REAL_MESSAGES: "false", SHADOW_AI_PRODUCTION_ENABLED: "false", SHADOW_OUTBOUND_ENABLED: "false" };
+const devClone = { ...message, external_message_id: REAL_SHADOW_DEV_CLONE_MARKER, provider_metadata: { realManualDevClone: REAL_SHADOW_DEV_CLONE_MARKER }, sanitized_text: "El mantenimiento sintético sigue pendiente." };
 
 test("Admin inbound 544519 sanitizado es elegible y se reconstruye sin texto libre", () => {
   assert.deepEqual(realShadowMessageEligibility({ message, conversation, env: prodEnv }), { allowed: true, reason: "eligible" });
@@ -31,6 +33,16 @@ test("Ventas, outbound_human, QA y contenido que requiere sanitización fallan c
   assert.equal(realShadowMessageEligibility({ message: { ...message, direction: "outbound_human" }, conversation, env: prodEnv }).allowed, false);
   assert.equal(realShadowMessageEligibility({ message: { ...message, provider_metadata: { syntheticScenario: "p3-01" } }, conversation, env: prodEnv }).allowed, false);
   assert.equal(realShadowMessageEligibility({ message: { ...message, sanitized_text: "correo cliente@example.com" }, conversation, env: prodEnv }).allowed, false);
+});
+
+test("clone DEV exacto es elegible sin relajar mensajes reales ni Production", () => {
+  assert.deepEqual(realShadowDevCloneEligibility({ message: devClone, conversation, env: devEnv }), { allowed: true, reason: "eligible_dev_clone" });
+  assert.equal(realShadowDevCloneEligibility({ message, conversation, env: devEnv }).allowed, false);
+  assert.equal(realShadowDevCloneEligibility({ message: devClone, conversation, env: prodEnv }).allowed, false);
+  assert.equal(realShadowDevCloneEligibility({ message: devClone, conversation: { ...conversation, channel: "498219" }, env: devEnv }).allowed, false);
+  assert.equal(realShadowDevCloneEligibility({ message: { ...devClone, direction: "outbound_human" }, conversation, env: devEnv }).allowed, false);
+  assert.equal(realShadowDevCloneEligibility({ message: { ...devClone, provider_metadata: { syntheticScenario: "p3-01" } }, conversation, env: devEnv }).allowed, false);
+  assert.equal(realShadowDevCloneEligibility({ message: devClone, conversation, env: { ...devEnv, SHADOW_OUTBOUND_ENABLED: "true" } }).allowed, false);
 });
 
 test("guard productivo requiere opt-ins exactos, Production correcto y outbound apagado", () => {
@@ -53,19 +65,25 @@ test("identidad real incluye prompt específico y no usa campaign QA", () => {
 test("endpoints aceptan sólo IDs, autentican y no contienen Respond/outbound/write", () => {
   const run = read("pages/api/operaciones/shadow-ai-real-run.js");
   const continuation = read("pages/api/operaciones/shadow-ai-real-continue.js");
-  for (const source of [run, continuation]) {
+  const devValidate = read("pages/api/operaciones/shadow-ai-real-dev-validate.js");
+  for (const source of [run, continuation, devValidate]) {
     assert.match(source, /authorizeShadowAdministrator/);
     assert.match(source, /Object\.keys\(req\.body/);
     assert.doesNotMatch(source, /fetch\([^)]*respond|sendMessage|insert.*maintenance|update.*maintenance/is);
   }
   assert.match(run, /messageId/); assert.doesNotMatch(run, /req\.body\?\.(?:text|message|prompt)(?:\s|\)|\||;)/);
   assert.match(continuation, /runId/);
+  assert.match(devValidate, /realShadowDevCloneEligibility/);
+  assert.doesNotMatch(devValidate, /startShadowAiStateMachine|createAnthropicShadowResponse/);
+  assert.ok(devValidate.indexOf("authorizeShadowAdministrator") < devValidate.indexOf("loadRealShadowMessage"));
+  assert.match(devValidate, /return res\.status\(403\).*No autorizado/);
 });
 
 test("UI sólo ofrece analizar/continuar, nunca enviar/aplicar/responder/asignar", () => {
   const ui = read("pages/coordinador-ia-sombra.js");
   assert.match(ui, />Analizar en Shadow</);
   assert.match(ui, />Continuar análisis</);
+  assert.match(ui, /DEV TEST/);
   assert.doesNotMatch(ui, />\s*(?:Enviar|Aplicar|Responder|Asignar)\s*</);
 });
 

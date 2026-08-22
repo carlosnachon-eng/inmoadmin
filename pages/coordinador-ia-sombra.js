@@ -80,6 +80,12 @@ export default function ShadowCoordinatorPage() {
     const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo ejecutar el análisis manual.");
     await load();
   };
+  const validateRealShadowDevClone = async () => {
+    setQaRunning(true); setError("");
+    const response = await fetch("/api/operaciones/shadow-ai-real-dev-validate", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ messageId: selectedId }) });
+    const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo validar el clone DEV.");
+    setQaReport(json);
+  };
   if (!ready || (session && !profile)) return <div style={{ padding: 32 }}>Cargando…</div>;
   if (!session) return <div style={{ padding: 32 }}>Inicia sesión para acceder.</div>;
   if (!authorized) return <div style={{ padding: 32 }}>Acceso reservado a Dirección y Coordinación de Operaciones.</div>;
@@ -112,7 +118,8 @@ export default function ShadowCoordinatorPage() {
           <p><strong>Información faltante:</strong> {selected.requires_human ? "Se requiere confirmar contexto o intención." : "Ninguna detectada."}</p>
           {matches[0]?.context_href && <a href={matches[0].context_href}>Abrir contexto en modo lectura</a>}
           <div style={{ ...card, background: "#f8fafc", marginTop: 14 }}><h3 style={{marginTop:0}}>Administradora IA</h3>
-            {selected.real_shadow?.eligible && <button disabled={qaRunning} onClick={()=>runRealShadow(false)}>Analizar en Shadow</button>}
+            {selected.real_shadow?.devTest && <p style={{color:"#92400e",fontWeight:800}}>DEV TEST — clone sintético, nunca se envía ni procesa como mensaje real.</p>}
+            {selected.real_shadow?.eligible && <button disabled={qaRunning} onClick={selected.real_shadow?.devTest ? validateRealShadowDevClone : ()=>runRealShadow(false)}>Analizar en Shadow</button>}
             {selected.real_shadow?.executionState === "awaiting_model_round" && <button disabled={qaRunning} onClick={()=>runRealShadow(true)}>Continuar análisis</button>}
             {!aiDecision ? <><p style={{marginBottom:0}}>Estado: {aiRun?.execution_state === "awaiting_model_round" ? "Esperando siguiente ronda" : (aiRun?.execution_state || aiRun?.status || "No ejecutado")}</p>{aiRun?.execution_state === "awaiting_model_round" && <div style={{background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:8,padding:10,marginTop:8}}><p style={{marginTop:0}}>Ronda {aiRun.current_round} de {aiRun.max_rounds}. Evidencia persistida: {(aiRun.evidence_ledger || []).length} registro(s).</p><button disabled={qaRunning} onClick={continueRun}>Continuar run</button></div>}{retryAvailable && <div style={{background:"#fff7ed",border:"1px solid #fdba74",borderRadius:8,padding:10}}><p style={{color:"#9a3412",marginTop:0}}>Intento {Number(aiRun.attempt_number||1)} de 3 falló. Run previo: <code>{aiRun.id}</code></p><button disabled={qaRunning} onClick={()=>qaOrchestrator("POST",{retryFailed:true,fixtureIdsOverride:[selectedFixtureId]})} style={{background:"#9a3412",color:"#fff",border:0,borderRadius:8,padding:"8px 12px",fontWeight:700}}>Reintentar run fallido</button></div>}</> : <>
               <p><strong>Análisis:</strong> {aiDecision.decision_json?.summary}</p>

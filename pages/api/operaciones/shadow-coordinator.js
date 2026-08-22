@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { isAdministrativeWorkCenterRole } from "../../../lib/operaciones/administrativeWorkCenter";
 import { shadowContextState } from "../../../lib/shadow/pipeline";
-import { realShadowMessageEligibility } from "../../../lib/shadow/ai/realMessage";
+import { realShadowDevCloneEligibility, realShadowMessageEligibility } from "../../../lib/shadow/ai/realMessage";
 import { REAL_SHADOW_AI_PROMPT_VERSION } from "../../../lib/shadow/ai/realPrompt";
 
 const client = (key, token) => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, key, {
@@ -58,6 +58,8 @@ export default async function handler(req, res) {
     const conversationsById = new Map((conversations.data || []).map((item) => [item.id, item]));
     const realRunsByMessage = new Map((aiRuns.data || []).filter((item) => item.prompt_version === REAL_SHADOW_AI_PROMPT_VERSION).map((item) => [item.message_id, item]));
     const realManualEnabled = process.env.VERCEL_ENV === "production" && process.env.SUPABASE_ENVIRONMENT === "production" && process.env.SHADOW_AI_ENABLED === "true" && process.env.SHADOW_AI_PRODUCTION_ENABLED === "true" && process.env.SHADOW_AI_ALLOW_REAL_MESSAGES === "true" && process.env.SHADOW_AI_ALLOW_OPERATIONAL_EVENTS !== "true" && process.env.SHADOW_OUTBOUND_ENABLED !== "true";
+    const devProjectRef = String(process.env.NEXT_PUBLIC_SUPABASE_URL || "").match(/^https:\/\/([a-z0-9-]+)\.supabase\.co\/?$/i)?.[1] || null;
+    const realManualDevTestEnabled = process.env.VERCEL_ENV === "preview" && process.env.SUPABASE_ENVIRONMENT === "dev" && devProjectRef === "hjfwjnejbcpmknvfpdcq" && process.env.SHADOW_REAL_MANUAL_DEV_TEST_ENABLED === "true" && process.env.SHADOW_AI_ALLOW_REAL_MESSAGES !== "true" && process.env.SHADOW_AI_PRODUCTION_ENABLED !== "true" && process.env.SHADOW_OUTBOUND_ENABLED !== "true";
     const enrichedMessages = (messages.data || []).map((message) => {
       const matchCount = messageMatches.get(message.id) || 0;
       const state = shadowContextState(
@@ -65,11 +67,13 @@ export default async function handler(req, res) {
         { intent: message.intent },
         { matches: Array.from({ length: matchCount }), ambiguous: false },
       );
-      const realEligibility = realShadowMessageEligibility({ message, conversation: conversationsById.get(message.conversation_id), env: process.env });
+      const realEligibility = realManualDevTestEnabled
+        ? realShadowDevCloneEligibility({ message, conversation: conversationsById.get(message.conversation_id), env: process.env })
+        : realShadowMessageEligibility({ message, conversation: conversationsById.get(message.conversation_id), env: process.env });
       const realRun = realRunsByMessage.get(message.id) || null;
-      return { ...message, semantic_context_needed: state.semanticContextNeeded, context_status: state.contextStatus, real_shadow: { eligible: realManualEnabled && realEligibility.allowed && !realRun, reason: realEligibility.reason, runId: realRun?.id || null, status: realRun?.status || null, executionState: realRun?.execution_state || null } };
+      return { ...message, semantic_context_needed: state.semanticContextNeeded, context_status: state.contextStatus, real_shadow: { eligible: (realManualEnabled || realManualDevTestEnabled) && realEligibility.allowed && !realRun, devTest: realManualDevTestEnabled && realEligibility.allowed, reason: realEligibility.reason, runId: realRun?.id || null, status: realRun?.status || null, executionState: realRun?.execution_state || null } };
     });
-    return res.status(200).json({ ok: true, messages: enrichedMessages, operationalEvents: operationalEvents.data || [], conversations: conversations.data || [], matches: matches.data || [], evaluations: evaluations.data || [], aiRuns: aiRuns.data || [], aiDecisions: aiDecisions.data || [], toolAudit: toolAudit.data || [], metrics: counts, realManualEnabled, aiStatus: (aiRuns.data || []).some((x)=>x.status==="completed") ? "executed_qa" : "not_executed" });
+    return res.status(200).json({ ok: true, messages: enrichedMessages, operationalEvents: operationalEvents.data || [], conversations: conversations.data || [], matches: matches.data || [], evaluations: evaluations.data || [], aiRuns: aiRuns.data || [], aiDecisions: aiDecisions.data || [], toolAudit: toolAudit.data || [], metrics: counts, realManualEnabled, realManualDevTestEnabled, aiStatus: (aiRuns.data || []).some((x)=>x.status==="completed") ? "executed_qa" : "not_executed" });
   } catch (error) {
     console.error("[shadow-coordinator]", error?.message || error);
     return res.status(500).json({ ok: false, error: "No se pudo cargar Coordinador IA — Sombra." });
