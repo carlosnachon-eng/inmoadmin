@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import { AUTO_REAL_MAX_TURNS_PER_INVOCATION, assertAutoRealEnvironment, autoRealRunDisposition, estimateAutoRealVolume } from "../lib/shadow/ai/autoReal.js";
-import { buildRealShadowConversationTurns, realShadowTurnEnvelope } from "../lib/shadow/ai/conversationTurns.js";
+import { AUTO_REAL_MAX_TURNS_PER_INVOCATION, assertAutoRealEnvironment, autoRealRunDisposition, estimateAutoRealVolume, selectAutoRealRun } from "../lib/shadow/ai/autoReal.js";
+import { buildRealShadowConversationTurns, REAL_SHADOW_CONTEXT_MAX_CHARS, REAL_SHADOW_CONTEXT_MAX_MESSAGES, realShadowTurnEnvelope } from "../lib/shadow/ai/conversationTurns.js";
+import { isRealShadowQaMessage } from "../lib/shadow/ai/realMessage.js";
+import { minimalShadowAiContext } from "../lib/shadow/ai/runner.js";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => fs.readFileSync(new URL(path, root), "utf8");
@@ -29,6 +31,42 @@ test("Ventas, QA y turn no asentado quedan excluidos", () => {
   assert.equal(buildRealShadowConversationTurns({ messages:[msg("a","inbound",9)], conversations:[conversation], env, now:Date.parse("2026-08-21T12:10:00Z") }).length,0);
 });
 
+test("filtro QA excluye marcadores de smoke y metadata sintética en backfill y Auto-Real", () => {
+  for (const message of [
+    msg("q1","inbound",0,"PRUEBA SHADOW ADMIN 001"), msg("q2","inbound",0,"RECIBIDO SHADOW ADMIN 001"),
+    msg("q3","inbound",0,"FASE2A-REAL-SMOKE"), msg("q4","inbound",0,"texto neutro",{ qa:true }),
+    msg("q5","inbound",0,"texto neutro",{ nested:{ synthetic:true } }), msg("q6","inbound",0,"texto neutro",{ testMarker:"smoke" }),
+  ]) assert.equal(isRealShadowQaMessage(message), true);
+  assert.equal(isRealShadowQaMessage(msg("real","inbound",0,"Necesito apoyo con la renta",{ source:"respond" })), false);
+});
+
+test("turn breve recibe sólo contexto anterior sanitizado y nunca la respuesta humana posterior", () => {
+  const messages=[
+    msg("a","inbound",0,"La cita es en Montpellier"), msg("h1","outbound_human",1,"¿Confirmas que llegarás a las cuatro?"),
+    msg("b","inbound",2,"Sí"), msg("h2","outbound_human",3,"Perfecto, gracias"),
+    msg("c","inbound",4,"Voy diez minutos tarde"), msg("future","outbound_human",5,"Respuesta posterior secreta"),
+  ];
+  const turns=buildRealShadowConversationTurns({messages,conversations:[conversation],env,now:Date.parse("2026-08-21T12:10:00Z")});
+  assert.equal(turns.length,3);
+  assert.deepEqual(turns[1].priorContextMessages.map(x=>x.sanitizedText),["La cita es en Montpellier","¿Confirmas que llegarás a las cuatro?"]);
+  const envelope=realShadowTurnEnvelope(turns[2],conversation);
+  assert.match(JSON.stringify(envelope.providerMetadata.priorConversation),/Montpellier/);
+  assert.match(JSON.stringify(envelope.providerMetadata.priorConversation),/Perfecto, gracias/);
+  assert.doesNotMatch(JSON.stringify(envelope),/Respuesta posterior secreta/);
+  assert.ok(envelope.providerMetadata.priorConversation.length<=REAL_SHADOW_CONTEXT_MAX_MESSAGES);
+  assert.ok(JSON.stringify(envelope.providerMetadata.priorConversation).length<REAL_SHADOW_CONTEXT_MAX_CHARS+1000);
+  assert.deepEqual(minimalShadowAiContext(envelope,{},[],0).metadata.priorConversation,envelope.providerMetadata.priorConversation);
+});
+
+test("contexto previo conserva asunto y referencias multiunidad sin mezclarlos con el turn actual", () => {
+  const messages=[msg("a","inbound",0,"Envío comprobantes de las unidades A y B"),msg("h","outbound_human",1,"¿Confirmas que son renta de agosto?"),msg("b","inbound",2,"Sí, me apoyas con eso")];
+  const turns=buildRealShadowConversationTurns({messages,conversations:[conversation],env,now:Date.parse("2026-08-21T12:10:00Z")});
+  const envelope=realShadowTurnEnvelope(turns[1],conversation);
+  assert.equal(envelope.sanitizedText,"Sí, me apoyas con eso");
+  assert.match(JSON.stringify(envelope.providerMetadata.priorConversation),/unidades A y B/);
+  assert.match(JSON.stringify(envelope.providerMetadata.priorConversation),/renta de agosto/);
+});
+
 test("turn usa identidad estable y envelope no contiene respuesta humana", () => {
   const [turn] = buildRealShadowConversationTurns({ messages:[msg("a","inbound",0),msg("h","outbound_human",1,"humano")], conversations:[conversation], env, now:Date.parse("2026-08-21T12:10:00Z") });
   const again = buildRealShadowConversationTurns({ messages:[msg("a","inbound",0),msg("h","outbound_human",1,"humano")], conversations:[conversation], env, now:Date.parse("2026-08-21T12:20:00Z") })[0];
@@ -38,6 +76,13 @@ test("turn usa identidad estable y envelope no contiene respuesta humana", () =>
 test("completed/running/error-timeout conservan idempotencia sin retry", () => {
   assert.equal(autoRealRunDisposition(null),"pending"); assert.equal(autoRealRunDisposition({status:"completed"}),"skip_completed"); assert.equal(autoRealRunDisposition({status:"running"}),"block_running");
   assert.equal(autoRealRunDisposition({status:"error"}),"report_failed_no_retry"); assert.equal(autoRealRunDisposition({status:"timeout"}),"report_failed_no_retry");
+});
+
+test("prompt v2 no vuelve pendientes los turns reales ya completados con v1", () => {
+  const legacy={id:"legacy",status:"completed",prompt_version:"administradora-ia-emporio-real-shadow-v1"};
+  assert.equal(selectAutoRealRun([legacy])?.id,"legacy");
+  const current={id:"current",status:"error",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
+  assert.equal(selectAutoRealRun([legacy,current])?.id,"current");
 });
 
 test("backfill ON y auto OFF permite backfill pero bloquea cron", () => {

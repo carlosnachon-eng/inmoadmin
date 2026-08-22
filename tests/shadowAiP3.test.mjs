@@ -123,6 +123,16 @@ test("una promesa futura real continúa bloqueada",()=>{
   assert.match(result.groundingReason,/execution_commitment/);
 });
 
+test("promesas operativas del backfill real se neutralizan sin compromiso ejecutable",()=>{
+  for (const phrase of ["Te esperamos diez minutos.","Te avisamos mañana.","Te contactamos después.","Lo revisamos.","Lo canalizamos.","Lo gestionamos."]) {
+    const result=finalizeShadowAiDecision({...validDecision,requiresHuman:false,proposedAction:phrase,conversationalResponseParts:{acknowledgement:phrase,verifiedFactReferences:[],clarificationQuestion:null,escalationMessage:null},executionCommitment:"none",safetyFlags:[]},{sanitizedText:"Voy diez minutos tarde",providerMetadata:{priorConversation:[{direction:"outbound_human",sanitizedText:"La cita es a las cuatro"}]}},[]);
+    assert.equal(result.executionCommitment,"none");
+    assert.equal(result.responseBlocked,false);
+    assert.doesNotMatch(`${result.proposedAction} ${result.proposedResponse}`,/te (?:esperamos|avisamos|contactamos)|lo (?:revisamos|canalizamos|gestionamos)/i);
+    assert.equal(result.safetyFlags.includes("shadow_action_promise_neutralized"),true);
+  }
+});
+
 test("regresión p3-17: pagado $0 describe paidAmount y no contradice status pendiente",()=>{
   const id="f2a30000-0000-4000-8700-000000000001"; const evidenceId=`owner_liquidation:${id}`;
   const tools=[{name:"get_owner_liquidation_summary",ok:true,result:[{entityType:"owner_liquidation",internalId:id,status:"pendiente",period:"FASE2A-P3-QA periodo",totalAmount:11250,paidAmount:0}]}];
