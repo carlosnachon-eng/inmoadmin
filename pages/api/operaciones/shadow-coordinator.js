@@ -3,6 +3,7 @@ import { isAdministrativeWorkCenterRole } from "../../../lib/operaciones/adminis
 import { shadowContextState } from "../../../lib/shadow/pipeline";
 import { realShadowDevCloneEligibility, realShadowMessageEligibility } from "../../../lib/shadow/ai/realMessage";
 import { REAL_SHADOW_AI_PROMPT_VERSION } from "../../../lib/shadow/ai/realPrompt";
+import { assertManualAuthorizationEnvironment, manualAuthorizationState } from "../../../lib/shadow/ai/manualAuthorization";
 
 const client = (key, token) => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, key, {
   global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
@@ -39,27 +40,31 @@ export default async function handler(req, res) {
       return res.status(201).json({ ok: true, evaluation: data });
     }
     const admin = client(process.env.SUPABASE_SERVICE_ROLE_KEY);
-    const [messages, conversations, events, matches, evaluations, operationalEvents, aiRuns, aiDecisions, toolAudit] = await Promise.all([
+    const [messages, conversations, events, matches, evaluations, operationalEvents, aiRuns, aiDecisions, toolAudit, manualAuthorizations] = await Promise.all([
       admin.from("shadow_messages").select("id,conversation_id,external_message_id,direction,occurred_at,sanitized_text,message_type,attachment_metadata,provider_metadata,processing_state,intent,administrative_likelihood,reason_codes,requires_human,created_at").order("occurred_at", { ascending: false }).limit(250),
       admin.from("shadow_conversations").select("id,provider,channel,contact_hash,first_message_at,last_message_at,administrative_likelihood,status"),
       admin.from("shadow_ingestion_events").select("status,sanitization_changed,duplicate_count"),
       admin.from("shadow_context_matches").select("message_id,internal_entity_type,internal_id,display_label,match_method,confidence_rank,ambiguous,reason_code,context_href"),
       admin.from("shadow_human_evaluations").select("id,message_id,classification,expected_correction,notes,actor_profile_id,created_at").order("created_at", { ascending: false }),
       admin.from("shadow_operational_events").select("id,source,kind,event_type,aggregate_type,aggregate_id,ticket_id,quote_id,property_id,maintenance_scope,occurred_at,payload_safe,requires_human,created_at").order("occurred_at", { ascending: false }).limit(250),
-      admin.from("shadow_ai_runs").select("id,message_id,operational_event_id,input_kind,status,execution_state,current_round,max_rounds,evidence_ledger,model,prompt_version,schema_version,campaign_id,started_at,completed_at,state_updated_at,latency_ms,input_tokens,output_tokens,estimated_cost_usd,error_sanitized,attempt_number,retry_of_run_id").order("created_at", { ascending: false }),
+      admin.from("shadow_ai_runs").select("id,message_id,operational_event_id,input_kind,status,execution_state,current_round,max_rounds,evidence_ledger,model,prompt_version,schema_version,campaign_id,started_at,completed_at,state_updated_at,latency_ms,input_tokens,output_tokens,estimated_cost_usd,error_sanitized,attempt_number,retry_of_run_id,telemetry_json").order("created_at", { ascending: false }),
       admin.from("shadow_ai_decisions").select("id,ai_run_id,status,intent,urgency,proposed_action,proposed_response,confidence,requires_human,escalation_reason,decision_json,tool_summary,created_at").order("created_at", { ascending: false }),
       admin.from("shadow_context_query_audit").select("message_id,tool_name,result_count,succeeded,duration_ms,created_at").order("created_at", { ascending: false }),
+      admin.from("shadow_ai_manual_authorizations").select("authorization_id,message_id,authorized_at,expires_at,consumed_at,revoked_at,purpose,model,prompt_version,ai_run_id,created_at").order("created_at", { ascending: false }),
     ]);
-    const failure = [messages, conversations, events, matches, evaluations, operationalEvents, aiRuns, aiDecisions, toolAudit].find((result) => result.error)?.error;
+    const failure = [messages, conversations, events, matches, evaluations, operationalEvents, aiRuns, aiDecisions, toolAudit, manualAuthorizations].find((result) => result.error)?.error;
     if (failure) throw failure;
     const counts = (events.data || []).reduce((acc, item) => ({ ...acc, [item.status]: (acc[item.status] || 0) + 1, duplicate: acc.duplicate + Number(item.duplicate_count || 0), sanitized: acc.sanitized + (item.sanitization_changed ? 1 : 0) }), { accepted: 0, duplicate: 0, rejected: 0, error: 0, sanitized: 0 });
     const messageMatches = new Map();
     for (const match of matches.data || []) messageMatches.set(match.message_id, (messageMatches.get(match.message_id) || 0) + 1);
     const conversationsById = new Map((conversations.data || []).map((item) => [item.id, item]));
     const realRunsByMessage = new Map((aiRuns.data || []).filter((item) => item.prompt_version === REAL_SHADOW_AI_PROMPT_VERSION).map((item) => [item.message_id, item]));
-    const realManualEnabled = process.env.VERCEL_ENV === "production" && process.env.SUPABASE_ENVIRONMENT === "production" && process.env.SHADOW_AI_ENABLED === "true" && process.env.SHADOW_AI_PRODUCTION_ENABLED === "true" && process.env.SHADOW_AI_ALLOW_REAL_MESSAGES === "true" && process.env.SHADOW_AI_ALLOW_OPERATIONAL_EVENTS !== "true" && process.env.SHADOW_OUTBOUND_ENABLED !== "true";
-    const devProjectRef = String(process.env.NEXT_PUBLIC_SUPABASE_URL || "").match(/^https:\/\/([a-z0-9-]+)\.supabase\.co\/?$/i)?.[1] || null;
-    const realManualDevTestEnabled = process.env.VERCEL_ENV === "preview" && process.env.SUPABASE_ENVIRONMENT === "dev" && devProjectRef === "hjfwjnejbcpmknvfpdcq" && process.env.SHADOW_REAL_MANUAL_DEV_TEST_ENABLED === "true" && process.env.SHADOW_AI_ALLOW_REAL_MESSAGES !== "true" && process.env.SHADOW_AI_PRODUCTION_ENABLED !== "true" && process.env.SHADOW_OUTBOUND_ENABLED !== "true";
+    const authorizationsByMessage = new Map();
+    for (const authorization of manualAuthorizations.data || []) if (!authorizationsByMessage.has(authorization.message_id)) authorizationsByMessage.set(authorization.message_id, authorization);
+    let manualEnvironment = null;
+    try { manualEnvironment = assertManualAuthorizationEnvironment(process.env); } catch { manualEnvironment = null; }
+    const realManualEnabled = manualEnvironment?.mode === "production";
+    const realManualDevTestEnabled = manualEnvironment?.mode === "dev_test";
     const enrichedMessages = (messages.data || []).map((message) => {
       const matchCount = messageMatches.get(message.id) || 0;
       const state = shadowContextState(
@@ -71,7 +76,16 @@ export default async function handler(req, res) {
         ? realShadowDevCloneEligibility({ message, conversation: conversationsById.get(message.conversation_id), env: process.env })
         : realShadowMessageEligibility({ message, conversation: conversationsById.get(message.conversation_id), env: process.env });
       const realRun = realRunsByMessage.get(message.id) || null;
-      return { ...message, semantic_context_needed: state.semanticContextNeeded, context_status: state.contextStatus, real_shadow: { eligible: (realManualEnabled || realManualDevTestEnabled) && realEligibility.allowed && !realRun, devTest: realManualDevTestEnabled && realEligibility.allowed, reason: realEligibility.reason, runId: realRun?.id || null, status: realRun?.status || null, executionState: realRun?.execution_state || null } };
+      const authorization = authorizationsByMessage.get(message.id) || null;
+      const authorizationState = manualAuthorizationState(authorization);
+      const enabled = realManualEnabled || realManualDevTestEnabled;
+      return { ...message, semantic_context_needed: state.semanticContextNeeded, context_status: state.contextStatus, real_shadow: {
+        eligible: enabled && realEligibility.allowed && !realRun && authorizationState === "active",
+        authorizable: enabled && realEligibility.allowed && !realRun && authorizationState !== "active",
+        devTest: realManualDevTestEnabled && realEligibility.allowed, reason: realEligibility.reason,
+        authorization: authorization ? { id: authorization.authorization_id, state: authorizationState, authorizedAt: authorization.authorized_at, expiresAt: authorization.expires_at, consumedAt: authorization.consumed_at, revokedAt: authorization.revoked_at, runId: authorization.ai_run_id } : null,
+        runId: realRun?.id || null, status: realRun?.status || null, executionState: realRun?.execution_state || null,
+      } };
     });
     return res.status(200).json({ ok: true, messages: enrichedMessages, operationalEvents: operationalEvents.data || [], conversations: conversations.data || [], matches: matches.data || [], evaluations: evaluations.data || [], aiRuns: aiRuns.data || [], aiDecisions: aiDecisions.data || [], toolAudit: toolAudit.data || [], metrics: counts, realManualEnabled, realManualDevTestEnabled, aiStatus: (aiRuns.data || []).some((x)=>x.status==="completed") ? "executed_qa" : "not_executed" });
   } catch (error) {

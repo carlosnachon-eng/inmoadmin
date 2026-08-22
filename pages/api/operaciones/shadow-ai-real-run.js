@@ -11,8 +11,9 @@ export default async function handler(req, res) {
   try {
     if (!await authorizeShadowAdministrator(req)) return res.status(403).json({ ok: false, error: "No autorizado." });
     const messageId = String(req.body?.messageId || "");
-    if (!UUID.test(messageId) || Object.keys(req.body || {}).some((key) => key !== "messageId")) return res.status(400).json({ ok: false, error: "Solicitud inválida." });
-    const result = await startRealShadowMessageRun(getAdminSupabase(), messageId);
+    const authorizationId = String(req.body?.authorizationId || "");
+    if (!UUID.test(messageId) || !UUID.test(authorizationId) || Object.keys(req.body || {}).some((key) => !["messageId", "authorizationId"].includes(key))) return res.status(400).json({ ok: false, error: "Solicitud inválida." });
+    const result = await startRealShadowMessageRun(getAdminSupabase(), messageId, authorizationId);
     const conflict = ["duplicate", "running", "failed_no_retry"].includes(result.status);
     const rejected = !["completed", "blocked", "awaiting_model_round", "duplicate", "running", "failed_no_retry"].includes(result.status);
     return res.status(conflict ? 409 : rejected ? 403 : 200).json({ ok: !conflict && !rejected, ...result });
