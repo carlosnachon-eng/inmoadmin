@@ -34,9 +34,13 @@ export default function ShadowCoordinatorPage() {
   const load = useCallback(async () => {
     if (!authorized || !session?.access_token) return;
     setError("");
-    const response = await fetch("/api/operaciones/shadow-coordinator", { headers: { Authorization: `Bearer ${session.access_token}` } });
-    const json = await response.json(); if (!response.ok) return setError(json.error || "No se pudo cargar.");
-    setData(json); setSelectedId((current) => current || json.messages?.[0]?.id || null);
+    try {
+      const response = await fetch("/api/operaciones/shadow-coordinator", { headers: { Authorization: `Bearer ${session.access_token}` } });
+      const json = await response.json(); if (!response.ok) return setError(json.error || "No se pudo cargar.");
+      setData(json); setSelectedId((current) => current || json.messages?.[0]?.id || null);
+    } catch {
+      setError("No se pudo cargar Coordinador IA — Sombra.");
+    }
   }, [authorized, session?.access_token]);
   useEffect(() => { load(); }, [load]);
   const selected = data?.messages?.find((item) => item.id === selectedId);
@@ -126,6 +130,7 @@ export default function ShadowCoordinatorPage() {
   if (!ready || (session && !profile)) return <div style={{ padding: 32 }}>Cargando…</div>;
   if (!session) return <div style={{ padding: 32 }}>Inicia sesión para acceder.</div>;
   if (!authorized) return <div style={{ padding: 32 }}>Acceso reservado a Dirección y Coordinación de Operaciones.</div>;
+  if (!data && !error) return <Layout view="coordinador_ia_sombra" profile={profile} onLogout={async () => { await supabase.auth.signOut(); window.location.href = "/"; }}><main style={{ padding: 22 }}><p aria-live="polite">Cargando datos Shadow…</p></main></Layout>;
   const card = { background: "#fff", border: `1px solid ${brand.border}`, borderRadius: 12, padding: 14 };
   const retryAvailable = Boolean(selectedFixtureId?.startsWith("p3-") && ["error","timeout"].includes(aiRun?.status) && Number(aiRun?.attempt_number || 1) < 3);
   return <Layout view="coordinador_ia_sombra" profile={profile} onLogout={async () => { await supabase.auth.signOut(); window.location.href = "/"; }}>
