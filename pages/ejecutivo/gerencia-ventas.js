@@ -242,7 +242,7 @@ export default function GerenciaVentasDashboard() {
     const yearStart = `${year}-01-01`;
     try {
       const [profilesRes, partnersRes, cierresRes, citasRes, clientesRes, seguimientosRes, cartasRes] = await Promise.all([
-        supabase.from("profiles").select("id, email, full_name, role_id, active, created_at"),
+        supabase.from("profiles").select("id, email, full_name, role_id, active, participa_kpis, created_at"),
         supabase.from("partner_users").select("email"),
         supabase.from("cierres").select("id, anio, mes, propiedad, fecha_cierre, operacion, precio, comision, vendedor, notas").gte("fecha_cierre", yearStart).lte("fecha_cierre", cierreQueryEnd),
         supabase.from("citas").select("id, cliente_id, propiedad_id, asesor_id, fecha_hora, estado, created_at, updated_at").gte("fecha_hora", startDateTime).lt("fecha_hora", endExclusive.toISOString()),
@@ -280,7 +280,7 @@ export default function GerenciaVentasDashboard() {
     const diasEvaluables = countNonSundayDays(year, month, diaEvaluado);
     const partnerEmails = new Set((data.partners || []).map((p) => normalize(p.email)));
     const asesoresComercialesTotales = (data.profiles || [])
-      .filter((p) => p.active !== false && ROLES_ASESORES.has(p.role_id) && !partnerEmails.has(normalize(p.email)))
+      .filter((p) => p.active !== false && p.participa_kpis !== false && ROLES_ASESORES.has(p.role_id) && !partnerEmails.has(normalize(p.email)))
       .map((p) => ({ ...p, nombre: nombrePerfil(p) }))
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
     const asesoresExcluidos = asesoresComercialesTotales

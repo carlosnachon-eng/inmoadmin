@@ -88,11 +88,11 @@ export default function KPIsDashboard() {
   const [ASESORES_EMAILS, setASESORES_EMAILS] = useState({})
   useEffect(() => {
     Promise.all([
-      supabase.from('profiles').select('email, full_name, role_id').eq('active', true),
+      supabase.from('profiles').select('email, full_name, role_id, participa_kpis').eq('active', true),
       supabase.from('partner_users').select('email'),
     ]).then(([profilesRes, partnersRes]) => {
         const partnerEmails = new Set((partnersRes.data || []).map(p => String(p.email || '').toLowerCase()))
-        const enRanking = (profilesRes.data || []).filter(p => ROLES_EN_RANKING.includes(p.role_id) && !isPartnerEmail(p.email, partnerEmails))
+        const enRanking = (profilesRes.data || []).filter(p => ROLES_EN_RANKING.includes(p.role_id) && p.participa_kpis !== false && !isPartnerEmail(p.email, partnerEmails))
         const mapa = {}
         const nombres = enRanking.map(p => {
           const n = p.full_name || NOMBRES_CONOCIDOS[p.email] || p.email

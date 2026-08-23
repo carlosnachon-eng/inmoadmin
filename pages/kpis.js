@@ -87,7 +87,7 @@ export default function KPIs() {
     })
   }, [session])
 
-  const nombre = perfilDb && perfilDb.active !== false && !esPartner && ROLES_QUE_REGISTRAN_KPIS.includes(perfilDb.role_id)
+  const nombre = perfilDb && perfilDb.active !== false && perfilDb.participa_kpis !== false && !esPartner && ROLES_QUE_REGISTRAN_KPIS.includes(perfilDb.role_id)
     ? (perfilDb.full_name || NOMBRES_CONOCIDOS[perfilDb.email] || perfilDb.email)
     : null
   const esAdmin = perfilDb?.active !== false && !esPartner && ROLES_ADMIN_KPIS.includes(perfilDb?.role_id)
@@ -98,11 +98,11 @@ export default function KPIs() {
   const [listaAsesores, setListaAsesores] = useState([])
   useEffect(() => {
     Promise.all([
-      supabase.from('profiles').select('email, full_name, role_id').eq('active', true),
+      supabase.from('profiles').select('email, full_name, role_id, participa_kpis').eq('active', true),
       supabase.from('partner_users').select('email'),
     ]).then(([profilesRes, partnersRes]) => {
         const partnerEmails = new Set((partnersRes.data || []).map(p => String(p.email || '').toLowerCase()))
-        const asesores = (profilesRes.data || []).filter(p => ROLES_QUE_REGISTRAN_KPIS.includes(p.role_id) && !isPartnerEmail(p.email, partnerEmails))
+        const asesores = (profilesRes.data || []).filter(p => ROLES_QUE_REGISTRAN_KPIS.includes(p.role_id) && p.participa_kpis !== false && !isPartnerEmail(p.email, partnerEmails))
         setListaAsesores(asesores.map(p => p.full_name || NOMBRES_CONOCIDOS[p.email] || p.email))
       })
   }, [])
