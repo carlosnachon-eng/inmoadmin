@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { operationalContextForPolicy, processOperationalOutbox, processOperationalOutboxEvent, validateMaintenanceScope, validateOperationalPayload } from "../lib/shadow/operationalEvents.js";
+import { operationalWorkerGuard } from "../lib/shadow/operationalWorkerGuard.js";
 
 const base = { eventType:"maintenance_ticket_created", ticketId:"f2a-op-ticket-1", maintenanceScope:"managed_property", propertyId:"f2a-op-property-1", priority:"media", payer:"propietario", status:"nuevo", occurredAt:"2026-08-21T12:00:00Z" };
 
@@ -34,6 +36,19 @@ test("worker limita lote y no contiene write tools/outbound/AI",async()=>{
   let requested=0; const query={select(){return this},is(){return this},lte(){return this},order(){return this},async limit(value){requested=value;return {data:[],error:null}}};
   await processOperationalOutbox({from(){return query},rpc(){throw new Error("unexpected")}}, {limit:99});
   assert.equal(requested,10);
+});
+test("Shadow conversacional ON no bloquea la ingesta operacional",()=>{
+  assert.deepEqual(operationalWorkerGuard({SHADOW_AI_ENABLED:"true",SHADOW_OUTBOUND_ENABLED:"false"}),{allowed:true});
+});
+test("outbound continúa bloqueando el worker operacional",()=>{
+  assert.deepEqual(operationalWorkerGuard({SHADOW_AI_ENABLED:"true",SHADOW_OUTBOUND_ENABLED:"true"}),{allowed:false,error:"Operational ingestion exige outbound apagado."});
+});
+test("el cron operacional no invoca Claude, Respond ni mutaciones ERP",()=>{
+  const endpoint=fs.readFileSync(new URL("../pages/api/cron/shadow-operational-events.js",import.meta.url),"utf8");
+  const worker=fs.readFileSync(new URL("../lib/shadow/operationalEvents.js",import.meta.url),"utf8");
+  assert.doesNotMatch(endpoint,/anthropic|claude|respond|maintenance_(?:tickets|quotes)|admin\.from\(/i);
+  assert.doesNotMatch(worker,/anthropic|claude|respond|maintenance_(?:tickets|quotes)/i);
+  assert.match(worker,/admin\.rpc\("process_operational_event"/);
 });
 test("smoke manual procesa exclusivamente el eventId indicado",async()=>{
   const calls=[];
