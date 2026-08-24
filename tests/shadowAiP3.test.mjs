@@ -12,6 +12,7 @@ import { buildEvidenceLedger, groundAndRenderDecision } from "../lib/shadow/ai/g
 import { combinePolicyAndModelTools, deriveRequiredTools } from "../lib/shadow/ai/toolPolicy.js";
 import { buildResolvedOperationalContext } from "../lib/shadow/ai/operationalContext.js";
 import { startShadowAiStateMachine } from "../lib/shadow/ai/stateMachine.js";
+import { buildRealShadowConversationTurns, realShadowTurnEnvelope } from "../lib/shadow/ai/conversationTurns.js";
 
 const devEnv = { SHADOW_AI_ENABLED:"true", SHADOW_AI_ALLOW_REAL_MESSAGES:"false", SHADOW_OUTBOUND_ENABLED:"false", SUPABASE_ENVIRONMENT:"dev", NEXT_PUBLIC_SUPABASE_URL:"https://hjfwjnejbcpmknvfpdcq.supabase.co", ANTHROPIC_API_KEY:"fixture" };
 const synthetic = { provider:"synthetic", providerMetadata:{syntheticScenario:"p3-01"} };
@@ -43,11 +44,79 @@ test("guard P3 requiere DEV exacto, flag, key y mensaje sintético", () => {
 });
 
 test("schema estructurado rechaza texto libre y campos desconocidos", () => {
-  assert.throws(()=>validateShadowAiDecision("texto"),/invalid_structured_output/);
+  assert.throws(()=>validateShadowAiDecision("texto"),/invalid_structured_output:invalid_shape/);
   assert.equal(validateShadowAiDecision(validDecision),validDecision);
-  assert.throws(()=>validateShadowAiDecision({...validDecision,sql:"delete"}),/invalid_structured_output/);
-  assert.throws(()=>validateShadowAiDecision({...validDecision,summary:"x".repeat(501)}),/invalid_structured_output/);
-  assert.throws(()=>validateShadowAiDecision({...validDecision,entitiesMentioned:["x".repeat(121)]}),/invalid_structured_output/);
+  assert.throws(()=>validateShadowAiDecision({...validDecision,sql:"delete"}),/invalid_structured_output:invalid_shape/);
+  const missingSummary={...validDecision}; delete missingSummary.summary;
+  assert.throws(()=>validateShadowAiDecision(missingSummary),/invalid_structured_output:missing_required_field/);
+  assert.throws(()=>validateShadowAiDecision({...validDecision,intent:"otro"}),/invalid_structured_output:invalid_enum/);
+  assert.throws(()=>validateShadowAiDecision({...validDecision,confidence:"alta"}),/invalid_structured_output:invalid_type/);
+  assert.throws(()=>validateShadowAiDecision({...validDecision,summary:"x".repeat(501)}),/invalid_structured_output:string_limit_exceeded/);
+  assert.throws(()=>validateShadowAiDecision({...validDecision,entitiesMentioned:Array(11).fill("agua")}),/invalid_structured_output:array_limit_exceeded/);
+});
+
+test("Auto-Real conserva metadata segura y falla cerrado ante structured output inválido en turn fragmentado", async () => {
+  const conversation={id:"conversation-fragmented",provider:"respond_admin",channel:"544519"};
+  const base=Date.parse("2026-08-24T16:25:00Z");
+  const prior=[
+    {id:"prior-inbound",conversation_id:conversation.id,direction:"inbound",occurred_at:new Date(base).toISOString(),sanitized_text:"¿Sigue el problema del suministro?",attachment_metadata:[],provider_metadata:{},external_message_id:"prior-inbound"},
+    {id:"prior-human",conversation_id:conversation.id,direction:"outbound_human",occurred_at:new Date(base+30000).toISOString(),sanitized_text:"¿Nos confirmas cómo está llegando el agua?",attachment_metadata:[],provider_metadata:{},external_message_id:"prior-human"},
+  ];
+  const fragments=Array.from({length:18},(_,index)=>({
+    id:`fragment-${String(index+1).padStart(2,"0")}`,conversation_id:conversation.id,direction:"inbound",
+    occurred_at:new Date(base+90000+index*14000).toISOString(),
+    sanitized_text:index===6 ? "[IMAGEN]" : `Mensaje ${index+1}: suministro de agua con presión irregular.`,
+    attachment_metadata:index===6 ? [{type:"image",mimeType:"image/jpeg"}] : [],provider_metadata:{},external_message_id:`real-fragment-${index+1}`,
+  }));
+  const messages=[...prior,...fragments];
+  const turns=buildRealShadowConversationTurns({messages,conversations:[conversation],env:{SHADOW_RESPOND_ADMIN_CHANNEL_ID:"544519"},now:base+90000+17*14000+180000});
+  const turn=turns.at(-1);
+  assert.equal(turn.messageIds.length,18);
+  assert.deepEqual(turn.messageIds,fragments.map((item)=>item.id));
+  assert.equal(turn.priorContextMessages.length,2);
+  assert.equal(turn.attachmentContext.present,true);
+  assert.ok(turn.sanitizedText.length>=800&&turn.sanitizedText.length<=1000);
+
+  const anchor=fragments.at(-1);
+  const db=fakeAiDb([],{filterIdempotencyKey:true,tableRows:{shadow_messages:[anchor],shadow_conversations:[conversation]}});
+  let toolCalls=0;
+  const invalidDecision={...validDecision,summary:"x".repeat(501)};
+  const result=await startShadowAiStateMachine(db,{messageId:anchor.id,envelope:realShadowTurnEnvelope(turn,conversation)},{
+    env:{SHADOW_AI_ENABLED:"true",SHADOW_AI_PRODUCTION_ENABLED:"true",SHADOW_AI_ALLOW_REAL_MESSAGES:"true",SHADOW_OUTBOUND_ENABLED:"false",SHADOW_RESPOND_ADMIN_CHANNEL_ID:"544519",SUPABASE_ENVIRONMENT:"production",VERCEL_ENV:"production",NEXT_PUBLIC_SUPABASE_URL:"https://bnzrnizrmonjxlktbhlp.supabase.co",ANTHROPIC_API_KEY:"fixture"},
+    inputMode:"auto_real_shadow",persistInputSnapshot:true,idempotencyIdentity:`turn:${turn.turnKey}`,
+    turnMetadata:{turnKey:turn.turnKey,messageIds:turn.messageIds,closedReason:turn.closedReason},
+    modelCall:async()=>({id:"req_sanitized_fixture",text:JSON.stringify(invalidDecision),usage:{input_tokens:987,output_tokens:123}}),
+    executeTool:async()=>{toolCalls+=1;return[];},
+  });
+  assert.equal(result.status,"error");
+  assert.equal(result.error,"invalid_structured_output:string_limit_exceeded");
+  assert.equal(result.telemetry.anthropic_requests[0].request_id,"req_sanitized_fixture");
+  assert.equal(result.telemetry.anthropic_requests[0].output_state,"received_invalid_structured_output");
+  assert.equal(result.telemetry.anthropic_requests[0].error_stage,"structured_validation");
+  assert.equal(result.telemetry.anthropic_requests[0].diagnostic_code,"string_limit_exceeded");
+  assert.deepEqual(result.telemetry.anthropic_requests[0].usage,{input_tokens:987,output_tokens:123});
+  assert.equal(toolCalls,0);
+  assert.equal(db.writes.some((item)=>item.table==="shadow_ai_decisions"),false);
+  assert.equal(db.writes.some((item)=>item.table==="shadow_messages"||item.table==="shadow_conversations"),false);
+  const failedUpdate=db.writes.find((item)=>item.table==="shadow_ai_runs"&&item.action==="update"&&item.payload.status==="error");
+  assert.equal(failedUpdate.payload.input_tokens,987);
+  assert.equal(failedUpdate.payload.output_tokens,123);
+  assert.equal(failedUpdate.payload.telemetry_json.anthropic_requests[0].output_state,"received_invalid_structured_output");
+  assert.doesNotMatch(JSON.stringify(failedUpdate.payload),/Fragmento sanitizado|presión de agua|\[IMAGEN\]/);
+});
+
+test("state machine distingue JSON inválido de transporte y conserva metadata provider", async () => {
+  const stored={id:"parse-message",provider:"synthetic",direction:"inbound",sanitized_text:"Entrada sanitizada",attachment_metadata:[],provider_metadata:{syntheticScenario:"p3-01"},external_message_id:"synthetic-parse",occurred_at:"2026-08-24T16:35:47Z"};
+  const db=fakeAiDb([],{filterIdempotencyKey:true,tableRows:{shadow_messages:[stored]}});
+  const result=await startShadowAiStateMachine(db,{messageId:stored.id,envelope:{...synthetic,sanitizedText:stored.sanitized_text}},{env:devEnv,modelCall:async()=>({id:"req_parse_fixture",text:"not-json",usage:{input_tokens:20,output_tokens:4}})});
+  assert.equal(result.status,"error");
+  assert.equal(result.error,"invalid_structured_output:json_parse_error");
+  assert.deepEqual(result.telemetry.anthropic_requests[0],{
+    request_number:1,round_number:1,request_id:"req_parse_fixture",status:"failed",anthropic_duration_ms:0,
+    output_state:"received_invalid_structured_output",error_stage:"json_parsing",diagnostic_code:"json_parse_error",
+    usage:{input_tokens:20,output_tokens:4},error:"invalid_structured_output",
+  });
+  assert.equal(db.writes.some((item)=>item.table==="shadow_ai_decisions"),false);
 });
 
 test("grounding determinístico bloquea contradicciones críticas y conserva evidencia canónica",()=>{
