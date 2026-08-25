@@ -56,12 +56,26 @@ Se excluyeron deliberadamente:
 
 ## Validaciones
 
-- Prueba focalizada de controles, UI, cron, portal y recibos.
-- Suite completa del repositorio.
-- Build de Next.js.
-- `git diff --check`.
-- Auditoría de secretos y datos personales.
-- Preview contra `inmoadmin-dev` y pruebas negativas antes del merge.
+- Prueba focalizada de controles, UI, cron, portal y recibos: 6/6.
+- Suite completa del repositorio: 410/410.
+- Build de Next.js: correcto, 73 páginas generadas; sólo hubo advertencias de optimización de Google Fonts por red restringida.
+- `git diff --check`: correcto.
+- Auditoría de secretos y datos personales: sin archivos de Génova, credenciales o PII añadidos.
+
+## Dependencia pendiente para Preview
+
+No se creó deployment. La rama nueva no tiene variables Preview propias y Vercel heredaría variables globales compartidas con Production. La lista de configuración confirma que `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` tienen entradas globales aplicables a Preview/Production, mientras que los overrides DEV existentes pertenecen a otras ramas.
+
+Para continuar de forma segura se necesita:
+
+- **Objeto afectado:** variables Vercel Preview limitadas a `codex/genova-operation-controls-main-reconciliation`.
+- **Valores requeridos:** URL, anon key y service role exclusivos de `inmoadmin-dev` (`hjfwjnejbcpmknvfpdcq`), más `SUPABASE_ENVIRONMENT=dev`.
+- **Riesgo:** desplegar sin esos overrides podría conectar el Preview al proyecto productivo.
+- **Dependencia:** una fuente autorizada que permita duplicar los secretos DEV sin revelarlos; el CLI local no tiene sesión de Supabase y Vercel no devuelve valores de variables sensibles.
+- **Cambio propuesto:** crear sólo los cuatro overrides branch-scoped; no modificar valores globales, Production ni flags Shadow.
+- **Pruebas posteriores:** inspeccionar deployment, confirmar project ref DEV desde runtime seguro, probar UI bloqueada, cron/recibo negativos, portal denegado, Tecaxco sanitizado operativo y ausencia de secretos en bundle/logs.
+
+Hasta cerrar esta dependencia, el Preview y la validación funcional remota permanecen pendientes y la conciliación se clasifica como **B) dependencia adicional antes de merge**.
 
 ## Restricciones conservadas
 
