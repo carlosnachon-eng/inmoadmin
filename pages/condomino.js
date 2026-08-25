@@ -113,6 +113,14 @@ export default function CondominoPortal() {
     if (!unidades || unidades.length === 0) { setLoading(false); return; }
 
     const u = unidades[0];
+    const { data: portalAllowed, error: portalControlError } = await supabase
+      .rpc("condominium_owner_portal_allowed", { p_condominio_id: u.condominio_id });
+    if (portalControlError || portalAllowed !== true) {
+      setUnidad(null);
+      setCondominio(null);
+      setLoading(false);
+      return;
+    }
     setUnidad(u);
     setCondominio(u.condominios);
 

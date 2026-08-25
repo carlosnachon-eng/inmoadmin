@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { resolveCoordinationNotificationRecipients } from "../../lib/coordinationNotificationRecipients.mjs";
+import { filterRowsByCondominiumCapability, indexCondominiumOperationControls } from "../../lib/condominios/operationControls.mjs";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -20,6 +21,14 @@ export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: "No autorizado" });
   }
+
+  const { data: operationControlRows, error: operationControlsError } = await supabase
+    .from("condominium_operation_controls")
+    .select("condominio_id, communications_enabled, current_billing_enabled");
+  if (operationControlsError) {
+    return res.status(503).json({ error: "No fue posible verificar los controles condominales; ejecución detenida por seguridad." });
+  }
+  const operationControls = indexCondominiumOperationControls(operationControlRows || []);
 
   const hoy = new Date();
   const fmtFecha = (d) => d.toISOString().split("T")[0];
@@ -139,13 +148,16 @@ export default async function handler(req, res) {
   // ── PASO 3: Marcar cuotas de condominio como atrasadas ──
   const { data: cuotasVencidas } = await supabase
     .from("cuotas_condominio")
-    .select("id, unidad_id, periodo, monto, fecha_vencimiento, unidades_condominio(propietario_nombre, propietario_email, numero, condominios(nombre))")
+    .select("id, condominio_id, unidad_id, periodo, monto, fecha_vencimiento, unidades_condominio(propietario_nombre, propietario_email, numero, condominios(nombre))")
     .eq("status", "pendiente")
     .lte("fecha_vencimiento", fecha5);
 
   let cuotasMarcadas = 0;
-  if (cuotasVencidas && cuotasVencidas.length > 0) {
-    const ids = cuotasVencidas.map(q => q.id);
+  const cuotasVencidasHabilitadas = filterRowsByCondominiumCapability(
+    cuotasVencidas || [], operationControls, "currentBillingEnabled",
+  );
+  if (cuotasVencidasHabilitadas.length > 0) {
+    const ids = cuotasVencidasHabilitadas.map(q => q.id);
     await supabase.from("cuotas_condominio").update({ status: "atrasado" }).in("id", ids);
     cuotasMarcadas = ids.length;
   }
@@ -158,8 +170,11 @@ export default async function handler(req, res) {
     .not("unidades_condominio.propietario_email", "is", null);
 
   let enviadosCondominio = 0;
-  if (cuotasAtrasadas && cuotasAtrasadas.length > 0) {
-    for (const q of cuotasAtrasadas) {
+  const cuotasAtrasadasComunicables = filterRowsByCondominiumCapability(
+    cuotasAtrasadas || [], operationControls, "communicationsEnabled",
+  );
+  if (cuotasAtrasadasComunicables.length > 0) {
+    for (const q of cuotasAtrasadasComunicables) {
       const u = q.unidades_condominio;
       if (!u?.propietario_email) continue;
       const emailDestino = u.residente_email || u.propietario_email;

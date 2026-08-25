@@ -3,6 +3,10 @@ import { useRouter } from "next/router";
 import { contextualRecordStyle, useContextualRecord } from "../../lib/useContextualRecord";
 import { supabase } from "../../lib/supabase";
 import { brand } from "../../components/Layout";
+import {
+  resolveCondominiumOperationControls,
+  unavailableCondominiumOperationControls,
+} from "../../lib/condominios/operationControls.mjs";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -102,6 +106,7 @@ export default function CondominioDetalle() {
   const [cuotas, setCuotas] = useState([]);
   const [gastos, setGastos] = useState([]);
   const [tickets, setTickets] = useState([]);
+  const [operationControls, setOperationControls] = useState(unavailableCondominiumOperationControls());
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -151,18 +156,23 @@ export default function CondominioDetalle() {
       { data: cuotasData },
       { data: gastosData },
       { data: ticketsData },
+      { data: operationControlData, error: operationControlError },
     ] = await Promise.all([
       supabase.from("condominios").select("*").eq("id", id).single(),
       supabase.from("unidades_condominio").select("*").eq("condominio_id", id).eq("activo", true).order("numero"),
       supabase.from("cuotas_condominio").select("*, unidades_condominio(numero, propietario_nombre, propietario_email, propietario_telefono)").eq("condominio_id", id).order("periodo", { ascending: false }),
       supabase.from("gastos_condominio").select("*").eq("condominio_id", id).order("fecha", { ascending: false }),
       supabase.from("maintenance_tickets").select("*").eq("condominio_id", id).order("created_at", { ascending: false }),
+      supabase.from("condominium_operation_controls").select("lifecycle_status, owner_portal_enabled, communications_enabled, current_billing_enabled, receipts_enabled, real_payments_enabled, money_movements_enabled").eq("condominio_id", id).maybeSingle(),
     ]);
     setCond(condData);
     setUnidades(unidadesData || []);
     setCuotas(cuotasData || []);
     setGastos(gastosData || []);
     setTickets(ticketsData || []);
+    setOperationControls(operationControlError
+      ? unavailableCondominiumOperationControls()
+      : resolveCondominiumOperationControls(operationControlData));
     setLoading(false);
   };
 
@@ -210,6 +220,10 @@ export default function CondominioDetalle() {
   // ── Generar cuotas del periodo seleccionado ──────────────────────────────
   const generarCuotasPeriodo = async () => {
     if (!cond || !periodoVer) return;
+    if (!operationControls.currentBillingEnabled) {
+      showToast("La emisión de cuotas está bloqueada para este condominio", false);
+      return;
+    }
     if (unidades.length === 0) { showToast("Primero agrega unidades al condominio", false); return; }
 
     const unidadesConCuota = cuotasPeriodo.map(q => q.unidad_id);
@@ -242,6 +256,10 @@ export default function CondominioDetalle() {
   // ── Registrar pago de cuota + generar recibo PDF + enviar email ──────────
   const registrarPagoCuota = async () => {
     if (!modalCuota) return;
+    if (!operationControls.realPaymentsEnabled || !operationControls.receiptsEnabled) {
+      showToast("Los pagos y recibos están bloqueados para este condominio", false);
+      return;
+    }
     setSaving(true);
     let comprobante_url = null;
     if (archivoComprobante) {
@@ -426,10 +444,17 @@ export default function CondominioDetalle() {
       const emailDestino = modalCuota.unidades_condominio?.propietario_email || modalCuota.unidades_condominio?.residente_email;
       if (emailDestino) {
         const pdfBase64 = doc.output("datauristring").split(",")[1];
-        await fetch("/api/enviar-recibo-condominio", {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData?.session?.access_token;
+        const receiptResponse = await fetch("/api/enviar-recibo-condominio", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
           body: JSON.stringify({
+            cuotaId: modalCuota.id,
+            condominioId: id,
             emailDestino,
             nombreCondómino: modalCuota.unidades_condominio?.propietario_nombre || "—",
             numeroDepto: modalCuota.unidades_condominio?.numero || "—",
@@ -441,7 +466,8 @@ export default function CondominioDetalle() {
             pdfBase64,
           }),
         });
-        showToast("Pago registrado y recibo enviado por email ✉️");
+        if (receiptResponse.ok) showToast("Pago registrado y recibo enviado por email ✉️");
+        else showToast("Pago registrado, pero no fue posible enviar el recibo por email", false);
       } else {
         showToast("Pago registrado — sin email para enviar recibo");
       }
@@ -471,6 +497,10 @@ export default function CondominioDetalle() {
   // ── Registrar gasto ───────────────────────────────────────────────────────
   const guardarGasto = async () => {
     if (!formGasto.concepto.trim() || !formGasto.monto) { showToast("Concepto y monto son requeridos", false); return; }
+    if (!operationControls.moneyMovementsEnabled) {
+      showToast("Los gastos y movimientos están bloqueados para este condominio", false);
+      return;
+    }
     setSaving(true);
     let comprobante_url = null;
     if (archivoComprobante) {
@@ -740,7 +770,7 @@ export default function CondominioDetalle() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: "1px solid #f3f4f6" }}>
                         <span style={{ fontSize: 13, fontWeight: 800, color: "#1a1a2e" }}>{fmt(cuotaMes.monto)}</span>
                         {cuotaMes.status !== "pagado" && (
-                          <button onClick={() => { setModalCuota(cuotaMes); setArchivoComprobante(null); }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
+                          <button disabled={!operationControls.realPaymentsEnabled || !operationControls.receiptsEnabled} onClick={() => { setModalCuota(cuotaMes); setArchivoComprobante(null); }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", cursor: operationControls.realPaymentsEnabled && operationControls.receiptsEnabled ? "pointer" : "not-allowed", opacity: operationControls.realPaymentsEnabled && operationControls.receiptsEnabled ? 1 : 0.5, fontSize: 11, fontWeight: 700 }}>
                             ✓ Registrar pago
                           </button>
                         )}
@@ -763,7 +793,7 @@ export default function CondominioDetalle() {
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Cobranza</h2>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 <input type="month" value={periodoVer} onChange={e => setPeriodoVer(e.target.value)} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, background: "#fff" }} />
-                <Btn small color="#1a1a2e" onClick={generarCuotasPeriodo} disabled={saving}>
+                <Btn small color="#1a1a2e" onClick={generarCuotasPeriodo} disabled={saving || !operationControls.currentBillingEnabled}>
                   {saving ? "Generando…" : `Generar cuotas de ${periodoLabel(periodoVer)}`}
                 </Btn>
               </div>
@@ -828,7 +858,7 @@ export default function CondominioDetalle() {
                               <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{cs.length} mes{cs.length !== 1 ? "es" : ""} atrasado{cs.length !== 1 ? "s" : ""}</p>
                               <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#b91c3c" }}>{fmt(totalUnidad)}</p>
                             </div>
-                            {tel && (
+                            {tel && operationControls.communicationsEnabled && (
                               <a
                                 href={`https://wa.me/52${tel}?text=${msgWA}`}
                                 target="_blank"
@@ -847,7 +877,7 @@ export default function CondominioDetalle() {
                               <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 8, padding: "4px 10px" }}>
                                 <span style={{ fontSize: 12, color: "#b91c3c", fontWeight: 600 }}>{periodoLabel(q.periodo)}</span>
                                 <span style={{ fontSize: 12, color: "#6b7280" }}>{fmt(q.monto)}</span>
-                                <button onClick={() => { setModalCuota(q); setArchivoComprobante(null); }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontSize: 10, fontWeight: 700 }}>✓</button>
+                                <button disabled={!operationControls.realPaymentsEnabled || !operationControls.receiptsEnabled} onClick={() => { setModalCuota(q); setArchivoComprobante(null); }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 4, padding: "2px 8px", cursor: operationControls.realPaymentsEnabled && operationControls.receiptsEnabled ? "pointer" : "not-allowed", opacity: operationControls.realPaymentsEnabled && operationControls.receiptsEnabled ? 1 : 0.5, fontSize: 10, fontWeight: 700 }}>✓</button>
                               </div>
                             ))}
                           </div>
@@ -864,7 +894,7 @@ export default function CondominioDetalle() {
             {cuotasPeriodo.length === 0 ? (
               <div style={{ background: "#fff", borderRadius: 12, padding: 32, textAlign: "center" }}>
                 <p style={{ color: "#9ca3af", margin: "0 0 14px" }}>No hay cuotas generadas para {periodoLabel(periodoVer)}</p>
-                <Btn color="#1a1a2e" onClick={generarCuotasPeriodo} disabled={saving}>
+                <Btn color="#1a1a2e" onClick={generarCuotasPeriodo} disabled={saving || !operationControls.currentBillingEnabled}>
                   {saving ? "Generando…" : `Generar cuotas de ${periodoLabel(periodoVer)}`}
                 </Btn>
               </div>
@@ -890,7 +920,7 @@ export default function CondominioDetalle() {
                         <td style={{ padding: "10px 12px" }}>
                           {q.comprobante_url
                             ? <a href={q.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e40af", fontWeight: 600 }}>Ver</a>
-                            : q.status === "pagado"
+                            : q.status === "pagado" && operationControls.realPaymentsEnabled
                               ? <label style={{ cursor: "pointer" }}>
                                   <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={async e => {
                                     const file = e.target.files[0];
@@ -918,7 +948,7 @@ export default function CondominioDetalle() {
                         </td>
                         <td style={{ padding: "10px 12px" }}>
                           {q.status !== "pagado" && (
-                            <button onClick={() => { setModalCuota(q); setArchivoComprobante(null); }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✓ Pago</button>
+                            <button disabled={!operationControls.realPaymentsEnabled || !operationControls.receiptsEnabled} onClick={() => { setModalCuota(q); setArchivoComprobante(null); }} style={{ background: "#065f46", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", cursor: operationControls.realPaymentsEnabled && operationControls.receiptsEnabled ? "pointer" : "not-allowed", opacity: operationControls.realPaymentsEnabled && operationControls.receiptsEnabled ? 1 : 0.5, fontSize: 11, fontWeight: 700 }}>✓ Pago</button>
                           )}
                         </td>
                       </tr>
@@ -935,7 +965,7 @@ export default function CondominioDetalle() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Gastos comunes</h2>
-              <button onClick={() => { setFormGasto(emptyGasto); setArchivoComprobante(null); setModalGasto(true); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>+ Registrar gasto</button>
+              <button disabled={!operationControls.moneyMovementsEnabled} onClick={() => { setFormGasto(emptyGasto); setArchivoComprobante(null); setModalGasto(true); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: operationControls.moneyMovementsEnabled ? "pointer" : "not-allowed", opacity: operationControls.moneyMovementsEnabled ? 1 : 0.5, fontWeight: 700, fontSize: 13 }}>+ Registrar gasto</button>
             </div>
 
             {/* Saldo inicial separado */}
@@ -1005,7 +1035,7 @@ export default function CondominioDetalle() {
                             }
                           </td>
                           <td style={{ padding: "10px 12px" }}>
-                            <button onClick={async () => { if (confirm("¿Eliminar este gasto?")) { await supabase.from("gastos_condominio").delete().eq("id", g.id); showToast("Gasto eliminado"); loadData(); } }} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✕</button>
+                            <button disabled={!operationControls.moneyMovementsEnabled} onClick={async () => { if (confirm("¿Eliminar este gasto?")) { await supabase.from("gastos_condominio").delete().eq("id", g.id); showToast("Gasto eliminado"); loadData(); } }} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "3px 8px", cursor: operationControls.moneyMovementsEnabled ? "pointer" : "not-allowed", opacity: operationControls.moneyMovementsEnabled ? 1 : 0.5, fontSize: 11, fontWeight: 700 }}>✕</button>
                           </td>
                         </tr>
                       ))}
@@ -1247,7 +1277,7 @@ export default function CondominioDetalle() {
           </Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
             <button onClick={() => { setModalCuota(null); setArchivoComprobante(null); setFechaPagoCuota(new Date().toISOString().split("T")[0]); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={registrarPagoCuota} disabled={saving} color="#065f46">{saving ? "Guardando…" : "✓ Confirmar pago"}</Btn>
+            <Btn onClick={registrarPagoCuota} disabled={saving || !operationControls.realPaymentsEnabled || !operationControls.receiptsEnabled} color="#065f46">{saving ? "Guardando…" : "✓ Confirmar pago"}</Btn>
           </div>
         </Modal>
       )}
@@ -1279,7 +1309,7 @@ export default function CondominioDetalle() {
           <Field label="Notas"><Input value={formGasto.notas} onChange={e => setFormGasto({ ...formGasto, notas: e.target.value })} /></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={() => { setModalGasto(false); setArchivoComprobante(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={guardarGasto} disabled={saving || !formGasto.concepto.trim() || !formGasto.monto} color={brand.red}>{saving ? "Guardando…" : "Registrar gasto"}</Btn>
+            <Btn onClick={guardarGasto} disabled={saving || !operationControls.moneyMovementsEnabled || !formGasto.concepto.trim() || !formGasto.monto} color={brand.red}>{saving ? "Guardando…" : "Registrar gasto"}</Btn>
           </div>
         </Modal>
       )}

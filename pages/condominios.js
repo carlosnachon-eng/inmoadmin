@@ -3,6 +3,11 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import {
+  controlsForCondominium,
+  indexCondominiumOperationControls,
+  unavailableCondominiumOperationControls,
+} from "../lib/condominios/operationControls.mjs";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -134,11 +139,17 @@ export default function Condominios() {
       { data: unidades },
       { data: cuotas },
       { data: gastos },
+      { data: operationControlRows, error: operationControlsError },
     ] = await Promise.all([
       supabase.from("unidades_condominio").select("*").in("condominio_id", condIds).eq("activo", true),
       supabase.from("cuotas_condominio").select("*").in("condominio_id", condIds).eq("periodo", periodo),
       supabase.from("gastos_condominio").select("*").in("condominio_id", condIds),
+      supabase.from("condominium_operation_controls").select("condominio_id, lifecycle_status, owner_portal_enabled, communications_enabled, current_billing_enabled, receipts_enabled, real_payments_enabled, money_movements_enabled").in("condominio_id", condIds),
     ]);
+
+    const operationControlIndex = operationControlsError
+      ? null
+      : indexCondominiumOperationControls(operationControlRows || []);
 
     const enriched = conds.map(c => {
       const us = (unidades || []).filter(u => u.condominio_id === c.id);
@@ -149,7 +160,10 @@ export default function Condominios() {
       const gastado = gs.reduce((a, g) => a + (g.monto || 0), 0);
       const fondo = cobrado - c.honorarios_emporio - gastado;
       const morosos = cs.filter(q => q.status === "atrasado").length;
-      return { ...c, unidades: us, cuotasMes: cs, morosos, cobrado, pendiente, gastado, fondo };
+      const operationControls = operationControlsError
+        ? unavailableCondominiumOperationControls()
+        : controlsForCondominium(operationControlIndex, c.id);
+      return { ...c, unidades: us, cuotasMes: cs, morosos, cobrado, pendiente, gastado, fondo, operationControls };
     });
 
     setCondominios(enriched);
@@ -235,6 +249,10 @@ export default function Condominios() {
 
   // ── Generar cuotas del mes ────────────────────────────────────────────────
   const generarCuotasMes = async (cond) => {
+    if (!cond?.operationControls?.currentBillingEnabled) {
+      showToast("La emisión de cuotas está bloqueada para este condominio", false);
+      return;
+    }
     const periodo = periodoActual();
     const ya = cond.cuotasMes || [];
     const unidadesConCuota = ya.map(q => q.unidad_id);
@@ -303,6 +321,11 @@ export default function Condominios() {
                     {cond.direccion && <p style={{ margin: "2px 0 0", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>📍 {cond.direccion}</p>}
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    {!cond.operationControls?.currentBillingEnabled && (
+                      <span style={{ background: "#fef3c7", color: "#92400e", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99 }}>
+                        Operación bloqueada
+                      </span>
+                    )}
                     {cond.morosos > 0 && (
                       <span style={{ background: "#fee2e2", color: "#991b1b", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99 }}>
                         ⚠️ {cond.morosos} moroso{cond.morosos !== 1 ? "s" : ""}
@@ -350,7 +373,7 @@ export default function Condominios() {
 
                   {/* Acciones */}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Btn small color="#065f46" onClick={() => generarCuotasMes(cond)}>📋 Generar cuotas del mes</Btn>
+                    <Btn small color="#065f46" onClick={() => generarCuotasMes(cond)} disabled={!cond.operationControls?.currentBillingEnabled}>📋 Generar cuotas del mes</Btn>
                     <Btn small color="#1e40af" onClick={() => { setModalImport(cond); setImportData(null); if (fileRef.current) fileRef.current.value = ""; }}>📥 Importar Excel</Btn>
                     <Btn small color="#1a1a2e" onClick={() => router.push(`/condominio/${cond.id}`)}>⚙️ Administrar</Btn>
                   </div>
