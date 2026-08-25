@@ -234,6 +234,7 @@ globalThis.__respondReceiverTestDeps = {
   readRespondWebhookBody,
   resolveRespondWebhookSigningKeys,
   async captureRespondAdminShadowIsolated() { return { status: "skipped", reason: "test" }; },
+  async captureRespondMediaReferenceIsolated() { return { status: "skipped", reason: "test" }; },
   async routeRespondMessageIsolated() { return { route: false, reason: "disabled" }; },
 };
 
@@ -257,6 +258,10 @@ const receiverHarnessSource = receiverSource
   .replace(
     /import \{ routeRespondMessageIsolated \} from "\.\.\/\.\.\/\.\.\/lib\/respond\/channelRouter";/,
     "const { routeRespondMessageIsolated } = globalThis.__respondReceiverTestDeps;",
+  )
+  .replace(
+    /import \{ captureRespondMediaReferenceIsolated \} from "\.\.\/\.\.\/\.\.\/lib\/shadow\/media\/reference";/,
+    "const { captureRespondMediaReferenceIsolated } = globalThis.__respondReceiverTestDeps;",
   );
 const { default: receiverHandler } = await import(
   `data:text/javascript;base64,${Buffer.from(receiverHarnessSource).toString("base64")}`

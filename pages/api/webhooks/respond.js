@@ -11,6 +11,7 @@ import {
 } from "../../../lib/ejecutivo/respondWebhook";
 import { captureRespondAdminShadowIsolated } from "../../../lib/shadow/providers/respondAdmin";
 import { routeRespondMessageIsolated } from "../../../lib/respond/channelRouter";
+import { captureRespondMediaReferenceIsolated } from "../../../lib/shadow/media/reference";
 
 export const config = {
   api: {
@@ -49,6 +50,7 @@ export default async function handler(req, res) {
     });
     if (error?.code === "23505") {
       await captureRespondAdminShadowIsolated(admin, body);
+      await captureRespondMediaReferenceIsolated(admin, body);
       return res.status(200).json({ ok: true, duplicate: true });
     }
     if (error) throw error;
@@ -63,6 +65,7 @@ export default async function handler(req, res) {
     }
 
     await captureRespondAdminShadowIsolated(admin, body);
+    await captureRespondMediaReferenceIsolated(admin, body);
 
     return res.status(200).json({ ok: true, queued: true });
   } catch (error) {

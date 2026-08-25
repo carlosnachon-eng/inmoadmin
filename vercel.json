@@ -31,6 +31,10 @@
     {
       "path": "/api/cron/shadow-ai-real-auto",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/shadow-media-retrieval",
+      "schedule": "* * * * *"
     }
   ]
 }
