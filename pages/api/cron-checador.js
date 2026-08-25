@@ -35,7 +35,7 @@ const cargarEquipoChecador = async () => {
   const [{ data: profiles, error: profilesError }, { data: partners }] = await Promise.all([
     supabase
       .from('profiles')
-      .select('email, full_name, role_id, active')
+      .select('email, full_name, role_id, active, participa_kpis')
       .eq('active', true)
       .in('role_id', ROLES_EQUIPO_CHECADOR_CRON),
     supabase.from('partner_users').select('email'),
@@ -48,6 +48,7 @@ const cargarEquipoChecador = async () => {
   const partnerEmails = new Set((partners || []).map(p => String(p.email || '').toLowerCase()));
   const equipo = profiles
     .filter(p => !isPartnerEmail(p.email, partnerEmails))
+    .filter(p => p.role_id !== 'asesor' || p.participa_kpis !== false)
     .map(p => ({
       email: String(p.email || '').toLowerCase(),
       nombre: getNombrePersona(p),
@@ -68,6 +69,7 @@ export default async function handler(req, res) {
   const esLaborable = diaSemana >= 1 && diaSemana <= 5;
   const esMartes = diaSemana === 2;
   const { equipo, source: equipoSource } = await cargarEquipoChecador();
+  const nombresEquipo = new Set(equipo.map(p => p.nombre));
 
   // 1. Llaves fuera de resguardo por más de 1 día
   const { data: llavesAfuera } = await supabase
@@ -107,6 +109,7 @@ export default async function handler(req, res) {
     .eq('fecha_guardia', ayer);
 
   const asesoresNoChecaron = (guardiasAyer || [])
+    .filter(g => nombresEquipo.has(g.nombre))
     .filter(g => !nombresChecaronAyer.has(g.nombre))
     .map(g => g.nombre);
 

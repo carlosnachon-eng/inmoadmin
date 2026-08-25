@@ -211,8 +211,10 @@ export default function Checador() {
 
   const esAdmin = ROLES_CON_ACCESO_ADMIN_CHECADOR.includes(perfilDb?.role_id)
   const esCarlos = perfilDb?.role_id === 'admin'
-  const soloLlaves = esCarlos // Carlos (Admin) no necesita "checar" su propia asistencia individualmente:
-                                // ya tiene la pestaña 📊 Admin con la vista completa del equipo.
+  // Los asesores excluidos de KPIs tampoco forman parte del horario/junta.
+  // Conservan su acceso operativo a llaves y su rol de asesor.
+  const participaHorario = perfilDb?.role_id !== 'asesor' || perfilDb?.participa_kpis !== false
+  const soloLlaves = esCarlos || !participaHorario // Carlos y asesores sin horario no necesitan checar asistencia.
   const puedeAdministrarLlaves = ROLES_QUE_PUEDEN_ADMINISTRAR_LLAVES.includes(perfilDb?.role_id)
 
   // Lista de personas del equipo interno (para el selector de "a quién le presto la llave").
