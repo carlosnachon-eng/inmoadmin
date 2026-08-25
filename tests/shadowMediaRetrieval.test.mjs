@@ -8,7 +8,7 @@ import {
   buildEncryptedMediaQueueRow, captureRespondMediaReferenceIsolated, decryptMediaReference,
   mediaReferenceDecision, validateOpaqueMediaUrl,
 } from "../lib/shadow/media/reference.js";
-import { detectMime, isBlockedIp, resolvePublicHost, secureDownload, validateDownloadedMedia } from "../lib/shadow/media/network.js";
+import { createPinnedLookup, detectMime, isBlockedIp, resolvePublicHost, secureDownload, validateDownloadedMedia } from "../lib/shadow/media/network.js";
 import { mediaRetrievalWorkerEnabled, normalizeMediaClaimResult, processOneMediaRetrieval } from "../lib/shadow/media/worker.js";
 import { mediaNetworkErrorStage, normalizeMediaNetworkErrorCode } from "../lib/shadow/media/errors.js";
 
@@ -55,6 +55,37 @@ test("SSRF bloquea IPv4/IPv6 privadas, mixtas, metadata y acepta sólo conjunto 
   for(const ip of ["127.0.0.1","10.0.0.1","100.64.0.1","169.254.169.254","192.168.1.2","::1","fd00::1","fe80::1","ff02::1"]){assert.equal(isBlockedIp(ip),true,ip);}
   assert.equal(isBlockedIp("1.1.1.1"),false);assert.equal(isBlockedIp("2606:4700:4700::1111"),false);
   await assert.rejects(()=>resolvePublicHost("x",{resolver:async()=>[{address:"1.1.1.1",family:4},{address:"10.0.0.1",family:4}]}),/rejected_network_target/);
+});
+
+function invokeLookup(lookup,options){return new Promise((resolve,reject)=>lookup("must-not-resolve.example",options,(error,...values)=>error?reject(error):resolve(values)));}
+
+test("lookup fijado soporta firmas escalares y all=true de Node sin ERR_INVALID_IP_ADDRESS",async()=>{
+  const ipv4=createPinnedLookup({address:"1.1.1.1",family:4});
+  assert.deepEqual(await invokeLookup(ipv4,{}),["1.1.1.1",4]);
+  assert.deepEqual(await invokeLookup(ipv4,{all:true}),[[{address:"1.1.1.1",family:4}]]);
+  const ipv6=createPinnedLookup({address:"2606:4700:4700::1111",family:"IPv6"});
+  assert.deepEqual(await invokeLookup(ipv6,{all:true}),[[{address:"2606:4700:4700::1111",family:6}]]);
+  for(const record of [{address:"not-an-ip",family:4},{address:"1.1.1.1",family:6},{address:"[2606:4700:4700::1111]",family:6}])assert.throws(()=>createPinnedLookup(record),/invalid_pinned_address/);
+});
+
+test("pinning conserva hostname original para TLS/SNI y no vuelve a resolver DNS",async()=>{
+  const seen=[];let resolutions=0;
+  const request=(options,cb)=>{seen.push(options);const req=new EventEmitter();req.end=async()=>{
+    const [[pinned]]=await invokeLookup(options.lookup,{all:true});
+    assert.deepEqual(pinned,{address:"1.1.1.1",family:4});
+    queueMicrotask(()=>cb(Object.assign(Readable.from([Buffer.from([0xff,0xd8,0xff])]),{statusCode:200,headers:{"content-type":"image/jpeg"}})));
+  };req.destroy=(error)=>req.emit("error",error);return req;};
+  const result=await secureDownload("https://media.example/file",{resolver:async()=>{resolutions+=1;return[{address:"1.1.1.1",family:4},{address:"2606:4700:4700::1111",family:6}];},request});
+  assert.equal(result.buffer.length,3);assert.equal(resolutions,1);assert.equal(seen[0].hostname,"media.example");assert.equal(seen[0].servername,"media.example");
+  assert.notEqual(seen[0].rejectUnauthorized,false);assert.equal(seen[0].lookup instanceof Function,true);
+});
+
+test("cada redirect vuelve a resolver y validar antes de crear otro pin",async()=>{
+  const resolved=[];const pinned=[];let responseIndex=0;
+  const responses=[{statusCode:302,headers:{location:"https://second.example/file"},body:[]},{statusCode:200,headers:{"content-type":"image/png"},body:[Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])]}];
+  const request=(options,cb)=>{const req=new EventEmitter();req.end=async()=>{const [[record]]=await invokeLookup(options.lookup,{all:true});pinned.push(record.address);const current=responses[responseIndex++];queueMicrotask(()=>cb(Object.assign(Readable.from(current.body),current)));};req.destroy=(error)=>req.emit("error",error);return req;};
+  await secureDownload("https://first.example/file",{resolver:async(hostname)=>{resolved.push(hostname);return[{address:hostname==="first.example"?"1.1.1.1":"8.8.8.8",family:4}];},request});
+  assert.deepEqual(resolved,["first.example","second.example"]);assert.deepEqual(pinned,["1.1.1.1","8.8.8.8"]);
 });
 
 function requestSequence(responses){let index=0;return(_options,callback)=>{const req=new EventEmitter();req.end=()=>queueMicrotask(()=>callback(Object.assign(Readable.from(responses[index].body||[]),responses[index++])));req.destroy=(e)=>req.emit("error",e);return req;};}
