@@ -198,7 +198,7 @@ export default async function handler(req, res) {
       interventionsRes,
       interventionEventsRes,
     ] = await Promise.all([
-      scoped.from("profiles").select("id, email, full_name, role_id, active").eq("active", true),
+      scoped.from("profiles").select("id, email, full_name, role_id, active, participa_kpis").eq("active", true),
       scoped.from("gv_supervision_edges").select("id, supervisor_profile_id, subordinate_profile_id, scope, active").eq("scope", "ventas").eq("active", true),
       scoped.from("gv_advisor_availability").select("id, profile_id, status, capacity_weight, reason, starts_on, ends_on"),
       scoped.from("gv_management_interventions").select("*, advisor:advisor_profile_id(id, email, full_name), actor:actor_profile_id(id, email, full_name)").order("created_at", { ascending: false }).limit(30),
@@ -212,6 +212,7 @@ export default async function handler(req, res) {
 
     const profiles = profilesRes.data || [];
     const profilesById = new Map(profiles.map((p) => [p.id, p]));
+    const isEvaluableAdvisor = (candidate) => candidate?.role_id === ADVISOR_ROLE && candidate?.participa_kpis !== false;
     const availability = availabilityRes.data || [];
     const edges = edgesRes.data || [];
     const interventionEvents = interventionEventsMissing ? [] : (interventionEventsRes.data || []);
@@ -229,11 +230,17 @@ export default async function handler(req, res) {
     const visibleAdvisorIds = new Set();
     if (profile.role_id === ADVISOR_ROLE) visibleAdvisorIds.add(profile.id);
     if (profile.role_id === "gerente_ventas") {
-      edges.filter((edge) => edge.supervisor_profile_id === profile.id).forEach((edge) => visibleAdvisorIds.add(edge.subordinate_profile_id));
+      edges
+        .filter((edge) => edge.supervisor_profile_id === profile.id)
+        .filter((edge) => isEvaluableAdvisor(profilesById.get(edge.subordinate_profile_id)))
+        .forEach((edge) => visibleAdvisorIds.add(edge.subordinate_profile_id));
     }
     if (profile.role_id === "admin") {
-      profiles.filter((p) => p.role_id === ADVISOR_ROLE).forEach((p) => visibleAdvisorIds.add(p.id));
-      edges.filter((edge) => edge.supervisor_profile_id !== profile.id).forEach((edge) => visibleAdvisorIds.add(edge.subordinate_profile_id));
+      profiles.filter(isEvaluableAdvisor).forEach((p) => visibleAdvisorIds.add(p.id));
+      edges
+        .filter((edge) => edge.supervisor_profile_id !== profile.id)
+        .filter((edge) => isEvaluableAdvisor(profilesById.get(edge.subordinate_profile_id)))
+        .forEach((edge) => visibleAdvisorIds.add(edge.subordinate_profile_id));
     }
     if (mode === "mine") visibleAdvisorIds.add(profile.id);
 
@@ -363,7 +370,7 @@ export default async function handler(req, res) {
     const advisorRows = [...visibleAdvisorIds]
       .map((id) => profilesById.get(id))
       .filter(Boolean)
-      .filter((p) => p.role_id === ADVISOR_ROLE)
+      .filter(isEvaluableAdvisor)
       .map((advisor) => {
         const advisorOpps = scopedOpportunities.filter((opp) => opp.asesor_id === advisor.id);
         const advisorSnaps = scopedSnapshots.filter((snap) => snap.mapped_profile_id === advisor.id);
