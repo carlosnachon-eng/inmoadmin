@@ -9,10 +9,13 @@ import {
   mediaReferenceDecision, validateOpaqueMediaUrl,
 } from "../lib/shadow/media/reference.js";
 import { detectMime, isBlockedIp, resolvePublicHost, secureDownload, validateDownloadedMedia } from "../lib/shadow/media/network.js";
-import { processOneMediaRetrieval } from "../lib/shadow/media/worker.js";
+import { mediaRetrievalWorkerEnabled, normalizeMediaClaimResult, processOneMediaRetrieval } from "../lib/shadow/media/worker.js";
 
 const {publicKey,privateKey}=crypto.generateKeyPairSync("rsa",{modulusLength:2048,publicKeyEncoding:{type:"spki",format:"pem"},privateKeyEncoding:{type:"pkcs8",format:"pem"}});
 const payload=(overrides={})=>({event:"message.received",channel:{id:"544519",source:"whatsapp_business"},message:{messageId:"msg-safe",channelId:"544519",message:{attachment:{type:"image",url:"https://media.example.test/object?id=opaque",mimeType:"image/png",size:20,isPending:false}}},...overrides});
+const workerId="00000000-0000-4000-8000-000000000001";
+const validClaim=(overrides={})=>({id:"00000000-0000-4000-8000-000000000002",...buildEncryptedMediaQueueRow(payload(),{publicKeyPem:publicKey}),attempts:1,status:"processing",locked_by:workerId,locked_at:"2026-08-25T12:00:00.000Z",...overrides});
+const emptyDbClaim=()=>Object.fromEntries(["id","locked_by","status","encrypted_reference","wrapped_key","nonce","auth_tag"].map((key)=>[key,null]));
 
 test("captura sólo message.received HMAC-gated, Admin 544519 y whatsapp_business",()=>{
   assert.equal(mediaReferenceDecision(payload(),{enabled:"true"}).capture,true);
@@ -99,23 +102,74 @@ test("PDF corrupto/cifrado y >10 páginas fallan cerrado",async()=>{
 });
 
 test("worker procesa una unidad, persiste sólo resultado técnico y destruye ciphertext por RPC",async()=>{
-  const row={id:"q1",...buildEncryptedMediaQueueRow(payload(),{publicKeyPem:publicKey}),attempts:1,locked_by:"w"};const calls=[];
+  const row=validClaim();const calls=[];
   const admin={rpc:async(name,args)=>{calls.push([name,args]);if(name==="claim_shadow_media_retrieval")return{data:row,error:null};return{data:true,error:null};}};
-  const buffer=Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);const result=await processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId:"00000000-0000-4000-8000-000000000001",download:async()=>({buffer,headerMime:"image/png",sha256:"abc"})});
+  const buffer=Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);const result=await processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId,download:async()=>({buffer,headerMime:"image/png",sha256:"abc"})});
   assert.equal(result.status,"completed");assert.equal(calls.filter(([name])=>name==="claim_shadow_media_retrieval").length,1);assert.equal(calls.filter(([name])=>name==="complete_shadow_media_retrieval").length,1);assert.ok(!JSON.stringify(calls.at(-1)).includes("https://"));assert.ok(buffer.every((byte)=>byte===0));
 });
 
 test("pending temporal reintenta sin exceder cuatro intentos; expirado no se marca completed",async()=>{
-  const base={id:"q",...buildEncryptedMediaQueueRow(payload(),{publicKeyPem:publicKey}),attempts:1};const calls=[];const admin={rpc:async(name,args)=>{calls.push([name,args]);return name.startsWith("claim")?{data:base,error:null}:{data:true,error:null};}};
-  const result=await processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId:"00000000-0000-4000-8000-000000000001",download:async()=>{throw Object.assign(new Error("pending"),{code:"pending_media_unavailable",retryable:true});}});assert.equal(result.status,"pending");assert.equal(calls.at(-1)[1].p_terminal_status,"pending");
+  const base=validClaim();const calls=[];const admin={rpc:async(name,args)=>{calls.push([name,args]);return name.startsWith("claim")?{data:base,error:null}:{data:true,error:null};}};
+  const result=await processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId,download:async()=>{throw Object.assign(new Error("pending"),{code:"pending_media_unavailable",retryable:true});}});assert.equal(result.status,"pending");assert.equal(calls.at(-1)[1].p_terminal_status,"pending");
 });
 
 test("audio/video/Office/SVG/HTML/comprimidos no se descargan en 2B.1A",async()=>{
   for(const mime of ["audio/ogg","video/mp4","application/vnd.openxmlformats-officedocument.wordprocessingml.document","image/svg+xml","text/html","application/zip"]){
-    const p=payload();p.message.message.attachment.mimeType=mime;const row={id:"q",...buildEncryptedMediaQueueRow(p,{publicKeyPem:publicKey}),attempts:1};let downloaded=false;
+    const row=validClaim({declared_mime:mime});let downloaded=false;
     const admin={rpc:async(name)=>name.startsWith("claim")?{data:row,error:null}:{data:true,error:null}};
-    const result=await processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId:"00000000-0000-4000-8000-000000000001",download:async()=>{downloaded=true;}});assert.equal(result.error,"unsupported_media_for_2b1a");assert.equal(downloaded,false);
+    const result=await processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId,download:async()=>{downloaded=true;}});assert.equal(result.error,"unsupported_media_for_2b1a");assert.equal(downloaded,false);
   }
+});
+
+test("normaliza las formas vacías reales de PostgREST como no_work",()=>{
+  const allNull=emptyDbClaim();
+  for(const value of [null,[],{},[{}],allNull,[allNull]])assert.equal(normalizeMediaClaimResult(value,{workerId}),null);
+});
+
+test("rechaza claims parciales o inconsistentes antes de procesarlos",()=>{
+  for(const value of [{status:"processing"},[{status:"processing"}],validClaim({id:null}),validClaim({locked_by:null}),validClaim({locked_by:"00000000-0000-4000-8000-000000000099"}),validClaim({status:"pending"}),validClaim({encrypted_reference:null}),[validClaim(),validClaim()]]){
+    assert.throws(()=>normalizeMediaClaimResult(value,{workerId}),error=>error.code==="invalid_claim_shape");
+  }
+  assert.equal(normalizeMediaClaimResult(validClaim(),{workerId}).id,"00000000-0000-4000-8000-000000000002");
+  assert.equal(normalizeMediaClaimResult([validClaim()],{workerId}).id,"00000000-0000-4000-8000-000000000002");
+});
+
+test("cola vacía no descarga ni llama complete/fail y nunca produce media_claim_lost",async()=>{
+  for(const empty of [null,[],{},[{}],emptyDbClaim(),[emptyDbClaim()]]){
+    const calls=[];let downloaded=false;
+    const admin={rpc:async(name,args)=>{calls.push([name,args]);return{data:empty,error:null};}};
+    assert.equal(await processOneMediaRetrieval(admin,{workerId,download:async()=>{downloaded=true;}}),null);
+    assert.equal(downloaded,false);assert.deepEqual(calls.map(([name])=>name),["claim_shadow_media_retrieval"]);assert.doesNotMatch(JSON.stringify(calls),/complete|fail|media_claim_lost/);
+  }
+});
+
+test("respuesta de claim malformada falla cerrado sin downloader ni cierre",async()=>{
+  const calls=[];let downloaded=false;const admin={rpc:async(name,args)=>{calls.push([name,args]);return{data:{status:"processing",locked_by:workerId},error:null};}};
+  await assert.rejects(()=>processOneMediaRetrieval(admin,{workerId,download:async()=>{downloaded=true;}}),error=>error.code==="invalid_claim_shape");
+  assert.equal(downloaded,false);assert.deepEqual(calls.map(([name])=>name),["claim_shadow_media_retrieval"]);
+});
+
+test("error real de RPC se propaga sin downloader ni complete/fail",async()=>{
+  const calls=[];let downloaded=false;const rpcError=Object.assign(new Error("rpc unavailable"),{code:"rpc_transport_error"});
+  const admin={rpc:async(name,args)=>{calls.push([name,args]);return{data:null,error:rpcError};}};
+  await assert.rejects(()=>processOneMediaRetrieval(admin,{workerId,download:async()=>{downloaded=true;}}),error=>error===rpcError);
+  assert.equal(downloaded,false);assert.deepEqual(calls.map(([name])=>name),["claim_shadow_media_retrieval"]);
+});
+
+test("dos workers sobre una fila producen un claim y un no_work sin doble procesamiento",async()=>{
+  let available=true;let downloads=0;let completions=0;
+  const admin={rpc:async(name)=>{if(name==="claim_shadow_media_retrieval"){if(!available)return{data:Object.fromEntries(Object.keys(validClaim()).map((key)=>[key,null])),error:null};available=false;return{data:validClaim(),error:null};}if(name==="complete_shadow_media_retrieval"){completions+=1;return{data:true,error:null};}throw new Error("unexpected_rpc");}};
+  const download=async()=>{downloads+=1;return{buffer:Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),headerMime:"image/png",sha256:"abc"};};
+  const [first,second]=await Promise.all([processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId,download}),processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId,download})]);
+  assert.equal([first,second].filter(Boolean).length,1);assert.equal(downloads,1);assert.equal(completions,1);
+});
+
+test("cron reporta claimed=0 para no_work y conserva gate OFF",()=>{
+  const route=fs.readFileSync(new URL("../pages/api/cron/shadow-media-retrieval.js",import.meta.url),"utf8");
+  assert.match(route,/claimed:processed\?1:0/);assert.match(route,/processed:processed\?/);assert.match(route,/mediaRetrievalWorkerEnabled/);
+  assert.equal(mediaRetrievalWorkerEnabled({SHADOW_MEDIA_RETRIEVAL_ENABLED:"false",SHADOW_OUTBOUND_ENABLED:"false"}),false);
+  assert.equal(mediaRetrievalWorkerEnabled({SHADOW_MEDIA_RETRIEVAL_ENABLED:"true",SHADOW_OUTBOUND_ENABLED:"true"}),false);
+  assert.equal(mediaRetrievalWorkerEnabled({SHADOW_MEDIA_RETRIEVAL_ENABLED:"true",SHADOW_OUTBOUND_ENABLED:"false"}),true);
 });
 
 test("migración fuerza RLS, claim concurrente/lease, TTL, dedupe y borrado criptográfico",()=>{
@@ -131,5 +185,5 @@ test("UI, Shadow normal y worker operacional no reciben referencia ni clave",()=
 
 test("worker no contiene Anthropic, outbound, Respond writes ni mutaciones ERP; logs no exponen secretos",()=>{
   const worker=fs.readFileSync(new URL("../lib/shadow/media/worker.js",import.meta.url),"utf8");const route=fs.readFileSync(new URL("../pages/api/cron/shadow-media-retrieval.js",import.meta.url),"utf8");
-  assert.doesNotMatch(worker+route,/anthropic|RESPOND_IO_TOKEN|send_message|update.*maintenance|insert.*maintenance/i);assert.doesNotMatch(route,/console\.(log|error)\([^)]*(url|cipher|wrapped|nonce|content)/i);assert.match(route,/SHADOW_OUTBOUND_ENABLED/);
+  assert.doesNotMatch(worker+route,/anthropic|RESPOND_IO_TOKEN|send_message|update.*maintenance|insert.*maintenance/i);assert.doesNotMatch(route,/console\.(log|error)\([^)]*(url|cipher|wrapped|nonce|content)/i);assert.match(worker+route,/SHADOW_OUTBOUND_ENABLED/);
 });
