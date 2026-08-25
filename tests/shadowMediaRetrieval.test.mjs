@@ -10,6 +10,7 @@ import {
 } from "../lib/shadow/media/reference.js";
 import { detectMime, isBlockedIp, resolvePublicHost, secureDownload, validateDownloadedMedia } from "../lib/shadow/media/network.js";
 import { mediaRetrievalWorkerEnabled, normalizeMediaClaimResult, processOneMediaRetrieval } from "../lib/shadow/media/worker.js";
+import { mediaNetworkErrorStage, normalizeMediaNetworkErrorCode } from "../lib/shadow/media/errors.js";
 
 const {publicKey,privateKey}=crypto.generateKeyPairSync("rsa",{modulusLength:2048,publicKeyEncoding:{type:"spki",format:"pem"},privateKeyEncoding:{type:"pkcs8",format:"pem"}});
 const payload=(overrides={})=>({event:"message.received",channel:{id:"544519",source:"whatsapp_business"},message:{messageId:"msg-safe",channelId:"544519",message:{attachment:{type:"image",url:"https://media.example.test/object?id=opaque",mimeType:"image/png",size:20,isPending:false}}},...overrides});
@@ -113,6 +114,41 @@ test("pending temporal reintenta sin exceder cuatro intentos; expirado no se mar
   const result=await processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId,download:async()=>{throw Object.assign(new Error("pending"),{code:"pending_media_unavailable",retryable:true});}});assert.equal(result.status,"pending");assert.equal(calls.at(-1)[1].p_terminal_status,"pending");
 });
 
+test("normaliza códigos técnicos sin persistir mensajes sensibles",()=>{
+  const cases=new Map([
+    ["ECONNRESET","econnreset"],["ETIMEDOUT","etimedout"],["ENOTFOUND","enotfound"],
+    ["EAI_AGAIN","eai_again"],["CERT_HAS_EXPIRED","cert_has_expired"],
+    ["UNABLE_TO_VERIFY_LEAF_SIGNATURE","unable_to_verify_leaf_signature"],
+    ["ERR_TLS_CERT_ALTNAME_INVALID","err_tls_cert_altname_invalid"],["ERR-TLS---BAD","err_tls_bad"],
+  ]);
+  for(const [input,expected] of cases)assert.equal(normalizeMediaNetworkErrorCode({code:input,message:"https://secret.example/x?token=hidden 10.0.0.1 headers"}),expected);
+  for(const input of [undefined,null,"","___","---"])assert.equal(normalizeMediaNetworkErrorCode(input?{code:input}:{}),"network_error_unknown");
+  assert.equal(normalizeMediaNetworkErrorCode({cause:{code:"EAI_AGAIN"}}),"eai_again");
+  assert.doesNotMatch(normalizeMediaNetworkErrorCode({message:"https://secret.example/x?token=hidden"}),/https|secret|token|___/);
+});
+
+test("deriva etapa técnica independiente sin inspeccionar mensajes",()=>{
+  assert.equal(mediaNetworkErrorStage("ENOTFOUND"),"dns_resolution");
+  assert.equal(mediaNetworkErrorStage("rejected_network_target"),"ssrf_validation");
+  assert.equal(mediaNetworkErrorStage("ERR_INVALID_IP_ADDRESS"),"tcp_connect");
+  assert.equal(mediaNetworkErrorStage("ECONNRESET"),"tcp_connect");
+  assert.equal(mediaNetworkErrorStage("ERR_TLS_CERT_ALTNAME_INVALID"),"tls_handshake");
+  assert.equal(mediaNetworkErrorStage("media_http_error"),"http_request");
+  assert.equal(mediaNetworkErrorStage("rejected_redirect_target"),"redirect_validation");
+  assert.equal(mediaNetworkErrorStage("media_download_timeout"),"stream_read");
+  assert.equal(mediaNetworkErrorStage("mime_mismatch"),"content_validation");
+  assert.equal(mediaNetworkErrorStage({message:"https://secret.example/x?query=hidden"}),null);
+});
+
+test("worker persiste código y etapa sanitizados sin URL ni mensaje",async()=>{
+  const row=validClaim();const calls=[];
+  const admin={rpc:async(name,args)=>{calls.push([name,args]);return name.startsWith("claim")?{data:row,error:null}:{data:true,error:null};}};
+  const result=await processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId,download:async()=>{throw Object.assign(new Error("GET https://private.example/x?token=secret headers=bad"),{code:"ERR_TLS_CERT_ALTNAME_INVALID"});}});
+  assert.equal(result.error,"err_tls_cert_altname_invalid");assert.equal(result.errorStage,"tls_handshake");
+  const failure=calls.at(-1)[1];assert.equal(failure.p_error_code,"err_tls_cert_altname_invalid");assert.equal(failure.p_error_stage,"tls_handshake");
+  assert.doesNotMatch(JSON.stringify(failure),/https|private\.example|token|headers|secret/i);
+});
+
 test("audio/video/Office/SVG/HTML/comprimidos no se descargan en 2B.1A",async()=>{
   for(const mime of ["audio/ogg","video/mp4","application/vnd.openxmlformats-officedocument.wordprocessingml.document","image/svg+xml","text/html","application/zip"]){
     const row=validClaim({declared_mime:mime});let downloaded=false;
@@ -176,6 +212,14 @@ test("migración fuerza RLS, claim concurrente/lease, TTL, dedupe y borrado crip
   const sql=fs.readFileSync(new URL("../supabase/migrations/202608250001_fase_2b1a_shadow_media_retrieval.sql",import.meta.url),"utf8");
   for(const pattern of [/enable row level security/,/revoke all.*anon,authenticated/s,/for update skip locked/,/locked_at<p_now-interval '2 minutes'/,/attempts<4/,/expires_at<=p_now/,/encrypted_reference=null/,/unique index.*provider,external_message_id,attachment_index,reference_hash/s])assert.match(sql,pattern);
   assert.doesNotMatch(sql,/grant .*authenticated/i);
+});
+
+test("migración de telemetría restringe etapa y mantiene RPC server-side",()=>{
+  const sql=fs.readFileSync(new URL("../supabase/migrations/202608250002_fase_2b1a_media_error_telemetry.sql",import.meta.url),"utf8");
+  assert.match(sql,/add column if not exists error_stage/);assert.match(sql,/dns_resolution.*content_validation/s);
+  assert.match(sql,/revoke all.*anon,authenticated/s);assert.match(sql,/grant execute.*service_role/s);
+  assert.match(sql,/error_code=null,error_stage=null/);
+  assert.doesNotMatch(sql,/p_error_message|raw_url|hostname|query_string|headers|certificate_body/i);
 });
 
 test("UI, Shadow normal y worker operacional no reciben referencia ni clave",()=>{
