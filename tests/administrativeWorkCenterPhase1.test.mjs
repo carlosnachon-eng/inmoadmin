@@ -104,6 +104,7 @@ test("B y C: renta directa no genera saldo pero conserva comisión devengada man
   assert.equal(direct.totalRent, 0);
   assert.equal(direct.totalRetainableCommission, 0);
   assert.equal(direct.totalCommissionAccrued, 1000);
+  assert.equal(direct.totalCollectedRent, 10000);
   assert.equal(direct.balance, 0);
 });
 
@@ -127,6 +128,7 @@ test("D: mezcla liquida sólo renta en poder de Emporio y separa comisión manua
   assert.equal(mixed.totalRent, 10000);
   assert.equal(mixed.totalRetainableCommission, 1000);
   assert.equal(mixed.totalCommissionAccrued, 1800);
+  assert.equal(mixed.totalCollectedRent, 18000);
   assert.equal(mixed.balance, 9000);
 });
 
@@ -139,6 +141,9 @@ test("payments.recibido_por prevalece y caja respalda el histórico directo cobr
 
 test("la pantalla reutiliza el cálculo y no vuelve a descontar parciales", () => {
   assert.match(liquidationPageSource, /calculateOwnerLiquidation\(/);
+  assert.match(liquidationPageSource, /totalRentaProp = liquidation\.totalCollectedRent/);
+  assert.match(liquidationPageSource, /totalComisionesMes = liquidation\.totalCommissionAccrued/);
+  assert.match(liquidationPageSource, /balanceEmporio = rentaEmporio - totalComisionRetenible/);
   assert.doesNotMatch(liquidationPageSource, /pendienteTotal\s*-\s*yaAbonado/);
   assert.doesNotMatch(liquidationPageSource, /calcPendienteMes\(propietarioPago\.email\)\s*-\s*pagoYaAbonado/);
 });

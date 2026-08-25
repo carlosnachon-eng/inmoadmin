@@ -1074,7 +1074,10 @@ export default function Liquidaciones() {
       maintenanceTickets: tickets,
       cashMovements: rentCashMovements,
     });
-    const totalRentaProp = liquidation.totalRent;
+    // El reporte muestra toda la renta cobrada, aunque una parte haya sido
+    // recibida directamente por el propietario. `totalRent` se conserva como
+    // el dinero que efectivamente pasó por Emporio para calcular la liquidación.
+    const totalRentaProp = liquidation.totalCollectedRent;
 
     // ── Clasificar rentas: directo a cuenta del propietario vs cobradas por Emporio ──
     const { data: entradasCajaMes } = await supabase.from("cash_movements")
@@ -1107,7 +1110,11 @@ export default function Liquidaciones() {
     );
     const totalComProp = contratosComisionPendiente.reduce((a, c) => a + calcComision(c), 0);
     const totalComYaCobrada = contratosPagados.reduce((a, c) => a + calcComision(c), 0) - totalComProp;
-    const totalComisionesMes = liquidation.totalCommission;
+    // Para el reporte del propietario se muestra toda la comisión devengada
+    // sobre rentas pagadas. La comisión retenible se conserva separada porque
+    // sólo corresponde al dinero que pasó físicamente por Emporio.
+    const totalComisionesMes = liquidation.totalCommissionAccrued;
+    const totalComisionRetenible = liquidation.totalCommission;
     const ticketsMantProp = ticketsProp.filter(t => t.payer === "propietario" && t.charged_amount > 0 && t.descontado_de_liquidacion);
     const costoMantPropTotal = ticketsMantProp.reduce((a, t) => a + (t.charged_amount || 0), 0);
     const anticipoMantProp   = ticketsMantProp.reduce((a, t) => a + (t.advance_amount || 0), 0);
@@ -1115,7 +1122,7 @@ export default function Liquidaciones() {
     const gastosOpProp = liquidation.totalExpenses;
     const totalLiqProp = liquidation.totalLiquid;
     // Balance real considerando solo el dinero que Emporio tiene en su poder
-    const balanceEmporio = rentaEmporio - totalComisionesMes - costoMantProp - gastosOpProp - saldoPendienteAnteriores;
+    const balanceEmporio = rentaEmporio - totalComisionRetenible - costoMantProp - gastosOpProp - saldoPendienteAnteriores;
     const liqDelMes = liqProp.filter(l => {
       const desc = (l.period_description || "").toLowerCase();
       const mesMes = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
