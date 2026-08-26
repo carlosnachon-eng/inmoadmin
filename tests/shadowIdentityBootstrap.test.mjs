@@ -56,7 +56,7 @@ async function run({ contactId = "contact-1", candidates = [], contact = { id: "
 }
 
 test("histórico con candidato único reutiliza matching canónico y nunca confirma", async () => {
-  const { admin, result } = await run({ candidates: [{ inmoadmin_client_id: clientA, contract_id: "c1", property_id: "p1" }] });
+  const { admin, result } = await run({ candidates: [{ client_identity_id: clientA, contract_id: "c1", property_id: "p1" }] });
   assert.equal(result.status, "unique_candidate");
   assert.equal(admin.links[0].link_status, "candidate");
   assert.equal(admin.links.some((row) => row.link_status === "confirmed"), false);
@@ -64,7 +64,7 @@ test("histórico con candidato único reutiliza matching canónico y nunca confi
 });
 
 test("histórico con múltiples coincidencias exactas produce conflict", async () => {
-  const { admin, result } = await run({ candidates: [{ inmoadmin_client_id: clientA }, { inmoadmin_client_id: clientB }] });
+  const { admin, result } = await run({ candidates: [{ client_identity_id: clientA }, { client_identity_id: clientB }] });
   assert.equal(result.status, "conflict");
   assert.deepEqual(admin.links.map((row) => row.link_status), ["conflict", "conflict"]);
 });

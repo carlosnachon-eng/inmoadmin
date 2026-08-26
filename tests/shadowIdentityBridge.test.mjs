@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   contactPhoneFromRespondPayload, generateIdentityCandidates, normalizeIdentityPhone,
-  resolveConfirmedContactIdentity, validateRespondContactId,
+  resolveConfirmedContactIdentity, reviewIdentityLink, validateRespondContactId,
 } from "../lib/shadow/identityBridge.js";
 import { READ_ONLY_SHADOW_TOOLS, executeShadowReadOnlyTool } from "../lib/shadow/context.js";
 import { createShadowAiInputSnapshot } from "../lib/shadow/ai/stateMachine.js";
@@ -31,9 +31,9 @@ test("IDs opacos estrictos: fuzzy/name/email/teléfono parcial no son argumentos
   for (const value of ["Juan Pérez", "foo@example.com", "+52 222 123", "../contact", "https://x"]) assert.throws(() => validateRespondContactId(value));
 });
 
-test("candidato único exacto permanece candidate y nunca confirmed", async () => {
+test("candidato único exacto de identidad canónica permanece candidate y nunca confirmed", async () => {
   const inserted = [];
-  const admin = { rpc: async () => ({ data: [{ contract_id: "c1", inmoadmin_client_id: "11111111-1111-4111-8111-111111111111", property_id: "22222222-2222-4222-8222-222222222222", role_kind: "tenant" }], error: null }), from(table) {
+  const admin = { rpc: async () => ({ data: [{ contract_id: "c1", client_identity_id: "11111111-1111-4111-8111-111111111111", property_id: "22222222-2222-4222-8222-222222222222", role_kind: "tenant" }], error: null }), from(table) {
     if (table === "respond_identity_links") return { select: () => resultQuery({ data: null, error: null }), insert(row) { inserted.push(row); return { select: () => ({ single: async () => ({ data: { id: "link-1" }, error: null }) }) }; } };
     if (table === "respond_identity_audit") return { insert: async () => ({ error: null }) };
     throw new Error(table);
@@ -46,7 +46,7 @@ test("candidato único exacto permanece candidate y nunca confirmed", async () =
 
 test("múltiples coincidencias exactas producen conflict", async () => {
   const statuses = [];
-  const rows = ["11111111-1111-4111-8111-111111111111", "33333333-3333-4333-8333-333333333333"].map((inmoadmin_client_id, i) => ({ contract_id: `c${i}`, inmoadmin_client_id, property_id: null, role_kind: "tenant" }));
+  const rows = ["11111111-1111-4111-8111-111111111111", "33333333-3333-4333-8333-333333333333"].map((client_identity_id, i) => ({ contract_id: `c${i}`, client_identity_id, property_id: null, role_kind: "tenant" }));
   const admin = { rpc: async () => ({ data: rows, error: null }), from(table) {
     if (table === "respond_identity_links") return { select: () => resultQuery({ data: null, error: null }), insert(row) { statuses.push(row.link_status); return { select: () => ({ single: async () => ({ data: { id: `l${statuses.length}` }, error: null }) }) }; } };
     return { insert: async () => ({ error: null }) };
@@ -57,7 +57,7 @@ test("múltiples coincidencias exactas producen conflict", async () => {
 
 test("sólo vínculo confirmed resuelve contratos vigentes/históricos y propiedades múltiples", async () => {
   const admin = { from(table) {
-    if (table === "respond_identity_links") return resultQuery({ data: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", inmoadmin_client_id: "11111111-1111-4111-8111-111111111111", link_status: "confirmed", link_source: "human_confirmation", confidence: 1 }], error: null });
+    if (table === "respond_identity_links") return resultQuery({ data: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", client_identity_id: "11111111-1111-4111-8111-111111111111", link_status: "confirmed", link_source: "human_confirmation", confidence: 1 }], error: null });
     if (table === "contracts") return resultQuery({ data: [{ id: "c1", property_id: "p1", status: "activo" }, { id: "c2", property_id: "p2", status: "vencido" }], error: null });
     if (table === "properties") return resultQuery({ data: [{ id: "p3", status: "ocupada" }], error: null });
     if (table === "respond_identity_audit") return { insert: async () => ({ error: null }) };
@@ -74,6 +74,14 @@ test("candidate, revoked, conflict o ausencia nunca son utilizables por Auto-Rea
     const admin = { from(table) { if (table === "respond_identity_links") return resultQuery({ data: links.filter((x) => x.link_status === "confirmed"), error: null }); return { insert: async () => ({ error: null }) }; } };
     const value = await resolveConfirmedContactIdentity(admin, "contact-4"); assert.equal(value.resolved, false); assert.equal(value.reason, "insufficient_identity_context");
   }
+});
+
+test("un vínculo legacy no puede confirmarse sin identidad canónica", async () => {
+  const admin = { from(table) {
+    if (table === "respond_identity_links") return resultQuery({ data: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", client_identity_id: null }, error: null });
+    throw new Error(table);
+  } };
+  await assert.rejects(() => reviewIdentityLink(admin, { linkId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", action: "confirm", actorProfileId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }), /canonical_identity_required/);
 });
 
 test("tool read-only está allowlisted y policy la deriva sólo con ID server-side", () => {
@@ -103,7 +111,7 @@ test("tool rechaza argumentos de escritura/no allowlisted", async () => {
 
 test("contrato ambiguo no selecciona inmueble arbitrariamente", async () => {
   const admin = { from(table) {
-    if (table === "respond_identity_links") return resultQuery({ data: [{ id: "l", inmoadmin_client_id: "11111111-1111-4111-8111-111111111111", link_status: "confirmed", link_source: "human_confirmation", confidence: 1 }], error: null });
+    if (table === "respond_identity_links") return resultQuery({ data: [{ id: "l", client_identity_id: "11111111-1111-4111-8111-111111111111", link_status: "confirmed", link_source: "human_confirmation", confidence: 1 }], error: null });
     if (table === "contracts") return resultQuery({ data: [{ id: "c1", property_id: "p1", status: "activo" }, { id: "c2", property_id: "p2", status: "activo" }], error: null });
     if (table === "properties") return resultQuery({ data: [], error: null });
     return { insert: async () => ({ error: null }) };
