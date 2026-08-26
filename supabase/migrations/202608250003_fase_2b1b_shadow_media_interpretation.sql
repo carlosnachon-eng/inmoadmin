@@ -38,6 +38,7 @@ create index if not exists shadow_media_interpretation_message_idx
 
 alter table public.shadow_media_interpretations enable row level security;
 revoke all on public.shadow_media_interpretations from public,anon,authenticated;
+revoke all on public.shadow_media_interpretations from service_role;
 grant select,insert,update on public.shadow_media_interpretations to service_role;
 
 commit;
