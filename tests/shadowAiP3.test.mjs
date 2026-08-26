@@ -425,8 +425,8 @@ test("error Anthropic conserva sólo metadata sanitizada y request id",async()=>
 });
 
 test("tool layer es cerrado, read-only y limitado", () => {
-  assert.equal(READ_ONLY_SHADOW_TOOLS.length,10); assert.equal(SHADOW_AI_LIMITS.maxToolRounds,3);
-  assert.equal(Object.keys(SHADOW_TOOL_ARGUMENT_SCHEMAS).length,10);
+  assert.equal(READ_ONLY_SHADOW_TOOLS.length,11); assert.equal(SHADOW_AI_LIMITS.maxToolRounds,3);
+  assert.equal(Object.keys(SHADOW_TOOL_ARGUMENT_SCHEMAS).length,11);
   const context=fs.readFileSync(new URL("../lib/shadow/context.js",import.meta.url),"utf8");
   assert.doesNotMatch(context,/\.(?:insert|update|upsert|delete)\s*\(/);
   assert.doesNotMatch(context,/rpc\s*\(/); assert.match(context,/MAX_RESULTS = 5/);
