@@ -140,6 +140,12 @@ test("worker procesa una unidad, persiste sólo resultado técnico y destruye ci
   assert.equal(result.status,"completed");assert.equal(calls.filter(([name])=>name==="claim_shadow_media_retrieval").length,1);assert.equal(calls.filter(([name])=>name==="complete_shadow_media_retrieval").length,1);assert.ok(!JSON.stringify(calls.at(-1)).includes("https://"));assert.ok(buffer.every((byte)=>byte===0));
 });
 
+test("fallo interno de interpretación no convierte recuperación válida en fallo",async()=>{
+  const row=validClaim();const calls=[];const admin={rpc:async(name,args)=>{calls.push([name,args]);return name==="claim_shadow_media_retrieval"?{data:row,error:null}:{data:true,error:null}}};
+  const buffer=Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);const result=await processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId,env:{SHADOW_MEDIA_RETRIEVAL_ENABLED:"true",SHADOW_MEDIA_INTERPRETATION_ENABLED:"true",SHADOW_OUTBOUND_ENABLED:"false"},download:async()=>({buffer,headerMime:"image/png",sha256:"a".repeat(64)}),interpret:async()=>{throw new Error("db unavailable");}});
+  assert.equal(result.status,"completed");assert.equal(result.interpretation.status,"failed");assert.equal(result.interpretation.error,"interpretation_internal_error");assert.equal(calls.at(-1)[0],"complete_shadow_media_retrieval");assert.ok(buffer.every((byte)=>byte===0));
+});
+
 test("pending temporal reintenta sin exceder cuatro intentos; expirado no se marca completed",async()=>{
   const base=validClaim();const calls=[];const admin={rpc:async(name,args)=>{calls.push([name,args]);return name.startsWith("claim")?{data:base,error:null}:{data:true,error:null};}};
   const result=await processOneMediaRetrieval(admin,{privateKeyPem:privateKey,workerId,download:async()=>{throw Object.assign(new Error("pending"),{code:"pending_media_unavailable",retryable:true});}});assert.equal(result.status,"pending");assert.equal(calls.at(-1)[1].p_terminal_status,"pending");
@@ -258,7 +264,7 @@ test("UI, Shadow normal y worker operacional no reciben referencia ni clave",()=
   assert.doesNotMatch(files,/SHADOW_MEDIA_RETRIEVAL_PRIVATE_KEY|encrypted_reference|claim_shadow_media_retrieval/);
 });
 
-test("worker no contiene Anthropic, outbound, Respond writes ni mutaciones ERP; logs no exponen secretos",()=>{
+test("worker conserva outbound bloqueado, no tiene Respond/ERP writes y logs no exponen secretos",()=>{
   const worker=fs.readFileSync(new URL("../lib/shadow/media/worker.js",import.meta.url),"utf8");const route=fs.readFileSync(new URL("../pages/api/cron/shadow-media-retrieval.js",import.meta.url),"utf8");
-  assert.doesNotMatch(worker+route,/anthropic|RESPOND_IO_TOKEN|send_message|update.*maintenance|insert.*maintenance/i);assert.doesNotMatch(route,/console\.(log|error)\([^)]*(url|cipher|wrapped|nonce|content)/i);assert.match(worker+route,/SHADOW_OUTBOUND_ENABLED/);
+  assert.doesNotMatch(worker+route,/RESPOND_IO_TOKEN|send_message|update.*maintenance|insert.*maintenance/i);assert.doesNotMatch(route,/console\.(log|error)\([^)]*(url|cipher|wrapped|nonce|content)/i);assert.match(worker+route,/SHADOW_OUTBOUND_ENABLED/);
 });
