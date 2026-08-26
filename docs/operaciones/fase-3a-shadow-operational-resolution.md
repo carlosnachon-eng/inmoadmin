@@ -2,7 +2,7 @@
 
 ## Auditoría previa
 
-Auto-Real usa una allowlist cerrada de diez herramientas: `find_properties`,
+Auto-Real usa una allowlist cerrada de once herramientas: `resolve_contact_identity`, `find_properties`,
 `find_active_contracts`, `get_payment_summary`, `get_service_period_status`,
 `get_maintenance_ticket_summary`, `get_work_center_case`,
 `get_key_custody_status`, `get_owner_liquidation_summary`,
@@ -21,17 +21,18 @@ de `tool_summary` permite atribuir nombre/source/argumentos sin exponer el
 resultado; la revisión de Producción debe usar ese registro, no inferirlo desde
 el texto o la imagen.
 
-## Límite de identidad actual
+## Identidad canónica
 
-Shadow sólo acepta IDs UUID o context keys persistidos por el servidor:
-property, contract, payment, service, maintenance ticket, key, owner payment y
-work-center case. No usa teléfono, nombre, email ni fuzzy matching. Aunque existe
-metadata de contactos Respond, no existe hoy una relación canónica completa
-Respond/contacto → cliente → contrato → inmueble autorizada para 3A.
+`resolve_contact_identity` recibe únicamente el `respond_contact_id` opaco que
+el servidor persistió. Sólo un `respond_identity_link` confirmado resuelve un
+`client_identity_id`; desde ahí obtiene roles, contratos y propiedades ligados
+por el Canonical Client Model. No usa `public.users`, teléfono, nombre, email,
+texto libre ni fuzzy matching.
 
-Por ello, todo mensaje real sin un ID confiable termina en
-`insufficient_identity_context`. Éste es un límite deliberado, no un fallback a
-búsqueda textual.
+Un candidato, conflicto, vínculo revocado o ausencia termina en
+`insufficient_identity_context`. Si la identidad está confirmada pero existen
+varios inmuebles posibles y el turno no aporta un ID confiable, termina en
+`insufficient_property_context`; nunca elige uno arbitrariamente.
 
 ## Arquitectura
 
@@ -49,7 +50,8 @@ búsqueda textual.
 - Maintenance: ticket existente, posible duplicado, estado, prioridad,
   categoría, responsable técnico por ID, fechas y pendiente.
 - Payment: obligación/pago, monto, periodo, estado y comparación aparente con
-  una interpretación visual completed. Nunca confirma pago.
+  una interpretación visual completed. El máximo resultado positivo es
+  `pending_bank_confirmation`; nunca confirma pago.
 - Administrative pending: context key, estado, prioridad, bucket, responsable,
   autorización y última actuación.
 

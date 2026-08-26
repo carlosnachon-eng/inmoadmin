@@ -33,7 +33,7 @@ test("4 seguimiento de proveedor conserva responsable sanitizado", () => {
 test("5 comprobante con monto aparentemente coincidente nunca confirma pago", () => {
   const media = { contractId: id(5), attachmentContext: { present: true, interpreted: true, items: [{ interpretation: { interpretationStatus: "completed", extractedFields: { amount: 14500 } } }] } };
   const r = buildShadowOperationalResolution({ decision: decision("pago_renta"), envelope: envelope(media), tools: [okTool("get_payment_summary", [payment()])] });
-  assert.equal(r.case_status, "apparent_amount_match"); assert.equal(r.requires_human, true); assert.doesNotMatch(r.proposed_action, /confirmado/i);
+  assert.equal(r.case_status, "pending_bank_confirmation"); assert.equal(r.requires_human, true); assert.doesNotMatch(r.proposed_action, /pago confirmado/i);
 });
 test("6 comprobante con monto distinto crea conflicto", () => {
   const media = { contractId: id(5), attachmentContext: { present: true, interpreted: true, items: [{ interpretation: { interpretationStatus: "completed", extractedFields: { amount: 14000 } } }] } };
@@ -106,4 +106,28 @@ test("23 no existen escrituras ERP", () => {
   const source = readFileSync(new URL("../lib/shadow/context.js", import.meta.url), "utf8");
   const toolSection = source.slice(source.indexOf("export const shadowContextTools"), source.indexOf("const intentTools"));
   assert.doesNotMatch(toolSection, /\.insert\(|\.update\(|\.delete\(|\.upsert\(|\.rpc\(/);
+});
+
+test("24 vínculo canónico confirmed propaga client_identity_id, contrato y propiedad", () => {
+  const identity = okTool("resolve_contact_identity", [
+    { entityType: "contact_identity", internalId: id(30), status: "confirmed", resolved: true, roles: ["tenant"] },
+    { entityType: "contract", internalId: id(31), propertyId: id(32), status: "activo" },
+    { entityType: "property", internalId: id(32) },
+  ]);
+  const r = buildShadowOperationalResolution({ decision: decision("mantenimiento"), envelope: envelope({ respondContactId: "opaque-contact" }), tools: [identity, okTool("get_maintenance_ticket_summary", [ticket()])] });
+  assert.equal(r.identity_context.client_identity_id, id(30));
+  assert.deepEqual(r.identity_context.roles, ["tenant"]);
+  assert.equal(r.case_status, "existing_open_case");
+});
+
+test("25 identidad confirmed con varias propiedades falla por contexto, no por identidad", () => {
+  const identity = okTool("resolve_contact_identity", [
+    { entityType: "contact_identity", internalId: id(30), status: "confirmed", resolved: true, roles: ["owner"], ambiguousPropertyContext: true },
+    { entityType: "property", internalId: id(32) },
+    { entityType: "property", internalId: id(33) },
+  ]);
+  const r = buildShadowOperationalResolution({ decision: decision("mantenimiento"), envelope: envelope({ respondContactId: "opaque-contact" }), tools: [identity] });
+  assert.equal(r.case_status, "insufficient_property_context");
+  assert.equal(r.identity_context.status, "insufficient_property_context");
+  assert.equal(r.would_resolve_without_human, false);
 });
