@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { assertClientReconciliationAction, buildActiveClientReconciliationCohort, canonicalCandidateKey, clientReconciliationCapabilities, selectExplicitReconciliationCohort, validateExplicitReconciliationSelection } from "../lib/shadow/clientIdentity.js";
+import { assertClientReconciliationAction, buildActiveClientReconciliationCohort, buildClientReconciliationReviewModels, canonicalCandidateKey, clientReconciliationCapabilities, maskReconciliationName, selectExplicitReconciliationCohort, validateExplicitReconciliationSelection } from "../lib/shadow/clientIdentity.js";
 
 const migration = fs.readFileSync(new URL("../supabase/migrations/202608260002_fase_3a_canonical_client_model.sql", import.meta.url), "utf8");
 const checks = fs.readFileSync(new URL("../supabase/migrations/202608260002_fase_3a_canonical_client_model_checks.sql", import.meta.url), "utf8");
@@ -127,6 +127,35 @@ test("endpoint bloquea mutaciones antes de RPC y UI las oculta en prepare-only",
   assert.match(ui, /capabilities\?\.writeEnabled &&/);
   assert.match(ui, /Modo revisión:[\s\S]+cambios canónicos deshabilitados/);
   assert.doesNotMatch(api.match(/if \(action === "prepare"\)[\s\S]+?return res\.status\(200\)/)?.[0] || "", /confirm_client_reconciliation_candidate|review_client_reconciliation_candidate|tenant_client_id|owner_client_id|property_id/);
+});
+
+test("read model minimizado permite reconocer tenant y owner sin exponer PII completa", () => {
+  const tenantId = crypto.randomUUID(); const ownerId = crypto.randomUUID(); const propertyId = crypto.randomUUID();
+  const tenantPhone = "2221234567"; const ownerPhone = "2227654321";
+  const cohort = buildActiveClientReconciliationCohort({
+    contracts: [{ id: tenantId, status: "activo", tenant_phone: tenantPhone, tenant_name: "Persona Sintética Ejemplo", tenant_email: "private@example.test", property_name: "Unidad Operativa Norte", owner_name: "Propietario Sintético", end_date: "2027-08-01" }],
+    properties: [{ id: propertyId, name: "Unidad Operativa Norte", owner_phone: ownerPhone, owner_email: "owner@example.test", address: "Domicilio prohibido" }],
+    ownerSourceIds: [propertyId],
+  });
+  const candidates = cohort.candidates.map((item, index) => ({ id: index ? ownerId : tenantId, role_kind: item.roleKind, phone_digest: item.phoneDigest, candidate_status: item.candidateStatus, reason_code: item.reasonCode, source_count: item.sources.length }));
+  const sources = cohort.candidates.flatMap((item, index) => item.sources.map((source) => ({ candidate_id: index ? ownerId : tenantId, source_type: source.sourceType, source_id: source.sourceId, matched_property_id: source.matchedPropertyId })));
+  const models = buildClientReconciliationReviewModels({ candidates, sources, contracts: [{ id: tenantId, status: "activo", tenant_phone: tenantPhone, tenant_name: "Persona Sintética Ejemplo", tenant_email: "private@example.test", property_name: "Unidad Operativa Norte", owner_name: "Propietario Sintético", end_date: "2027-08-01" }], properties: [{ id: propertyId, name: "Unidad Operativa Norte", owner_phone: ownerPhone, owner_email: "owner@example.test", address: "Domicilio prohibido" }] });
+  const tenant = models.find((item) => item.role_kind === "tenant"); const owner = models.find((item) => item.role_kind === "owner");
+  assert.equal(tenant.review.displayName, "Persona S. E."); assert.equal(tenant.review.phoneLast4, "4567"); assert.equal(tenant.review.activeContractCount, 1); assert.deepEqual(tenant.review.propertyNames, ["Unidad Operativa Norte"]); assert.deepEqual(tenant.review.contractEndDates, ["2027-08-01"]);
+  assert.equal(owner.review.displayName, "Propietario S."); assert.equal(owner.review.phoneLast4, "4321"); assert.equal(owner.review.relatedPropertyCount, 1); assert.deepEqual(owner.review.propertyNames, ["Unidad Operativa Norte"]);
+  assert.equal(tenant.review.matchMethodLabel, "Coincidencia exacta y única de teléfono");
+  const serialized = JSON.stringify(models);
+  for (const forbidden of [tenantPhone, ownerPhone, "private@example.test", "owner@example.test", "Domicilio prohibido", candidates[0].phone_digest]) assert.doesNotMatch(serialized, new RegExp(forbidden));
+  assert.equal(maskReconciliationName("Nombre Segundo Tercero"), "Nombre S. T.");
+});
+
+test("read endpoint es admin-only, omite digest y no modifica candidatos existentes", () => {
+  assert.match(api, /authorizeShadowAdministrator\(req\)[\s\S]+if \(!actor\) return res\.status\(403\)/);
+  assert.match(api, /buildClientReconciliationReviewModels/);
+  assert.match(api, /const \{ id, \.\.\.reviewOnlyCandidate \} = candidate/);
+  assert.match(api, /candidateRef: String\(id\)\.slice\(0, 12\)/);
+  const getBlock = api.match(/if \(req\.method === "GET"\)[\s\S]+?return res\.status\(200\)\.json\(\{ ok: true, capabilities, candidates \}\);/)?.[0] || "";
+  assert.doesNotMatch(getBlock, /\.insert\(|\.update\(|\.upsert\(|\.delete\(|\.rpc\(/);
 });
 
 test("rollback conservador se niega ante datos auditables o FKs pobladas", () => {
