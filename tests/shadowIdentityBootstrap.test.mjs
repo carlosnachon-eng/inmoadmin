@@ -124,6 +124,7 @@ test("API es admin-only, same-origin, cohorte explícita y no expone capacidades
   const api = fs.readFileSync(new URL("../pages/api/operaciones/shadow-identity-bootstrap.js", import.meta.url), "utf8");
   const ui = fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
   assert.match(api, /authorizeShadowAdministrator/);
+  assert.match(api, /SHADOW_IDENTITY_BRIDGE_ENABLED/);
   assert.match(api, /sameOriginAdminRequest/);
   assert.match(api, /fetchRespondContact/);
   assert.match(api, /validateHistoricalIdentityRefs/);

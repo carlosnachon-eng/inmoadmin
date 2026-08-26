@@ -28,6 +28,7 @@ export default async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ ok: false, error: "method_not_allowed" });
   const actor = await authorizeShadowAdministrator(req);
   if (!actor) return res.status(403).json({ ok: false, error: "not_authorized" });
+  if (process.env.SHADOW_IDENTITY_BRIDGE_ENABLED !== "true") return res.status(409).json({ ok: false, error: "identity_bridge_disabled" });
   if (req.method === "POST" && !sameOriginAdminRequest(req)) return res.status(403).json({ ok: false, error: "invalid_origin" });
   const admin = adminClient();
   try {
