@@ -92,6 +92,17 @@ test("tool read-only está allowlisted y policy la deriva sólo con ID server-si
   assert.ok(!withoutId.requiredNowTools.some((x) => x.name === "resolve_contact_identity"));
 });
 
+test("policy encadena identidad canónica confirmed hacia tools operativas read-only", () => {
+  const toolResults = [{ name: "resolve_contact_identity", ok: true, result: [
+    { entityType: "contact_identity", internalId: "11111111-1111-4111-8111-111111111111", resolved: true, roles: ["tenant"] },
+    { entityType: "contract", internalId: "22222222-2222-4222-8222-222222222222", propertyId: "33333333-3333-4333-8333-333333333333" },
+    { entityType: "property", internalId: "33333333-3333-4333-8333-333333333333" },
+  ] }];
+  const next = deriveRequiredTools({ intent: "mantenimiento", message: "¿Qué pasó con mi reparación?", metadata: { respondContactId: "contact-8" }, toolResults });
+  assert.equal(next.requiredNowTools.some((call) => call.name === "resolve_contact_identity"), false);
+  assert.deepEqual(next.requiredNowTools.find((call) => call.name === "get_maintenance_ticket_summary")?.args, { propertyId: "33333333-3333-4333-8333-333333333333" });
+});
+
 test("snapshot conserva contact ID opaco y no incorpora teléfono/email/nombre", () => {
   const snapshot = createShadowAiInputSnapshot({ provider: "respond_admin", direction: "inbound", sanitizedText: "Hay humedad", providerMetadata: { channelId: "544519", respondContactId: "contact-6", phone: "+522221234567", email: "x@y.test", name: "Persona" } });
   assert.equal(snapshot.providerMetadata.respondContactId, "contact-6");
