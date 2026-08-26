@@ -32,23 +32,23 @@ export default async function handler(req, res) {
     }
     const [{ data: links, error }, { data: conversations, error: conversationError }] = await Promise.all([
       admin.from("respond_identity_links")
-      .select("id,respond_contact_id,inmoadmin_client_id,link_status,link_source,confidence,reason_code,confirmed_at,created_at")
+      .select("id,respond_contact_id,client_identity_id,link_status,link_source,confidence,reason_code,confirmed_at,created_at")
       .order("created_at", { ascending: false }).limit(200),
       admin.from("shadow_conversations").select("id,respond_contact_id,last_message_at").eq("provider", "respond_admin").eq("channel", "544519").not("respond_contact_id", "is", null).order("last_message_at", { ascending: false }).limit(200),
     ]);
     if (error || conversationError) throw error || conversationError;
-    const clientIds = [...new Set((links || []).map((row) => row.inmoadmin_client_id))];
+    const clientIds = [...new Set((links || []).map((row) => row.client_identity_id).filter(Boolean))];
     const [{ data: contracts, error: contractError }, { data: properties, error: propertyError }] = await Promise.all([
-      clientIds.length ? admin.from("contracts").select("id,tenant_id,property_id,status,start_date,end_date").in("tenant_id", clientIds) : { data: [], error: null },
-      clientIds.length ? admin.from("properties").select("id,owner_id,status").in("owner_id", clientIds) : { data: [], error: null },
+      clientIds.length ? admin.from("contracts").select("id,tenant_client_id,property_id,status,start_date,end_date").in("tenant_client_id", clientIds) : { data: [], error: null },
+      clientIds.length ? admin.from("properties").select("id,owner_client_id,status").in("owner_client_id", clientIds) : { data: [], error: null },
     ]);
     if (contractError || propertyError) throw contractError || propertyError;
     const identities = (links || []).map((link) => ({
       id: link.id, contactRef: opaqueRef(link.respond_contact_id), status: link.link_status,
       source: link.link_source, confidence: Number(link.confidence), reasonCode: link.reason_code,
       confirmedAt: link.confirmed_at, createdAt: link.created_at,
-      contracts: (contracts || []).filter((row) => row.tenant_id === link.inmoadmin_client_id).map((row) => ({ id: row.id, propertyId: row.property_id, status: row.status, startDate: row.start_date, endDate: row.end_date })),
-      properties: (properties || []).filter((row) => row.owner_id === link.inmoadmin_client_id).map((row) => ({ id: row.id, status: row.status })),
+      contracts: (contracts || []).filter((row) => row.tenant_client_id === link.client_identity_id).map((row) => ({ id: row.id, propertyId: row.property_id, status: row.status, startDate: row.start_date, endDate: row.end_date })),
+      properties: (properties || []).filter((row) => row.owner_client_id === link.client_identity_id).map((row) => ({ id: row.id, status: row.status })),
     }));
     const linkedContacts = new Set((links || []).map((row) => row.respond_contact_id));
     const unresolved = (conversations || []).filter((row) => !linkedContacts.has(row.respond_contact_id)).map((row) => ({ conversationId: row.id, contactRef: opaqueRef(row.respond_contact_id), status: "no_candidate", lastMessageAt: row.last_message_at }));
