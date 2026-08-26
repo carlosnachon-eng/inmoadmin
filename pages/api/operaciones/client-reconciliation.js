@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { authorizeShadowAdministrator } from "../../../lib/shadow/ai/apiAuth.js";
-import { assertClientReconciliationAction, buildActiveClientReconciliationCohort, clientReconciliationCapabilities, persistClientReconciliationCohort, selectExplicitReconciliationCohort, validateExplicitReconciliationSelection } from "../../../lib/shadow/clientIdentity.js";
+import { assertClientReconciliationAction, buildActiveClientReconciliationCohort, buildClientReconciliationReviewModels, clientReconciliationCapabilities, persistClientReconciliationCohort, selectExplicitReconciliationCohort, validateExplicitReconciliationSelection } from "../../../lib/shadow/clientIdentity.js";
 import { sameOriginAdminRequest } from "../../../lib/shadow/identityBootstrap.js";
 
 const adminClient = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -18,10 +18,23 @@ export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
       const { data, error } = await admin.from("client_reconciliation_candidates")
-        .select("id,role_kind,candidate_status,reason_code,source_count,client_identity_id,created_at")
+        .select("id,role_kind,phone_digest,candidate_status,reason_code,source_count,client_identity_id,created_at")
         .order("created_at", { ascending: false }).limit(200);
       if (error) throw error;
-      return res.status(200).json({ ok: true, capabilities, candidates: data || [] });
+      const candidateIds = (data || []).map((item) => item.id);
+      const [{ data: sources, error: sourceError }, { data: contracts, error: contractError }, { data: properties, error: propertyError }] = await Promise.all([
+        candidateIds.length ? admin.from("client_reconciliation_candidate_sources").select("candidate_id,source_type,source_id,matched_property_id").in("candidate_id", candidateIds) : Promise.resolve({ data: [], error: null }),
+        admin.from("contracts").select("id,status,tenant_name,tenant_phone,owner_name,property_name,end_date"),
+        admin.from("properties").select("id,name,owner_phone"),
+      ]);
+      if (sourceError || contractError || propertyError) throw sourceError || contractError || propertyError;
+      const candidates = buildClientReconciliationReviewModels({ candidates: data || [], sources: sources || [], contracts: contracts || [], properties: properties || [] })
+        .map(({ phone_digest, ...candidate }) => {
+          if (capabilities.writeEnabled) return candidate;
+          const { id, ...reviewOnlyCandidate } = candidate;
+          return { ...reviewOnlyCandidate, candidateRef: String(id).slice(0, 12) };
+        });
+      return res.status(200).json({ ok: true, capabilities, candidates });
     }
     const action = String(req.body?.action || "");
     if (action === "prepare") {
