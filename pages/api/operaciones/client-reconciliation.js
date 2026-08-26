@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { authorizeShadowAdministrator } from "../../../lib/shadow/ai/apiAuth.js";
-import { buildActiveClientReconciliationCohort, persistClientReconciliationCohort } from "../../../lib/shadow/clientIdentity.js";
+import { assertClientReconciliationAction, buildActiveClientReconciliationCohort, clientReconciliationCapabilities, persistClientReconciliationCohort, selectExplicitReconciliationCohort, validateExplicitReconciliationSelection } from "../../../lib/shadow/clientIdentity.js";
 import { sameOriginAdminRequest } from "../../../lib/shadow/identityBootstrap.js";
 
 const adminClient = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -11,7 +11,8 @@ export default async function handler(req, res) {
   if (!["GET", "POST"].includes(req.method)) return res.status(405).json({ ok: false, error: "method_not_allowed" });
   const actor = await authorizeShadowAdministrator(req);
   if (!actor) return res.status(403).json({ ok: false, error: "not_authorized" });
-  if (process.env.SHADOW_CLIENT_RECONCILIATION_ENABLED !== "true") return res.status(409).json({ ok: false, error: "client_reconciliation_disabled" });
+  const capabilities = clientReconciliationCapabilities(process.env);
+  if (!capabilities.prepareEnabled && !capabilities.writeEnabled) return res.status(409).json({ ok: false, error: "client_reconciliation_disabled" });
   if (req.method === "POST" && !sameOriginAdminRequest(req)) return res.status(403).json({ ok: false, error: "origin_not_allowed" });
   const admin = adminClient();
   try {
@@ -20,19 +21,22 @@ export default async function handler(req, res) {
         .select("id,role_kind,candidate_status,reason_code,source_count,client_identity_id,created_at")
         .order("created_at", { ascending: false }).limit(200);
       if (error) throw error;
-      return res.status(200).json({ ok: true, candidates: data || [] });
+      return res.status(200).json({ ok: true, capabilities, candidates: data || [] });
     }
     const action = String(req.body?.action || "");
     if (action === "prepare") {
+      try { assertClientReconciliationAction(capabilities, action); } catch (error) { return res.status(409).json({ ok: false, error: error.message }); }
+      const selection = validateExplicitReconciliationSelection(req.body?.selection);
       const [{ data: contracts, error: contractError }, { data: properties, error: propertyError }] = await Promise.all([
         admin.from("contracts").select("id,status,tenant_phone,tenant_name,tenant_email,property_name,owner_name"),
         admin.from("properties").select("id,name,owner_phone,owner_email"),
       ]);
       if (contractError || propertyError) throw contractError || propertyError;
-      const cohort = buildActiveClientReconciliationCohort({ contracts, properties });
+      const cohort = selectExplicitReconciliationCohort(buildActiveClientReconciliationCohort({ contracts, properties, ownerSourceIds: selection.ownerSourceIds }), selection);
       const metrics = await persistClientReconciliationCohort(admin, cohort, actor.id);
       return res.status(200).json({ ok: true, metrics });
     }
+    try { assertClientReconciliationAction(capabilities, action); } catch (error) { return res.status(409).json({ ok: false, error: error.message }); }
     const candidateId = String(req.body?.candidateId || "");
     if (!UUID.test(candidateId)) return res.status(400).json({ ok: false, error: "invalid_candidate" });
     if (action === "confirm") {
