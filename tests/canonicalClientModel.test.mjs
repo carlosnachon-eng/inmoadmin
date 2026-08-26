@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { buildActiveClientReconciliationCohort, canonicalCandidateKey } from "../lib/shadow/clientIdentity.js";
+import { assertClientReconciliationAction, buildActiveClientReconciliationCohort, canonicalCandidateKey, clientReconciliationCapabilities, selectExplicitReconciliationCohort, validateExplicitReconciliationSelection } from "../lib/shadow/clientIdentity.js";
 
 const migration = fs.readFileSync(new URL("../supabase/migrations/202608260002_fase_3a_canonical_client_model.sql", import.meta.url), "utf8");
 const checks = fs.readFileSync(new URL("../supabase/migrations/202608260002_fase_3a_canonical_client_model_checks.sql", import.meta.url), "utf8");
@@ -90,8 +90,43 @@ test("Identity Bridge converge sólo a client_identity_id confirmed", () => {
 
 test("superficie administrativa no es una tool de Auto-Real y no contiene vías externas", () => {
   assert.match(api, /authorizeShadowAdministrator/); assert.match(api, /sameOriginAdminRequest/);
-  assert.match(api, /SHADOW_CLIENT_RECONCILIATION_ENABLED/); assert.match(api, /confirm_client_reconciliation_candidate/);
+  assert.match(api, /clientReconciliationCapabilities/); assert.match(api, /confirm_client_reconciliation_candidate/);
   assert.doesNotMatch(api, /RESPOND_IO_TOKEN|ANTHROPIC_API_KEY|sendMessage|fetchRespond|payments.*update/i);
+});
+
+test("prepare y write son capabilities independientes y fail-closed", () => {
+  const off = clientReconciliationCapabilities({});
+  assert.deepEqual(off, { prepareEnabled: false, writeEnabled: false });
+  assert.throws(() => assertClientReconciliationAction(off, "prepare"), /prepare_disabled/);
+  const prepareOnly = clientReconciliationCapabilities({ SHADOW_CLIENT_RECONCILIATION_PREPARE_ENABLED: "true" });
+  assert.doesNotThrow(() => assertClientReconciliationAction(prepareOnly, "prepare"));
+  for (const action of ["confirm", "reject", "conflict", "skip", "revoke"]) assert.throws(() => assertClientReconciliationAction(prepareOnly, action), /write_disabled/);
+});
+
+test("selección explícita aplica máximo 5 tenants, 3 owners y 8 fuentes", () => {
+  const ids = Array.from({ length: 9 }, () => crypto.randomUUID());
+  assert.deepEqual(validateExplicitReconciliationSelection({ tenantSourceIds: ids.slice(0, 5), ownerSourceIds: ids.slice(5, 8) }), { tenantSourceIds: ids.slice(0, 5), ownerSourceIds: ids.slice(5, 8) });
+  assert.throws(() => validateExplicitReconciliationSelection({ tenantSourceIds: ids.slice(0, 6) }), /limit_exceeded/);
+  assert.throws(() => validateExplicitReconciliationSelection({ ownerSourceIds: ids.slice(0, 4) }), /limit_exceeded/);
+  assert.throws(() => validateExplicitReconciliationSelection({}), /empty_reconciliation_selection/);
+  assert.throws(() => validateExplicitReconciliationSelection({ tenantSourceIds: ["*"] }), /invalid_reconciliation_source_id/);
+});
+
+test("prepare-only filtra cohorte exacta y no arrastra vencidos ni fuentes extra", () => {
+  const selectedContract = contract(); const extraContract = contract({ property_name: "Unidad QA 2", tenant_phone: "2221111111" });
+  const selectedProperty = property(); const extraProperty = property({ name: "Unidad QA 2", owner_phone: "2223333333" });
+  const full = buildActiveClientReconciliationCohort({ contracts: [selectedContract, extraContract, contract({ status: "vencido" })], properties: [selectedProperty, extraProperty], ownerSourceIds: [selectedProperty.id] });
+  const selected = selectExplicitReconciliationCohort(full, { tenantSourceIds: [selectedContract.id], ownerSourceIds: [selectedProperty.id] });
+  assert.equal(selected.candidates.length, 2);
+  assert.deepEqual(new Set(selected.candidates.flatMap((x) => x.sources.map((source) => source.sourceId))), new Set([selectedContract.id, selectedProperty.id]));
+});
+
+test("endpoint bloquea mutaciones antes de RPC y UI las oculta en prepare-only", () => {
+  const ui = fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
+  assert.match(api, /assertClientReconciliationAction\(capabilities, action\)[\s\S]+confirm_client_reconciliation_candidate/);
+  assert.match(ui, /capabilities\?\.writeEnabled &&/);
+  assert.match(ui, /Modo revisión:[\s\S]+cambios canónicos deshabilitados/);
+  assert.doesNotMatch(api.match(/if \(action === "prepare"\)[\s\S]+?return res\.status\(200\)/)?.[0] || "", /confirm_client_reconciliation_candidate|review_client_reconciliation_candidate|tenant_client_id|owner_client_id|property_id/);
 });
 
 test("rollback conservador se niega ante datos auditables o FKs pobladas", () => {
