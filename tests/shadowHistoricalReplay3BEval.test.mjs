@@ -47,7 +47,7 @@ test("replay v2 contiene dominio fuera de 3B igual que natural sin ampliar enum"
   const result=await executeHistoricalReplayCase({}, {evaluationMode:"historical_replay",sufficientHistoricalContext:true,temporalGrounding:"current_state",identityGrounding:"unresolved",humanResponseSnapshot:null,envelope:{provider:"respond_admin",direction:"inbound",sanitizedText:"Tengo una consulta de contrato",providerMetadata:{channelId:"544519",priorConversation:[]}}}, {
     env, now:(()=>{let n=1000;return()=>n+=10;})(), modelCall:async()=>({id:"req-domain",model:"claude-test",text:JSON.stringify(decision),usage:{input_tokens:80,output_tokens:15}}),
   });
-  assert.equal(HISTORICAL_REPLAY_RUNTIME,"administradora-ia-emporio-historical-replay-v2");
+  assert.equal(HISTORICAL_REPLAY_RUNTIME,"administradora-ia-emporio-historical-replay-v3");
   assert.equal(result.operationalResolution.case_domain,"outside_phase_3a");
   assert.equal(result.conversationAction.conversation_action,"no_message");
   assert.equal(result.conversationAction.requires_human,true);
