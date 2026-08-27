@@ -95,6 +95,14 @@ test("métricas replay permanecen separadas y destacan primeras capabilities",()
   assert.equal(metrics.total,3); assert.equal(metrics.completed,2); assert.equal(metrics.firstOutboundCandidates,2); assert.equal(metrics.safeMessageRate,1);
 });
 
+test("schema v2 exige elegibilidad humana y motivo fuera de correcta",()=>{
+  const sql=fs.readFileSync(new URL("../supabase/migrations/202608280002_fase_3b_utility_evaluation.sql",import.meta.url),"utf8");
+  assert.match(sql,/human_auto_send_eligible is not null/);
+  assert.match(sql,/rating = 'correct' or reason is not null/);
+  assert.match(sql,/review_schema_version = 'v1'/);
+  assert.match(sql,/requested_existing_document/);
+});
+
 test("artefactos aíslan tablas naturales, carecen de cron/sender y aplican RLS/grants mínimos",()=>{
   const module=fs.readFileSync(new URL("../lib/shadow/ai/historicalReplay.js",import.meta.url),"utf8");
   const api=fs.readFileSync(new URL("../pages/api/operaciones/shadow-historical-replay.js",import.meta.url),"utf8");

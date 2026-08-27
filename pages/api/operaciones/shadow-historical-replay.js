@@ -25,7 +25,7 @@ export default async function handler(req, res) {
       const [{ data: cohorts, error: cohortError }, { data: cases, error: caseError }, { data: reviews, error: reviewError }] = await Promise.all([
         admin.from("shadow_historical_replay_cohorts").select("id,status,requested_count,domain_counts,runtime_version,created_at,completed_at").order("created_at", { ascending: false }).limit(20),
         admin.from("shadow_historical_replay_cases").select("id,cohort_id,case_ref,case_domain,status,occurred_at,turn_snapshot,human_response_snapshot,temporal_grounding,identity_grounding,operational_resolution,conversation_action,proposed_message,result_safe,message_safe,would_resolve_without_human,input_tokens,output_tokens,estimated_cost_usd,latency_ms,error_code,created_at,completed_at").order("created_at", { ascending: false }).limit(100),
-        admin.from("shadow_historical_replay_reviews").select("id,replay_case_id,rating,reason,created_at").order("created_at", { ascending: false }).limit(200),
+        admin.from("shadow_historical_replay_reviews").select("id,replay_case_id,rating,reason,human_auto_send_eligible,comment_safe,review_schema_version,created_at").order("created_at", { ascending: false }).limit(200),
       ]);
       if (cohortError || caseError || reviewError) throw cohortError || caseError || reviewError;
       const latestReview = new Map((reviews || []).map((row) => [row.replay_case_id, row]));
@@ -68,8 +68,10 @@ export default async function handler(req, res) {
     }
     if (action === "review") {
       const rating = String(req.body?.rating || ""); const reason = req.body?.reason ? String(req.body.reason) : null;
-      if (!HISTORICAL_REPLAY_RATINGS.includes(rating) || (reason && !HISTORICAL_REPLAY_REASONS.includes(reason))) return res.status(400).json({ ok: false, error: "invalid_review" });
-      const { error } = await admin.from("shadow_historical_replay_reviews").insert({ replay_case_id: String(req.body?.caseId || ""), rating, reason, reviewed_by: actor.id }); if (error) throw error;
+      const humanAutoSendEligible = req.body?.humanAutoSendEligible;
+      const commentSafe = String(req.body?.comment || "").replace(/\s+/g, " ").trim().slice(0, 500) || null;
+      if (!HISTORICAL_REPLAY_RATINGS.includes(rating) || (reason && !HISTORICAL_REPLAY_REASONS.includes(reason)) || typeof humanAutoSendEligible !== "boolean" || (rating !== "correct" && !reason)) return res.status(400).json({ ok: false, error: "invalid_review" });
+      const { error } = await admin.from("shadow_historical_replay_reviews").insert({ replay_case_id: String(req.body?.caseId || ""), rating, reason, human_auto_send_eligible: humanAutoSendEligible, comment_safe: commentSafe, review_schema_version: "v2", reviewed_by: actor.id }); if (error) throw error;
       return res.status(201).json({ ok: true });
     }
     return res.status(400).json({ ok: false, error: "invalid_action" });

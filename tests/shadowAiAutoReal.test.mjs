@@ -88,7 +88,7 @@ test("prompt vigente no vuelve pendientes los turns reales ya completados con un
 });
 
 test("prompt/runtime v8 distingue 3B sobre resolución canónica sin reanalizar completed o failed previos", () => {
-  assert.equal(REAL_SHADOW_AUTO_AI_PROMPT_VERSION,"administradora-ia-emporio-real-shadow-v8");
+  assert.equal(REAL_SHADOW_AUTO_AI_PROMPT_VERSION,"administradora-ia-emporio-real-shadow-v9");
   const completed={id:"completed-v2",status:"completed",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
   const failed={id:"failed-v2",status:"timeout",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
   assert.equal(selectAutoRealRun([completed])?.id,"completed-v2");
