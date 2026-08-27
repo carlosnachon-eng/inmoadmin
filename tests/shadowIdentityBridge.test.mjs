@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  contactPhoneFromRespondPayload, generateIdentityCandidates, normalizeIdentityPhone,
+  assertIdentityLinkReviewWrite, contactPhoneFromRespondPayload,
+  generateIdentityCandidates, identityLinkCapabilities, normalizeIdentityPhone,
   resolveConfirmedContactIdentity, reviewIdentityLink, validateRespondContactId,
 } from "../lib/shadow/identityBridge.js";
+import { buildRespondIdentityReviewModels } from "../lib/shadow/respondIdentityReview.js";
 import { READ_ONLY_SHADOW_TOOLS, executeShadowReadOnlyTool } from "../lib/shadow/context.js";
 import { createShadowAiInputSnapshot } from "../lib/shadow/ai/stateMachine.js";
 import { deriveRequiredTools } from "../lib/shadow/ai/toolPolicy.js";
 import { realShadowTurnEnvelope } from "../lib/shadow/ai/conversationTurns.js";
+import { shadowAiDependencyError } from "../lib/shadow/ai/runner.js";
 import fs from "node:fs";
 
 const resultQuery = (result) => {
@@ -92,6 +95,34 @@ test("tool read-only está allowlisted y policy la deriva sólo con ID server-si
   assert.ok(!withoutId.requiredNowTools.some((x) => x.name === "resolve_contact_identity"));
 });
 
+test("respondContactId persistido satisface dependencia sin confiar en texto/modelo", () => {
+  const envelope = { providerMetadata: { respondContactId: "contact-5" } };
+  assert.equal(shadowAiDependencyError({ name: "resolve_contact_identity", args: { respondContactId: "contact-5" } }, envelope, []), null);
+  assert.equal(shadowAiDependencyError({ name: "resolve_contact_identity", args: { respondContactId: "otro-contacto" } }, envelope, []), "missing_dependency:respondContactId");
+});
+
+test("capability aislada mantiene revisión Respond fail-closed", () => {
+  assert.deepEqual(identityLinkCapabilities({ SHADOW_IDENTITY_BRIDGE_ENABLED: "true" }), { enabled: true, reviewWriteEnabled: false });
+  assert.throws(() => assertIdentityLinkReviewWrite({ enabled: true, reviewWriteEnabled: false }), /identity_link_review_write_disabled/);
+  assert.doesNotThrow(() => assertIdentityLinkReviewWrite({ enabled: true, reviewWriteEnabled: true }));
+});
+
+test("read model de vínculo Respond minimiza PII y aporta contexto reconocible", () => {
+  const identityId = "11111111-1111-4111-8111-111111111111";
+  const [review] = buildRespondIdentityReviewModels({
+    links: [{ client_identity_id: identityId, link_source: "exact_phone_unique" }],
+    roles: [{ client_identity_id: identityId, role_kind: "tenant", status: "active" }],
+    contracts: [{ tenant_client_id: identityId, status: "activo", tenant_name: "Persona Sintética Ejemplo", tenant_phone: "+52 222 123 4567", property_name: "Unidad DEV", end_date: "2027-08-01" }],
+    properties: [],
+  });
+  assert.equal(review.displayName, "Persona S. E.");
+  assert.equal(review.phoneLast4, "4567");
+  assert.deepEqual(review.roleLabels, ["Inquilino"]);
+  assert.deepEqual(review.propertyNames, ["Unidad DEV"]);
+  assert.equal(review.matchMethodLabel, "Coincidencia exacta y única de teléfono");
+  assert.equal(JSON.stringify(review).includes("522221234567"), false);
+});
+
 test("policy encadena identidad canónica confirmed hacia tools operativas read-only", () => {
   const toolResults = [{ name: "resolve_contact_identity", ok: true, result: [
     { entityType: "contact_identity", internalId: "11111111-1111-4111-8111-111111111111", resolved: true, roles: ["tenant"] },
@@ -147,7 +178,10 @@ test("superficie humana está separada de Auto-Real y no expone credenciales/PII
   assert.match(api, /authorizeShadowAdministrator/); assert.match(api, /fetchRespondContact/);
   assert.doesNotMatch(api, /RESPOND_IO_TOKEN|respond.*(?:send|write)|\.from\(["']payments["']\)\.update/i);
   assert.doesNotMatch(ui, /SUPABASE_SERVICE_ROLE_KEY|RESPOND_IO_TOKEN/);
+  assert.match(api, /SHADOW_IDENTITY_LINK_REVIEW_WRITE_ENABLED|assertIdentityLinkReviewWrite/);
+  assert.match(api, /sameOriginAdminRequest/);
   assert.match(ui, /Sólo vínculos confirmados/); assert.match(ui, /Confirmar/); assert.match(ui, /Rechazar/); assert.match(ui, /Marcar conflicto/);
+  assert.match(ui, /Modo revisión/); assert.match(ui, /phoneLast4/); assert.match(ui, /matchMethodLabel/);
 });
 
 test("allowlist mantiene outbound, Respond writes y ERP writes fuera de Identity Bridge", () => {
