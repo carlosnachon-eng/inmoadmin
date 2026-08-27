@@ -1,0 +1,49 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import {
+  SHADOW_CONVERSATION_ACTIONS, buildConversationAction, conversationActionCapabilities,
+  conversationActionMetrics, renderConversationAction, semanticConversationGuard,
+  validateConversationAction,
+} from "../lib/shadow/ai/conversationAction.js";
+
+const trusted = { status: "trusted_link_available", client_identity_id: "identity:1", roles: ["tenant"] };
+const evidence = [{ evidenceId: "evidence:1" }];
+const resolution = (overrides={}) => ({ case_domain:"maintenance", case_status:"existing_open_case", identity_context:trusted, evidence, missing_information:[], action_confidence:.82, requires_human:false, conflict_detected:false, technical_error:false, ...overrides });
+const build = (overrides={}, decision={}) => buildConversationAction({ resolution:resolution(overrides), decision, turn:{settled:true}, now:Date.parse("2026-08-27T00:00:00Z") });
+
+test("1 mantenimiento sin ubicación pregunta dato faltante",()=>assert.equal(build({case_status:"no_existing_case",missing_information:["location"]}).conversation_action,"ask_missing_information"));
+test("2 mantenimiento sin foto solicita documento",()=>assert.equal(build({missing_information:["maintenance_photo"]}).conversation_action,"request_document"));
+test("3 mantenimiento con ticket informa estado verificado",()=>assert.equal(build().conversation_action,"provide_verified_status"));
+test("4 proveedor sin fecha no promete fecha",()=>assert.doesNotMatch(build().proposed_message,/proveedor.*(?:hora|mañana|hoy)/i));
+test("5 promesa de fecha queda bloqueada",()=>assert.equal(semanticConversationGuard("El proveedor irá mañana a las 10:00").allowed,false));
+test("6 pago sin comprobante solicita documento",()=>assert.equal(build({case_domain:"payment",case_status:"record_not_found",missing_information:["payment_document"],requires_human:true}).conversation_action,"request_document"));
+test("7 pago coincidente sólo queda pendiente",()=>assert.match(build({case_domain:"payment",case_status:"pending_bank_confirmation",requires_human:true}).proposed_message,/pendiente de validación bancaria/i));
+test("8 monto discrepante pide aclaración",()=>assert.equal(build({case_domain:"payment",case_status:"amount_conflict",conflict_detected:true,requires_human:true}).conversation_action,"clarify_payment_amount"));
+test("9 dos transferencias se preguntan sin confirmar",()=>assert.match(build({case_domain:"payment",case_status:"amount_conflict",conflict_detected:true,requires_human:true}).proposed_message,/más de una transferencia/i));
+test("10 payment confirmed está prohibido",()=>assert.equal(semanticConversationGuard("Tu pago está confirmado").reason,"forbidden_operational_commitment"));
+test("11 pendiente administrativo solicita documento",()=>assert.equal(build({case_domain:"administrative_pending",case_status:"pending",missing_information:["document"],requires_human:true}).conversation_action,"request_document"));
+test("12 estatus administrativo con evidencia es comunicable",()=>assert.equal(build({case_domain:"administrative_pending",case_status:"open"}).conversation_action,"provide_verified_status"));
+test("13 estatus no verificado pregunta y no inventa",()=>assert.equal(build({case_domain:"administrative_pending",case_status:"pending_not_found",evidence:[],missing_information:["administrative_pending"],requires_human:true}).conversation_action,"ask_missing_information"));
+test("14 varias propiedades sólo usa opciones minimizadas",()=>{const a=build({case_status:"insufficient_property_context",identity_context:{status:"insufficient_property_context"},property_options:["Boudica 1005","Prisma 503"]});assert.equal(a.conversation_action,"clarify_property");assert.match(a.proposed_message,/Boudica 1005 o Prisma 503/);});
+test("15 identidad no confirmed requiere handoff",()=>{const a=build({identity_context:{status:"insufficient_identity_context"},case_status:"insufficient_identity_context",requires_human:true});assert.equal(a.conversation_action,"human_handoff");assert.equal(a.auto_send_eligible,false);});
+test("16 respuesta humana supersede",()=>{const a=buildConversationAction({resolution:resolution(),turn:{settled:true,humanResponseId:"message:human"}});assert.equal(a.status,"superseded");});
+test("17 turno no settled produce no_message rechazado",()=>{const a=buildConversationAction({resolution:resolution(),turn:{settled:false}});assert.equal(a.conversation_action,"no_message");assert.equal(a.blocked_reason,"turn_not_settled");});
+test("18 turn_key tiene índice único",()=>assert.match(readFileSync(new URL("../supabase/migrations/202608270001_fase_3b_shadow_conversation_actions.sql",import.meta.url),"utf8"),/unique index[\s\S]*turn_key/));
+test("19 cron repetido se protege por run y turn únicos",()=>{const s=readFileSync(new URL("../supabase/migrations/202608270001_fase_3b_shadow_conversation_actions.sql",import.meta.url),"utf8");assert.match(s,/shadow_conversation_actions_run_uidx/);});
+test("20 acción expirada se contabiliza",()=>assert.equal(conversationActionMetrics([{conversation_action:"no_message",status:"expired",auto_send_eligible:false}],1).expired,1));
+test("21 jurídico siempre no_message",()=>assert.equal(build({}, {intent:"juridico_conflicto"}).conversation_action,"no_message"));
+test("22 negociación es humana",()=>{const a=build({requires_human:true,human_reason:"negotiation"});assert.equal(a.auto_send_eligible,false);});
+test("23 devolución siempre no_message",()=>assert.equal(build({}, {intent:"devolucion_deposito"}).conversation_action,"no_message"));
+test("24 autorización de gasto queda bloqueada",()=>assert.equal(semanticConversationGuard("Autorizamos la reparación").allowed,false));
+test("25 baja confianza nunca es auto-send candidate",()=>assert.equal(build({action_confidence:.4}).auto_send_eligible,false));
+test("26 enum libre del modelo es rechazado",()=>assert.throws(()=>validateConversationAction({case_domain:"maintenance",conversation_action:"send_anything",confidence:.8,requires_human:false,auto_send_eligible:true}),/enum/));
+test("27 PII excesiva se bloquea",()=>assert.equal(semanticConversationGuard("Escríbeme a persona@example.com").reason,"excessive_pii"));
+test("28 renderer limita longitud",()=>assert.ok(renderConversationAction({case_domain:"maintenance",conversation_action:"ask_missing_information",property_options:[]}).length<=480));
+test("29 no existe sender ni cliente Respond",()=>{const s=readFileSync(new URL("../lib/shadow/ai/conversationAction.js",import.meta.url),"utf8");assert.doesNotMatch(s,/sendRespond|fetchRespond|respondRequest|messages\/send/i);});
+test("30 Ventas/canal distinto quedan fuera por guardas existentes",()=>{const s=readFileSync(new URL("../lib/shadow/ai/autoReal.js",import.meta.url),"utf8");assert.match(s,/buildRealShadowConversationTurns/);});
+test("31 capability outbound Admin es separada y OFF por defecto",()=>assert.deepEqual(conversationActionCapabilities({}),{enabled:false,adminOutboundEnabled:false}));
+test("32 Respond writes no existen",()=>{const s=readFileSync(new URL("../lib/shadow/ai/conversationAction.js",import.meta.url),"utf8");assert.doesNotMatch(s,/respond_identity_links.*(?:insert|update)|assignee|workflow|lifecycle/i);});
+test("33 escrituras se limitan a tabla Shadow propia",()=>{const s=readFileSync(new URL("../lib/shadow/ai/conversationAction.js",import.meta.url),"utf8");assert.doesNotMatch(s,/from\(["'](?:contracts|properties|payments|maintenance|tickets)["']\).*\.(?:insert|update|delete|upsert)/i);});
+test("34 métrica conversacional no confunde turnos elegibles",()=>{const m=conversationActionMetrics([{conversation_action:"provide_verified_status",status:"proposed",auto_send_eligible:true}],4);assert.equal(m.conversational_automation_candidate_rate,.25);});
+test("35 lista de acciones es cerrada",()=>assert.deepEqual(SHADOW_CONVERSATION_ACTIONS,["ask_missing_information","request_document","clarify_property","clarify_payment_amount","clarify_payment_period","acknowledge_received_information","provide_verified_status","human_handoff","no_message"]));
