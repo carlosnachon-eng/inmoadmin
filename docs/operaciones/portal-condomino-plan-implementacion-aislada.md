@@ -5,7 +5,73 @@ Rama: `codex/genova-owner-portal`
 Base final validada: `origin/main` `6fa9d2fdb05779bda77f8c94df19bdfcc8a0f3d7` (rama creada originalmente desde `03908aa55ba3d385c952b42342a127429617c354` y rebasada sin conflictos)
 Estado: implementado en rama aislada y validado en `inmoadmin-dev`; no aplicado en Producción; no contiene PII ni usuarios reales.
 
-## Alcance
+## Decisión operativa corregida
+
+La apertura de Génova no depende de completar 23 correos. `owner_portal_enabled` habilita la capacidad del condominio, pero el acceso efectivo se concede individualmente mediante una relación explícita y activa entre una identidad confirmada y una o varias unidades.
+
+- Propietario con correo confirmado, identidad validada y relación unidad–correo inequívoca: puede habilitarse.
+- Propietario sin correo, con identidad pendiente o relación ambigua: permanece sin acceso.
+- Una nueva alta individual no requiere reactivar el condominio, modificar cuotas ni esperar a otras unidades.
+- Nunca se crea una relación por coincidencia de nombre.
+
+## A. Bloqueos reales para abrir el MVP
+
+1. **Historial de migraciones:** incorporar a `main` las migraciones base y de hardening condominal que ya existen en DEV y Producción. La migración del portal no debe depender de objetos productivos ausentes del historial versionado.
+2. **Autorización explícita para condominios controlados:** ajustar `condominium_owner_has_unit` para que Génova y cualquier condominio con fila en `condominium_operation_controls` exijan una relación activa en `condominium_unit_portal_access`. El fallback por correos legacy de `unidades_condominio` debe conservarse únicamente para condominios sin fila de control, evitando regresión en Tecaxco.
+3. **Recortar el PR al MVP de lectura:** separar del primer PR las rutas de carga/descarga, bucket, documentos, recibos y gastos. Si esas superficies permanecieran desplegadas, sí requerirían validación completa; al excluirlas del MVP no bloquean su apertura.
+4. **Preview aislado:** ejecutar el Preview branch-scoped exclusivamente contra `inmoadmin-dev` y aprobar los accesos positivos y negativos desde la aplicación, RLS, multiunidad, otro tenant, portal apagado, logs y bundle cliente.
+
+No son bloqueos: completar 23/23 correos, gastos, documentos, comprobantes administrativos, incidencias o mantenimiento.
+
+## B. Funciones que pueden posponerse
+
+El primer portal visible para Génova incluirá solamente:
+
+1. unidad o selector de unidades autorizadas;
+2. saldo administrativo histórico Antive;
+3. pagos históricos registrados;
+4. cuota corriente de septiembre de 2026 y periodos posteriores;
+5. separación clara entre histórico Antive y administración Emporio.
+
+Se posponen y deben quedar fuera de la navegación y de las rutas accesibles del PR MVP:
+
+- carga y descarga de comprobantes;
+- recibos administrativos;
+- documentos;
+- gastos;
+- incidencias y mantenimiento.
+
+El código ampliado ya preparado para Storage y documentos se conserva como trabajo posterior, pero no debe mezclarse en el PR MVP. Cuando una función se retome tendrá su propia validación de RLS, Storage, acceso negativo, logs y bundle.
+
+## C. Alta progresiva por propietario
+
+1. Recibir el correo directamente del propietario por el procedimiento privado autorizado.
+2. Confirmar identidad y correo fuera del repositorio; identificar inequívocamente la unidad o unidades y el tipo de acceso (`OWNER`, `COOWNER` o `AUTHORIZED_RESIDENT`).
+3. Detener el alta si existe ambigüedad, contradicción o una relación sustentada sólo por nombre.
+4. Consultar si la cuenta Auth ya existe. Si no existe, crearla server-side con correo confirmado y sin invitación masiva; nunca usar `inviteUserByEmail`.
+5. Insertar exclusivamente las relaciones confirmadas en `condominium_unit_portal_access`, con actor administrador y sin notas que reproduzcan PII innecesaria.
+6. Verificar como esa identidad que sólo aparecen sus unidades; intentar expresamente otra unidad del mismo condominio y otro tenant.
+7. Informar al propietario que podrá solicitar su enlace OTP desde el portal. `shouldCreateUser:false` impide altas espontáneas.
+8. Para una nueva persona posterior, repetir los pasos individuales. No cambiar `owner_portal_enabled`, cuotas ni relaciones de terceros.
+9. Para revocar acceso, marcar únicamente su relación como inactiva y registrar `revoked_at`; no borrar historia ni afectar a cotitulares.
+
+Un correo puede relacionarse con varias unidades sólo mediante filas explícitas. Una unidad puede tener varios titulares autorizados mediante relaciones independientes.
+
+## D. Requisitos para PR y Preview
+
+1. Conciliar las migraciones base/hardening en una rama coordinada con Administradora IA.
+2. Reducir el diff del portal al MVP de sólo lectura y aplicar la regla explícita para condominios controlados.
+3. Rebasar sobre el `origin/main` vigente y confirmar que no hay cambios Shadow/flags dentro del diff.
+4. Ejecutar suite completa, regresiones condominales, build y `git diff --check`.
+5. Aplicar el SQL final únicamente en DEV y repetir fingerprint, checks estructurales, rollback y RLS.
+6. Crear Preview branch-scoped a DEV con identidades sintéticas: acceso individual, multiunidad, cotitular, unidad sin relación, otro tenant, `anon` y portal apagado.
+7. Confirmar que la interfaz MVP no presenta gastos, documentos, comprobantes, recibos o incidencias y que no depende de Storage ni `service_role`.
+8. Revisar respuestas, consola, logs y bundle para confirmar ausencia de PII y secretos.
+9. Abrir Draft PR con migración, rollback, evidencia y plan de despliegue. No habilitar Génova ni crear usuarios reales dentro del PR.
+
+Storage no es requisito de Preview para este MVP porque el PR inicial no debe incluir ninguna función visible o endpoint que lo utilice.
+
+## Estado de la implementación ampliada existente
 
 La implementación resuelve únicamente:
 
@@ -49,7 +115,7 @@ La migración aborta si faltan los objetos del hardening condominal que ya exist
 
 ## Multiunidad y correos
 
-Proceso futuro, fuera del repositorio:
+Proceso progresivo, fuera del repositorio:
 
 1. Dirección entrega archivo privado unidad–correo–tipo de acceso.
 2. Validar formato y normalizar a minúsculas.
@@ -90,9 +156,9 @@ Si `money_movements_enabled=false`, el RPC devuelve `expensesVisible=false`, una
 - No se usa `getPublicUrl` ni se listan objetos del bucket.
 - Sólo documentos con `visible_to_owners=true` y `published_at` pueden aparecer.
 
-## Autenticación futura
+## Autenticación progresiva
 
-1. Mantener `owner_portal_enabled=false` durante padrón y QA.
+1. Mantener `owner_portal_enabled=false` durante el desarrollo y QA del MVP; no esperar a completar todos los correos.
 2. Crear cada cuenta server-side con `auth.admin.createUser({email,email_confirm:true})`; no usar `inviteUserByEmail`.
 3. No enviar invitaciones desde la carga.
 4. Cuando Dirección autorice el portal, el propietario ingresa su correo y solicita un enlace OTP.
@@ -113,7 +179,7 @@ Secuencia requerida:
 2. Aplicar migración sólo en `inmoadmin-dev` después de fingerprint.
 3. Cargar fixtures sintéticos: propietario multiunidad, cotitular, otro tenant y usuario no autorizado.
 4. Ejecutar `supabase/production/tests/202608270002_condominium_owner_portal_checks.sql` en DEV.
-5. Probar accesos positivos y negativos, Storage y logs desde Preview branch-scoped a DEV.
+5. Probar accesos positivos y negativos y logs desde Preview branch-scoped a DEV. Storage sólo se prueba cuando se reincorpore en una fase posterior.
 6. Abrir Draft PR; revisar diff frente a `main` y coordinación con Administradora IA.
 7. Sólo después de aprobación: merge a `main` limpio, migración productiva y deployment coordinado.
 8. La activación de `owner_portal_enabled` y creación de usuarios requieren autorización separada.
@@ -138,12 +204,14 @@ Validación ejecutada en DEV:
 ## Riesgos abiertos
 
 1. La fundación/hardening condominal existe en Producción y DEV, pero sus migraciones históricas no forman parte del `main` actual; debe conciliarse esa deuda de versionado antes de integrar esta migración.
-2. Falta validar desde Preview el ciclo completo del token de carga firmada contra el bucket privado; la estructura, RLS y ausencia de exposición pública ya fueron validadas en DEV.
-3. Falta definir quién publica documentos y el proceso de revocación.
-4. Falta completar y verificar el padrón de correos de Dirección.
-5. El recibo administrativo para Génova debe expresar correctamente que Antive custodió los fondos antes de publicarse.
-6. Ningún cambio de este track puede promoverse mientras exista conflicto con Administradora IA.
+2. La implementación ampliada mezcla el MVP con Storage/documentos; debe separarse antes del PR para no desplegar superficies pospuestas.
+3. El helper actual todavía permite fallback por correo legacy en condominios controlados; debe limitarse conforme al bloqueo 2 de la sección A.
+4. Ningún cambio de este track puede promoverse mientras exista conflicto con Administradora IA.
 
-## Requisito para PR
+La falta de correos de propietarios no constituye riesgo global: cada identidad se habilita únicamente cuando su validación individual termina.
 
-No abrir PR hasta cerrar el riesgo 1 y completar el Preview branch-scoped contra DEV. La migración y las pruebas RLS ya quedaron aplicadas y aprobadas en DEV; en Preview resta validar el ciclo completo de Storage, los accesos negativos desde la aplicación y la ausencia de secretos/PII en bundles, respuestas y logs.
+## Dictamen
+
+**GO PARA PREPARAR PR DEL PORTAL MVP**
+
+El PR todavía no debe abrirse hasta conciliar las migraciones base/hardening, recortar el diff al MVP de lectura y limitar el fallback legacy. Después deberá completar Preview contra DEV y las validaciones indicadas en la sección D. No se requiere completar el padrón de correos ni validar Storage para este alcance reducido.
