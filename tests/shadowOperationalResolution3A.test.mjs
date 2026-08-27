@@ -9,7 +9,7 @@ import { READ_ONLY_SHADOW_TOOLS, validateShadowToolArguments } from "../lib/shad
 
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const decision = (intent, overrides = {}) => ({ intent, confidence: 0.82, resolvedEntities: [], responseBlocked: false, ...overrides });
-const envelope = (metadata = {}, text = "") => ({ sanitizedText: text, providerMetadata: metadata });
+const envelope = (metadata = {}, text = "") => ({ direction:"inbound", sanitizedText: text, providerMetadata: { contactRole:"tenant", ...metadata } });
 const okTool = (name, result) => ({ name, ok: true, args: {}, result, durationMs: 8, source: "policy_required", reason: "phase3a" });
 const ticket = (overrides = {}) => ({ entityType: "maintenance_ticket", internalId: id(2), status: "nuevo", priority: "alta", category: "plomeria", createdAt: "2026-08-25T00:00:00Z", lastActionAt: "2026-08-25T01:00:00Z", ...overrides });
 const payment = (overrides = {}) => ({ entityType: "payment", internalId: id(3), status: "pendiente", amount: 14500, period: "2026-08-01", ...overrides });

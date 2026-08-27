@@ -52,7 +52,7 @@ export default async function handler(req, res) {
       admin.from("shadow_context_query_audit").select("message_id,tool_name,result_count,succeeded,duration_ms,created_at").order("created_at", { ascending: false }),
       admin.from("shadow_ai_manual_authorizations").select("authorization_id,message_id,authorized_at,expires_at,consumed_at,revoked_at,purpose,model,prompt_version,ai_run_id,created_at").order("created_at", { ascending: false }),
       process.env.SHADOW_CONVERSATION_ACTIONS_ENABLED === "true"
-        ? admin.from("shadow_conversation_actions").select("id,ai_run_id,message_id,turn_key,case_domain,conversation_action,status,proposed_message,evidence_refs,confidence,requires_human,auto_send_eligible,blocked_reason,expires_at,superseded_at,created_at").order("created_at", { ascending: false }).limit(250)
+        ? admin.from("shadow_conversation_actions").select("id,ai_run_id,message_id,turn_key,case_domain,interaction_direction,conversation_action,status,proposed_message,operational_follow_up,evidence_refs,confidence,requires_human,auto_send_eligible,blocked_reason,expires_at,superseded_at,created_at").order("created_at", { ascending: false }).limit(250)
         : { data: [], error: null },
     ]);
     const failure = [messages, conversations, events, matches, evaluations, operationalEvents, aiRuns, aiDecisions, toolAudit, manualAuthorizations, conversationActions].find((result) => result.error)?.error;
