@@ -31,6 +31,7 @@ export default function ShadowCoordinatorPage() {
   const [clientReconciliation, setClientReconciliation] = useState(null); const [clientReconciliationBusy, setClientReconciliationBusy] = useState(false);
   const [existingClientIdentityIds, setExistingClientIdentityIds] = useState({});
   const [reconciliationTenantIds, setReconciliationTenantIds] = useState(""); const [reconciliationOwnerIds, setReconciliationOwnerIds] = useState("");
+  const [historicalReplay, setHistoricalReplay] = useState(null); const [historicalReplayBusy, setHistoricalReplayBusy] = useState(false); const [historicalReplayPreview, setHistoricalReplayPreview] = useState(null); const [historicalReplayTurnKeys, setHistoricalReplayTurnKeys] = useState([]);
   const qaDevUiEnabled = isQaDevUiEnabled(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const qaFixtureScope = useMemo(() => qaCampaignFixtureScope(qaCampaignId), [qaCampaignId]);
   useEffect(() => { supabase.auth.getSession().then(({ data: { session: value } }) => { setSession(value); setReady(true); }); }, []);
@@ -67,6 +68,23 @@ export default function ShadowCoordinatorPage() {
     if (response.ok) setClientReconciliation(json); else if (response.status !== 409) setError(json.error || "No se pudo cargar la reconciliación canónica.");
   }, [authorized, session?.access_token]);
   useEffect(() => { loadClientReconciliation(); }, [loadClientReconciliation]);
+  const loadHistoricalReplay = useCallback(async () => {
+    if (!authorized || !session?.access_token) return;
+    const response = await fetch("/api/operaciones/shadow-historical-replay", { headers: { Authorization: `Bearer ${session.access_token}` } });
+    const json = await response.json(); if (response.ok) setHistoricalReplay(json); else if (response.status !== 409) setError(json.error || "No se pudo cargar la evaluación histórica.");
+  }, [authorized, session?.access_token]);
+  useEffect(() => { loadHistoricalReplay(); }, [loadHistoricalReplay]);
+  const reviewHistoricalReplay = async (caseId, rating, reason = null) => {
+    setHistoricalReplayBusy(true); setError("");
+    const response = await fetch("/api/operaciones/shadow-historical-replay", { method:"POST", headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`}, body:JSON.stringify({action:"review",caseId,rating,reason}) });
+    const json=await response.json(); setHistoricalReplayBusy(false); if(!response.ok)return setError(json.error||"No se guardó la evaluación histórica."); await loadHistoricalReplay();
+  };
+  const operateHistoricalReplay = async (action, payload = {}) => {
+    setHistoricalReplayBusy(true); setError("");
+    const response=await fetch("/api/operaciones/shadow-historical-replay",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({action,...payload})});
+    const json=await response.json();setHistoricalReplayBusy(false);if(!response.ok)return setError(json.error||"No se pudo operar la evaluación histórica.");
+    if(action==="preview"){setHistoricalReplayPreview(json.preview);setHistoricalReplayTurnKeys([]);}else{await loadHistoricalReplay();}
+  };
   const reconcileClient = async (action, candidate = null) => {
     setClientReconciliationBusy(true); setError("");
     const existingIdentityId = candidate ? String(existingClientIdentityIds[candidate.id] || "").trim() : "";
@@ -206,6 +224,18 @@ export default function ShadowCoordinatorPage() {
           <p><strong>Estado:</strong> {item.status}{item.blocked_reason ? ` · bloqueo: ${item.blocked_reason}` : ""}</p>
         </article>)}
       </details>
+      {authorized && <details style={{ ...card, marginBottom: 16 }}><summary><strong>Evaluación histórica 3B</strong></summary>
+        <p style={{color:brand.grayLight}}>Carril aislado de historical replay. No modifica conversaciones, runs naturales ni acciones naturales, y no puede enviar mensajes.</p>
+        <button disabled={historicalReplayBusy} onClick={()=>operateHistoricalReplay("preview")}>Previsualizar cohorte</button>{historicalReplayPreview&&<><p>{historicalReplayPreview.selected} elegibles · mantenimiento {historicalReplayPreview.counts?.maintenance||0} · pagos {historicalReplayPreview.counts?.payment||0} · pendientes {historicalReplayPreview.counts?.administrative_pending||0}</p>{(historicalReplayPreview.cases||[]).map((item)=><label key={item.historicalTurnKey} style={{display:"block",padding:"3px 0"}}><input type="checkbox" checked={historicalReplayTurnKeys.includes(item.historicalTurnKey)} disabled={!historicalReplayTurnKeys.includes(item.historicalTurnKey)&&historicalReplayTurnKeys.length>=30} onChange={(event)=>setHistoricalReplayTurnKeys((current)=>event.target.checked?[...current,item.historicalTurnKey]:current.filter((key)=>key!==item.historicalTurnKey))}/> {item.domain} · {item.messageCount} mensaje(s) · {new Date(item.occurredAt).toLocaleDateString("es-MX")} · respuesta humana {item.humanResponseAvailable?"sí":"no"}</label>)}<button disabled={historicalReplayBusy||!historicalReplayTurnKeys.length} onClick={()=>operateHistoricalReplay("prepare",{turnKeys:historicalReplayTurnKeys})}>Preparar selección ({historicalReplayTurnKeys.length}/30)</button></>}
+        <p>{historicalReplay?.metrics?.total||0} seleccionados · {historicalReplay?.metrics?.completed||0} evaluados · {Math.round(Number(historicalReplay?.metrics?.safeMessageRate||0)*100)}% mensajes seguros · {historicalReplay?.metrics?.firstOutboundCandidates||0} candidatos ask/request</p>
+        {!(historicalReplay?.cases||[]).length?<p>No hay una cohorte histórica preparada.</p>:(historicalReplay.cases||[]).map((item)=><article key={item.id} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}>
+          <strong>{item.case_domain} · {item.conversation_action||item.status}</strong><p>{item.turn_snapshot?.sanitizedText||"Contexto histórico insuficiente."}</p>
+          <p><strong>3A:</strong> {item.operational_resolution?.case_status||"pendiente"} · {item.operational_resolution?.proposed_action||"sin propuesta"}</p><p><strong>Respuesta que habría enviado:</strong> {item.proposed_message||"Sin mensaje."}</p>
+          <p><strong>Grounding:</strong> {item.temporal_grounding} · {item.identity_grounding} · <strong>Humano posterior:</strong> {item.human_response_snapshot||"No disponible"}</p>
+          <p><strong>Tokens:</strong> {item.input_tokens||0}/{item.output_tokens||0} · USD {Number(item.estimated_cost_usd||0).toFixed(4)} · {item.latency_ms||0} ms</p>
+          {item.status==="pending"&&<button disabled={historicalReplayBusy} onClick={()=>operateHistoricalReplay("execute_one",{caseId:item.id})}>Ejecutar este replay</button>}{item.review?<p>Evaluación: {item.review.rating}{item.review.reason?` · ${item.review.reason}`:""}</p>:item.status==="completed"&&<div>{[["correct","Correcta"],["acceptable_with_changes","Aceptable con cambios"],["incorrect","Incorrecta"],["should_escalate","Debió escalar"],["not_evaluable","No evaluable"]].map(([value,label])=><button key={value} disabled={historicalReplayBusy} onClick={()=>reviewHistoricalReplay(item.id,value)} style={{marginRight:6,marginBottom:6}}>{label}</button>)}</div>}
+        </article>)}
+      </details>}
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button onClick={() => setShadowView("conversations")} aria-pressed={shadowView === "conversations"}>Conversaciones</button><button onClick={() => setShadowView("operational")} aria-pressed={shadowView === "operational"}>Eventos operativos</button></div>
       {shadowView === "operational" && <section style={{ ...card, marginBottom: 16 }}><h2>Eventos operativos</h2>{!(data?.operationalEvents || []).length ? <p>No hay eventos operativos.</p> : data.operationalEvents.map((event) => <article key={event.id} style={{ borderBottom: `1px solid ${brand.border}`, padding: "10px 0" }}><strong>{event.event_type === "maintenance_ticket_created" ? "Ticket creado" : "Cotización aprobada"}</strong><p style={{ margin: "4px 0" }}>Mantenimiento · {event.maintenance_scope === "managed_property" ? "Propiedad administrada" : "Trabajo externo"} · estado {event.payload_safe?.ticketStatus || event.payload_safe?.status}</p>{event.payload_safe?.amount != null && <p style={{ margin: "4px 0" }}>Importe: {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(Number(event.payload_safe.amount))}</p>}<small>Ticket {String(event.ticket_id).slice(0, 8)}…{event.quote_id ? ` · Cotización ${String(event.quote_id).slice(0, 8)}…` : ""} · {new Date(event.occurred_at).toLocaleString("es-MX")}</small></article>)}</section>}
       {shadowView === "conversations" && <>
