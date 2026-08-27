@@ -7,7 +7,8 @@ begin
     raise exception 'CHECK: falta tabla de accesos del portal';
   end if;
   if to_regprocedure('public.condominium_owner_portal_units()') is null
-     or to_regprocedure('public.condominium_owner_portal_snapshot(uuid)') is null then
+     or to_regprocedure('public.condominium_owner_portal_snapshot(uuid)') is null
+     or to_regprocedure('public.condominium_is_controlled(uuid)') is null then
     raise exception 'CHECK: faltan funciones del portal MVP';
   end if;
   if exists(
@@ -21,7 +22,8 @@ begin
       and grantee='anon'
   ) then raise exception 'CHECK: anon conserva privilegios'; end if;
   if has_function_privilege('anon','public.condominium_owner_portal_units()','execute')
-     or has_function_privilege('anon','public.condominium_owner_portal_snapshot(uuid)','execute') then
+     or has_function_privilege('anon','public.condominium_owner_portal_snapshot(uuid)','execute')
+     or has_function_privilege('anon','public.condominium_is_controlled(uuid)','execute') then
     raise exception 'CHECK: anon puede ejecutar RPC del portal';
   end if;
   if to_regclass('public.condominium_owner_documents') is not null
@@ -29,6 +31,25 @@ begin
      or to_regprocedure('public.condominium_owner_storage_path(text,uuid)') is not null then
     raise exception 'CHECK: el MVP conserva superficies pospuestas';
   end if;
+  if not exists(
+    select 1 from pg_policies
+    where schemaname='public' and tablename='cuotas_condominio'
+      and policyname='cuotas_hardened_update'
+      and coalesce(qual,'') like '%NOT condominium_is_controlled(condominio_id)%'
+      and coalesce(with_check,'') like '%NOT condominium_is_controlled(condominio_id)%'
+  ) then raise exception 'CHECK: cuotas controladas conservan UPDATE de propietario'; end if;
+  if not exists(
+    select 1 from pg_policies
+    where schemaname='public' and tablename='gastos_condominio'
+      and policyname='gastos_hardened_select'
+      and coalesce(qual,'') like '%NOT condominium_is_controlled(condominio_id)%'
+  ) then raise exception 'CHECK: gastos controlados permanecen visibles'; end if;
+  if not exists(
+    select 1 from pg_policies
+    where schemaname='public' and tablename='maintenance_tickets'
+      and policyname='maintenance_hardened_select'
+      and coalesce(qual,'') like '%NOT condominium_is_controlled(condominio_id)%'
+  ) then raise exception 'CHECK: mantenimiento controlado permanece visible'; end if;
 end $$;
 
 select 'CONDOMINIUM_OWNER_PORTAL_MVP_CHECKS_OK' as result;

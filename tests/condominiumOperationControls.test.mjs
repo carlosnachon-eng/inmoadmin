@@ -85,10 +85,11 @@ test("cron excluye Génova sin alterar filas de Tecaxco u otro condominio operat
 });
 
 test("UI muestra y aplica bloqueos de cuotas, pagos, recibos, comunicaciones y dinero", async () => {
-  const [detail, list, portal] = await Promise.all([
+  const [detail, list, portal, controlledPortal] = await Promise.all([
     readSource("../pages/condominio/[id].js"),
     readSource("../pages/condominios.js"),
     readSource("../pages/condomino.js"),
+    readSource("../components/condomino/ControlledCondominoPortal.js"),
   ]);
   assert.match(detail, /operationControls\.currentBillingEnabled/);
   assert.match(detail, /operationControls\.realPaymentsEnabled/);
@@ -98,8 +99,8 @@ test("UI muestra y aplica bloqueos de cuotas, pagos, recibos, comunicaciones y d
   assert.match(detail, /unavailableCondominiumOperationControls/);
   assert.match(list, /disabled=\{!cond\.operationControls\?\.currentBillingEnabled\}/);
   assert.match(portal, /condominium_owner_portal_units/);
-  assert.match(portal, /condominium_owner_portal_snapshot/);
-  assert.doesNotMatch(portal, /\.limit\(1\)/);
+  assert.match(controlledPortal, /condominium_owner_portal_snapshot/);
+  assert.doesNotMatch(controlledPortal, /\.limit\(1\)/);
 });
 
 test("cron y endpoint de recibos fallan cerrado antes de efectos externos", async () => {

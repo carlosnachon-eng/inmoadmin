@@ -48,7 +48,7 @@ Para cualquier condominio que tenga fila en `condominium_operation_controls`:
 - RLS y los RPC son la autoridad final;
 - `owner_portal_enabled=false` bloquea todas las consultas del propietario.
 
-Para Tecaxco y condominios sin fila de control se conserva el fallback legacy por correo existente. El fallback no se aplica a Génova ni a otro condominio controlado.
+Para Tecaxco y condominios sin fila de control se conserva íntegra la experiencia legacy por correo existente, incluidas sus capacidades actuales. El fallback no se aplica a Génova ni a otro condominio controlado. Si una misma identidad tiene relaciones legacy y controladas, el router presenta ambas experiencias por separado: las unidades controladas sólo provienen de relaciones explícitas y las legacy conservan su regla anterior.
 
 ## Alta progresiva por propietario
 
@@ -72,6 +72,7 @@ Un correo puede representar varias unidades sólo mediante filas explícitas. Un
 - El histórico no expone hashes de fuente, evidencia ni notas internas.
 - El portal no usa `service_role`, Storage ni endpoints privilegiados.
 - Las respuestas se limitan a `unit`, `historical`, `historicalPayments` y `currentFees`.
+- En condominios controlados, RLS niega al propietario la actualización de cuotas/comprobantes y la lectura de gastos o mantenimiento. Los condominios legacy conservan exactamente esas políticas anteriores.
 
 ## Validación realizada
 
@@ -81,29 +82,30 @@ Un correo puede representar varias unidades sólo mediante filas explícitas. Un
 - migración MVP aplicada únicamente en `inmoadmin-dev`;
 - checks estructurales: `CONDOMINIUM_OWNER_PORTAL_MVP_CHECKS_OK`;
 - pruebas RLS transaccionales: `CONDOMINIUM_OWNER_PORTAL_RLS_TESTS_OK`;
-- multiunidad: acceso a dos unidades relacionadas y rechazo de una tercera;
+- identidad mixta: una unidad legacy y dos unidades controladas explícitas, con selección separada de experiencia;
+- multiunidad controlada: acceso a dos unidades relacionadas y rechazo de una tercera;
 - rechazo de una unidad ajena del mismo condominio, otro tenant, portal apagado y `anon`;
-- Tecaxco sintético conserva el fallback legacy;
+- Tecaxco sintético conserva fallback, actualización de comprobantes y lectura de gastos/mantenimiento;
+- el propietario controlado no puede modificar cuotas/comprobantes ni leer gastos/mantenimiento;
 - rollback probado, seguido por reaplicación y repetición de checks;
 - cero relaciones sintéticas persistidas al finalizar.
 
 ### Aplicación y Preview
 
-- pruebas focalizadas: 12/12;
-- suite completa final: 558/558;
+- pruebas focalizadas: 16/16;
+- suite completa final: 562/562;
 - build local y Preview: 73 páginas, correcto;
 - `git diff --check`: limpio;
-- consola del acceso público: sin warnings ni errores;
-- el Preview sólo muestra correo autorizado y solicitud de acceso; no expone rutas o botones pospuestos;
-- bundle local: sin `service_role`, sin endpoint privado y sin referencias a módulos pospuestos;
+- el portal controlado no muestra rutas ni botones de Storage, comprobantes, documentos, gastos o mantenimiento;
+- el bundle local no contiene `service_role`, secretos server-side ni credenciales privadas; conserva el código legacy requerido para Tecaxco, pero RLS impide usar esas superficies en un condominio controlado;
 - variables Preview limitadas a Supabase DEV `hjfwjnejbcpmknvfpdcq`; no se configuró `SUPABASE_SERVICE_ROLE_KEY`;
 - no se enviaron OTP ni correos y no se crearon usuarios reales.
 
-La primera ejecución completa presentó una variación de 1 ms en una prueba de tiempos de Shadow. Sin modificar Shadow, la prueba aislada pasó 81/81 y la suite completa repetida pasó 558/558. Se documenta como prueba sensible al reloj, no como regresión del portal.
-
 ## Archivos funcionales
 
-- `pages/condomino.js`: acceso sin alta espontánea, selector multiunidad y vista histórica/corriente.
+- `pages/condomino.js`: selección fail-closed entre experiencia controlada y legacy.
+- `components/condomino/ControlledCondominoPortal.js`: MVP de sólo lectura para históricos y cobranza corriente.
+- `components/condomino/LegacyCondominoPortal.js`: experiencia legacy preservada para Tecaxco y condominios sin controles.
 - `supabase/migrations/202608270002_condominium_owner_portal.sql`: relación explícita, RLS y RPC mínimos.
 - `supabase/production/rollback/202608270002_condominium_owner_portal_rollback.sql`: reversión segura antes de altas reales.
 - `supabase/dev/tests/202608270002_condominium_owner_portal_rls_tests.sql`: aislamiento y compatibilidad.
@@ -132,6 +134,6 @@ La primera ejecución completa presentó una variación de 1 ms en una prueba de
 
 ## Dictamen
 
-**GO PARA ABRIR PR DEL PORTAL MVP**
+**GO PARA COORDINAR MERGE + MIGRACIÓN + DEPLOYMENT**
 
-El Draft PR #79 está abierto. No autoriza merge, migración productiva, deployment, alta de propietarios ni apertura del portal.
+El Draft PR #79 queda certificado y permanece sin merge. Este dictamen no autoriza migración productiva, deployment, alta de propietarios ni apertura del portal.

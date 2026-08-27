@@ -10,7 +10,14 @@ begin
   if to_regclass('public.condominium_operation_controls') is null
      or to_regclass('public.condominium_historical_accounts') is null
      or to_regclass('public.condominium_historical_payments') is null
-     or to_regprocedure('public.condominium_owner_portal_allowed(uuid)') is null then
+     or to_regclass('public.condominios') is null
+     or to_regclass('public.unidades_condominio') is null
+     or to_regclass('public.cuotas_condominio') is null
+     or to_regclass('public.gastos_condominio') is null
+     or to_regclass('public.maintenance_tickets') is null
+     or to_regprocedure('public.condominium_owner_portal_allowed(uuid)') is null
+     or to_regprocedure('public.condominium_auth_email()') is null
+     or to_regprocedure('public.condominium_internal_permission(text,boolean)') is null then
     raise exception 'Faltan dependencias del módulo condominal endurecido.';
   end if;
 end $$;
@@ -74,6 +81,17 @@ create policy condominium_unit_portal_access_internal_delete
 on public.condominium_unit_portal_access for delete to authenticated
 using (public.condominium_internal_permission('condominios',true));
 
+create or replace function public.condominium_is_controlled(p_condominio_id uuid)
+returns boolean language sql stable security definer set search_path=public,pg_temp as $$
+  select exists(
+    select 1 from public.condominium_operation_controls o
+    where o.condominio_id=p_condominio_id
+  )
+$$;
+
+revoke all on function public.condominium_is_controlled(uuid) from public,anon;
+grant execute on function public.condominium_is_controlled(uuid) to authenticated,service_role;
+
 create or replace function public.condominium_owner_has_unit(p_condominio_id uuid,p_unidad_id uuid default null)
 returns boolean language sql stable security definer set search_path=public,pg_temp as $$
   select public.condominium_owner_portal_allowed(p_condominio_id) and exists(
@@ -84,7 +102,7 @@ returns boolean language sql stable security definer set search_path=public,pg_t
       and public.condominium_auth_email()<>''
       and (
         (
-          exists(select 1 from public.condominium_operation_controls o where o.condominio_id=u.condominio_id)
+          public.condominium_is_controlled(u.condominio_id)
           and exists(
             select 1 from public.condominium_unit_portal_access a
             where a.condominio_id=u.condominio_id and a.unidad_id=u.id
@@ -93,7 +111,7 @@ returns boolean language sql stable security definer set search_path=public,pg_t
           )
         )
         or (
-          not exists(select 1 from public.condominium_operation_controls o where o.condominio_id=u.condominio_id)
+          not public.condominium_is_controlled(u.condominio_id)
           and (
             public.condominium_auth_email() in (
               lower(coalesce(u.propietario_email,'')),lower(coalesce(u.residente_email,''))
@@ -110,10 +128,63 @@ returns boolean language sql stable security definer set search_path=public,pg_t
   )
 $$;
 
+revoke all on function public.condominium_owner_has_unit(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.condominium_owner_has_unit(uuid,uuid) to authenticated,service_role;
+
+-- El portal controlado es read-only. Los flujos de comprobantes, gastos y mantenimiento
+-- se conservan únicamente para condominios legacy sin operation controls.
+drop policy if exists cuotas_hardened_update on public.cuotas_condominio;
+create policy cuotas_hardened_update on public.cuotas_condominio for update to authenticated using (
+  public.condominium_internal_permission('condominios',true)
+  or (
+    not public.condominium_is_controlled(condominio_id)
+    and public.condominium_owner_has_unit(condominio_id,unidad_id)
+  )
+) with check (
+  public.condominium_internal_permission('condominios',true)
+  or (
+    not public.condominium_is_controlled(condominio_id)
+    and public.condominium_owner_has_unit(condominio_id,unidad_id)
+  )
+);
+
+drop policy if exists gastos_hardened_select on public.gastos_condominio;
+create policy gastos_hardened_select on public.gastos_condominio for select to authenticated using (
+  public.condominium_internal_permission('condominios',false)
+  or (
+    not public.condominium_is_controlled(condominio_id)
+    and public.condominium_owner_has_unit(condominio_id,null)
+  )
+);
+
+drop policy if exists maintenance_hardened_select on public.maintenance_tickets;
+create policy maintenance_hardened_select on public.maintenance_tickets for select to authenticated using (
+  public.condominium_internal_permission('mantenimiento',false)
+  or (
+    condominio_id is not null
+    and not public.condominium_is_controlled(condominio_id)
+    and public.condominium_owner_has_unit(condominio_id,null)
+  )
+  or (
+    condominio_id is null and public.condominium_auth_email()<>'' and (
+      exists(
+        select 1 from public.contracts c
+        where lower(coalesce(c.tenant_email,''))=public.condominium_auth_email()
+          and c.status='activo' and c.property_name=maintenance_tickets.property_name
+      )
+      or exists(
+        select 1 from public.properties p
+        where lower(coalesce(p.owner_email,''))=public.condominium_auth_email()
+          and p.name=maintenance_tickets.property_name
+      )
+    )
+  )
+);
+
 create or replace function public.condominium_owner_portal_units()
 returns table(
   unidad_id uuid,condominio_id uuid,unit_number text,condominium_name text,
-  monthly_fee numeric,access_kind text
+  monthly_fee numeric,access_kind text,portal_mode text
 )
 language sql stable security definer set search_path=public,pg_temp as $$
   select u.id,u.condominio_id,u.numero,c.nombre,c.cuota_mensual,
@@ -122,7 +193,9 @@ language sql stable security definer set search_path=public,pg_temp as $$
       where a.unidad_id=u.id and a.active=true and a.revoked_at is null
         and a.email_normalized=public.condominium_auth_email()
       order by a.created_at desc limit 1
-    ),'LEGACY_EMAIL')
+    ),'LEGACY_EMAIL'),
+    case when public.condominium_is_controlled(u.condominio_id)
+      then 'CONTROLLED' else 'LEGACY' end
   from public.unidades_condominio u
   join public.condominios c on c.id=u.condominio_id
   where u.activo=true and public.condominium_owner_has_unit(u.condominio_id,u.id)
