@@ -13,6 +13,8 @@ const EVALUATIONS = [
 const likelihoodLabel = { high: "Alta", medium: "Media", low: "Baja", unknown: "Sin determinar" };
 const providerLabel = { respond_admin: "WhatsApp Administración", respond: "Respond.io", synthetic: "Fixture sintético" };
 const directionLabel = { inbound: "Cliente", outbound: "Salida", outbound_human: "Respuesta humana desde WhatsApp Business App" };
+const REPLAY_RATINGS = [["correct","Correcta"],["acceptable_with_changes","Aceptable con cambios"],["incorrect","Incorrecta"],["should_escalate","Debió escalar"],["not_evaluable","No evaluable"]];
+const REPLAY_REASONS = ["tone","missing_information","wrong_question","requested_existing_document","invented_fact","incorrect_context","unnecessary_escalation","financial_risk","legal_risk","should_have_asked","should_have_stayed_silent","other"];
 
 export default function ShadowCoordinatorPage() {
   const [session, setSession] = useState(null); const [profile, setProfile] = useState(null);
@@ -32,6 +34,7 @@ export default function ShadowCoordinatorPage() {
   const [existingClientIdentityIds, setExistingClientIdentityIds] = useState({});
   const [reconciliationTenantIds, setReconciliationTenantIds] = useState(""); const [reconciliationOwnerIds, setReconciliationOwnerIds] = useState("");
   const [historicalReplay, setHistoricalReplay] = useState(null); const [historicalReplayBusy, setHistoricalReplayBusy] = useState(false); const [historicalReplayPreview, setHistoricalReplayPreview] = useState(null); const [historicalReplayTurnKeys, setHistoricalReplayTurnKeys] = useState([]);
+  const [historicalReviewDrafts, setHistoricalReviewDrafts] = useState({});
   const qaDevUiEnabled = isQaDevUiEnabled(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const qaFixtureScope = useMemo(() => qaCampaignFixtureScope(qaCampaignId), [qaCampaignId]);
   useEffect(() => { supabase.auth.getSession().then(({ data: { session: value } }) => { setSession(value); setReady(true); }); }, []);
@@ -74,9 +77,10 @@ export default function ShadowCoordinatorPage() {
     const json = await response.json(); if (response.ok) setHistoricalReplay(json); else if (response.status !== 409) setError(json.error || "No se pudo cargar la evaluación histórica.");
   }, [authorized, session?.access_token]);
   useEffect(() => { loadHistoricalReplay(); }, [loadHistoricalReplay]);
-  const reviewHistoricalReplay = async (caseId, rating, reason = null) => {
+  const reviewHistoricalReplay = async (caseId) => {
+    const draft=historicalReviewDrafts[caseId]||{};
     setHistoricalReplayBusy(true); setError("");
-    const response = await fetch("/api/operaciones/shadow-historical-replay", { method:"POST", headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`}, body:JSON.stringify({action:"review",caseId,rating,reason}) });
+    const response = await fetch("/api/operaciones/shadow-historical-replay", { method:"POST", headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`}, body:JSON.stringify({action:"review",caseId,rating:draft.rating,reason:draft.reason||null,humanAutoSendEligible:draft.humanAutoSendEligible,comment:draft.comment||null}) });
     const json=await response.json(); setHistoricalReplayBusy(false); if(!response.ok)return setError(json.error||"No se guardó la evaluación histórica."); await loadHistoricalReplay();
   };
   const operateHistoricalReplay = async (action, payload = {}) => {
@@ -233,7 +237,7 @@ export default function ShadowCoordinatorPage() {
           <p><strong>3A:</strong> {item.operational_resolution?.case_status||"pendiente"} · {item.operational_resolution?.proposed_action||"sin propuesta"}</p><p><strong>Respuesta que habría enviado:</strong> {item.proposed_message||"Sin mensaje."}</p>
           <p><strong>Grounding:</strong> {item.temporal_grounding} · {item.identity_grounding} · <strong>Humano posterior:</strong> {item.human_response_snapshot||"No disponible"}</p>
           <p><strong>Tokens:</strong> {item.input_tokens||0}/{item.output_tokens||0} · USD {Number(item.estimated_cost_usd||0).toFixed(4)} · {item.latency_ms||0} ms</p>
-          {item.status==="pending"&&<button disabled={historicalReplayBusy} onClick={()=>operateHistoricalReplay("execute_one",{caseId:item.id})}>Ejecutar este replay</button>}{item.review?<p>Evaluación: {item.review.rating}{item.review.reason?` · ${item.review.reason}`:""}</p>:item.status==="completed"&&<div>{[["correct","Correcta"],["acceptable_with_changes","Aceptable con cambios"],["incorrect","Incorrecta"],["should_escalate","Debió escalar"],["not_evaluable","No evaluable"]].map(([value,label])=><button key={value} disabled={historicalReplayBusy} onClick={()=>reviewHistoricalReplay(item.id,value)} style={{marginRight:6,marginBottom:6}}>{label}</button>)}</div>}
+          {item.status==="pending"&&<button disabled={historicalReplayBusy} onClick={()=>operateHistoricalReplay("execute_one",{caseId:item.id})}>Ejecutar este replay</button>}{item.review?<p>Evaluación: {item.review.rating}{item.review.reason?` · ${item.review.reason}`:""} · envío humano {item.review.human_auto_send_eligible==null?"no medido":item.review.human_auto_send_eligible?"sí":"no"}</p>:item.status==="completed"&&<div><select aria-label={`Evaluación ${item.id}`} value={historicalReviewDrafts[item.id]?.rating||""} onChange={(event)=>setHistoricalReviewDrafts((current)=>({...current,[item.id]:{...current[item.id],rating:event.target.value}}))}><option value="">Calificación…</option>{REPLAY_RATINGS.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select><select aria-label={`Elegible humano ${item.id}`} value={historicalReviewDrafts[item.id]?.humanAutoSendEligible==null?"":String(historicalReviewDrafts[item.id].humanAutoSendEligible)} onChange={(event)=>setHistoricalReviewDrafts((current)=>({...current,[item.id]:{...current[item.id],humanAutoSendEligible:event.target.value==="true"}}))}><option value="">¿Se podría enviar sin humano?</option><option value="true">Sí</option><option value="false">No</option></select>{historicalReviewDrafts[item.id]?.rating&&historicalReviewDrafts[item.id].rating!=="correct"&&<select aria-label={`Motivo ${item.id}`} value={historicalReviewDrafts[item.id]?.reason||""} onChange={(event)=>setHistoricalReviewDrafts((current)=>({...current,[item.id]:{...current[item.id],reason:event.target.value}}))}><option value="">Motivo obligatorio…</option>{REPLAY_REASONS.map((reason)=><option key={reason} value={reason}>{reason.replaceAll("_"," ")}</option>)}</select>}<textarea aria-label={`Comentario ${item.id}`} maxLength={500} placeholder="Comentario opcional" value={historicalReviewDrafts[item.id]?.comment||""} onChange={(event)=>setHistoricalReviewDrafts((current)=>({...current,[item.id]:{...current[item.id],comment:event.target.value}}))}/><button disabled={historicalReplayBusy||!historicalReviewDrafts[item.id]?.rating||historicalReviewDrafts[item.id]?.humanAutoSendEligible==null||(historicalReviewDrafts[item.id]?.rating!=="correct"&&!historicalReviewDrafts[item.id]?.reason)} onClick={()=>reviewHistoricalReplay(item.id)}>Guardar evaluación</button></div>}
         </article>)}
       </details>}
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button onClick={() => setShadowView("conversations")} aria-pressed={shadowView === "conversations"}>Conversaciones</button><button onClick={() => setShadowView("operational")} aria-pressed={shadowView === "operational"}>Eventos operativos</button></div>
