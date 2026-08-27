@@ -1,217 +1,137 @@
-# Portal Condómino — Plan / implementación aislada
+# Portal Condómino MVP — Génova
 
 Fecha: 27 de agosto de 2026
+
 Rama: `codex/genova-owner-portal`
-Base final validada: `origin/main` `6fa9d2fdb05779bda77f8c94df19bdfcc8a0f3d7` (rama creada originalmente desde `03908aa55ba3d385c952b42342a127429617c354` y rebasada sin conflictos)
-Estado: implementado en rama aislada y validado en `inmoadmin-dev`; no aplicado en Producción; no contiene PII ni usuarios reales.
 
-## Decisión operativa corregida
+Base: `origin/main` `6fa9d2fdb05779bda77f8c94df19bdfcc8a0f3d7`
 
-La apertura de Génova no depende de completar 23 correos. `owner_portal_enabled` habilita la capacidad del condominio, pero el acceso efectivo se concede individualmente mediante una relación explícita y activa entre una identidad confirmada y una o varias unidades.
+Draft PR: [#79](https://github.com/carlosnachon-eng/inmoadmin/pull/79)
 
-- Propietario con correo confirmado, identidad validada y relación unidad–correo inequívoca: puede habilitarse.
-- Propietario sin correo, con identidad pendiente o relación ambigua: permanece sin acceso.
-- Una nueva alta individual no requiere reactivar el condominio, modificar cuotas ni esperar a otras unidades.
-- Nunca se crea una relación por coincidencia de nombre.
+Estado: validado en DEV y Preview; sin cambios en Producción, usuarios reales, correos ni OTP.
 
-## A. Bloqueos reales para abrir el MVP
+## Alcance del MVP
 
-1. **Historial de migraciones:** incorporar a `main` las migraciones base y de hardening condominal que ya existen en DEV y Producción. La migración del portal no debe depender de objetos productivos ausentes del historial versionado.
-2. **Autorización explícita para condominios controlados:** ajustar `condominium_owner_has_unit` para que Génova y cualquier condominio con fila en `condominium_operation_controls` exijan una relación activa en `condominium_unit_portal_access`. El fallback por correos legacy de `unidades_condominio` debe conservarse únicamente para condominios sin fila de control, evitando regresión en Tecaxco.
-3. **Recortar el PR al MVP de lectura:** separar del primer PR las rutas de carga/descarga, bucket, documentos, recibos y gastos. Si esas superficies permanecieran desplegadas, sí requerirían validación completa; al excluirlas del MVP no bloquean su apertura.
-4. **Preview aislado:** ejecutar el Preview branch-scoped exclusivamente contra `inmoadmin-dev` y aprobar los accesos positivos y negativos desde la aplicación, RLS, multiunidad, otro tenant, portal apagado, logs y bundle cliente.
+El portal inicial muestra exclusivamente:
 
-No son bloqueos: completar 23/23 correos, gastos, documentos, comprobantes administrativos, incidencias o mantenimiento.
+1. la unidad o unidades expresamente autorizadas;
+2. los cargos históricos recibidos de Antive;
+3. los pagos históricos registrados;
+4. el saldo administrativo histórico Antive;
+5. las cuotas corrientes administradas por Emporio.
 
-## B. Funciones que pueden posponerse
+La interfaz separa “Histórico Antive” de “Administración corriente Emporio”. No presenta Storage, comprobantes, documentos, gastos, mantenimiento ni incidencias. Tampoco deja botones muertos o rutas visibles hacia esas funciones.
 
-El primer portal visible para Génova incluirá solamente:
+## Baseline de migraciones condominales
 
-1. unidad o selector de unidades autorizadas;
-2. saldo administrativo histórico Antive;
-3. pagos históricos registrados;
-4. cuota corriente de septiembre de 2026 y periodos posteriores;
-5. separación clara entre histórico Antive y administración Emporio.
+DEV y Producción contienen la fundación y el hardening condominal, pero no tienen la tabla `supabase_migrations.schema_migrations`. Además, los números originales `202608250001` y `202608250002` coinciden con migraciones Shadow ya versionadas en `main`. Colocar los SQL condominales dentro del directorio ordinario de migraciones podría intentar recrear objetos existentes o ejecutar la migración equivocada.
 
-Se posponen y deben quedar fuera de la navegación y de las rutas accesibles del PR MVP:
+La conciliación adoptada es deliberadamente no ejecutable:
 
-- carga y descarga de comprobantes;
-- recibos administrativos;
-- documentos;
-- gastos;
-- incidencias y mantenimiento.
+- las dos migraciones reales ya aplicadas se conservaron, sin modificar un byte, en `supabase/baselines/applied/`;
+- sus hashes SHA-256 son `57ba8ee236694ad1857de7a97dc4e3624b40db609016ae108840017b44dc935b` y `d480cdcb6eaaf87609418e011ca315fd73693e264f43fcddd3bfd33b5507578e`;
+- `supabase/baselines/README.md` prohíbe reejecutarlas en DEV o Producción y explica el orden para ambientes nuevos;
+- `202608270001_condominium_baseline_checks.sql` comprueba de forma sólo lectura que el baseline exista realmente;
+- no debe usarse `supabase db push` hasta reconciliar de forma global el historial de migraciones del repositorio.
 
-El código ampliado ya preparado para Storage y documentos se conserva como trabajo posterior, pero no debe mezclarse en el PR MVP. Cuando una función se retome tendrá su propia validación de RLS, Storage, acceso negativo, logs y bundle.
+Esta estrategia incorpora la fuente histórica real al repositorio, preserva exactamente los ambientes actuales y evita una segunda arquitectura. La migración nueva del portal se ejecutará, cuando exista autorización, como SQL controlado e identificado, no mediante un `db push` indiscriminado.
 
-## C. Alta progresiva por propietario
+## Acceso explícito y compatibilidad
 
-1. Recibir el correo directamente del propietario por el procedimiento privado autorizado.
-2. Confirmar identidad y correo fuera del repositorio; identificar inequívocamente la unidad o unidades y el tipo de acceso (`OWNER`, `COOWNER` o `AUTHORIZED_RESIDENT`).
-3. Detener el alta si existe ambigüedad, contradicción o una relación sustentada sólo por nombre.
-4. Consultar si la cuenta Auth ya existe. Si no existe, crearla server-side con correo confirmado y sin invitación masiva; nunca usar `inviteUserByEmail`.
-5. Insertar exclusivamente las relaciones confirmadas en `condominium_unit_portal_access`, con actor administrador y sin notas que reproduzcan PII innecesaria.
-6. Verificar como esa identidad que sólo aparecen sus unidades; intentar expresamente otra unidad del mismo condominio y otro tenant.
-7. Informar al propietario que podrá solicitar su enlace OTP desde el portal. `shouldCreateUser:false` impide altas espontáneas.
-8. Para una nueva persona posterior, repetir los pasos individuales. No cambiar `owner_portal_enabled`, cuotas ni relaciones de terceros.
-9. Para revocar acceso, marcar únicamente su relación como inactiva y registrar `revoked_at`; no borrar historia ni afectar a cotitulares.
+`condominium_unit_portal_access` representa una relación muchos-a-muchos entre correo validado y unidad. Admite `OWNER`, `COOWNER` y `AUTHORIZED_RESIDENT`.
 
-Un correo puede relacionarse con varias unidades sólo mediante filas explícitas. Una unidad puede tener varios titulares autorizados mediante relaciones independientes.
+Para cualquier condominio que tenga fila en `condominium_operation_controls`:
 
-## D. Requisitos para PR y Preview
+- el acceso exige una relación activa y explícita;
+- no se compara por nombre;
+- no se elige una unidad con `.limit(1)`;
+- RLS y los RPC son la autoridad final;
+- `owner_portal_enabled=false` bloquea todas las consultas del propietario.
 
-1. Conciliar las migraciones base/hardening en una rama coordinada con Administradora IA.
-2. Reducir el diff del portal al MVP de sólo lectura y aplicar la regla explícita para condominios controlados.
-3. Rebasar sobre el `origin/main` vigente y confirmar que no hay cambios Shadow/flags dentro del diff.
-4. Ejecutar suite completa, regresiones condominales, build y `git diff --check`.
-5. Aplicar el SQL final únicamente en DEV y repetir fingerprint, checks estructurales, rollback y RLS.
-6. Crear Preview branch-scoped a DEV con identidades sintéticas: acceso individual, multiunidad, cotitular, unidad sin relación, otro tenant, `anon` y portal apagado.
-7. Confirmar que la interfaz MVP no presenta gastos, documentos, comprobantes, recibos o incidencias y que no depende de Storage ni `service_role`.
-8. Revisar respuestas, consola, logs y bundle para confirmar ausencia de PII y secretos.
-9. Abrir Draft PR con migración, rollback, evidencia y plan de despliegue. No habilitar Génova ni crear usuarios reales dentro del PR.
+Para Tecaxco y condominios sin fila de control se conserva el fallback legacy por correo existente. El fallback no se aplica a Génova ni a otro condominio controlado.
 
-Storage no es requisito de Preview para este MVP porque el PR inicial no debe incluir ninguna función visible o endpoint que lo utilice.
+## Alta progresiva por propietario
 
-## Estado de la implementación ampliada existente
+1. Recibir el correo por el canal privado autorizado y confirmar la identidad.
+2. Identificar de forma inequívoca cada unidad y el carácter de la relación.
+3. Detener el alta ante cualquier ambigüedad; nunca inferir por coincidencia de nombre.
+4. Crear la identidad de Auth individualmente, server-side y sin invitación masiva. No usar `inviteUserByEmail`.
+5. Insertar sólo las relaciones confirmadas en `condominium_unit_portal_access`.
+6. Verificar con una identidad sintética equivalente que sólo aparecen sus unidades y que fallan una unidad ajena, Tecaxco y otro tenant.
+7. Una vez autorizada la apertura, el propietario solicita su propio enlace OTP. `shouldCreateUser:false` evita altas espontáneas.
+8. Para revocar, desactivar únicamente la relación correspondiente y conservar el historial.
 
-La implementación resuelve únicamente:
+Un correo puede representar varias unidades sólo mediante filas explícitas. Una unidad puede tener varios titulares mediante relaciones independientes. Un correo compartido requiere autorización expresa.
 
-- separación visual y de datos entre histórico heredado y cobranza corriente;
-- acceso de un correo autorizado a una o varias unidades;
-- cotitulares y residentes autorizados mediante relación muchos-a-muchos;
-- gastos ocultos cuando el condominio no permite movimientos de dinero;
-- comprobantes y recibos en almacenamiento privado;
-- documentos publicados expresamente para propietarios;
-- autenticación sin creación automática de usuarios.
-- exclusión de incidencias de mantenimiento, porque no pertenecen al alcance básico y podrían contener información de otras unidades.
+## RLS y datos visibles
 
-No incluye pagos en línea, app móvil, reservaciones, amenidades, QR, chat o cambios al módulo interno de gastos.
-
-## Migración aditiva
-
-`supabase/migrations/202608270002_condominium_owner_portal.sql`
-
-Crea:
-
-1. `condominium_unit_portal_access`: relación normalizada correo–unidad con roles `OWNER`, `COOWNER` y `AUTHORIZED_RESIDENT`.
-2. `condominium_owner_documents`: documentos visibles sólo cuando un administrador los publica expresamente.
-3. Bucket privado `condominium-owner-private`, limitado a PDF/JPEG/PNG/WebP y 10 MB.
-4. Columnas privadas de ruta en `cuotas_condominio`; las URLs públicas legacy no se exponen en el portal nuevo.
-5. RPCs de unidades autorizadas, snapshot por unidad, asociación de comprobante y resolución de rutas privadas.
-
-La función existente `condominium_owner_has_unit` conserva compatibilidad con Tecaxco y accesos legacy por email, y añade la tabla muchos-a-muchos. Los condominios sin fila de control mantienen su comportamiento actual.
-
-La migración aborta si faltan los objetos del hardening condominal que ya existen en DEV y Producción. No crea usuarios, correos, membresías, cuotas ni datos de Génova.
-
-## RLS y aislamiento
-
-- `anon` no tiene grants sobre las tablas nuevas ni ejecución de los RPCs.
-- Sólo administración interna puede leer o modificar la tabla de accesos; un propietario no puede conocer correos de cotitulares.
-- Cada RPC deriva el correo del JWT y exige `owner_portal_enabled=true`.
+- `anon` no tiene ejecución de los RPC ni acceso a la tabla de relaciones.
+- Un propietario no puede leer correos o relaciones de otros titulares.
+- El correo se deriva de la identidad autenticada; el cliente no entrega un correo confiable al RPC.
 - El snapshot exige autorización sobre la unidad solicitada.
-- Históricos omiten hash de fuente, evidencia, notas internas y referencias privadas.
-- Una controversia de una unidad no altera otras cuentas.
-- La escritura directa de rutas en cuotas queda bloqueada; el comprobante sólo se asocia mediante el RPC autorizado.
-- Las pruebas negativas requeridas son: otra unidad del mismo condominio, otro condominio, usuario sin relación, `anon`, portal apagado y documento no publicado.
+- El histórico no expone hashes de fuente, evidencia ni notas internas.
+- El portal no usa `service_role`, Storage ni endpoints privilegiados.
+- Las respuestas se limitan a `unit`, `historical`, `historicalPayments` y `currentFees`.
 
-## Multiunidad y correos
+## Validación realizada
 
-Proceso progresivo, fuera del repositorio:
+### DEV
 
-1. Dirección entrega archivo privado unidad–correo–tipo de acceso.
-2. Validar formato y normalizar a minúsculas.
-3. Detectar correo duplicado en la misma unidad, correo compartido entre unidades, propietario multiunidad, cotitulares y unidades sin correo.
-4. Confirmar manualmente las relaciones ambiguas.
-5. Insertar únicamente relaciones confirmadas en `condominium_unit_portal_access` mediante operación administrada.
-6. Ejecutar pruebas de acceso con identidades sintéticas en DEV antes de usuarios reales.
+- baseline estructural en DEV: `CONDOMINIUM_BASELINE_OK`;
+- migración MVP aplicada únicamente en `inmoadmin-dev`;
+- checks estructurales: `CONDOMINIUM_OWNER_PORTAL_MVP_CHECKS_OK`;
+- pruebas RLS transaccionales: `CONDOMINIUM_OWNER_PORTAL_RLS_TESTS_OK`;
+- multiunidad: acceso a dos unidades relacionadas y rechazo de una tercera;
+- rechazo de una unidad ajena del mismo condominio, otro tenant, portal apagado y `anon`;
+- Tecaxco sintético conserva el fallback legacy;
+- rollback probado, seguido por reaplicación y repetición de checks;
+- cero relaciones sintéticas persistidas al finalizar.
 
-Un correo compartido entre varias unidades es válido: el portal muestra un selector. Un correo duplicado en la misma unidad es rechazado por constraint. Una unidad puede tener varios titulares mediante filas independientes.
+### Aplicación y Preview
 
-No guardar el padrón en Git, logs, screenshots o artefactos de CI.
+- pruebas focalizadas: 12/12;
+- suite completa final: 558/558;
+- build local y Preview: 73 páginas, correcto;
+- `git diff --check`: limpio;
+- consola del acceso público: sin warnings ni errores;
+- el Preview sólo muestra correo autorizado y solicitud de acceso; no expone rutas o botones pospuestos;
+- bundle local: sin `service_role`, sin endpoint privado y sin referencias a módulos pospuestos;
+- variables Preview limitadas a Supabase DEV `hjfwjnejbcpmknvfpdcq`; no se configuró `SUPABASE_SERVICE_ROLE_KEY`;
+- no se enviaron OTP ni correos y no se crearon usuarios reales.
 
-## Histórico y corriente
+La primera ejecución completa presentó una variación de 1 ms en una prueba de tiempos de Shadow. Sin modificar Shadow, la prueba aislada pasó 81/81 y la suite completa repetida pasó 558/558. Se documenta como prueba sensible al reloj, no como regresión del portal.
 
-El RPC entrega dos colecciones independientes:
+## Archivos funcionales
 
-- `historical` y `historicalPayments`: fuente, fecha de corte, importes reportados/validados y estado de revisión.
-- `currentFees`: cuotas generadas por la administración corriente.
+- `pages/condomino.js`: acceso sin alta espontánea, selector multiunidad y vista histórica/corriente.
+- `supabase/migrations/202608270002_condominium_owner_portal.sql`: relación explícita, RLS y RPC mínimos.
+- `supabase/production/rollback/202608270002_condominium_owner_portal_rollback.sql`: reversión segura antes de altas reales.
+- `supabase/dev/tests/202608270002_condominium_owner_portal_rls_tests.sql`: aislamiento y compatibilidad.
+- `supabase/production/tests/202608270002_condominium_owner_portal_checks.sql`: pre/postcheck estructural.
 
-La interfaz usa las etiquetas:
+## Riesgos y condiciones para promoción
 
-- “Saldo administrativo histórico — Antive”.
-- “Administración Emporio”.
+1. El historial global de migraciones sigue sin estar registrado en `supabase_migrations`; no usar `db push` en DEV o Producción.
+2. Antes de Producción debe capturarse baseline, aplicar únicamente el SQL del portal, ejecutar postchecks y verificar Tecaxco de forma no destructiva.
+3. La migración productiva y el deployment requieren coordinación expresa con Administradora IA y un `main` limpio.
+4. `owner_portal_enabled` debe permanecer deshabilitado hasta una autorización operativa independiente.
+5. La creación de identidades y relaciones reales es otra intervención productiva y debe ejecutarse individualmente, sin padrón en Git ni PII en logs.
 
-El histórico nunca se suma al KPI corriente. No se muestran intereses, moratorios, recargos o sanciones.
+## Checklist posterior de merge/deployment
 
-## Gastos
-
-Si `money_movements_enabled=false`, el RPC devuelve `expensesVisible=false`, una colección vacía y la interfaz elimina la pestaña. Esto evita atribuir a Emporio gastos ejecutados por Antive. No se reconstruye el módulo de gastos.
-
-## Comprobantes y documentos
-
-- El navegador nunca recibe `service_role`.
-- El endpoint valida primero sesión y alcance RLS; sólo después crea el cliente privilegiado.
-- Para carga genera un token firmado de corta duración y una ruta sin PII.
-- La asociación final se hace mediante RPC con validación tenant/unidad/cuota/ruta.
-- Para descarga, el RPC autoriza la ruta y el servidor devuelve URL firmada por 60 segundos.
-- No se usa `getPublicUrl` ni se listan objetos del bucket.
-- Sólo documentos con `visible_to_owners=true` y `published_at` pueden aparecer.
-
-## Autenticación progresiva
-
-1. Mantener `owner_portal_enabled=false` durante el desarrollo y QA del MVP; no esperar a completar todos los correos.
-2. Crear cada cuenta server-side con `auth.admin.createUser({email,email_confirm:true})`; no usar `inviteUserByEmail`.
-3. No enviar invitaciones desde la carga.
-4. Cuando Dirección autorice el portal, el propietario ingresa su correo y solicita un enlace OTP.
-5. El correo de OTP es una comunicación de autenticación iniciada por el propietario; debe explicarse antes de habilitar el portal.
-6. `shouldCreateUser:false` impide altas espontáneas.
-
-## Archivos de aplicación
-
-- `pages/condomino.js`: selector multiunidad y presentación separada.
-- `pages/api/condomino/private-file.js`: URLs firmadas y carga privada.
-- `lib/condominios/ownerPortalServer.mjs`: autorización y utilidades server-side.
-
-## Pruebas y promoción
-
-Secuencia requerida:
-
-1. Suite local y build.
-2. Aplicar migración sólo en `inmoadmin-dev` después de fingerprint.
-3. Cargar fixtures sintéticos: propietario multiunidad, cotitular, otro tenant y usuario no autorizado.
-4. Ejecutar `supabase/production/tests/202608270002_condominium_owner_portal_checks.sql` en DEV.
-5. Probar accesos positivos y negativos y logs desde Preview branch-scoped a DEV. Storage sólo se prueba cuando se reincorpore en una fase posterior.
-6. Abrir Draft PR; revisar diff frente a `main` y coordinación con Administradora IA.
-7. Sólo después de aprobación: merge a `main` limpio, migración productiva y deployment coordinado.
-8. La activación de `owner_portal_enabled` y creación de usuarios requieren autorización separada.
-
-Validación ejecutada en DEV:
-
-- preflight confirmó las dependencias y ausencia previa de los objetos del portal;
-- migración aplicada correctamente;
-- checks estructurales aprobados;
-- prueba RLS transaccional aprobada para multiunidad, unidad no relacionada del mismo condominio, otro tenant, portal apagado y `anon`;
-- fixture sintético revertido: cero accesos, cero documentos y cero archivos persistidos;
-- fingerprint de los tres tenants DEV antes/después: `476c325f2380fb5d230d000ea7b36fc3`;
-- rollback probado: elimina funciones/tablas/columnas y conserva únicamente el bucket privado vacío;
-- migración reaplicada y checks repetidos correctamente;
-- suite local: 560/560;
-- build Next.js: 73 páginas, correcto; sólo avisos no bloqueantes por fuentes externas inaccesibles durante el build aislado.
-
-## Rollback
-
-`supabase/production/rollback/202608270002_condominium_owner_portal_rollback.sql` restaura el helper legacy y elimina tablas, funciones y columnas únicamente si no existen accesos, documentos, archivos o rutas de comprobantes. Si ya existe actividad, aborta sin borrar datos. Supabase no permite eliminar un bucket directamente por SQL; el rollback conserva el bucket privado vacío. Su eliminación posterior, si se desea, debe realizarse mediante la API administrativa de Storage.
-
-## Riesgos abiertos
-
-1. La fundación/hardening condominal existe en Producción y DEV, pero sus migraciones históricas no forman parte del `main` actual; debe conciliarse esa deuda de versionado antes de integrar esta migración.
-2. La implementación ampliada mezcla el MVP con Storage/documentos; debe separarse antes del PR para no desplegar superficies pospuestas.
-3. El helper actual todavía permite fallback por correo legacy en condominios controlados; debe limitarse conforme al bloqueo 2 de la sección A.
-4. Ningún cambio de este track puede promoverse mientras exista conflicto con Administradora IA.
-
-La falta de correos de propietarios no constituye riesgo global: cada identidad se habilita únicamente cuando su validación individual termina.
+1. Aprobar el Draft PR y confirmar el HEAD exacto y diff contra el `main` vigente.
+2. Repetir suite, build, `git diff --check` y búsqueda de PII/secretos.
+3. Coordinar ventana con Administradora IA; mergear sólo a un `main` limpio.
+4. Capturar baseline productivo de esquema, RLS, Tecaxco y otros tenants sin PII.
+5. Confirmar recuperación y rollback; abortar si el baseline no coincide.
+6. Aplicar únicamente `202608270002_condominium_owner_portal.sql` como ejecución controlada.
+7. Ejecutar checks estructurales y pruebas seguras de aislamiento; comparar Tecaxco antes/después.
+8. Desplegar la aplicación exclusivamente desde el nuevo SHA limpio de `main`.
+9. Verificar logs, bundle, 401/403 esperados y ausencia de 500/secretos.
+10. Mantener `owner_portal_enabled=false` y cero usuarios reales hasta autorización separada.
 
 ## Dictamen
 
-**GO PARA PREPARAR PR DEL PORTAL MVP**
+**GO PARA ABRIR PR DEL PORTAL MVP**
 
-El PR todavía no debe abrirse hasta conciliar las migraciones base/hardening, recortar el diff al MVP de lectura y limitar el fallback legacy. Después deberá completar Preview contra DEV y las validaciones indicadas en la sección D. No se requiere completar el padrón de correos ni validar Storage para este alcance reducido.
+El Draft PR #79 está abierto. No autoriza merge, migración productiva, deployment, alta de propietarios ni apertura del portal.
