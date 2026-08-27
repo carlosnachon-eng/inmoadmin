@@ -8,8 +8,10 @@ export default function PartnerLogin() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [magicLoading, setMagicLoading] = useState(false)
   const [checking, setChecking] = useState(true)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
 
   useEffect(() => {
     async function check() {
@@ -24,6 +26,7 @@ export default function PartnerLogin() {
   const handleLogin = async () => {
     setLoading(true)
     setError('')
+    setMessage('')
     const { error: loginError } = await supabase.auth.signInWithPassword({ email, password })
     if (loginError) {
       setError('Email o contrasena incorrectos')
@@ -39,6 +42,31 @@ export default function PartnerLogin() {
       return
     }
     window.location.href = ctx.agency.status === 'activo' ? '/partners/dashboard' : '/partners/pendiente'
+  }
+
+  const handleMagicLink = async () => {
+    setMagicLoading(true)
+    setError('')
+    setMessage('')
+    const cleanEmail = String(email || '').trim().toLowerCase()
+    if (!cleanEmail) {
+      setError('Escribe tu email para enviarte la liga de acceso.')
+      setMagicLoading(false)
+      return
+    }
+    const { error: otpError } = await supabase.auth.signInWithOtp({
+      email: cleanEmail,
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: `${window.location.origin}/partners/dashboard`,
+      },
+    })
+    setMagicLoading(false)
+    if (otpError) {
+      setError('No se pudo enviar la liga. Verifica que tu acceso ya haya sido aprobado.')
+      return
+    }
+    setMessage('Te enviamos una liga de acceso a tu correo.')
   }
 
   if (checking) return null
@@ -58,6 +86,7 @@ export default function PartnerLogin() {
           </div>
 
           {error && <div style={{ background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 9, padding: '10px 12px', marginBottom: 14, fontSize: 13, fontWeight: 750 }}>{error}</div>}
+          {message && <div style={{ background: '#ecfdf5', color: '#065f46', border: '1px solid #bbf7d0', borderRadius: 9, padding: '10px 12px', marginBottom: 14, fontSize: 13, fontWeight: 750 }}>{message}</div>}
 
           <Field label="Email">
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} placeholder="aliado@inmobiliaria.com" style={input} />
@@ -67,6 +96,9 @@ export default function PartnerLogin() {
           </Field>
           <button onClick={handleLogin} disabled={loading || !email || !password} style={{ ...button, width: '100%', minHeight: 46, background: P.red, color: '#fff', opacity: loading ? .65 : 1 }}>
             {loading ? 'Entrando...' : 'Entrar al portal'}
+          </button>
+          <button onClick={handleMagicLink} disabled={magicLoading || !email} style={{ ...button, width: '100%', minHeight: 42, background: '#fff', color: P.red, border: `1px solid ${P.red}`, marginTop: 10, opacity: magicLoading ? .65 : 1 }}>
+            {magicLoading ? 'Enviando liga...' : 'Enviar liga de acceso'}
           </button>
           <a href="/partners/registro" style={{ ...button, width: '100%', minHeight: 42, background: '#f4f4f5', color: P.text, marginTop: 10 }}>
             Quiero ser Partner
