@@ -97,8 +97,9 @@ test("UI muestra y aplica bloqueos de cuotas, pagos, recibos, comunicaciones y d
   assert.match(detail, /operationControls\.moneyMovementsEnabled/);
   assert.match(detail, /unavailableCondominiumOperationControls/);
   assert.match(list, /disabled=\{!cond\.operationControls\?\.currentBillingEnabled\}/);
-  assert.match(portal, /condominium_owner_portal_allowed/);
-  assert.match(portal, /portalControlError \|\| portalAllowed !== true/);
+  assert.match(portal, /condominium_owner_portal_units/);
+  assert.match(portal, /condominium_owner_portal_snapshot/);
+  assert.doesNotMatch(portal, /\.limit\(1\)/);
 });
 
 test("cron y endpoint de recibos fallan cerrado antes de efectos externos", async () => {
