@@ -1,0 +1,116 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile } from "node:fs/promises";
+import {
+  PORTAL_ACCESS_STATES,
+  classifyUnitPortalState,
+  isValidPortalEmail,
+  maskPortalEmail,
+  normalizePortalEmail,
+  requiresMultiUnitConfirmation,
+} from "../lib/condominios/portalAccess.mjs";
+
+const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
+const endpoint = await read("../pages/api/condominios/portal-access.js");
+const adminPage = await read("../pages/condominio/[id].js");
+const portalMigration = await read("../supabase/migrations/202608270002_condominium_owner_portal.sql");
+
+test("normaliza y valida correo sin conservar variantes ambiguas", () => {
+  assert.equal(normalizePortalEmail("  Owner@Example.COM "), "owner@example.com");
+  assert.equal(isValidPortalEmail("owner@example.com"), true);
+  assert.equal(isValidPortalEmail("owner example.com"), false);
+  assert.equal(maskPortalEmail("owner@example.com"), "ow***@example.com");
+});
+
+test("clasifica estados de unidad sin convertir correo en autorización", () => {
+  assert.equal(classifyUnitPortalState({ email: "", accesses: [] }), PORTAL_ACCESS_STATES.SIN_CORREO);
+  assert.equal(classifyUnitPortalState({ email: "owner@example.com", accesses: [] }), PORTAL_ACCESS_STATES.CORREO_PENDIENTE_CONFIRMAR);
+  assert.equal(classifyUnitPortalState({
+    email: "owner@example.com",
+    accesses: [{ email_normalized: "owner@example.com", active: true, revoked_at: null }],
+  }), PORTAL_ACCESS_STATES.HABILITADO);
+  assert.equal(classifyUnitPortalState({
+    email: "owner@example.com",
+    accesses: [{ email_normalized: "owner@example.com", active: false, revoked_at: "2026-08-27T00:00:00Z" }],
+  }), PORTAL_ACCESS_STATES.REVOCADO);
+});
+
+test("multiunidad requiere confirmación explícita", () => {
+  const activeAccesses = [{ unidad_id: "unit-one", active: true, revoked_at: null }];
+  assert.equal(requiresMultiUnitConfirmation({ activeAccesses, unidadId: "unit-two", confirmMultiUnit: false }), true);
+  assert.equal(requiresMultiUnitConfirmation({ activeAccesses, unidadId: "unit-two", confirmMultiUnit: true }), false);
+  assert.equal(requiresMultiUnitConfirmation({ activeAccesses, unidadId: "unit-one", confirmMultiUnit: false }), false);
+});
+
+test("endpoint lee correo de unidad, valida tenant y sólo usa Auth Admin server-side", () => {
+  assert.match(endpoint, /select\("id, condominio_id, activo, propietario_email"\)/);
+  assert.match(endpoint, /\.eq\("id", unidadId\)[\s\S]*\.eq\("condominio_id", condominioId\)/);
+  assert.match(endpoint, /const email = normalizePortalEmail\(scope\.unit\.propietario_email\)/);
+  assert.match(endpoint, /authAdmin\.auth\.admin\.createUser/);
+  assert.match(endpoint, /operatorDb[\s\S]*\.from\("condominium_unit_portal_access"\)[\s\S]*\.insert/);
+  assert.doesNotMatch(endpoint, /inviteUserByEmail|generateLink/);
+  assert.doesNotMatch(endpoint, /console\.(?:log|error)\([^\n]*(?:email|token|authUser)/i);
+});
+
+test("endpoint aplica permisos internos y excluye Antive, propietarios y condominios legacy", () => {
+  assert.match(endpoint, /profile\.active === false/);
+  assert.match(endpoint, /profile\.roles\?\.es_externo === true/);
+  assert.match(endpoint, /profile\.role_id !== "admin"/);
+  assert.match(endpoint, /\.eq\("modulo", "condominios"\)/);
+  assert.match(endpoint, /permission\?\.puede_ver !== true \|\| permission\?\.puede_editar !== true/);
+  assert.match(endpoint, /CONTROLLED_CONDOMINIUM_REQUIRED/);
+});
+
+test("alta cubre confirmación, duplicado, doble clic, identidad ambigua y fallos seguros", () => {
+  assert.match(endpoint, /emailConfirmed !== true/);
+  assert.match(endpoint, /MULTIUNIT_CONFIRMATION_REQUIRED/);
+  assert.match(endpoint, /AUTH_IDENTITY_REVIEW_REQUIRED/);
+  assert.match(endpoint, /ALREADY_ENABLED/);
+  assert.match(endpoint, /insertError\?\.code === "23505"/);
+  assert.match(endpoint, /AUTH_CREATE_FAILED/);
+  assert.match(endpoint, /RELATION_WRITE_FAILED/);
+  assert.match(endpoint, /deleteUser\(authUser\.id\)/);
+});
+
+test("una identidad relacionada con otro condominio no puede cruzar tenants", () => {
+  assert.match(endpoint, /crossTenantAccess/);
+  assert.match(endpoint, /row\.condominio_id !== condominioId/);
+  assert.match(endpoint, /AUTH_IDENTITY_REVIEW_REQUIRED/);
+});
+
+test("el backend revisa efectos secundarios después de crear la identidad Auth", () => {
+  const createIndex = endpoint.indexOf("auth.admin.createUser");
+  const postCreateReviewIndex = endpoint.indexOf(
+    "hasIncompatibleAuthIdentity(authAdmin, authUser)",
+    createIndex,
+  );
+  assert.ok(createIndex >= 0);
+  assert.ok(postCreateReviewIndex > createIndex);
+});
+
+test("revocación conserva relación y datos administrativos", () => {
+  assert.match(endpoint, /action === "revoke"/);
+  assert.match(endpoint, /update\(\{ active: false, revoked_at: new Date\(\)\.toISOString\(\) \}\)/);
+  assert.doesNotMatch(endpoint, /from\("condominium_unit_portal_access"\)[\s\S]{0,120}\.delete\(/);
+});
+
+test("UI confirma correo, muestra estados reales y no envía PII libremente", () => {
+  for (const state of Object.values(PORTAL_ACCESS_STATES)) assert.match(adminPage, new RegExp(state));
+  assert.match(adminPage, /Confirmo que este correo fue proporcionado o validado directamente/);
+  assert.match(adminPage, /confirmMultiUnit/);
+  assert.match(adminPage, /result\.code === "ALREADY_ENABLED"/);
+  assert.match(adminPage, /action: "enable"/);
+  assert.match(adminPage, /PORTAL_ACCESS_STATES\.PORTAL_GENERAL_APAGADO/);
+  assert.match(adminPage, /PORTAL_ACCESS_STATES\.LISTO_PARA_HABILITAR/);
+  assert.match(adminPage, /Revoca primero el acceso activo antes de cambiar el correo/);
+  assert.match(adminPage, /if \(result\.error\)/);
+  assert.doesNotMatch(adminPage, /action: "enable"[\s\S]{0,180}(?:email|correo):/i);
+});
+
+test("Tecaxco conserva fallback legacy y UI nueva sólo aparece en controlados", () => {
+  assert.match(adminPage, /isControlledCondominium &&/);
+  assert.match(adminPage, /legacy_uncontrolled/);
+  assert.match(portalMigration, /not public\.condominium_is_controlled/);
+  assert.match(portalMigration, /propietario_email/);
+  assert.match(portalMigration, /public\.condominium_is_controlled\(u\.condominio_id\)[\s\S]*condominium_unit_portal_access/);
+});
