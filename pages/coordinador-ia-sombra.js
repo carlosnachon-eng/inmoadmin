@@ -102,6 +102,10 @@ export default function ShadowCoordinatorPage() {
   const intentCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.intent]: (acc[item.intent] || 0) + 1 }), {}), [data]);
   const likelihoodCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.administrative_likelihood]: (acc[item.administrative_likelihood] || 0) + 1 }), { high: 0, medium: 0, low: 0, unknown: 0 }), [data]);
   const ambiguousMessageIds = useMemo(() => new Set((data?.matches || []).filter((item) => item.ambiguous).map((item) => item.message_id)), [data]);
+  const conversationActionMetrics = useMemo(() => {
+    const actions = data?.conversationActions || [];
+    return { total: actions.length, auto: actions.filter((item)=>item.auto_send_eligible).length, superseded: actions.filter((item)=>item.status==="superseded").length };
+  }, [data?.conversationActions]);
   const saveEvaluation = async () => {
     setSaving(true); setError("");
     const response = await fetch("/api/operaciones/shadow-coordinator", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ messageId: selectedId, classification: evaluation, expectedCorrection: correction }) });
@@ -192,6 +196,16 @@ export default function ShadowCoordinatorPage() {
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 16 }}>
         {[["Mensajes", data?.messages?.length || 0], ["Eventos operativos", data?.operationalEvents?.length || 0], ["Duplicados", data?.metrics?.duplicate || 0], ["Sanitizados", data?.metrics?.sanitized || 0], ["Revisión humana", data?.messages?.filter(x=>x.requires_human).length || 0], ["Contexto ambiguo", ambiguousMessageIds.size]].map(([label,value]) => <div key={label} style={card}><div style={{ fontSize: 24, fontWeight: 800 }}>{value}</div><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
       </section>
+      <details style={{ ...card, marginBottom: 16 }} open><summary><strong>Respuestas que habría enviado</strong></summary>
+        <p style={{color:brand.grayLight}}>Sólo propuestas Shadow. No existe envío Respond ni acción ERP en esta fase.</p>
+        <p>{conversationActionMetrics.total} propuestas · {conversationActionMetrics.auto} candidatas conversacionales · {conversationActionMetrics.superseded} sustituidas por respuesta humana</p>
+        {!(data?.conversationActions || []).length ? <p>No hay respuestas propuestas.</p> : (data.conversationActions || []).map((item)=><article key={item.id} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}>
+          <strong>{item.case_domain} · {item.conversation_action}</strong>
+          <p>{item.proposed_message || "Sin mensaje propuesto."}</p>
+          <p><strong>Evidencia:</strong> {(item.evidence_refs || []).length} referencia(s) · <strong>Confianza:</strong> {Math.round(Number(item.confidence||0)*100)}% · <strong>Auto-send eligible:</strong> {item.auto_send_eligible ? "Sí" : "No"}</p>
+          <p><strong>Estado:</strong> {item.status}{item.blocked_reason ? ` · bloqueo: ${item.blocked_reason}` : ""}</p>
+        </article>)}
+      </details>
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button onClick={() => setShadowView("conversations")} aria-pressed={shadowView === "conversations"}>Conversaciones</button><button onClick={() => setShadowView("operational")} aria-pressed={shadowView === "operational"}>Eventos operativos</button></div>
       {shadowView === "operational" && <section style={{ ...card, marginBottom: 16 }}><h2>Eventos operativos</h2>{!(data?.operationalEvents || []).length ? <p>No hay eventos operativos.</p> : data.operationalEvents.map((event) => <article key={event.id} style={{ borderBottom: `1px solid ${brand.border}`, padding: "10px 0" }}><strong>{event.event_type === "maintenance_ticket_created" ? "Ticket creado" : "Cotización aprobada"}</strong><p style={{ margin: "4px 0" }}>Mantenimiento · {event.maintenance_scope === "managed_property" ? "Propiedad administrada" : "Trabajo externo"} · estado {event.payload_safe?.ticketStatus || event.payload_safe?.status}</p>{event.payload_safe?.amount != null && <p style={{ margin: "4px 0" }}>Importe: {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(Number(event.payload_safe.amount))}</p>}<small>Ticket {String(event.ticket_id).slice(0, 8)}…{event.quote_id ? ` · Cotización ${String(event.quote_id).slice(0, 8)}…` : ""} · {new Date(event.occurred_at).toLocaleString("es-MX")}</small></article>)}</section>}
       {shadowView === "conversations" && <>

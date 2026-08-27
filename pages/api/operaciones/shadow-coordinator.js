@@ -40,7 +40,7 @@ export default async function handler(req, res) {
       return res.status(201).json({ ok: true, evaluation: data });
     }
     const admin = client(process.env.SUPABASE_SERVICE_ROLE_KEY);
-    const [messages, conversations, events, matches, evaluations, operationalEvents, aiRuns, aiDecisions, toolAudit, manualAuthorizations] = await Promise.all([
+    const [messages, conversations, events, matches, evaluations, operationalEvents, aiRuns, aiDecisions, toolAudit, manualAuthorizations, conversationActions] = await Promise.all([
       admin.from("shadow_messages").select("id,conversation_id,external_message_id,direction,occurred_at,sanitized_text,message_type,attachment_metadata,provider_metadata,processing_state,intent,administrative_likelihood,reason_codes,requires_human,created_at").order("occurred_at", { ascending: false }).limit(250),
       admin.from("shadow_conversations").select("id,provider,channel,contact_hash,first_message_at,last_message_at,administrative_likelihood,status"),
       admin.from("shadow_ingestion_events").select("status,sanitization_changed,duplicate_count"),
@@ -51,8 +51,11 @@ export default async function handler(req, res) {
       admin.from("shadow_ai_decisions").select("id,ai_run_id,status,intent,urgency,proposed_action,proposed_response,confidence,requires_human,escalation_reason,decision_json,tool_summary,created_at").order("created_at", { ascending: false }),
       admin.from("shadow_context_query_audit").select("message_id,tool_name,result_count,succeeded,duration_ms,created_at").order("created_at", { ascending: false }),
       admin.from("shadow_ai_manual_authorizations").select("authorization_id,message_id,authorized_at,expires_at,consumed_at,revoked_at,purpose,model,prompt_version,ai_run_id,created_at").order("created_at", { ascending: false }),
+      process.env.SHADOW_CONVERSATION_ACTIONS_ENABLED === "true"
+        ? admin.from("shadow_conversation_actions").select("id,ai_run_id,message_id,turn_key,case_domain,conversation_action,status,proposed_message,evidence_refs,confidence,requires_human,auto_send_eligible,blocked_reason,expires_at,superseded_at,created_at").order("created_at", { ascending: false }).limit(250)
+        : { data: [], error: null },
     ]);
-    const failure = [messages, conversations, events, matches, evaluations, operationalEvents, aiRuns, aiDecisions, toolAudit, manualAuthorizations].find((result) => result.error)?.error;
+    const failure = [messages, conversations, events, matches, evaluations, operationalEvents, aiRuns, aiDecisions, toolAudit, manualAuthorizations, conversationActions].find((result) => result.error)?.error;
     if (failure) throw failure;
     const counts = (events.data || []).reduce((acc, item) => ({ ...acc, [item.status]: (acc[item.status] || 0) + 1, duplicate: acc.duplicate + Number(item.duplicate_count || 0), sanitized: acc.sanitized + (item.sanitization_changed ? 1 : 0) }), { accepted: 0, duplicate: 0, rejected: 0, error: 0, sanitized: 0 });
     const messageMatches = new Map();
@@ -87,7 +90,7 @@ export default async function handler(req, res) {
         runId: realRun?.id || null, status: realRun?.status || null, executionState: realRun?.execution_state || null,
       } };
     });
-    return res.status(200).json({ ok: true, messages: enrichedMessages, operationalEvents: operationalEvents.data || [], conversations: conversations.data || [], matches: matches.data || [], evaluations: evaluations.data || [], aiRuns: aiRuns.data || [], aiDecisions: aiDecisions.data || [], toolAudit: toolAudit.data || [], metrics: counts, realManualEnabled, realManualDevTestEnabled, aiStatus: (aiRuns.data || []).some((x)=>x.status==="completed") ? "executed_qa" : "not_executed" });
+    return res.status(200).json({ ok: true, messages: enrichedMessages, operationalEvents: operationalEvents.data || [], conversations: conversations.data || [], matches: matches.data || [], evaluations: evaluations.data || [], aiRuns: aiRuns.data || [], aiDecisions: aiDecisions.data || [], toolAudit: toolAudit.data || [], conversationActions: conversationActions.data || [], metrics: counts, realManualEnabled, realManualDevTestEnabled, aiStatus: (aiRuns.data || []).some((x)=>x.status==="completed") ? "executed_qa" : "not_executed" });
   } catch (error) {
     console.error("[shadow-coordinator]", error?.message || error);
     return res.status(500).json({ ok: false, error: "No se pudo cargar Coordinador IA — Sombra." });
