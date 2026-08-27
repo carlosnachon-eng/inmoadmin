@@ -95,11 +95,8 @@ export default async function handler(req, res) {
 
   try {
     const v = req.body || {}
-    if (!v.nombre_comercial || !v.email || !v.password) {
-      return res.status(400).json({ error: 'Completa nombre comercial, email y contrasena.' })
-    }
-    if (String(v.password).length < 8) {
-      return res.status(400).json({ error: 'La contrasena debe tener al menos 8 caracteres.' })
+    if (!v.nombre_comercial || !v.email) {
+      return res.status(400).json({ error: 'Completa nombre comercial y email.' })
     }
 
     const email = String(v.email).trim().toLowerCase()
@@ -107,16 +104,13 @@ export default async function handler(req, res) {
     const existing = (existingUsers?.users || []).find(u => u.email === email)
     if (existing) return res.status(409).json({ error: 'Ya existe una cuenta con ese email.' })
 
-    const created = await supabase.auth.admin.createUser({
-      email,
-      password: v.password,
-      email_confirm: true,
-      user_metadata: {
-        nombre: v.nombre_contacto || v.nombre_comercial,
-        tipo: 'partner',
-      },
-    })
-    if (created.error) throw created.error
+    const { data: existingAgency, error: existingAgencyError } = await supabase
+      .from('partner_agencies')
+      .select('id')
+      .eq('email_contacto', email)
+      .maybeSingle()
+    if (existingAgencyError) throw existingAgencyError
+    if (existingAgency) return res.status(409).json({ error: 'Ya existe una solicitud partner con ese email.' })
 
     const agencyInsert = await supabase
       .from('partner_agencies')
@@ -145,27 +139,6 @@ export default async function handler(req, res) {
         .eq('id', agencyInsert.data.id)
       if (logoUpdate.error) throw logoUpdate.error
     }
-
-    const userInsert = await supabase
-      .from('partner_users')
-      .insert({
-        auth_user_id: created.data.user.id,
-        partner_agency_id: agencyInsert.data.id,
-        nombre: v.nombre_contacto || v.nombre_comercial,
-        email,
-        role: 'owner',
-        active: true,
-      })
-    if (userInsert.error) throw userInsert.error
-
-    const profileUpdate = await supabase
-      .from('profiles')
-      .update({
-        full_name: v.nombre_contacto || v.nombre_comercial,
-        active: false,
-      })
-      .eq('id', created.data.user.id)
-    if (profileUpdate.error) console.error('No se pudo aislar profile partner:', profileUpdate.error.message)
 
     try {
       await notifyPartnerRequest({ agencyId: agencyInsert.data.id, values: v, email })

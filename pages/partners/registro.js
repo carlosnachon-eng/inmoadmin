@@ -13,7 +13,6 @@ export default function PartnerRegistro() {
     website: '',
     logo_url: '',
     brand_color: '#b91c3c',
-    password: '',
   })
   const [logoFile, setLogoFile] = useState(null)
   const [logoPreview, setLogoPreview] = useState('')
@@ -120,10 +119,6 @@ export default function PartnerRegistro() {
               )}
             </div>
           </Field>
-          <Field label="Contrasena" required hint="Minimo 8 caracteres. Tu acceso quedara pendiente hasta aprobacion de Emporio.">
-            <input type="password" value={form.password} onChange={e => set('password', e.target.value)} style={input} />
-          </Field>
-
           <button onClick={submit} disabled={loading} style={{ ...button, background: P.red, color: '#fff', width: '100%', minHeight: 46, opacity: loading ? .65 : 1 }}>
             {loading ? 'Enviando...' : 'Solicitar acceso'}
           </button>

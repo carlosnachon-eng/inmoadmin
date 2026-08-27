@@ -17,6 +17,7 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
   const [saving, setSaving] = useState(false)
   const [logoSaving, setLogoSaving] = useState(false)
   const [logoError, setLogoError] = useState('')
+  const [agencyActionMessage, setAgencyActionMessage] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('todos')
   const [agencyFilter, setAgencyFilter] = useState('todas')
@@ -130,13 +131,40 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
   }
 
   const actualizarAgencia = async (agencia, status) => {
-    await supabase.from('partner_agencies').update({
-      status,
-      approved_at: status === 'activo' ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    }).eq('id', agencia.id)
-    setSelectedAgency(null)
-    onReload()
+    setSaving(true)
+    setAgencyActionMessage('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/partners/approve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({ agency_id: agencia.id, status }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo actualizar el partner.')
+
+      if (status === 'activo') {
+        const msg = data.email_sent
+          ? 'Partner aprobado. Se envio la liga de acceso al correo registrado.'
+          : 'Partner aprobado. No se pudo enviar correo automatico; la liga de acceso se copio al portapapeles.'
+        setAgencyActionMessage(msg)
+        if (data.access_url && !data.email_sent && typeof navigator !== 'undefined') {
+          await navigator.clipboard?.writeText(data.access_url)
+        }
+      } else {
+        setAgencyActionMessage('Partner rechazado/suspendido.')
+      }
+
+      setSelectedAgency(null)
+      onReload()
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const readLogoFile = (file) => new Promise((resolve, reject) => {
@@ -194,6 +222,12 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
         <Summary label="Pagado" value={fmt(resumen.totalPagado)} hint={`Generado ${fmt(resumen.totalGenerado)}`} tone="green" />
       </div>
 
+      {agencyActionMessage && (
+        <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', color: C.greenText, borderRadius: 10, padding: 12, marginBottom: 18, fontSize: 13, fontWeight: 800 }}>
+          {agencyActionMessage}
+        </div>
+      )}
+
       {pendientes.length > 0 && (
         <div style={{ marginBottom: 28 }}>
           <p style={st.sectionTitle}>Solicitudes de acceso por aprobar</p>
@@ -211,8 +245,8 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => setSelectedAgency(ag)} style={{ ...st.btn, ...st.btnGhost, padding: '7px 12px', fontSize: 12 }}>Revisar</button>
-                  <button onClick={() => actualizarAgencia(ag, 'activo')} style={{ ...st.btn, ...st.btnGreen, padding: '7px 12px', fontSize: 12 }}>Aprobar</button>
-                  <button onClick={() => actualizarAgencia(ag, 'suspendido')} style={{ ...st.btn, background: C.red, color: '#fff', padding: '7px 12px', fontSize: 12 }}>Rechazar</button>
+                  <button onClick={() => actualizarAgencia(ag, 'activo')} disabled={saving} style={{ ...st.btn, ...st.btnGreen, padding: '7px 12px', fontSize: 12, opacity: saving ? .65 : 1 }}>Aprobar</button>
+                  <button onClick={() => actualizarAgencia(ag, 'suspendido')} disabled={saving} style={{ ...st.btn, background: C.red, color: '#fff', padding: '7px 12px', fontSize: 12, opacity: saving ? .65 : 1 }}>Rechazar</button>
                 </div>
               </div>
             ))}
@@ -424,8 +458,8 @@ export default function TabPartners({ operaciones, agencias = [], onReload }) {
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
               <button onClick={() => setSelectedAgency(null)} style={{ ...st.btn, ...st.btnGhost }}>Cerrar</button>
-              <button onClick={() => actualizarAgencia(selectedAgency, 'suspendido')} style={{ ...st.btn, background: C.red, color: '#fff' }}>Rechazar</button>
-              <button onClick={() => actualizarAgencia(selectedAgency, 'activo')} style={{ ...st.btn, ...st.btnGreen }}>Aprobar acceso</button>
+              <button onClick={() => actualizarAgencia(selectedAgency, 'suspendido')} disabled={saving} style={{ ...st.btn, background: C.red, color: '#fff', opacity: saving ? .65 : 1 }}>Rechazar</button>
+              <button onClick={() => actualizarAgencia(selectedAgency, 'activo')} disabled={saving} style={{ ...st.btn, ...st.btnGreen, opacity: saving ? .65 : 1 }}>{saving ? 'Procesando...' : 'Aprobar acceso'}</button>
             </div>
           </div>
         </div>
