@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
-const OWNER_BUCKET = "condominium-owner-private";
 const fmt = (value) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0,
 }).format(Number(value || 0));
@@ -59,20 +58,6 @@ function Login() {
   </main>;
 }
 
-async function authenticatedRequest(body) {
-  const { data } = await supabase.auth.getSession();
-  const token = data?.session?.access_token;
-  if (!token) throw new Error("Sesión expirada");
-  const response = await fetch("/api/condomino/private-file", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "No fue posible completar la operación");
-  return payload;
-}
-
 export default function CondominoPortal() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -81,7 +66,6 @@ export default function CondominoPortal() {
   const [snapshot, setSnapshot] = useState(null);
   const [tab, setTab] = useState("current");
   const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthLoading(false); });
@@ -118,43 +102,14 @@ export default function CondominoPortal() {
     paid: currentFees.filter((fee) => fee.status === "pagado").reduce((sum, fee) => sum + Number(fee.amount || 0), 0),
   }), [currentFees]);
 
-  const showNotice = (message, ok = true) => {
-    setNotice({ message, ok });
-    window.setTimeout(() => setNotice(null), 4000);
-  };
-
-  const uploadProof = async (fee, file) => {
-    try {
-      const extension = file.name.split(".").pop()?.toLowerCase();
-      const prepared = await authenticatedRequest({ action: "prepare-upload", kind: "fee-proof", recordId: fee.id, extension });
-      const { error } = await supabase.storage.from(OWNER_BUCKET).uploadToSignedUrl(prepared.path, prepared.token, file, { contentType: file.type });
-      if (error) throw new Error("No fue posible cargar el archivo");
-      await authenticatedRequest({ action: "confirm-upload", kind: "fee-proof", recordId: fee.id, path: prepared.path });
-      await loadSnapshot(selectedUnitId);
-      showNotice("Comprobante recibido. Permanecerá pendiente hasta la conciliación bancaria.");
-    } catch (error) { showNotice(error.message, false); }
-  };
-
-  const openPrivateFile = async (kind, recordId) => {
-    try {
-      const { url } = await authenticatedRequest({ action: "download", kind, recordId });
-      window.open(url, "_blank", "noopener,noreferrer");
-    } catch (error) { showNotice(error.message, false); }
-  };
-
   if (authLoading) return <main style={styles.center}><p style={styles.muted}>Cargando…</p></main>;
   if (!session) return <Login />;
   if (loading && !snapshot) return <main style={styles.center}><p style={styles.muted}>Cargando portal…</p></main>;
   if (!units.length) return <main style={styles.center}><section style={styles.loginCard}><h1 style={styles.title}>Portal no disponible</h1><p style={styles.muted}>No hay unidades habilitadas para esta cuenta.</p><button onClick={() => supabase.auth.signOut()} style={styles.secondaryButton}>Cerrar sesión</button></section></main>;
 
-  const tabs = [
-    ["current", "Administración Emporio"], ["historical", "Histórico Antive"],
-    ["receipts", "Comprobantes"], ["documents", "Documentos"],
-    ...(snapshot?.expensesVisible ? [["expenses", "Gastos comunes"]] : []),
-  ];
+  const tabs = [["current", "Administración Emporio"], ["historical", "Histórico Antive"]];
 
   return <main style={styles.page}>
-    {notice && <div style={{ ...styles.notice, background: notice.ok ? "#065f46" : "#991b1b" }}>{notice.message}</div>}
     <header style={styles.header}>
       <div><p style={styles.eyebrow}>{snapshot?.unit?.condominiumName}</p><h1 style={styles.title}>Unidad {snapshot?.unit?.number}</h1></div>
       <button onClick={() => supabase.auth.signOut()} style={styles.secondaryButton}>Cerrar sesión</button>
@@ -177,8 +132,6 @@ export default function CondominoPortal() {
       <h2 style={styles.sectionTitle}>Cuotas corrientes</h2>
       {currentFees.map((fee) => <article key={fee.id} style={styles.card}>
         <div style={styles.row}><div><strong>{periodLabel(fee.period)}</strong><p style={styles.muted}>Vence: {fee.dueDate || "—"}</p></div><div style={{ textAlign: "right" }}><strong>{fmt(fee.amount)}</strong><br/><StatusBadge status={fee.status} /></div></div>
-        {fee.status !== "pagado" && !fee.hasProof && <label style={styles.uploadButton}>Adjuntar comprobante<input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" hidden onChange={(event) => event.target.files?.[0] && uploadProof(fee,event.target.files[0])}/></label>}
-        {fee.hasProof && <p style={styles.pending}>Comprobante recibido — pendiente de conciliación bancaria</p>}
       </article>)}
     </section>}
 
@@ -193,12 +146,6 @@ export default function CondominoPortal() {
       {historicalPayments.length ? historicalPayments.map((payment) => <article key={payment.id} style={styles.card}><div style={styles.row}><div><strong>{payment.period ? periodLabel(payment.period) : "Periodo reportado"}</strong><p style={styles.muted}>Recibido por {payment.receivedBy}</p></div><strong>{fmt(payment.amount)}</strong></div></article>) : <p style={styles.muted}>Sin pagos históricos registrados.</p>}
     </section>}
 
-    {tab === "receipts" && <section><h2 style={styles.sectionTitle}>Comprobantes administrativos</h2>{currentFees.filter((fee) => fee.hasReceipt).map((fee) => <article key={fee.id} style={styles.card}><div style={styles.row}><div><strong>{periodLabel(fee.period)}</strong><p style={styles.muted}>{fmt(fee.amount)}</p></div><button onClick={() => openPrivateFile("fee-receipt",fee.id)} style={styles.primaryButton}>Abrir</button></div></article>)}{!currentFees.some((fee) => fee.hasReceipt) && <p style={styles.muted}>Aún no hay comprobantes administrativos disponibles.</p>}</section>}
-
-    {tab === "documents" && <section><h2 style={styles.sectionTitle}>Documentos autorizados</h2>{(snapshot?.documents || []).map((document) => <article key={document.id} style={styles.card}><div style={styles.row}><div><strong>{document.title}</strong><p style={styles.muted}>{document.category}</p></div><button onClick={() => openPrivateFile("document",document.id)} style={styles.primaryButton}>Abrir</button></div></article>)}{!snapshot?.documents?.length && <p style={styles.muted}>No hay documentos publicados para propietarios.</p>}</section>}
-
-    {tab === "expenses" && snapshot?.expensesVisible && <section><h2 style={styles.sectionTitle}>Gastos comunes</h2>{(snapshot.expenses || []).map((expense) => <article key={expense.id} style={styles.card}><div style={styles.row}><div><strong>{expense.concept}</strong><p style={styles.muted}>{expense.category} · {expense.date}</p></div><strong>{fmt(expense.amount)}</strong></div></article>)}</section>}
-
   </main>;
 }
 
@@ -212,10 +159,9 @@ const styles = {
   input: { width: "100%", boxSizing: "border-box", padding: "11px 12px", border: "1px solid #d1d5db", borderRadius: 9, marginBottom: 12 },
   primaryButton: { border: 0, borderRadius: 8, background: "#b91c3c", color: "#fff", padding: "9px 14px", fontWeight: 700, cursor: "pointer" },
   secondaryButton: { border: 0, borderRadius: 8, background: "#e5e7eb", color: "#374151", padding: "9px 14px", fontWeight: 700, cursor: "pointer" },
-  error: { background: "#fee2e2", color: "#991b1b", padding: 10, borderRadius: 8 }, notice: { position: "fixed", top: 0, left: 0, right: 0, zIndex: 20, color: "#fff", textAlign: "center", padding: 12, fontWeight: 700 },
+  error: { background: "#fee2e2", color: "#991b1b", padding: 10, borderRadius: 8 },
   tabs: { maxWidth: 760, margin: "0 auto 18px", display: "flex", gap: 6, overflowX: "auto" }, tab: { border: 0, borderRadius: 8, padding: "9px 12px", background: "#e5e7eb", whiteSpace: "nowrap", cursor: "pointer" }, activeTab: { border: 0, borderRadius: 8, padding: "9px 12px", background: "#1a1a2e", color: "#fff", whiteSpace: "nowrap", cursor: "pointer" },
   card: { maxWidth: 728, margin: "0 auto 10px", background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px rgba(0,0,0,.06)" },
   row: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14 }, split: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, maxWidth: 760, margin: "0 auto 14px" },
   amount: { fontSize: 22 }, sectionTitle: { maxWidth: 760, margin: "22px auto 12px", fontSize: 16 }, callout: { maxWidth: 728, margin: "0 auto 14px", background: "#fff7ed", color: "#9a3412", padding: 16, borderRadius: 10, fontSize: 13, lineHeight: 1.5 },
-  uploadButton: { display: "inline-block", marginTop: 10, background: "#1a1a2e", color: "#fff", padding: "8px 12px", borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: "pointer" }, pending: { margin: "10px 0 0", color: "#92400e", fontSize: 12, fontWeight: 700 },
 };
