@@ -121,6 +121,37 @@ test("prepare-only filtra cohorte exacta y no arrastra vencidos ni fuentes extra
   assert.deepEqual(new Set(selected.candidates.flatMap((x) => x.sources.map((source) => source.sourceId))), new Set([selectedContract.id, selectedProperty.id]));
 });
 
+test("un selector owner conserva el grupo completo sin fragmentar propiedades", () => {
+  const ownerPhone = "2229990000";
+  const properties = Array.from({ length: 11 }, (_, index) => property({ name: `Unidad Grupo ${index + 1}`, owner_phone: ownerPhone }));
+  const contracts = properties.map((item, index) => contract({ property_name: item.name, tenant_phone: `222${String(index).padStart(7, "0")}` }));
+  const cohort = buildActiveClientReconciliationCohort({ contracts, properties, ownerSourceIds: [properties[0].id] });
+  const selected = selectExplicitReconciliationCohort(cohort, { ownerSourceIds: [properties[0].id] });
+  assert.equal(selected.candidates.length, 1);
+  assert.equal(selected.candidates[0].roleKind, "owner");
+  assert.equal(selected.candidates[0].sources.length, 11);
+  assert.equal(selected.metrics.requestedOwners, 1);
+  assert.equal(selected.metrics.preparedOwnerSources, 11);
+});
+
+test("el límite owner cuenta grupos y conserva todas sus fuentes", () => {
+  const properties = [];
+  const contracts = [];
+  for (let group = 0; group < 4; group += 1) {
+    for (let unit = 0; unit < 2; unit += 1) {
+      const item = property({ name: `Grupo ${group + 1} Unidad ${unit + 1}`, owner_phone: `22200000${group}${group}` });
+      properties.push(item);
+      contracts.push(contract({ property_name: item.name, tenant_phone: `223${String(group * 2 + unit).padStart(7, "0")}` }));
+    }
+  }
+  const selectors = [properties[0].id, properties[2].id, properties[4].id];
+  const cohort = buildActiveClientReconciliationCohort({ contracts, properties, ownerSourceIds: selectors });
+  const selected = selectExplicitReconciliationCohort(cohort, { ownerSourceIds: selectors });
+  assert.equal(selected.metrics.requestedOwners, 3);
+  assert.equal(selected.metrics.preparedOwnerSources, 6);
+  assert.throws(() => validateExplicitReconciliationSelection({ ownerSourceIds: [properties[0].id, properties[2].id, properties[4].id, properties[6].id] }), /limit_exceeded/);
+});
+
 test("endpoint bloquea mutaciones antes de RPC y UI las oculta en prepare-only", () => {
   const ui = fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
   assert.match(api, /assertClientReconciliationAction\(capabilities, action\)[\s\S]+confirm_client_reconciliation_candidate/);
