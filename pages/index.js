@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import Layout, { brand, nav } from "../components/Layout";
 import { useModulosPermitidos } from "../lib/permisos";
+import { PASSWORD_RECOVERY_MESSAGE, isEligibleInternalProfile, recoveryRedirectUrl } from "../lib/authRecovery.mjs";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -36,14 +37,39 @@ const LoginScreen = ({ onLogin }) => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState("");
 
   const handleLogin = async () => {
     setLoading(true);
     setError("");
-    const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+    if (loginError || !data?.user?.id) {
+      setLoading(false);
+      setError("Email o contraseña incorrectos");
+      return;
+    }
+    const { data: profile } = await supabase.from("profiles").select("id, role_id, active").eq("id", data.user.id).maybeSingle();
+    if (!isEligibleInternalProfile(profile)) {
+      await supabase.auth.signOut({ scope: "global" });
+      setLoading(false);
+      setError("Esta cuenta no tiene acceso interno activo");
+      return;
+    }
     setLoading(false);
-    if (loginError) setError("Email o contraseña incorrectos");
-    else onLogin();
+    onLogin();
+  };
+
+  const handleRecovery = async () => {
+    if (!email) return;
+    setLoading(true);
+    setError("");
+    setRecoveryMessage("");
+    await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: recoveryRedirectUrl(window.location.origin),
+    });
+    setLoading(false);
+    setRecoveryMessage(PASSWORD_RECOVERY_MESSAGE);
   };
 
   return (
@@ -54,10 +80,20 @@ const LoginScreen = ({ onLogin }) => {
           <p style={{ margin: 0, fontSize: 13, color: brand.grayLight, fontWeight: 500 }}>Sistema de Gestión Interno</p>
         </div>
         {error && <div style={{ background: "#fee2e2", color: "#991b1b", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 14, fontWeight: 600 }}>{error}</div>}
-        <Field label="Email"><Input type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} /></Field>
-        <Field label="Contraseña"><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} /></Field>
-        <button onClick={handleLogin} disabled={loading || !email || !password} style={{ width: "100%", background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: 14, fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", fontSize: 16, marginTop: 8, opacity: loading ? 0.7 : 1 }}>
-          {loading ? "Entrando..." : "Entrar"}
+        {recoveryMessage && <div role="status" style={{ background: "#ecfdf5", color: "#065f46", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13, fontWeight: 600, lineHeight: 1.45 }}>{recoveryMessage}</div>}
+        <Field label="Email"><Input type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && (recovering ? handleRecovery() : handleLogin())} /></Field>
+        {!recovering && <Field label="Contraseña"><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} /></Field>}
+        {recovering ? (
+          <button onClick={handleRecovery} disabled={loading || !email} style={{ width: "100%", background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: 14, fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", fontSize: 16, marginTop: 8, opacity: loading ? 0.7 : 1 }}>
+            {loading ? "Enviando..." : "Enviar instrucciones"}
+          </button>
+        ) : (
+          <button onClick={handleLogin} disabled={loading || !email || !password} style={{ width: "100%", background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: 14, fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", fontSize: 16, marginTop: 8, opacity: loading ? 0.7 : 1 }}>
+            {loading ? "Entrando..." : "Entrar"}
+          </button>
+        )}
+        <button type="button" onClick={() => { setRecovering(v => !v); setError(""); setRecoveryMessage(""); }} style={{ width: "100%", marginTop: 14, border: 0, background: "transparent", color: brand.red, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+          {recovering ? "Volver al inicio de sesión" : "¿Olvidaste tu contraseña?"}
         </button>
       </div>
     </div>
