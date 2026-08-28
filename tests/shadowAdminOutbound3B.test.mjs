@@ -1,0 +1,40 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import {
+  assertAdminOutboundEnvironment, processOneAdminOutbound, sendRespondAdminText,
+  validateAdminOutboundClaim, SHADOW_ADMIN_OUTBOUND_LIMIT,
+} from "../lib/shadow/ai/adminOutbound.js";
+import { buildConversationAction, semanticConversationGuard } from "../lib/shadow/ai/conversationAction.js";
+
+const env={SHADOW_ADMIN_OUTBOUND_ENABLED:"true",SHADOW_OUTBOUND_ENABLED:"false",SHADOW_RESPOND_ADMIN_CHANNEL_ID:"544519",RESPOND_IO_TOKEN:"fixture-only"};
+const claim={outbound_id:"00000000-0000-4000-8000-000000000001",action_id:"00000000-0000-4000-8000-000000000002",message_id:"00000000-0000-4000-8000-000000000003",conversation_id:"00000000-0000-4000-8000-000000000004",respond_contact_id:"123",channel_id:"544519",conversation_action:"ask_missing_information",case_domain:"maintenance",interaction_direction:"inbound_customer_action",proposed_message:"¿En qué parte se presenta el problema?",confidence:.9,requires_human:false,auto_send_eligible:true,expires_at:"2099-01-01T00:00:00Z",anchor_occurred_at:"2026-08-28T12:00:00Z"};
+function fakeAdmin(){const calls=[];const chain={error:null,update(v){calls.push(v);return this;},eq(){return this;},in(){return this;}};return{calls,from(){return chain;}};}
+
+test("capability OFF falla cerrado",()=>assert.throws(()=>assertAdminOutboundEnvironment({...env,SHADOW_ADMIN_OUTBOUND_ENABLED:"false"}),/disabled/));
+test("global outbound debe permanecer OFF",()=>assert.throws(()=>assertAdminOutboundEnvironment({...env,SHADOW_OUTBOUND_ENABLED:"true"}),/global/));
+test("sólo canal 544519",()=>assert.throws(()=>assertAdminOutboundEnvironment({...env,SHADOW_RESPOND_ADMIN_CHANNEL_ID:"498219"}),/channel/));
+test("token ausente bloquea sender",()=>assert.throws(()=>assertAdminOutboundEnvironment({...env,RESPOND_IO_TOKEN:""}),/credential/));
+test("claim válido",()=>assert.equal(validateAdminOutboundClaim(claim).allowed,true));
+test("Ventas bloqueado",()=>assert.equal(validateAdminOutboundClaim({...claim,channel_id:"498219"}).reason,"channel_not_allowlisted"));
+test("acción no allowlisted bloqueada",()=>assert.equal(validateAdminOutboundClaim({...claim,conversation_action:"human_handoff"}).reason,"action_not_allowlisted"));
+test("instrucción interna bloqueada",()=>assert.equal(validateAdminOutboundClaim({...claim,interaction_direction:"internal_instruction_about_customer"}).reason,"interaction_direction_not_customer_inbound"));
+test("requires human bloquea",()=>assert.equal(validateAdminOutboundClaim({...claim,requires_human:true}).reason,"not_auto_send_eligible"));
+test("confidence baja bloquea",()=>assert.equal(validateAdminOutboundClaim({...claim,confidence:.6}).reason,"low_confidence"));
+test("expirada bloquea",()=>assert.equal(validateAdminOutboundClaim({...claim,expires_at:"2020-01-01T00:00:00Z"}).reason,"expired"));
+test("semántica pago confirmado bloqueada",()=>assert.equal(semanticConversationGuard("Tu pago está confirmado").allowed,false));
+test("promesa de proveedor bloqueada",()=>assert.equal(semanticConversationGuard("El proveedor irá hoy a las 10:00").allowed,false));
+test("sender usa endpoint, channel y texto exactos",async()=>{let request;const result=await sendRespondAdminText({contactId:"123",text:"¿Qué periodo corresponde?",env,fetchImpl:async(url,options)=>{request={url,options};return{ok:true,json:async()=>({messageId:987})}}});assert.equal(result.providerMessageId,"987");assert.match(request.url,/\/v2\/contact\/id:123\/message$/);const body=JSON.parse(request.options.body);assert.equal(body.channelId,544519);assert.deepEqual(body.message,{type:"text",text:"¿Qué periodo corresponde?"});});
+test("timeout no se reintenta y queda ambiguo",async()=>{await assert.rejects(()=>sendRespondAdminText({contactId:"123",text:"hola",env,fetchImpl:async()=>{throw Object.assign(new Error("abort"),{name:"AbortError"})}}),/delivery_unknown/);});
+test("cola vacía no envía",async()=>{let sent=0;const result=await processOneAdminOutbound(fakeAdmin(),{env,claim:async()=>null,send:async()=>{sent++}});assert.equal(result.status,"no_work");assert.equal(sent,0);});
+test("human override race supersede antes de send",async()=>{let sent=0;const admin=fakeAdmin();const result=await processOneAdminOutbound(admin,{env,claim:async()=>claim,recheck:async()=>({id:"00000000-0000-4000-8000-000000000099"}),send:async()=>{sent++}});assert.equal(result.status,"superseded");assert.equal(sent,0);});
+test("send exitoso se persiste una vez",async()=>{let sent=0;const admin=fakeAdmin();const result=await processOneAdminOutbound(admin,{env,claim:async()=>claim,recheck:async()=>null,send:async()=>{sent++;return{providerMessageId:"m-1"}}});assert.equal(result.status,"sent");assert.equal(sent,1);assert.ok(admin.calls.some(x=>x.status==="sent"&&x.provider_message_id==="m-1"));});
+test("fallo Respond 4xx termina sin retry",async()=>{let sent=0;const admin=fakeAdmin();const result=await processOneAdminOutbound(admin,{env,claim:async()=>claim,recheck:async()=>null,send:async()=>{sent++;throw new Error("respond_rejected")}});assert.equal(result.status,"failed");assert.equal(sent,1);});
+test("fallo ambiguo no duplica",async()=>{let sent=0;const result=await processOneAdminOutbound(fakeAdmin(),{env,claim:async()=>claim,recheck:async()=>null,send:async()=>{sent++;throw new Error("respond_delivery_unknown")}});assert.equal(result.status,"delivery_unknown");assert.equal(sent,1);});
+test("clarify payment period elegible sin confirmar banca",()=>{const a=buildConversationAction({resolution:{case_domain:"payment",interaction_direction:"inbound_customer_action",identity_context:{status:"trusted_link_available"},missing_information:["payment_period"],action_confidence:.9,evidence:[{evidenceId:"erp:obligation"}],payment_state:{bank_reconciliation_status:"pending_confirmation"}},turn:{settled:true}});assert.equal(a.conversation_action,"clarify_payment_period");assert.equal(a.auto_send_eligible,true);assert.doesNotMatch(a.proposed_message,/confirmad[oa]|liquidad[oa]/i);});
+test("pago parcial sensible nunca elegible",()=>{const a=buildConversationAction({resolution:{case_domain:"payment",interaction_direction:"inbound_customer_action",identity_context:{status:"trusted_link_available"},case_status:"amount_conflict",missing_information:[],action_confidence:.9,evidence:[{evidenceId:"erp:payment"}],payment_state:{administrative_obligation_status:"partial"}},turn:{settled:true}});assert.equal(a.auto_send_eligible,false);});
+test("documento presente impide request document",()=>{const a=buildConversationAction({resolution:{case_domain:"payment",interaction_direction:"inbound_customer_action",identity_context:{status:"trusted_link_available"},case_status:"record_not_found",missing_information:["payment_document"],action_confidence:.9,evidence:[{evidenceId:"media:1"}],document_context:{equivalent_document_present:true}},turn:{settled:true}});assert.notEqual(a.conversation_action,"request_document");});
+test("turn no settled nunca envía",()=>assert.equal(buildConversationAction({resolution:{case_domain:"maintenance"},turn:{settled:false}}).auto_send_eligible,false));
+test("hard cap certificado en 10",()=>assert.equal(SHADOW_ADMIN_OUTBOUND_LIMIT,10));
+test("migración tiene claim atómico, cap, RLS y grants mínimos",()=>{const sql=readFileSync(new URL("../supabase/migrations/202608280004_fase_3b_admin_outbound_supervised.sql",import.meta.url),"utf8");assert.match(sql,/pg_advisory_xact_lock/);assert.match(sql,/count\(\*\)[\s\S]*>= 10/);assert.match(sql,/enable row level security/);assert.match(sql,/revoke all[\s\S]*service_role/);assert.match(sql,/grant select,insert,update/);assert.doesNotMatch(sql,/grant[^;]*delete/i);});
+test("código no contiene escrituras ERP ni mutaciones Respond laterales",()=>{const source=readFileSync(new URL("../lib/shadow/ai/adminOutbound.js",import.meta.url),"utf8");assert.doesNotMatch(source,/maintenance_tickets|payments|contracts.*update|properties.*update|assignee|lifecycle|workflow|custom.?fields/i);});
