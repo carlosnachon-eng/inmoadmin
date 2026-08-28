@@ -7,6 +7,11 @@ import {
   resolveCondominiumOperationControls,
   unavailableCondominiumOperationControls,
 } from "../../lib/condominios/operationControls.mjs";
+import {
+  PORTAL_ACCESS_STATES,
+  classifyUnitPortalState,
+  normalizePortalEmail,
+} from "../../lib/condominios/portalAccess.mjs";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -107,6 +112,10 @@ export default function CondominioDetalle() {
   const [gastos, setGastos] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [operationControls, setOperationControls] = useState(unavailableCondominiumOperationControls());
+  const [portalAccesses, setPortalAccesses] = useState([]);
+  const [portalModal, setPortalModal] = useState(null);
+  const [portalBusyUnitId, setPortalBusyUnitId] = useState(null);
+  const [portalUnitErrors, setPortalUnitErrors] = useState({});
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -157,6 +166,7 @@ export default function CondominioDetalle() {
       { data: gastosData },
       { data: ticketsData },
       { data: operationControlData, error: operationControlError },
+      { data: portalAccessData, error: portalAccessError },
     ] = await Promise.all([
       supabase.from("condominios").select("*").eq("id", id).single(),
       supabase.from("unidades_condominio").select("*").eq("condominio_id", id).eq("activo", true).order("numero"),
@@ -164,6 +174,7 @@ export default function CondominioDetalle() {
       supabase.from("gastos_condominio").select("*").eq("condominio_id", id).order("fecha", { ascending: false }),
       supabase.from("maintenance_tickets").select("*").eq("condominio_id", id).order("created_at", { ascending: false }),
       supabase.from("condominium_operation_controls").select("lifecycle_status, owner_portal_enabled, communications_enabled, current_billing_enabled, receipts_enabled, real_payments_enabled, money_movements_enabled").eq("condominio_id", id).maybeSingle(),
+      supabase.from("condominium_unit_portal_access").select("id, condominio_id, unidad_id, email_normalized, access_kind, active, created_at, revoked_at").eq("condominio_id", id).order("created_at", { ascending: false }),
     ]);
     setCond(condData);
     setUnidades(unidadesData || []);
@@ -173,6 +184,7 @@ export default function CondominioDetalle() {
     setOperationControls(operationControlError
       ? unavailableCondominiumOperationControls()
       : resolveCondominiumOperationControls(operationControlData));
+    setPortalAccesses(portalAccessError ? [] : portalAccessData || []);
     setLoading(false);
   };
 
@@ -192,13 +204,25 @@ export default function CondominioDetalle() {
   // ── Guardar unidad ────────────────────────────────────────────────────────
   const guardarUnidad = async () => {
     if (!formUnidad.propietario_nombre.trim()) { showToast("El nombre del propietario es requerido", false); return; }
+    const previousEmail = normalizePortalEmail(modalUnidad?.propietario_email);
+    const nextEmail = normalizePortalEmail(formUnidad.propietario_email);
+    const previousAccessActive = modalUnidad?.id && portalAccesses.some(access =>
+      access.unidad_id === modalUnidad.id
+      && access.active === true
+      && !access.revoked_at
+      && normalizePortalEmail(access.email_normalized) === previousEmail
+    );
+    if (isControlledCondominium && previousAccessActive && previousEmail !== nextEmail) {
+      showToast("Revoca primero el acceso activo antes de cambiar el correo del propietario", false);
+      return;
+    }
     setSaving(true);
     const data = {
       condominio_id: id,
       numero: formUnidad.numero,
       piso: parseInt(formUnidad.piso) || null,
       propietario_nombre: formUnidad.propietario_nombre,
-      propietario_email: formUnidad.propietario_email || null,
+      propietario_email: isControlledCondominium ? nextEmail || null : formUnidad.propietario_email || null,
       propietario_telefono: formUnidad.propietario_telefono || null,
       residente_nombre: formUnidad.residente_es_propietario ? null : formUnidad.residente_nombre || null,
       residente_email: formUnidad.residente_es_propietario ? null : formUnidad.residente_email || null,
@@ -206,15 +230,129 @@ export default function CondominioDetalle() {
       residente_es_propietario: formUnidad.residente_es_propietario,
       notas: formUnidad.notas || null,
     };
-    if (modalUnidad?.id) {
-      await supabase.from("unidades_condominio").update(data).eq("id", modalUnidad.id);
-    } else {
-      await supabase.from("unidades_condominio").insert([data]);
-    }
+    const result = modalUnidad?.id
+      ? await supabase.from("unidades_condominio").update(data).eq("id", modalUnidad.id)
+      : await supabase.from("unidades_condominio").insert([data]);
     setSaving(false);
+    if (result.error) {
+      showToast("No fue posible guardar la unidad", false);
+      return;
+    }
     setModalUnidad(null);
     showToast(modalUnidad?.id ? "Unidad actualizada" : "Unidad creada");
     loadData();
+  };
+
+  const isControlledCondominium = !["legacy_uncontrolled", "controls_unavailable"].includes(operationControls.lifecycleStatus);
+  const accessesForUnit = (unitId) => portalAccesses.filter(access => access.unidad_id === unitId);
+  const exactPortalAccess = (unit) => {
+    const email = normalizePortalEmail(unit?.propietario_email);
+    return accessesForUnit(unit?.id).find(access => normalizePortalEmail(access.email_normalized) === email) || null;
+  };
+  const portalStateForUnit = (unit) => {
+    const state = classifyUnitPortalState({
+      email: unit?.propietario_email,
+      accesses: accessesForUnit(unit?.id),
+      busy: portalBusyUnitId === unit?.id,
+      error: portalUnitErrors[unit?.id] === true,
+    });
+    return state === PORTAL_ACCESS_STATES.HABILITADO && !operationControls.ownerPortalEnabled
+      ? PORTAL_ACCESS_STATES.PORTAL_GENERAL_APAGADO
+      : state;
+  };
+  const portalStatePresentation = (state) => ({
+    [PORTAL_ACCESS_STATES.SIN_CORREO]: { label: "Sin correo", color: "#6b7280", background: "#f3f4f6" },
+    [PORTAL_ACCESS_STATES.CORREO_PENDIENTE_CONFIRMAR]: { label: "Correo pendiente de confirmar", color: "#92400e", background: "#fef3c7" },
+    [PORTAL_ACCESS_STATES.LISTO_PARA_HABILITAR]: { label: "Listo para habilitar", color: "#1e40af", background: "#dbeafe" },
+    [PORTAL_ACCESS_STATES.HABILITANDO]: { label: "Habilitando…", color: "#1e40af", background: "#dbeafe" },
+    [PORTAL_ACCESS_STATES.HABILITADO]: { label: "Portal habilitado", color: "#065f46", background: "#d1fae5" },
+    [PORTAL_ACCESS_STATES.PORTAL_GENERAL_APAGADO]: { label: "Portal general apagado", color: "#92400e", background: "#fef3c7" },
+    [PORTAL_ACCESS_STATES.MULTIUNIDAD_POR_CONFIRMAR]: { label: "Multiunidad por confirmar", color: "#92400e", background: "#fef3c7" },
+    [PORTAL_ACCESS_STATES.CORREO_COMPARTIDO]: { label: "Correo compartido en revisión", color: "#991b1b", background: "#fee2e2" },
+    [PORTAL_ACCESS_STATES.IDENTIDAD_AUTH_EN_REVISION]: { label: "Identidad Auth en revisión", color: "#991b1b", background: "#fee2e2" },
+    [PORTAL_ACCESS_STATES.REVOCADO]: { label: "Acceso revocado", color: "#6b7280", background: "#f3f4f6" },
+    [PORTAL_ACCESS_STATES.ERROR]: { label: "Error de habilitación", color: "#991b1b", background: "#fee2e2" },
+  }[state] || { label: state, color: "#374151", background: "#f3f4f6" });
+
+  const portalErrorMessage = (code) => ({
+    EMAIL_CONFIRMATION_REQUIRED: "Confirma que el propietario proporcionó este correo.",
+    EMAIL_REQUIRED: "La unidad no tiene correo de propietario guardado.",
+    INVALID_EMAIL: "El correo guardado no tiene un formato válido.",
+    MULTIUNIT_CONFIRMATION_REQUIRED: "Este correo ya tiene otra unidad controlada. Confirma expresamente el acceso multiunidad.",
+    SHARED_EMAIL_REVIEW_REQUIRED: "La unidad ya tiene otro acceso activo. Revisa cotitularidad o correo compartido.",
+    AUTH_IDENTITY_REVIEW_REQUIRED: "La identidad Auth ya existe y requiere revisión antes de vincularla.",
+    REACTIVATION_REVIEW_REQUIRED: "Existe una relación revocada. La reactivación requiere revisión.",
+    OPERATION_NOT_ALLOWED: "No tienes permiso para administrar accesos del portal.",
+    CONTROLLED_CONDOMINIUM_REQUIRED: "Este flujo sólo está disponible para condominios controlados.",
+  }[code] || "No fue posible completar la operación. Revisa los datos e intenta nuevamente.");
+
+  const callPortalAccess = async (payload) => {
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    if (!currentSession?.access_token) return { ok: false, code: "SESSION_REQUIRED" };
+    const request = await fetch("/api/condominios/portal-access", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${currentSession.access_token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const result = await request.json().catch(() => ({ ok: false, code: "INVALID_RESPONSE" }));
+    return { ...result, httpStatus: request.status };
+  };
+
+  const habilitarPortal = async () => {
+    const unit = portalModal?.unit;
+    if (!unit?.id || portalModal?.emailConfirmed !== true) return;
+    setPortalBusyUnitId(unit.id);
+    setPortalUnitErrors(current => ({ ...current, [unit.id]: false }));
+    const result = await callPortalAccess({
+      action: "enable",
+      condominioId: id,
+      unidadId: unit.id,
+      emailConfirmed: true,
+      confirmMultiUnit: portalModal?.confirmMultiUnit === true,
+    });
+    setPortalBusyUnitId(null);
+
+    if (result.code === "MULTIUNIT_CONFIRMATION_REQUIRED") {
+      setPortalModal(current => ({
+        ...current,
+        reviewState: PORTAL_ACCESS_STATES.MULTIUNIDAD_POR_CONFIRMAR,
+        confirmMultiUnit: false,
+        error: portalErrorMessage(result.code),
+      }));
+      return;
+    }
+    if (!result.ok) {
+      const reviewState = result.code === "SHARED_EMAIL_REVIEW_REQUIRED"
+        ? PORTAL_ACCESS_STATES.CORREO_COMPARTIDO
+        : result.code === "AUTH_IDENTITY_REVIEW_REQUIRED"
+          ? PORTAL_ACCESS_STATES.IDENTIDAD_AUTH_EN_REVISION
+          : PORTAL_ACCESS_STATES.ERROR;
+      setPortalUnitErrors(current => ({ ...current, [unit.id]: true }));
+      setPortalModal(current => ({ ...current, reviewState, error: portalErrorMessage(result.code) }));
+      return;
+    }
+
+    setPortalModal(null);
+    showToast(result.code === "ALREADY_ENABLED" ? "El portal ya estaba habilitado" : "Portal habilitado");
+    await loadData();
+  };
+
+  const revocarPortal = async (unit, access) => {
+    if (!access?.id || !window.confirm(`¿Revocar el acceso al portal de la unidad ${unit.numero}?`)) return;
+    setPortalBusyUnitId(unit.id);
+    setPortalUnitErrors(current => ({ ...current, [unit.id]: false }));
+    const result = await callPortalAccess({ action: "revoke", condominioId: id, unidadId: unit.id, accessId: access.id });
+    setPortalBusyUnitId(null);
+    if (!result.ok) {
+      setPortalUnitErrors(current => ({ ...current, [unit.id]: true }));
+      showToast("No fue posible revocar el acceso", false);
+      return;
+    }
+    showToast("Acceso al portal revocado");
+    await loadData();
   };
 
   // ── Generar cuotas del periodo seleccionado ──────────────────────────────
@@ -745,6 +883,9 @@ export default function CondominioDetalle() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
               {unidades.map(u => {
                 const cuotaMes = cuotasPeriodo.find(q => q.unidad_id === u.id);
+                const portalState = portalStateForUnit(u);
+                const portalAccess = exactPortalAccess(u);
+                const portalPresentation = portalStatePresentation(portalState);
                 return (
                   <div id={`unitId-${u.id}`} key={u.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", borderLeft: `4px solid ${cuotaMes?.status === "pagado" ? "#065f46" : cuotaMes?.status === "atrasado" ? "#b91c3c" : "#e5e7eb"}`, ...contextualRecordStyle(contextualUnitId === u.id) }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
@@ -764,6 +905,24 @@ export default function CondominioDetalle() {
                       <div style={{ background: "#eff6ff", borderRadius: 6, padding: "6px 10px", marginTop: 6 }}>
                         <p style={{ margin: 0, fontSize: 11, color: "#1e40af", fontWeight: 600 }}>Residente: {u.residente_nombre}</p>
                         {u.residente_email && <p style={{ margin: "2px 0 0", fontSize: 10, color: "#1e40af" }}>{u.residente_email}</p>}
+                      </div>
+                    )}
+                    {isControlledCondominium && (
+                      <div style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 8, padding: "9px 10px", marginTop: 9 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <div>
+                            <p style={{ margin: "0 0 4px", fontSize: 10, color: "#6b7280", fontWeight: 800, textTransform: "uppercase" }}>Acceso al portal</p>
+                            <span style={{ display: "inline-block", padding: "3px 8px", borderRadius: 99, fontSize: 10, fontWeight: 800, color: portalPresentation.color, background: portalPresentation.background }}>{portalPresentation.label}</span>
+                          </div>
+                          {portalAccess?.active === true && !portalAccess?.revoked_at ? (
+                            <button disabled={portalBusyUnitId === u.id} onClick={() => revocarPortal(u, portalAccess)} style={{ background: "#fff", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 6, padding: "5px 9px", cursor: portalBusyUnitId === u.id ? "not-allowed" : "pointer", fontSize: 10, fontWeight: 800 }}>Revocar acceso</button>
+                          ) : ![PORTAL_ACCESS_STATES.SIN_CORREO, PORTAL_ACCESS_STATES.REVOCADO, PORTAL_ACCESS_STATES.HABILITANDO].includes(portalState) ? (
+                            <button disabled={portalBusyUnitId === u.id} onClick={() => setPortalModal({ unit: u, emailConfirmed: false, confirmMultiUnit: false, reviewState: PORTAL_ACCESS_STATES.CORREO_PENDIENTE_CONFIRMAR, error: "" })} style={{ background: "#1e40af", color: "#fff", border: "none", borderRadius: 6, padding: "5px 9px", cursor: portalBusyUnitId === u.id ? "not-allowed" : "pointer", fontSize: 10, fontWeight: 800 }}>Habilitar portal</button>
+                          ) : null}
+                        </div>
+                        {portalState === PORTAL_ACCESS_STATES.SIN_CORREO && <p style={{ margin: "6px 0 0", fontSize: 10, color: "#6b7280" }}>Guarda primero un correo confirmado del propietario.</p>}
+                        {portalState === PORTAL_ACCESS_STATES.REVOCADO && <p style={{ margin: "6px 0 0", fontSize: 10, color: "#6b7280" }}>La reactivación requiere revisión administrativa.</p>}
+                        {portalState === PORTAL_ACCESS_STATES.PORTAL_GENERAL_APAGADO && <p style={{ margin: "6px 0 0", fontSize: 10, color: "#92400e", fontWeight: 700 }}>La relación está preparada; el acceso general continúa apagado.</p>}
                       </div>
                     )}
                     {cuotaMes && (
@@ -1249,6 +1408,43 @@ export default function CondominioDetalle() {
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <button onClick={() => setModalUnidad(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
             <Btn onClick={guardarUnidad} disabled={saving || !formUnidad.propietario_nombre.trim()} color={brand.red}>{saving ? "Guardando…" : "Guardar"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {portalModal?.unit && (
+        <Modal title={`Habilitar portal — Unidad ${portalModal.unit.numero}`} onClose={() => portalBusyUnitId ? null : setPortalModal(null)}>
+          <div style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, marginBottom: 14 }}>
+            <p style={{ margin: "0 0 5px", fontSize: 11, color: "#6b7280", fontWeight: 800, textTransform: "uppercase" }}>Correo guardado en la unidad</p>
+            <p style={{ margin: 0, fontSize: 14, color: "#1a1a2e", fontWeight: 700 }}>{portalModal.unit.propietario_email}</p>
+            <p style={{ margin: "8px 0 0", fontSize: 11, color: "#6b7280", lineHeight: 1.5 }}>El backend volverá a leer este correo desde la base. El correo mostrado no se envía libremente en la solicitud.</p>
+          </div>
+
+          <label style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: 12, border: "1px solid #dbeafe", background: "#eff6ff", borderRadius: 9, cursor: "pointer", marginBottom: 12 }}>
+            <input type="checkbox" checked={portalModal.emailConfirmed === true} onChange={event => setPortalModal(current => ({ ...current, emailConfirmed: event.target.checked, reviewState: event.target.checked ? PORTAL_ACCESS_STATES.LISTO_PARA_HABILITAR : PORTAL_ACCESS_STATES.CORREO_PENDIENTE_CONFIRMAR, error: "" }))} style={{ marginTop: 2 }} />
+            <span style={{ fontSize: 12, color: "#1e3a8a", lineHeight: 1.5 }}>Confirmo que este correo fue proporcionado o validado directamente por el propietario correspondiente a esta unidad.</span>
+          </label>
+
+          {portalModal.reviewState === PORTAL_ACCESS_STATES.MULTIUNIDAD_POR_CONFIRMAR && (
+            <label style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: 12, border: "1px solid #fde68a", background: "#fffbeb", borderRadius: 9, cursor: "pointer", marginBottom: 12 }}>
+              <input type="checkbox" checked={portalModal.confirmMultiUnit === true} onChange={event => setPortalModal(current => ({ ...current, confirmMultiUnit: event.target.checked, error: "" }))} style={{ marginTop: 2 }} />
+              <span style={{ fontSize: 12, color: "#92400e", lineHeight: 1.5 }}>Confirmo que la misma identidad está autorizada para acceder también a esta unidad.</span>
+            </label>
+          )}
+
+          {portalModal.error && <p style={{ background: "#fee2e2", color: "#991b1b", borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 1.5 }}>{portalModal.error}</p>}
+          {!portalModal.error && <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: portalStatePresentation(portalModal.reviewState).color }}>{portalStatePresentation(portalModal.reviewState).label}</p>}
+          {!operationControls.ownerPortalEnabled && <p style={{ background: "#fff7ed", color: "#9a3412", borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 1.5 }}>La relación quedará preparada, pero el portal general de este condominio continúa apagado.</p>}
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button disabled={portalBusyUnitId === portalModal.unit.id} onClick={() => setPortalModal(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn
+              onClick={habilitarPortal}
+              disabled={portalBusyUnitId === portalModal.unit.id || portalModal.emailConfirmed !== true || (portalModal.reviewState === PORTAL_ACCESS_STATES.MULTIUNIDAD_POR_CONFIRMAR && portalModal.confirmMultiUnit !== true)}
+              color="#1e40af"
+            >
+              {portalBusyUnitId === portalModal.unit.id ? "Habilitando…" : "Habilitar portal"}
+            </Btn>
           </div>
         </Modal>
       )}
