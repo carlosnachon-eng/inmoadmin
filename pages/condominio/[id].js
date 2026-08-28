@@ -12,6 +12,7 @@ import {
   classifyUnitPortalState,
   normalizePortalEmail,
 } from "../../lib/condominios/portalAccess.mjs";
+import { buildHistoricalPortfolio } from "../../lib/condominios/historicalPortfolio.mjs";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -95,6 +96,10 @@ const StatusBadge = ({ status }) => {
     abierto:  { bg: "#fef3c7", color: "#92400e", label: "Abierto" },
     en_proceso:{ bg: "#dbeafe", color: "#1e40af", label: "En proceso" },
     resuelto: { bg: "#d1fae5", color: "#065f46", label: "Resuelto" },
+    REPORTADO: { bg: "#fef3c7", color: "#92400e", label: "Reportado" },
+    EN_REVISION: { bg: "#dbeafe", color: "#1e40af", label: "En revisión" },
+    VALIDADO: { bg: "#d1fae5", color: "#065f46", label: "Validado" },
+    CONTROVERTIDO: { bg: "#fee2e2", color: "#991b1b", label: "Controvertido" },
   };
   const s = map[status] || { bg: "#f3f4f6", color: "#374151", label: status };
   return <span style={{ background: s.bg, color: s.color, padding: "2px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{s.label}</span>;
@@ -113,6 +118,9 @@ export default function CondominioDetalle() {
   const [tickets, setTickets] = useState([]);
   const [operationControls, setOperationControls] = useState(unavailableCondominiumOperationControls());
   const [portalAccesses, setPortalAccesses] = useState([]);
+  const [historicalAccounts, setHistoricalAccounts] = useState([]);
+  const [historicalPayments, setHistoricalPayments] = useState([]);
+  const [historicalRecoveries, setHistoricalRecoveries] = useState([]);
   const [portalModal, setPortalModal] = useState(null);
   const [portalBusyUnitId, setPortalBusyUnitId] = useState(null);
   const [portalUnitErrors, setPortalUnitErrors] = useState({});
@@ -167,6 +175,9 @@ export default function CondominioDetalle() {
       { data: ticketsData },
       { data: operationControlData, error: operationControlError },
       { data: portalAccessData, error: portalAccessError },
+      { data: historicalAccountData, error: historicalAccountError },
+      { data: historicalPaymentData, error: historicalPaymentError },
+      { data: historicalRecoveryData, error: historicalRecoveryError },
     ] = await Promise.all([
       supabase.from("condominios").select("*").eq("id", id).single(),
       supabase.from("unidades_condominio").select("*").eq("condominio_id", id).eq("activo", true).order("numero"),
@@ -175,6 +186,9 @@ export default function CondominioDetalle() {
       supabase.from("maintenance_tickets").select("*").eq("condominio_id", id).order("created_at", { ascending: false }),
       supabase.from("condominium_operation_controls").select("lifecycle_status, owner_portal_enabled, communications_enabled, current_billing_enabled, receipts_enabled, real_payments_enabled, money_movements_enabled").eq("condominio_id", id).maybeSingle(),
       supabase.from("condominium_unit_portal_access").select("id, condominio_id, unidad_id, email_normalized, access_kind, active, created_at, revoked_at").eq("condominio_id", id).order("created_at", { ascending: false }),
+      supabase.from("condominium_historical_accounts").select("id, condominio_id, unidad_id, source_organization, source_label, cutoff_date, reported_charges, reported_payments, reported_balance, review_status, created_at").eq("condominio_id", id).order("cutoff_date", { ascending: false }),
+      supabase.from("condominium_historical_payments").select("id, condominio_id, historical_account_id, unidad_id, reported_period, reported_amount, received_by, source_label, review_status").eq("condominio_id", id).order("reported_period", { ascending: false }),
+      supabase.from("condominium_historical_recoveries").select("id, condominio_id, historical_account_id, unidad_id, amount, collected_at, status").eq("condominio_id", id).order("collected_at", { ascending: false }),
     ]);
     setCond(condData);
     setUnidades(unidadesData || []);
@@ -185,6 +199,9 @@ export default function CondominioDetalle() {
       ? unavailableCondominiumOperationControls()
       : resolveCondominiumOperationControls(operationControlData));
     setPortalAccesses(portalAccessError ? [] : portalAccessData || []);
+    setHistoricalAccounts(historicalAccountError ? [] : historicalAccountData || []);
+    setHistoricalPayments(historicalPaymentError ? [] : historicalPaymentData || []);
+    setHistoricalRecoveries(historicalRecoveryError ? [] : historicalRecoveryData || []);
     setLoading(false);
   };
 
@@ -196,10 +213,18 @@ export default function CondominioDetalle() {
   const cobradoPeriodo = cuotasPeriodo.filter(q => q.status === "pagado").reduce((a, q) => a + (q.monto || 0), 0);
   const pendientePeriodo = cuotasPeriodo.filter(q => q.status !== "pagado").reduce((a, q) => a + (q.monto || 0), 0);
   const totalGastos = gastos.filter(g => !g.concepto?.toLowerCase().includes("saldo inicial")).reduce((a, g) => a + (g.monto || 0), 0);
-  const totalCobradoHistorico = cuotas.filter(q => q.status === "pagado").reduce((a, q) => a + (q.monto || 0), 0);
+  const totalCuotasCobradas = cuotas.filter(q => q.status === "pagado").reduce((a, q) => a + (q.monto || 0), 0);
   const honorariosAcumulados = gastos.filter(g => g.concepto?.toUpperCase().includes("ADMINISTRACION EMPORIO")).reduce((a, g) => a + (g.monto || 0), 0);
   const saldoInicial = Math.abs(gastos.filter(g => g.concepto?.toLowerCase().includes("saldo inicial")).reduce((a, g) => a + (g.monto || 0), 0));
-  const fondoDisponible = totalCobradoHistorico + saldoInicial - totalGastos;
+  const fondoDisponible = totalCuotasCobradas + saldoInicial - totalGastos;
+  const historicalPortfolio = buildHistoricalPortfolio({
+    units: unidades,
+    accounts: historicalAccounts,
+    historicalPayments,
+    historicalRecoveries,
+    currentFees: cuotas,
+  });
+  const hasHistoricalPortfolio = historicalPortfolio.accountCount > 0;
 
   // ── Guardar unidad ────────────────────────────────────────────────────────
   const guardarUnidad = async () => {
@@ -724,7 +749,7 @@ export default function CondominioDetalle() {
     doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(122,122,122);
     doc.text("RESUMEN FINANCIERO GLOBAL", 20, y + 8);
     const kpis = [
-      [`Total cobrado histórico:`, fmt(totalCobradoHistorico)],
+      [`Cuotas corrientes cobradas:`, fmt(totalCuotasCobradas)],
       [`Honorarios Emporio:`, fmt(honorariosAcumulados)],
       [`Total gastos comunes:`, fmt(totalGastos)],
       [`Fondo disponible:`, fmt(Math.max(0, fondoDisponible))],
@@ -825,6 +850,7 @@ export default function CondominioDetalle() {
   const TABS = [
     { id: "unidades",       label: "🏠 Unidades" },
     { id: "cobranza",       label: "💰 Cobranza" },
+    ...(hasHistoricalPortfolio ? [{ id: "cartera", label: "🧾 Cartera" }] : []),
     { id: "gastos",         label: "📤 Gastos" },
     { id: "estado_cuenta",  label: "📊 Estado de cuenta" },
     { id: "mantenimiento",  label: "🔧 Mantenimiento" },
@@ -993,7 +1019,7 @@ export default function CondominioDetalle() {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                     <div style={{ width: 4, height: 20, background: "#b91c3c", borderRadius: 2 }} />
                     <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#b91c3c" }}>
-                      ⚠️ Adeudos históricos — {todasAtrasadas.length} mes{todasAtrasadas.length !== 1 ? "es" : ""} sin pagar · {fmt(totalAdeudo)} total
+                      ⚠️ Cuotas corrientes vencidas — {todasAtrasadas.length} mes{todasAtrasadas.length !== 1 ? "es" : ""} sin pagar · {fmt(totalAdeudo)} total
                     </h3>
                   </div>
                   {Object.values(porUnidad).map(({ unidad, cuotas: cs }) => {
@@ -1119,6 +1145,110 @@ export default function CondominioDetalle() {
           </div>
         )}
 
+        {/* ── TAB: CARTERA HISTÓRICA / CORRIENTE ── */}
+        {tab === "cartera" && hasHistoricalPortfolio && (
+          <div>
+            <div style={{ marginBottom: 18 }}>
+              <h2 style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 800, color: "#1a1a2e" }}>Histórico Antive y administración Emporio</h2>
+              <p style={{ margin: 0, color: "#6b7280", fontSize: 13, lineHeight: 1.5 }}>Los saldos anteriores recibidos de Antive se muestran separados de las cuotas emitidas por Emporio. Esta vista es informativa y no modifica cargos, pagos, recuperaciones ni estados.</p>
+            </div>
+
+            <section style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 14, padding: 18, marginBottom: 16 }}>
+              <p style={{ margin: "0 0 12px", color: "#9a3412", fontSize: 11, fontWeight: 800, letterSpacing: ".04em" }}>HISTÓRICO ANTIVE</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10 }}>
+                {[
+                  { label: "Cargos hasta agosto", value: fmt(historicalPortfolio.totals.historicalCharges) },
+                  { label: "Pagos históricos", value: fmt(historicalPortfolio.totals.historicalPayments) },
+                  { label: "Saldo histórico inicial", value: fmt(historicalPortfolio.totals.initialHistoricalBalance) },
+                  { label: "Recuperado", value: fmt(historicalPortfolio.totals.historicalRecovered) },
+                  { label: "Saldo histórico pendiente", value: fmt(historicalPortfolio.totals.historicalPending) },
+                ].map(item => (
+                  <div key={item.label} style={{ background: "#fff", borderRadius: 10, padding: "12px 14px" }}>
+                    <p style={{ margin: 0, fontSize: 10, color: "#9a3412", textTransform: "uppercase", fontWeight: 700 }}>{item.label}</p>
+                    <p style={{ margin: "4px 0 0", fontSize: 19, fontWeight: 800, color: "#1a1a2e" }}>{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              <p style={{ margin: "12px 0 0", color: "#9a3412", fontSize: 12 }}>Origen: {historicalPortfolio.sourceOrganizations.join(", ") || "tercero"}. Los pagos detallados se muestran como soporte del resumen y no se suman nuevamente.</p>
+            </section>
+
+            <section style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 14, padding: 18, marginBottom: 16 }}>
+              <p style={{ margin: "0 0 12px", color: "#1e40af", fontSize: 11, fontWeight: 800, letterSpacing: ".04em" }}>ADMINISTRACIÓN EMPORIO</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10 }}>
+                {[
+                  { label: "Cuotas emitidas", value: fmt(historicalPortfolio.totals.currentIssued) },
+                  { label: "Pagos conciliados", value: fmt(historicalPortfolio.totals.currentCollected) },
+                  { label: "Saldo corriente", value: fmt(historicalPortfolio.totals.currentPending) },
+                  { label: "Cobranza corriente", value: `${Math.round(historicalPortfolio.totals.currentCollectionRate * 100)}%` },
+                ].map(item => (
+                  <div key={item.label} style={{ background: "#fff", borderRadius: 10, padding: "12px 14px" }}>
+                    <p style={{ margin: 0, fontSize: 10, color: "#1e40af", textTransform: "uppercase", fontWeight: 700 }}>{item.label}</p>
+                    <p style={{ margin: "4px 0 0", fontSize: 19, fontWeight: 800, color: "#1a1a2e" }}>{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              <p style={{ margin: "12px 0 0", color: "#1e40af", fontSize: 12 }}>Incluye septiembre de 2026 y los periodos posteriores existentes en cuotas de condominio.</p>
+            </section>
+
+            <section style={{ background: "#1a1a2e", color: "#fff", borderRadius: 14, padding: "17px 20px", marginBottom: 22 }}>
+              <p style={{ margin: "0 0 8px", fontSize: 11, color: "rgba(255,255,255,.6)", fontWeight: 800, letterSpacing: ".04em" }}>SALDO ADMINISTRATIVO TOTAL</p>
+              <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }}><strong>{fmt(historicalPortfolio.totals.historicalPending)}</strong> histórico pendiente + <strong>{fmt(historicalPortfolio.totals.currentPending)}</strong> saldo corriente = <strong style={{ fontSize: 21 }}>{fmt(historicalPortfolio.totals.administrativeTotal)}</strong></p>
+            </section>
+
+            <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 800, color: "#1a1a2e" }}>Desglose por unidad</h3>
+            <div style={{ background: "#fff", borderRadius: 12, overflowX: "auto", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}>
+                <thead>
+                  <tr style={{ background: "#f9fafb" }}>
+                    {[
+                      "Unidad", "Cargos Antive", "Pagos Antive", "Saldo inicial", "Recuperado", "Histórico pendiente", "Estado", "Emitido Emporio", "Cobrado Emporio", "Saldo corriente", "Total administrativo",
+                    ].map(header => <th key={header} style={{ padding: "10px 11px", textAlign: "left", fontSize: 10, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>{header}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {historicalPortfolio.rows.map(row => (
+                    <tr key={row.accountId} style={{ borderTop: "1px solid #f3f4f6" }}>
+                      <td style={{ padding: "11px", fontWeight: 800 }}>{row.unitNumber}</td>
+                      <td style={{ padding: "11px" }}>{fmt(row.historicalCharges)}</td>
+                      <td style={{ padding: "11px" }}><strong>{fmt(row.historicalPayments)}</strong><br/><span style={{ fontSize: 10, color: "#6b7280" }}>{row.historicalPaymentDetails.length} registro{row.historicalPaymentDetails.length === 1 ? "" : "s"}</span></td>
+                      <td style={{ padding: "11px" }}>{fmt(row.initialHistoricalBalance)}</td>
+                      <td style={{ padding: "11px" }}>{fmt(row.historicalRecovered)}</td>
+                      <td style={{ padding: "11px", color: row.historicalPending > 0 ? "#9a3412" : "#065f46", fontWeight: 800 }}>{fmt(row.historicalPending)}</td>
+                      <td style={{ padding: "11px" }}><StatusBadge status={row.reviewStatus} /></td>
+                      <td style={{ padding: "11px" }}>{fmt(row.currentIssued)}</td>
+                      <td style={{ padding: "11px", color: "#065f46", fontWeight: 700 }}>{fmt(row.currentCollected)}</td>
+                      <td style={{ padding: "11px", color: row.currentPending > 0 ? "#1e40af" : "#065f46", fontWeight: 700 }}>{fmt(row.currentPending)}</td>
+                      <td style={{ padding: "11px", fontWeight: 800 }}>{fmt(row.administrativeTotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <h3 style={{ margin: "22px 0 12px", fontSize: 14, fontWeight: 800, color: "#1a1a2e" }}>Pagos históricos registrados por Antive</h3>
+            <div style={{ background: "#fff", borderRadius: 12, overflowX: "auto", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
+                <thead>
+                  <tr style={{ background: "#f9fafb" }}>
+                    {["Unidad", "Periodo reportado", "Importe", "Recibido por", "Estado"].map(header => <th key={header} style={{ padding: "10px 12px", textAlign: "left", fontSize: 10, fontWeight: 800, color: "#6b7280", textTransform: "uppercase" }}>{header}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {historicalPortfolio.rows.flatMap(row => row.historicalPaymentDetails.map(payment => (
+                    <tr key={payment.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                      <td style={{ padding: "10px 12px", fontWeight: 800 }}>{row.unitNumber}</td>
+                      <td style={{ padding: "10px 12px" }}>{periodoLabel(payment.reported_period)}</td>
+                      <td style={{ padding: "10px 12px", fontWeight: 700 }}>{fmt(payment.reported_amount)}</td>
+                      <td style={{ padding: "10px 12px" }}>{payment.received_by || "—"}</td>
+                      <td style={{ padding: "10px 12px" }}><StatusBadge status={payment.review_status} /></td>
+                    </tr>
+                  )))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* ── TAB: GASTOS ── */}
         {tab === "gastos" && (
           <div>
@@ -1219,7 +1349,7 @@ export default function CondominioDetalle() {
               <p style={{ margin: "0 0 16px", fontSize: 12, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", fontWeight: 600 }}>Resumen financiero global</p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
                 {[
-                  { label: "Total cobrado", value: fmt(totalCobradoHistorico), color: "#4ade80" },
+                  { label: "Cuotas corrientes cobradas", value: fmt(totalCuotasCobradas), color: "#4ade80" },
                   { label: "Honorarios Emporio", value: fmt(honorariosAcumulados), color: "#fb923c" },
                   { label: "Total gastos", value: fmt(totalGastos), color: "#f87171" },
                   { label: "Fondo disponible", value: fmt(Math.max(0, fondoDisponible)), color: fondoDisponible >= 0 ? "#4ade80" : "#f87171" },
