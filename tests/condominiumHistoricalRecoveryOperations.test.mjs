@@ -14,6 +14,7 @@ import { buildHistoricalPortfolio } from "../lib/condominios/historicalPortfolio
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 const migration = await read("../supabase/migrations/202608280004_condominium_historical_recovery_operations.sql");
 const rollback = await read("../supabase/production/rollback/202608280004_condominium_historical_recovery_operations_rollback.sql");
+const productionChecks = await read("../supabase/production/tests/202608280004_condominium_historical_recovery_operations_checks.sql");
 const endpoint = await read("../pages/api/condominios/historical-recoveries.js");
 const adminPage = await read("../pages/condominio/[id].js");
 const ownerPortal = await read("../components/condomino/ControlledCondominoPortal.js");
@@ -138,4 +139,23 @@ test("el rollback se niega a borrar recuperaciones o evidencia", () => {
   assert.match(rollback, /ROLLBACK ABORTADO: existen recuperaciones históricas/);
   assert.match(rollback, /ROLLBACK ABORTADO: existe evidencia privada/);
   assert.doesNotMatch(rollback, /delete from public\.condominium_historical_recoveries|truncate/i);
+});
+
+test("el postcheck limita Génova aunque otros tenants tengan cuotas en septiembre", () => {
+  assert.match(productionChecks, /genova_id constant uuid:='29ebc26e-b82d-c90c-10a7-1f3761aeca09'/);
+  assert.match(productionChecks, /from public\.cuotas_condominio\s+where condominio_id=genova_id and periodo='2026-09'/);
+  assert.match(productionChecks, /from public\.condominium_historical_accounts\s+where condominio_id=genova_id/);
+  assert.match(productionChecks, /from public\.condominium_historical_payments\s+where condominio_id=genova_id/);
+  assert.match(productionChecks, /from public\.condominium_historical_recoveries\s+where condominio_id=genova_id/);
+  assert.match(productionChecks, /from public\.unidades_condominio\s+where condominio_id=genova_id/);
+  assert.match(productionChecks, /name like genova_id::text\|\|'\/%'/);
+  assert.doesNotMatch(productionChecks, /from public\.cuotas_condominio\s+where periodo='2026-09'/);
+
+  const fees = [
+    { condominioId: "genova", periodo: "2026-09", monto: 500 },
+    { condominioId: "otro-tenant", periodo: "2026-09", monto: 4800 },
+  ];
+  const scoped = fees.filter((fee) => fee.condominioId === "genova" && fee.periodo === "2026-09");
+  assert.equal(scoped.length, 1);
+  assert.equal(scoped.reduce((total, fee) => total + fee.monto, 0), 500);
 });
