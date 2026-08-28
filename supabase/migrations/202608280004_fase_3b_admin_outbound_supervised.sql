@@ -33,18 +33,20 @@ alter table public.shadow_admin_outbound_messages enable row level security;
 revoke all on public.shadow_admin_outbound_messages from public,anon,authenticated,service_role;
 grant select,insert,update on public.shadow_admin_outbound_messages to service_role;
 
-create or replace function public.claim_shadow_admin_outbound(p_worker_id text)
+drop function if exists public.claim_shadow_admin_outbound(text);
+create or replace function public.claim_shadow_admin_outbound(p_worker_id text, p_not_before timestamptz)
 returns table(
   outbound_id uuid, action_id uuid, message_id uuid, conversation_id uuid, turn_key text,
   channel_id text, respond_contact_id text, conversation_action text, case_domain text,
   interaction_direction text, proposed_message text, confidence numeric,
   requires_human boolean, auto_send_eligible boolean, expires_at timestamptz,
-  anchor_occurred_at timestamptz
+  anchor_occurred_at timestamptz, action_created_at timestamptz
 )
 language plpgsql security definer set search_path=public,pg_temp as $$
 declare v_action public.shadow_conversation_actions%rowtype;
 begin
   if coalesce(length(trim(p_worker_id)),0) < 8 or length(p_worker_id)>120 then raise exception 'invalid_worker_id'; end if;
+  if p_not_before is null then raise exception 'invalid_not_before'; end if;
   perform pg_advisory_xact_lock(hashtext('shadow_admin_outbound_supervised_v1'));
   if (select count(*) from public.shadow_admin_outbound_messages) >= 10 then return; end if;
 
@@ -53,6 +55,7 @@ begin
   join public.shadow_messages anchor on anchor.id=a.message_id and anchor.direction='inbound'
   join public.shadow_conversations c on c.id=a.conversation_id and c.provider='respond_admin' and c.channel='544519' and c.respond_contact_id is not null
   where a.status='proposed' and a.auto_send_eligible=true and a.requires_human=false and a.expires_at>now()
+    and a.created_at>=p_not_before
     and a.interaction_direction='inbound_customer_action'
     and a.conversation_action in ('ask_missing_information','clarify_property','clarify_payment_amount','clarify_payment_period','request_document','acknowledge_received_information','provide_verified_status')
     and exists(select 1 from public.respond_identity_links ril join public.client_identities ci on ci.id=ril.client_identity_id and ci.status='active' where ril.respond_contact_id=c.respond_contact_id and ril.link_status='confirmed')
@@ -67,16 +70,16 @@ begin
 
   select v_action.id,v_action.message_id,v_action.conversation_id,v_action.turn_key,c.channel,c.respond_contact_id,
     v_action.conversation_action,v_action.case_domain,v_action.interaction_direction,v_action.proposed_message,v_action.confidence,
-    v_action.requires_human,v_action.auto_send_eligible,v_action.expires_at,anchor.occurred_at
+    v_action.requires_human,v_action.auto_send_eligible,v_action.expires_at,anchor.occurred_at,v_action.created_at
   into action_id,message_id,conversation_id,turn_key,channel_id,respond_contact_id,conversation_action,case_domain,
-    interaction_direction,proposed_message,confidence,requires_human,auto_send_eligible,expires_at,anchor_occurred_at
+    interaction_direction,proposed_message,confidence,requires_human,auto_send_eligible,expires_at,anchor_occurred_at,action_created_at
   from public.shadow_conversations c join public.shadow_messages anchor on anchor.id=v_action.message_id where c.id=v_action.conversation_id;
   return next;
 end $$;
 
-revoke all on function public.claim_shadow_admin_outbound(text) from public,anon,authenticated,service_role;
-grant execute on function public.claim_shadow_admin_outbound(text) to service_role;
+revoke all on function public.claim_shadow_admin_outbound(text,timestamptz) from public,anon,authenticated,service_role;
+grant execute on function public.claim_shadow_admin_outbound(text,timestamptz) to service_role;
 
 comment on table public.shadow_admin_outbound_messages is 'Auditoría minimizada del sender Admin 544519; hard cap acumulado de 10 claims y sin payload Respond';
-comment on function public.claim_shadow_admin_outbound(text) is 'Claim atómico de una action elegible; no envía mensajes y falla cerrado fuera de 544519';
+comment on function public.claim_shadow_admin_outbound(text,timestamptz) is 'Claim atómico posterior al cutoff explícito; no envía mensajes y falla cerrado fuera de 544519';
 commit;
