@@ -16,6 +16,13 @@ import { buildHistoricalPortfolio } from "../../lib/condominios/historicalPortfo
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
+const fileToBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+  reader.onerror = () => reject(new Error("FILE_READ_FAILED"));
+  reader.readAsDataURL(file);
+});
+
 const periodoActual = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -100,6 +107,9 @@ const StatusBadge = ({ status }) => {
     EN_REVISION: { bg: "#dbeafe", color: "#1e40af", label: "En revisión" },
     VALIDADO: { bg: "#d1fae5", color: "#065f46", label: "Validado" },
     CONTROVERTIDO: { bg: "#fee2e2", color: "#991b1b", label: "Controvertido" },
+    PENDIENTE_APLICACION: { bg: "#fef3c7", color: "#92400e", label: "Pendiente de conciliación" },
+    APLICADO: { bg: "#d1fae5", color: "#065f46", label: "Aplicada" },
+    REVERSADO: { bg: "#f3f4f6", color: "#4b5563", label: "Reversada" },
   };
   const s = map[status] || { bg: "#f3f4f6", color: "#374151", label: status };
   return <span style={{ background: s.bg, color: s.color, padding: "2px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{s.label}</span>;
@@ -124,6 +134,9 @@ export default function CondominioDetalle() {
   const [portalModal, setPortalModal] = useState(null);
   const [portalBusyUnitId, setPortalBusyUnitId] = useState(null);
   const [portalUnitErrors, setPortalUnitErrors] = useState({});
+  const [recoveryModal, setRecoveryModal] = useState(null);
+  const [recoveryEvidence, setRecoveryEvidence] = useState(null);
+  const [recoveryForm, setRecoveryForm] = useState({});
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -144,6 +157,17 @@ export default function CondominioDetalle() {
   const [modalCuota, setModalCuota] = useState(null); // cuota seleccionada
   const [archivoComprobante, setArchivoComprobante] = useState(null);
   const [fechaPagoCuota, setFechaPagoCuota] = useState(new Date().toISOString().split("T")[0]);
+
+  const emptyRecoveryForm = () => ({
+    amount: "",
+    paymentReference: "",
+    proofReceivedAt: new Date().toISOString().slice(0, 16),
+    currentFeeId: "",
+    idempotencyKey: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "",
+    collectedAt: new Date().toISOString().split("T")[0],
+    bankConfirmationReference: "",
+    reversalReason: "",
+  });
 
   const emptyUnidad = { numero: "", piso: "", propietario_nombre: "", propietario_email: "", propietario_telefono: "", residente_nombre: "", residente_email: "", residente_telefono: "", residente_es_propietario: true, notas: "" };
   const [formUnidad, setFormUnidad] = useState(emptyUnidad);
@@ -188,7 +212,7 @@ export default function CondominioDetalle() {
       supabase.from("condominium_unit_portal_access").select("id, condominio_id, unidad_id, email_normalized, access_kind, active, created_at, revoked_at").eq("condominio_id", id).order("created_at", { ascending: false }),
       supabase.from("condominium_historical_accounts").select("id, condominio_id, unidad_id, source_organization, source_label, cutoff_date, reported_charges, reported_payments, reported_balance, review_status, created_at").eq("condominio_id", id).order("cutoff_date", { ascending: false }),
       supabase.from("condominium_historical_payments").select("id, condominio_id, historical_account_id, unidad_id, reported_period, reported_amount, received_by, source_label, review_status").eq("condominio_id", id).order("reported_period", { ascending: false }),
-      supabase.from("condominium_historical_recoveries").select("id, condominio_id, historical_account_id, unidad_id, amount, collected_at, status").eq("condominio_id", id).order("collected_at", { ascending: false }),
+      supabase.from("condominium_historical_recoveries").select("id, condominio_id, historical_account_id, unidad_id, amount, deposit_total, payment_reference, proof_received_at, collected_at, custodian_organization, bank_confirmation_reference, current_fee_id, status, applied_at, reversed_at, reversal_reason, evidence_path").eq("condominio_id", id).order("proof_received_at", { ascending: false }),
     ]);
     setCond(condData);
     setUnidades(unidadesData || []);
@@ -225,6 +249,127 @@ export default function CondominioDetalle() {
     currentFees: cuotas,
   });
   const hasHistoricalPortfolio = historicalPortfolio.accountCount > 0;
+  const pendingHistoricalRecoveries = historicalRecoveries.filter(recovery => recovery.status === "PENDIENTE_APLICACION");
+  const appliedHistoricalRecoveries = historicalRecoveries.filter(recovery => recovery.status === "APLICADO");
+  const reversedHistoricalRecoveries = historicalRecoveries.filter(recovery => recovery.status === "REVERSADO");
+
+  const recoveryErrorMessage = (code) => ({
+    INVALID_AMOUNT: "Ingresa un importe histórico válido.",
+    INVALID_DEPOSIT_TOTAL: "El total del depósito no coincide con las aplicaciones.",
+    INVALID_REFERENCE: "Ingresa una referencia válida.",
+    INVALID_EVIDENCE: "Adjunta un PDF, JPG o PNG de hasta 5 MB.",
+    INVALID_EVIDENCE_TYPE: "El comprobante debe ser PDF, JPG o PNG.",
+    DUPLICATE_RECOVERY: "Este comprobante ya fue registrado.",
+    HISTORICAL_BALANCE_EXCEEDED: "La recuperación excede el saldo histórico pendiente.",
+    CURRENT_FEE_NOT_APPLICABLE: "La cuota corriente seleccionada ya no puede aplicarse.",
+    RECOVERY_NOT_PENDING: "La recuperación ya no está pendiente.",
+    RECOVERY_NOT_APPLIED: "Sólo puede revertirse una recuperación aplicada.",
+    REAL_PAYMENTS_BLOCKED: "La confirmación de pagos está bloqueada para este condominio.",
+    OPERATION_NOT_ALLOWED: "No tienes permiso para operar recuperaciones históricas.",
+    REVERSAL_REASON_REQUIRED: "Indica el motivo de la reversión.",
+  }[code] || "No fue posible completar la operación. Revisa los datos e intenta nuevamente.");
+
+  const callHistoricalRecovery = async (payload) => {
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    if (!currentSession?.access_token) return { ok: false, code: "SESSION_REQUIRED" };
+    const request = await fetch("/api/condominios/historical-recoveries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${currentSession.access_token}` },
+      body: JSON.stringify(payload),
+    });
+    const result = await request.json().catch(() => ({ ok: false, code: "INVALID_RESPONSE" }));
+    return { ...result, httpStatus: request.status };
+  };
+
+  const openRecoveryCreate = (row) => {
+    setRecoveryEvidence(null);
+    setRecoveryForm(emptyRecoveryForm());
+    setRecoveryModal({ mode: "create", row });
+  };
+
+  const submitRecoveryCreate = async () => {
+    if (!recoveryModal?.row || !recoveryEvidence) {
+      showToast("Adjunta el comprobante recibido", false);
+      return;
+    }
+    const amount = Number(recoveryForm.amount);
+    const selectedFee = cuotas.find(fee => fee.id === recoveryForm.currentFeeId);
+    const depositTotal = amount + Number(selectedFee?.monto || 0);
+    setSaving(true);
+    let base64;
+    try {
+      base64 = await fileToBase64(recoveryEvidence);
+    } catch {
+      setSaving(false);
+      showToast("No fue posible leer el comprobante", false);
+      return;
+    }
+    const result = await callHistoricalRecovery({
+      action: "create",
+      condominioId: id,
+      unidadId: recoveryModal.row.unitId,
+      historicalAccountId: recoveryModal.row.accountId,
+      amount,
+      depositTotal,
+      paymentReference: recoveryForm.paymentReference,
+      proofReceivedAt: new Date(recoveryForm.proofReceivedAt).toISOString(),
+      idempotencyKey: recoveryForm.idempotencyKey,
+      currentFeeId: recoveryForm.currentFeeId || null,
+      evidence: { mimeType: recoveryEvidence.type, base64 },
+    });
+    setSaving(false);
+    if (!result.ok) {
+      showToast(recoveryErrorMessage(result.code), false);
+      return;
+    }
+    setRecoveryModal(null);
+    setRecoveryEvidence(null);
+    showToast("Comprobante registrado — pendiente de conciliación");
+    await loadData();
+  };
+
+  const submitRecoveryApply = async () => {
+    if (!recoveryModal?.recovery) return;
+    setSaving(true);
+    const result = await callHistoricalRecovery({
+      action: "apply",
+      recoveryId: recoveryModal.recovery.id,
+      condominioId: id,
+      unidadId: recoveryModal.recovery.unidad_id,
+      collectedAt: recoveryForm.collectedAt,
+      bankConfirmationReference: recoveryForm.bankConfirmationReference,
+    });
+    setSaving(false);
+    if (!result.ok) return showToast(recoveryErrorMessage(result.code), false);
+    setRecoveryModal(null);
+    showToast("Depósito conciliado y recuperación aplicada");
+    await loadData();
+  };
+
+  const submitRecoveryReverse = async () => {
+    if (!recoveryModal?.recovery) return;
+    setSaving(true);
+    const result = await callHistoricalRecovery({
+      action: "reverse",
+      recoveryId: recoveryModal.recovery.id,
+      condominioId: id,
+      unidadId: recoveryModal.recovery.unidad_id,
+      reason: recoveryForm.reversalReason,
+    });
+    setSaving(false);
+    if (!result.ok) return showToast(recoveryErrorMessage(result.code), false);
+    setRecoveryModal(null);
+    showToast("Recuperación reversada; el saldo histórico fue restaurado");
+    await loadData();
+  };
+
+  const viewRecoveryEvidence = async (recovery) => {
+    const result = await callHistoricalRecovery({
+      action: "evidence", recoveryId: recovery.id, condominioId: id, unidadId: recovery.unidad_id,
+    });
+    if (!result.ok || !result.signedUrl) return showToast(recoveryErrorMessage(result.code), false);
+    window.open(result.signedUrl, "_blank", "noopener,noreferrer");
+  };
 
   // ── Guardar unidad ────────────────────────────────────────────────────────
   const guardarUnidad = async () => {
@@ -1150,7 +1295,7 @@ export default function CondominioDetalle() {
           <div>
             <div style={{ marginBottom: 18 }}>
               <h2 style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 800, color: "#1a1a2e" }}>Histórico Antive y administración Emporio</h2>
-              <p style={{ margin: 0, color: "#6b7280", fontSize: 13, lineHeight: 1.5 }}>Los saldos anteriores recibidos de Antive se muestran separados de las cuotas emitidas por Emporio. Esta vista es informativa y no modifica cargos, pagos, recuperaciones ni estados.</p>
+              <p style={{ margin: 0, color: "#6b7280", fontSize: 13, lineHeight: 1.5 }}>Los saldos anteriores recibidos de Antive se mantienen separados de las cuotas emitidas por Emporio. Una recuperación sólo disminuye el histórico después de la confirmación bancaria.</p>
             </div>
 
             <section style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 14, padding: 18, marginBottom: 16 }}>
@@ -1195,13 +1340,73 @@ export default function CondominioDetalle() {
               <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }}><strong>{fmt(historicalPortfolio.totals.historicalPending)}</strong> histórico pendiente + <strong>{fmt(historicalPortfolio.totals.currentPending)}</strong> saldo corriente = <strong style={{ fontSize: 21 }}>{fmt(historicalPortfolio.totals.administrativeTotal)}</strong></p>
             </section>
 
+            <section style={{ background: "#fff", borderRadius: 14, padding: 18, marginBottom: 22, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#1a1a2e" }}>Pendientes de conciliación</h3>
+                  <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: 12 }}>El comprobante recibido no reduce el saldo hasta que Mayrani confirme el depósito.</p>
+                </div>
+                <StatusBadge status="PENDIENTE_APLICACION" />
+              </div>
+              {pendingHistoricalRecoveries.length === 0 ? (
+                <p style={{ margin: 0, color: "#9ca3af", fontSize: 13 }}>No hay comprobantes pendientes.</p>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+                    <thead><tr style={{ background: "#f9fafb" }}>{["Unidad", "Histórico", "Depósito total", "Referencia", "Recibido", "Custodio", "Acciones"].map(header => <th key={header} style={{ padding: "9px 10px", textAlign: "left", fontSize: 10, color: "#6b7280", textTransform: "uppercase" }}>{header}</th>)}</tr></thead>
+                    <tbody>{pendingHistoricalRecoveries.map(recovery => (
+                      <tr key={recovery.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: 10, fontWeight: 800 }}>{unidades.find(unit => unit.id === recovery.unidad_id)?.numero || "—"}</td>
+                        <td style={{ padding: 10, fontWeight: 700 }}>{fmt(recovery.amount)}</td>
+                        <td style={{ padding: 10 }}>{fmt(recovery.deposit_total)}</td>
+                        <td style={{ padding: 10 }}>{recovery.payment_reference}</td>
+                        <td style={{ padding: 10 }}>{recovery.proof_received_at ? new Date(recovery.proof_received_at).toLocaleString("es-MX") : "—"}</td>
+                        <td style={{ padding: 10 }}>{recovery.custodian_organization || "ANTIVE"}</td>
+                        <td style={{ padding: 10 }}><div style={{ display: "flex", gap: 6 }}>
+                          <Btn small color="#1e40af" onClick={() => viewRecoveryEvidence(recovery)}>Evidencia</Btn>
+                          <Btn small color="#065f46" disabled={!operationControls.realPaymentsEnabled} onClick={() => { setRecoveryForm(emptyRecoveryForm()); setRecoveryModal({ mode: "apply", recovery }); }}>Confirmar depósito</Btn>
+                        </div></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <section style={{ background: "#fff", borderRadius: 14, padding: 18, marginBottom: 22, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+              <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 800, color: "#1a1a2e" }}>Recuperaciones aplicadas</h3>
+              {appliedHistoricalRecoveries.length === 0 && reversedHistoricalRecoveries.length === 0 ? (
+                <p style={{ margin: 0, color: "#9ca3af", fontSize: 13 }}>Aún no existen recuperaciones aplicadas.</p>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+                    <thead><tr style={{ background: "#f9fafb" }}>{["Unidad", "Importe", "Fecha conciliada", "Referencia", "Estado", "Aplicación corriente", "Acciones"].map(header => <th key={header} style={{ padding: "9px 10px", textAlign: "left", fontSize: 10, color: "#6b7280", textTransform: "uppercase" }}>{header}</th>)}</tr></thead>
+                    <tbody>{[...appliedHistoricalRecoveries, ...reversedHistoricalRecoveries].map(recovery => (
+                      <tr key={recovery.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: 10, fontWeight: 800 }}>{unidades.find(unit => unit.id === recovery.unidad_id)?.numero || "—"}</td>
+                        <td style={{ padding: 10, fontWeight: 700 }}>{fmt(recovery.amount)}</td>
+                        <td style={{ padding: 10 }}>{recovery.collected_at || "—"}</td>
+                        <td style={{ padding: 10 }}>{recovery.payment_reference}</td>
+                        <td style={{ padding: 10 }}><StatusBadge status={recovery.status} /></td>
+                        <td style={{ padding: 10 }}>{recovery.current_fee_id ? "Cuota completa conciliada" : "Sin cuota corriente"}</td>
+                        <td style={{ padding: 10 }}><div style={{ display: "flex", gap: 6 }}>
+                          <Btn small color="#1e40af" onClick={() => viewRecoveryEvidence(recovery)}>Evidencia</Btn>
+                          {recovery.status === "APLICADO" && <Btn small color="#991b1b" onClick={() => { setRecoveryForm(emptyRecoveryForm()); setRecoveryModal({ mode: "reverse", recovery }); }}>Revertir</Btn>}
+                        </div></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
             <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 800, color: "#1a1a2e" }}>Desglose por unidad</h3>
             <div style={{ background: "#fff", borderRadius: 12, overflowX: "auto", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
                     {[
-                      "Unidad", "Cargos Antive", "Pagos Antive", "Saldo inicial", "Recuperado", "Histórico pendiente", "Estado", "Emitido Emporio", "Cobrado Emporio", "Saldo corriente", "Total administrativo",
+                      "Unidad", "Cargos Antive", "Pagos Antive", "Saldo inicial", "Recuperado", "Histórico pendiente", "Estado", "Emitido Emporio", "Cobrado Emporio", "Saldo corriente", "Total administrativo", "Acción",
                     ].map(header => <th key={header} style={{ padding: "10px 11px", textAlign: "left", fontSize: 10, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>{header}</th>)}
                   </tr>
                 </thead>
@@ -1219,6 +1424,7 @@ export default function CondominioDetalle() {
                       <td style={{ padding: "11px", color: "#065f46", fontWeight: 700 }}>{fmt(row.currentCollected)}</td>
                       <td style={{ padding: "11px", color: row.currentPending > 0 ? "#1e40af" : "#065f46", fontWeight: 700 }}>{fmt(row.currentPending)}</td>
                       <td style={{ padding: "11px", fontWeight: 800 }}>{fmt(row.administrativeTotal)}</td>
+                      <td style={{ padding: "11px" }}><Btn small color="#9a3412" disabled={row.historicalPending <= 0} onClick={() => openRecoveryCreate(row)}>Registrar comprobante</Btn></td>
                     </tr>
                   ))}
                 </tbody>
@@ -1575,6 +1781,67 @@ export default function CondominioDetalle() {
             >
               {portalBusyUnitId === portalModal.unit.id ? "Habilitando…" : "Habilitar portal"}
             </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Recuperación histórica: alta pendiente ── */}
+      {recoveryModal?.mode === "create" && (
+        <Modal title={`Registrar comprobante histórico — Unidad ${recoveryModal.row.unitNumber}`} onClose={() => { setRecoveryModal(null); setRecoveryEvidence(null); }}>
+          <p style={{ marginTop: 0, background: "#fff7ed", color: "#9a3412", borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 1.5 }}>
+            Saldo histórico pendiente: <strong>{fmt(recoveryModal.row.historicalPending)}</strong>. El registro permanecerá pendiente y no reducirá el saldo hasta la confirmación bancaria de Antive.
+          </p>
+          <Field label="Importe destinado a histórico *"><Input type="number" min="0.01" step="0.01" max={recoveryModal.row.historicalPending} value={recoveryForm.amount || ""} onChange={event => setRecoveryForm(current => ({ ...current, amount: event.target.value }))} /></Field>
+          <Field label="Referencia del depósito *"><Input maxLength={160} value={recoveryForm.paymentReference || ""} onChange={event => setRecoveryForm(current => ({ ...current, paymentReference: event.target.value }))} placeholder="Referencia informada en el comprobante" /></Field>
+          <Field label="Fecha y hora de recepción del comprobante *"><Input type="datetime-local" value={recoveryForm.proofReceivedAt || ""} onChange={event => setRecoveryForm(current => ({ ...current, proofReceivedAt: event.target.value }))} /></Field>
+          <Field label="Cuota corriente completa incluida en la misma transferencia (opcional)">
+            <Sel value={recoveryForm.currentFeeId || ""} onChange={event => setRecoveryForm(current => ({ ...current, currentFeeId: event.target.value }))}>
+              <option value="">Sin aplicación corriente</option>
+              {cuotas.filter(fee => fee.unidad_id === recoveryModal.row.unitId && fee.status !== "pagado").map(fee => <option key={fee.id} value={fee.id}>{periodoLabel(fee.periodo)} — {fmt(fee.monto)} completos</option>)}
+            </Sel>
+          </Field>
+          {recoveryForm.currentFeeId && <p style={{ background: "#eff6ff", color: "#1e40af", borderRadius: 8, padding: 10, fontSize: 12 }}>Depósito total esperado: <strong>{fmt(Number(recoveryForm.amount || 0) + Number(cuotas.find(fee => fee.id === recoveryForm.currentFeeId)?.monto || 0))}</strong>. La cuota completa y la recuperación se aplicarán juntas o ninguna se aplicará.</p>}
+          <Field label="Evidencia privada *">
+            <div style={{ border: "2px dashed #d1d5db", borderRadius: 8, padding: 14, textAlign: "center", background: "#fafafa" }}>
+              <input type="file" accept="application/pdf,image/jpeg,image/png" id="historical-recovery-evidence" style={{ display: "none" }} onChange={event => setRecoveryEvidence(event.target.files?.[0] || null)} />
+              <label htmlFor="historical-recovery-evidence" style={{ cursor: "pointer" }}>{recoveryEvidence ? <strong style={{ color: "#065f46", fontSize: 13 }}>✓ {recoveryEvidence.name}</strong> : <span style={{ color: "#6b7280", fontSize: 13 }}>📎 Adjuntar PDF, JPG o PNG (máximo 5 MB)</span>}</label>
+            </div>
+          </Field>
+          <p style={{ color: "#6b7280", fontSize: 11 }}>Custodio de los fondos: <strong>ANTIVE</strong>. La evidencia será privada y no aparecerá en el Portal Condómino.</p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button disabled={saving} onClick={() => { setRecoveryModal(null); setRecoveryEvidence(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn color="#9a3412" disabled={saving || !recoveryEvidence || !recoveryForm.amount || !recoveryForm.paymentReference?.trim()} onClick={submitRecoveryCreate}>{saving ? "Registrando…" : "Registrar pendiente"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Recuperación histórica: conciliación y aplicación ── */}
+      {recoveryModal?.mode === "apply" && (
+        <Modal title="Confirmar depósito y aplicar recuperación" onClose={() => setRecoveryModal(null)}>
+          <p style={{ marginTop: 0, color: "#6b7280", fontSize: 13, lineHeight: 1.6 }}>
+            Histórico: <strong>{fmt(recoveryModal.recovery.amount)}</strong><br />
+            Depósito total: <strong>{fmt(recoveryModal.recovery.deposit_total)}</strong><br />
+            Referencia informada: <strong>{recoveryModal.recovery.payment_reference}</strong><br />
+            {recoveryModal.recovery.current_fee_id && <>Incluye una cuota corriente completa. Ambas aplicaciones se confirmarán en una sola transacción.<br /></>}
+          </p>
+          <Field label="Fecha confirmada del depósito *"><Input type="date" value={recoveryForm.collectedAt || ""} onChange={event => setRecoveryForm(current => ({ ...current, collectedAt: event.target.value }))} /></Field>
+          <Field label="Confirmación bancaria de Mayrani *"><Input maxLength={160} value={recoveryForm.bankConfirmationReference || ""} onChange={event => setRecoveryForm(current => ({ ...current, bankConfirmationReference: event.target.value }))} placeholder="Folio, referencia o descripción de confirmación" /></Field>
+          <p style={{ background: "#ecfdf5", color: "#065f46", borderRadius: 8, padding: 10, fontSize: 12 }}>Al confirmar, el importe histórico reducirá el saldo. No modificará los pagos históricos originales ni el KPI de cobranza corriente.</p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button disabled={saving} onClick={() => setRecoveryModal(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn color="#065f46" disabled={saving || !operationControls.realPaymentsEnabled || !recoveryForm.collectedAt || !recoveryForm.bankConfirmationReference?.trim()} onClick={submitRecoveryApply}>{saving ? "Aplicando…" : "Confirmar y aplicar"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Recuperación histórica: reversión controlada ── */}
+      {recoveryModal?.mode === "reverse" && (
+        <Modal title="Revertir recuperación histórica" onClose={() => setRecoveryModal(null)}>
+          <p style={{ marginTop: 0, background: "#fee2e2", color: "#991b1b", borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 1.5 }}>La reversión restaurará <strong>{fmt(recoveryModal.recovery.amount)}</strong> al saldo histórico. No eliminará el registro ni revertirá automáticamente una cuota corriente combinada.</p>
+          <Field label="Motivo obligatorio *"><textarea rows={4} maxLength={1000} value={recoveryForm.reversalReason || ""} onChange={event => setRecoveryForm(current => ({ ...current, reversalReason: event.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", resize: "vertical" }} /></Field>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button disabled={saving} onClick={() => setRecoveryModal(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn color="#991b1b" disabled={saving || String(recoveryForm.reversalReason || "").trim().length < 5} onClick={submitRecoveryReverse}>{saving ? "Revirtiendo…" : "Revertir con motivo"}</Btn>
           </div>
         </Modal>
       )}

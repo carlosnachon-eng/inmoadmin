@@ -139,7 +139,13 @@ export default function ControlledCondominoPortal() {
       <p style={styles.callout}>Este saldo proviene de registros anteriores administrados por Antive. No forma parte de la cobranza corriente generada por Emporio y puede solicitarse aclaración individual.</p>
       {historical.map((item) => <article key={item.id} style={styles.card}>
         <div style={styles.row}><div><p style={styles.eyebrow}>Corte {item.cutoffDate}</p><strong>{item.sourceLabel}</strong></div><StatusBadge status={item.reviewStatus}/></div>
-        <div style={styles.split}><p>Cargos<br/><strong>{fmt(item.reportedCharges)}</strong></p><p>Pagos registrados<br/><strong>{fmt(item.reportedPayments)}</strong></p><p>Saldo administrativo<br/><strong>{fmt(item.reportedBalance)}</strong></p></div>
+        <div style={styles.split}>
+          <p>Cargos<br/><strong>{fmt(item.reportedCharges)}</strong></p>
+          <p>Pagos Antive<br/><strong>{fmt(item.reportedPayments)}</strong></p>
+          <p>Saldo inicial<br/><strong>{fmt(item.reportedBalance)}</strong></p>
+          <p>Recuperaciones aplicadas<br/><strong>{fmt(item.historicalRecovered)}</strong></p>
+          <p>Saldo histórico pendiente<br/><strong>{fmt(item.historicalPending ?? item.reportedBalance)}</strong></p>
+        </div>
       </article>)}
       <h3 style={styles.sectionTitle}>Pagos históricos registrados</h3>
       {historicalPayments.length ? historicalPayments.map((payment) => <article key={payment.id} style={styles.card}><div style={styles.row}><div><strong>{payment.period ? periodLabel(payment.period) : "Periodo reportado"}</strong><p style={styles.muted}>Recibido por {payment.receivedBy}</p></div><strong>{fmt(payment.amount)}</strong></div></article>) : <p style={styles.muted}>Sin pagos históricos registrados.</p>}
