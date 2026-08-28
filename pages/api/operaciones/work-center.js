@@ -89,6 +89,32 @@ const SOURCE_QUERIES = {
     .from("profiles")
     .select("id, full_name, role_id, active")
     .eq("active", true),
+  administrative_work_items: (client) => client
+    .from("administrative_work_items")
+    .select("id,domain,work_type,title,status,priority,client_identity_id,contract_id,property_id,condominium_id,unit_id,responsible_area,responsible_profile_id,next_step,follow_up_at,information_received_at,requires_authorization,duplicate_of_id,created_at,updated_at")
+    .order("updated_at", { ascending: false }),
+  administrative_work_evidence: (client) => client
+    .from("administrative_work_evidence").select("id,work_item_id,evidence_type,summary_safe,received_at"),
+  administrative_work_history: (client) => client
+    .from("administrative_work_history").select("id,work_item_id,action_type,actor_type,created_at").order("created_at", { ascending: false }),
+  administrative_work_approvals: (client) => client
+    .from("administrative_work_approvals").select("id,work_item_id,approval_type,status,created_at").eq("status", "pending"),
+};
+
+const durablePresentation = (row, sources) => {
+  const evidence = (sources.administrative_work_evidence || []).filter((x) => x.work_item_id === row.id);
+  const history = (sources.administrative_work_history || []).filter((x) => x.work_item_id === row.id).slice(0, 10);
+  const approvals = (sources.administrative_work_approvals || []).filter((x) => x.work_item_id === row.id);
+  return {
+    contextKey: `durable:${row.id}`, durableWorkItemId: row.id, sourceType: "administrative_work",
+    title: row.title, reason: `Trabajo durable · ${row.domain}`, recommendedAction: row.next_step || "Revisar seguimiento operativo.",
+    priority: row.priority, bucket: row.requires_authorization ? "requiere_autorizacion" : row.follow_up_at ? "proximo" : "para_hoy",
+    presentationCategory: "operational", responsibleArea: row.responsible_area || "Administración",
+    responsibleProfileId: row.responsible_profile_id, dueAt: row.follow_up_at, lastActivityAt: row.updated_at,
+    href: `/mi-trabajo-administrativo?workItemId=${encodeURIComponent(row.id)}`,
+    supervision: { requiresAuthorization: Boolean(row.requires_authorization), status: "durable" },
+    metadata: { domain: row.domain, workType: row.work_type, status: row.status, clientIdentityId: row.client_identity_id, contractId: row.contract_id, propertyId: row.property_id, condominiumId: row.condominium_id, unitId: row.unit_id, evidenceCount: evidence.length, history, approvals },
+  };
 };
 
 function getAdminClient() {
@@ -187,9 +213,12 @@ export default async function handler(req, res) {
 
     const caseStatus = req.query.status === "resolved" ? "resolved" : "active";
     const workCenter = buildAdministrativeWorkCenter(sources, { caseStatus });
+    const durableItems = (sources.administrative_work_items || [])
+      .filter((row) => caseStatus === "resolved" ? row.status === "resolved" : !["resolved", "cancelled"].includes(row.status))
+      .map((row) => durablePresentation(row, sources));
     return res.status(200).json({
       ok: true,
-      contractVersion: "2A.2-A",
+      contractVersion: "3C-WORK-DURABLE-R1",
       generatedAt: workCenter.generatedAt,
       today: workCenter.today,
       viewer: { profileId: profile.id, roleId: profile.role_id },
@@ -200,7 +229,9 @@ export default async function handler(req, res) {
         roleId: row.role_id,
       })),
       summary: workCenter.summary,
-      items: workCenter.items,
+      items: [...durableItems, ...workCenter.items.filter((item) => !durableItems.some((durable) => durable.contextKey === item.contextKey))],
+      durableItems,
+      capabilities: { r0: true, r1Enabled: process.env.SHADOW_ADMIN_WORK_R1_ENABLED === "true" },
       sourcesWithError,
     });
   } catch (error) {
