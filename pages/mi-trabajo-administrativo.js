@@ -49,6 +49,7 @@ const SOURCE_LABELS = {
   unidades_condominio: "Unidades de condominio",
   cuotas_condominio: "Cuotas de condominio",
   firma_etapas: "Etapas de firma",
+  administrative_work: "Trabajo Administrativo durable",
 };
 
 const ACTION_LABELS = {
@@ -366,7 +367,7 @@ export default function MiTrabajoAdministrativo() {
                     <span>Fecha: {formatDate(item.dueAt || item.lastActivityAt)}</span>
                   </div>
                   <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
-                    {caseView === "active" ? <>
+                    {item.durableWorkItemId ? <span style={{ padding: "5px 8px", color: brand.grayLight, fontSize: 12 }}>R1 {data?.capabilities?.r1Enabled ? "habilitado bajo guardas" : "apagado · sólo lectura"}</span> : caseView === "active" ? <>
                     <select aria-label="Corregir clasificación" value="" onChange={(e) => e.target.value && supervise(item, "classification_corrected", { bucket: e.target.value })} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px" }}>
                       <option value="">Corregir clasificación…</option>{BUCKETS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                     </select>
@@ -421,6 +422,7 @@ export default function MiTrabajoAdministrativo() {
               <dt>Responsable</dt><dd style={{ margin: 0 }}>{selectedItem.responsibleArea || "Sin asignar"}</dd>
               {selectedItem.waitingOn && <><dt>Esperando</dt><dd style={{ margin: 0 }}>{String(selectedItem.waitingOn).replace(/_/g, " ")}</dd></>}
               {selectedItem.metadata?.contractRelation && <><dt>Contrato</dt><dd style={{ margin: 0 }}>{CONTRACT_RELATION_LABELS[selectedItem.metadata.contractRelation] || selectedItem.metadata.contractRelation}</dd></>}
+              {selectedItem.durableWorkItemId && <><dt>Estado durable</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.status}</dd><dt>Evidencias</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.evidenceCount || 0}</dd><dt>Aprobaciones</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.approvals?.length || 0} pendientes</dd></>}
             </dl>
             <div style={{ marginTop: 20 }}><strong>Motivo</strong><p>{selectedItem.reason}</p><strong>Acción recomendada</strong><p>{selectedItem.recommendedAction}</p></div>
             {selectedItem.dataQuality?.missingFields?.length > 0 && <section style={{ marginTop: 18, padding: 14, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10 }}><strong>Datos necesarios</strong><ul>{selectedItem.dataQuality.missingFields.map((field) => <li key={field}>{MISSING_FIELD_LABELS[field] || field.replace(/_/g, " ")}</li>)}</ul></section>}
