@@ -229,6 +229,16 @@ export default function ShadowCoordinatorPage() {
           <p><strong>Estado:</strong> {item.status}{item.blocked_reason ? ` · bloqueo: ${item.blocked_reason}` : ""}</p>
         </article>)}
       </details>
+      <details style={{ ...card, marginBottom: 16 }}><summary><strong>Mensajes enviados por Administradora IA</strong></summary>
+        <p style={{color:brand.grayLight}}>Carril exclusivo de Administración 544519. El límite inicial es 10 claims acumulados; no ejecuta acciones ERP.</p>
+        {!(data?.adminOutboundMessages || []).length ? <p>No hay mensajes enviados por la Administradora IA.</p> : (data.adminOutboundMessages || []).map((item)=><article key={item.id} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}>
+          <strong>{item.case_domain} · {item.conversation_action}</strong>
+          <p>{item.action?.proposed_message || "Mensaje no disponible."}</p>
+          <p><strong>Estado:</strong> {item.status} · <strong>Confianza:</strong> {Math.round(Number(item.action?.confidence||0)*100)}% · <strong>Evidencia:</strong> {(item.action?.evidence_refs||[]).length} referencia(s)</p>
+          <p><strong>Provider ref:</strong> {item.provider_message_ref || "—"} · <strong>Enviado:</strong> {item.sent_at ? new Date(item.sent_at).toLocaleString("es-MX") : "No"}</p>
+          {item.error_code && <p><strong>Bloqueo/error:</strong> {item.error_code}</p>}
+        </article>)}
+      </details>
       {authorized && <details style={{ ...card, marginBottom: 16 }}><summary><strong>Evaluación histórica 3B</strong></summary>
         <p style={{color:brand.grayLight}}>Carril aislado de historical replay. No modifica conversaciones, runs naturales ni acciones naturales, y no puede enviar mensajes.</p>
         <button disabled={historicalReplayBusy} onClick={()=>operateHistoricalReplay("preview")}>Previsualizar cohorte</button>{historicalReplayPreview&&<><p>{historicalReplayPreview.selected} elegibles · mantenimiento {historicalReplayPreview.counts?.maintenance||0} · pagos {historicalReplayPreview.counts?.payment||0} · pendientes {historicalReplayPreview.counts?.administrative_pending||0}</p>{(historicalReplayPreview.cases||[]).map((item)=><label key={item.historicalTurnKey} style={{display:"block",padding:"3px 0"}}><input type="checkbox" checked={historicalReplayTurnKeys.includes(item.historicalTurnKey)} disabled={!historicalReplayTurnKeys.includes(item.historicalTurnKey)&&historicalReplayTurnKeys.length>=30} onChange={(event)=>setHistoricalReplayTurnKeys((current)=>event.target.checked?[...current,item.historicalTurnKey]:current.filter((key)=>key!==item.historicalTurnKey))}/> {item.domain} · {item.messageCount} mensaje(s) · {new Date(item.occurredAt).toLocaleDateString("es-MX")} · respuesta humana {item.humanResponseAvailable?"sí":"no"}</label>)}<button disabled={historicalReplayBusy||!historicalReplayTurnKeys.length} onClick={()=>operateHistoricalReplay("prepare",{turnKeys:historicalReplayTurnKeys})}>Preparar selección ({historicalReplayTurnKeys.length}/30)</button></>}
