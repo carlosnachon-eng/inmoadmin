@@ -4,6 +4,7 @@ import {
   isAdministrativeWorkCenterRole,
   sanitizeAdministrativeSourceRows,
 } from "../../../lib/operaciones/administrativeWorkCenter";
+import { ADMIN_WORK_R1_HARD_CAP, administrativeWorkR1NotBefore } from "../../../lib/operaciones/durableAdministrativeWork";
 
 const SOURCE_PAGE_SIZE = 1000;
 
@@ -94,9 +95,9 @@ const SOURCE_QUERIES = {
     .select("id,domain,work_type,title,status,priority,client_identity_id,contract_id,property_id,condominium_id,unit_id,responsible_area,responsible_profile_id,next_step,follow_up_at,information_received_at,requires_authorization,duplicate_of_id,created_at,updated_at")
     .order("updated_at", { ascending: false }),
   administrative_work_evidence: (client) => client
-    .from("administrative_work_evidence").select("id,work_item_id,evidence_type,summary_safe,received_at"),
+    .from("administrative_work_evidence").select("id,work_item_id,evidence_type,reference_type,summary_safe,received_at,created_at"),
   administrative_work_history: (client) => client
-    .from("administrative_work_history").select("id,work_item_id,action_type,actor_type,created_at").order("created_at", { ascending: false }),
+    .from("administrative_work_history").select("id,work_item_id,action_type,actor_type,reason,capability,previous_state,new_state,created_at").order("created_at", { ascending: false }),
   administrative_work_approvals: (client) => client
     .from("administrative_work_approvals").select("id,work_item_id,approval_type,status,created_at").eq("status", "pending"),
 };
@@ -113,7 +114,7 @@ const durablePresentation = (row, sources) => {
     responsibleProfileId: row.responsible_profile_id, dueAt: row.follow_up_at, lastActivityAt: row.updated_at,
     href: `/mi-trabajo-administrativo?workItemId=${encodeURIComponent(row.id)}`,
     supervision: { requiresAuthorization: Boolean(row.requires_authorization), status: "durable" },
-    metadata: { domain: row.domain, workType: row.work_type, status: row.status, clientIdentityId: row.client_identity_id, contractId: row.contract_id, propertyId: row.property_id, condominiumId: row.condominium_id, unitId: row.unit_id, evidenceCount: evidence.length, history, approvals },
+    metadata: { domain: row.domain, workType: row.work_type, status: row.status, clientIdentityId: row.client_identity_id, contractId: row.contract_id, propertyId: row.property_id, condominiumId: row.condominium_id, unitId: row.unit_id, evidenceCount: evidence.length, evidence, history, approvals },
   };
 };
 
@@ -216,6 +217,8 @@ export default async function handler(req, res) {
     const durableItems = (sources.administrative_work_items || [])
       .filter((row) => caseStatus === "resolved" ? row.status === "resolved" : !["resolved", "cancelled"].includes(row.status))
       .map((row) => durablePresentation(row, sources));
+    const r1NotBefore = administrativeWorkR1NotBefore(process.env);
+    const r1ActionCount = r1NotBefore ? (sources.administrative_work_history || []).filter((row) => row.actor_type === "ai" && new Date(row.created_at).getTime() >= new Date(r1NotBefore).getTime()).length : 0;
     return res.status(200).json({
       ok: true,
       contractVersion: "3C-WORK-DURABLE-R1",
@@ -231,7 +234,7 @@ export default async function handler(req, res) {
       summary: workCenter.summary,
       items: [...durableItems, ...workCenter.items.filter((item) => !durableItems.some((durable) => durable.contextKey === item.contextKey))],
       durableItems,
-      capabilities: { r0: true, r1Enabled: process.env.SHADOW_ADMIN_WORK_R1_ENABLED === "true" },
+      capabilities: { r0: true, r1Enabled: process.env.SHADOW_ADMIN_WORK_R1_ENABLED === "true" && Boolean(r1NotBefore), r1ActionCount, r1HardCap: ADMIN_WORK_R1_HARD_CAP },
       sourcesWithError,
     });
   } catch (error) {
