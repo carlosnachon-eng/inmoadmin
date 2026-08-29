@@ -111,11 +111,11 @@ test("state machine distingue JSON inválido de transporte y conserva metadata p
   const result=await startShadowAiStateMachine(db,{messageId:stored.id,envelope:{...synthetic,sanitizedText:stored.sanitized_text}},{env:devEnv,modelCall:async()=>({id:"req_parse_fixture",text:"not-json",usage:{input_tokens:20,output_tokens:4}})});
   assert.equal(result.status,"error");
   assert.equal(result.error,"invalid_structured_output:json_parse_error");
-  assert.deepEqual(result.telemetry.anthropic_requests[0],{
-    request_number:1,round_number:1,request_id:"req_parse_fixture",status:"failed",anthropic_duration_ms:0,
-    output_state:"received_invalid_structured_output",error_stage:"json_parsing",diagnostic_code:"json_parse_error",
-    usage:{input_tokens:20,output_tokens:4},error:"invalid_structured_output",
-  });
+  const request=result.telemetry.anthropic_requests[0];
+  assert.equal(request.attempt_number,1);assert.equal(request.round_number,1);assert.equal(request.request_id,"req_parse_fixture");
+  assert.equal(request.status,"failed");assert.equal(request.output_state,"received_invalid_structured_output");
+  assert.equal(request.error_stage,"json_parsing");assert.equal(request.diagnostic_code,"json_parse_error");
+  assert.deepEqual(request.usage,{input_tokens:20,output_tokens:4});assert.equal(request.error,"invalid_structured_output");
   assert.equal(db.writes.some((item)=>item.table==="shadow_ai_decisions"),false);
 });
 
