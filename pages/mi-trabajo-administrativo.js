@@ -212,6 +212,11 @@ export default function MiTrabajoAdministrativo() {
 
   const loadHistory = async (contextKey, toggle = true) => {
     if (toggle && history.contextKey === contextKey) { setHistory({ contextKey: null, actions: [], loading: false }); return; }
+    const durable = (data?.durableItems || []).find((item) => item.contextKey === contextKey);
+    if (durable) {
+      setHistory({ contextKey, actions: durable.metadata?.history || [], loading: false });
+      return;
+    }
     setHistory({ contextKey, actions: [], loading: true });
     const response = await fetch(`/api/operaciones/administrative-cases?contextKey=${encodeURIComponent(contextKey)}`, {
       headers: { Authorization: `Bearer ${session.access_token}` },
@@ -367,7 +372,7 @@ export default function MiTrabajoAdministrativo() {
                     <span>Fecha: {formatDate(item.dueAt || item.lastActivityAt)}</span>
                   </div>
                   <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
-                    {item.durableWorkItemId ? <span style={{ padding: "5px 8px", color: brand.grayLight, fontSize: 12 }}>R1 {data?.capabilities?.r1Enabled ? "habilitado bajo guardas" : "apagado · sólo lectura"}</span> : caseView === "active" ? <>
+                    {item.durableWorkItemId ? <span style={{ padding: "5px 8px", color: brand.grayLight, fontSize: 12 }}>R1 {data?.capabilities?.r1Enabled ? `habilitado bajo guardas · ${data?.capabilities?.r1ActionCount || 0}/${data?.capabilities?.r1HardCap || 20}` : "apagado · sólo lectura"}</span> : caseView === "active" ? <>
                     <select aria-label="Corregir clasificación" value="" onChange={(e) => e.target.value && supervise(item, "classification_corrected", { bucket: e.target.value })} style={{ border: `1px solid ${brand.border}`, background: "#fff", borderRadius: 7, padding: "5px 8px" }}>
                       <option value="">Corregir clasificación…</option>{BUCKETS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                     </select>
@@ -395,8 +400,8 @@ export default function MiTrabajoAdministrativo() {
                   </div>}
                   {history.contextKey === item.contextKey && <div style={{ marginTop: 10, padding: 10, background: "#f9fafb", borderRadius: 8, fontSize: 12, color: brand.grayLight }}>
                     {history.loading ? "Cargando historial…" : history.actions.length ? history.actions.map((action) => {
-                      const actor = (data?.responsibleOptions || []).find((option) => option.id === action.actor_profile_id)?.name || action.actor_type;
-                      return <div key={action.id} style={{ marginBottom: 5 }}><strong>{ACTION_LABELS[action.action_type] || action.action_type}</strong> · {actor} · {new Date(action.created_at).toLocaleString("es-MX")}{action.notes ? <div style={{ color: brand.gray, marginTop: 2 }}>{action.notes}</div> : null}</div>;
+                      const actor = action.actor_type === "ai" ? "Administradora IA" : (data?.responsibleOptions || []).find((option) => option.id === action.actor_profile_id)?.name || action.actor_type;
+                      return <div key={action.id} style={{ marginBottom: 5 }}><strong>{ACTION_LABELS[action.action_type] || action.action_type}</strong> · {actor} · {new Date(action.created_at).toLocaleString("es-MX")}{(action.reason || action.notes) ? <div style={{ color: brand.gray, marginTop: 2 }}>{action.reason || action.notes}</div> : null}</div>;
                     }) : "Sin correcciones registradas."}
                   </div>}
                 </div>
@@ -422,13 +427,13 @@ export default function MiTrabajoAdministrativo() {
               <dt>Responsable</dt><dd style={{ margin: 0 }}>{selectedItem.responsibleArea || "Sin asignar"}</dd>
               {selectedItem.waitingOn && <><dt>Esperando</dt><dd style={{ margin: 0 }}>{String(selectedItem.waitingOn).replace(/_/g, " ")}</dd></>}
               {selectedItem.metadata?.contractRelation && <><dt>Contrato</dt><dd style={{ margin: 0 }}>{CONTRACT_RELATION_LABELS[selectedItem.metadata.contractRelation] || selectedItem.metadata.contractRelation}</dd></>}
-              {selectedItem.durableWorkItemId && <><dt>Estado durable</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.status}</dd><dt>Evidencias</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.evidenceCount || 0}</dd><dt>Aprobaciones</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.approvals?.length || 0} pendientes</dd></>}
+              {selectedItem.durableWorkItemId && <><dt>Estado durable</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.status}</dd><dt>Evidencias</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.evidenceCount || 0}{(selectedItem.metadata?.evidence || []).map((item) => <div key={item.id}>{item.evidence_type} · {item.summary_safe || "Referencia sanitizada"}</div>)}</dd><dt>Aprobaciones</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.approvals?.length || 0} pendientes</dd></>}
             </dl>
             <div style={{ marginTop: 20 }}><strong>Motivo</strong><p>{selectedItem.reason}</p><strong>Acción recomendada</strong><p>{selectedItem.recommendedAction}</p></div>
             {selectedItem.dataQuality?.missingFields?.length > 0 && <section style={{ marginTop: 18, padding: 14, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10 }}><strong>Datos necesarios</strong><ul>{selectedItem.dataQuality.missingFields.map((field) => <li key={field}>{MISSING_FIELD_LABELS[field] || field.replace(/_/g, " ")}</li>)}</ul></section>}
             {selectedItem.metadata?.requiresFinancialAuthorization && ["admin", "coord_operaciones"].includes(profile?.role_id) && <section style={{ marginTop: 18, padding: 14, background: "#faf5ff", borderRadius: 10 }}><strong>Revisión financiera requerida</strong><p style={{ marginBottom: 0 }}>Los importes permanecen sujetos a autorización humana. Esta vista no ejecuta movimientos.</p></section>}
             <section style={{ marginTop: 20 }}><strong>Supervisión</strong><p>{selectedItem.supervision?.manualControl ? "Control manual activo" : "Sin control manual"} · {selectedItem.supervision?.automationPaused ? "Automatización pausada" : "Automatización no pausada"}</p></section>
-            <section style={{ marginTop: 20 }}><strong>Historial y notas</strong><div style={{ marginTop: 8, fontSize: 12 }}>{history.loading ? "Cargando…" : history.actions.length ? history.actions.map((action) => <div key={action.id} style={{ marginBottom: 8 }}><strong>{ACTION_LABELS[action.action_type] || action.action_type}</strong> · {new Date(action.created_at).toLocaleString("es-MX")}{action.notes && <div>{action.notes}</div>}</div>) : "Sin acciones registradas."}</div></section>
+            <section style={{ marginTop: 20 }}><strong>Historial y notas</strong><div style={{ marginTop: 8, fontSize: 12 }}>{history.loading ? "Cargando…" : history.actions.length ? history.actions.map((action) => <div key={action.id} style={{ marginBottom: 8 }}><strong>{ACTION_LABELS[action.action_type] || action.action_type}</strong> · {action.actor_type === "ai" ? "Administradora IA" : action.actor_type} · {new Date(action.created_at).toLocaleString("es-MX")}{(action.reason || action.notes) && <div>{action.reason || action.notes}</div>}</div>) : "Sin acciones registradas."}</div></section>
             <a href={selectedItem.href} style={{ marginTop: 22, display: "inline-flex", textDecoration: "none", background: brand.red, color: "#fff", padding: "10px 14px", borderRadius: 8, fontWeight: 800 }}>Ir al módulo</a>
           </aside>
         </div>}

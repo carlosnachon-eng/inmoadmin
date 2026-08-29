@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     if (!sameOriginAdminRequest(req)) return res.status(403).json({ ok: false, error: "invalid_origin" });
     const result = await executeAdministrativeWorkR1(admin, {
       action: req.body?.action, input: req.body?.input, idempotencyKey: req.body?.idempotencyKey,
-      actorType: "admin", actorProfileId: profile.id,
+      actorType: "admin", actorProfileId: profile.id, sourceOccurredAt: req.body?.sourceOccurredAt,
     });
     return res.status(200).json({ ok: true, result });
   } catch (error) {
