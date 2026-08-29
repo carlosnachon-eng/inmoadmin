@@ -35,6 +35,7 @@ export default function ShadowCoordinatorPage() {
   const [reconciliationTenantIds, setReconciliationTenantIds] = useState(""); const [reconciliationOwnerIds, setReconciliationOwnerIds] = useState("");
   const [historicalReplay, setHistoricalReplay] = useState(null); const [historicalReplayBusy, setHistoricalReplayBusy] = useState(false); const [historicalReplayPreview, setHistoricalReplayPreview] = useState(null); const [historicalReplayTurnKeys, setHistoricalReplayTurnKeys] = useState([]);
   const [historicalReviewDrafts, setHistoricalReviewDrafts] = useState({});
+  const [explicitRetries, setExplicitRetries] = useState([]); const [explicitRetryBusy, setExplicitRetryBusy] = useState(false);
   const qaDevUiEnabled = isQaDevUiEnabled(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const qaFixtureScope = useMemo(() => qaCampaignFixtureScope(qaCampaignId), [qaCampaignId]);
   useEffect(() => { supabase.auth.getSession().then(({ data: { session: value } }) => { setSession(value); setReady(true); }); }, []);
@@ -77,6 +78,21 @@ export default function ShadowCoordinatorPage() {
     const json = await response.json(); if (response.ok) setHistoricalReplay(json); else if (response.status !== 409) setError(json.error || "No se pudo cargar la evaluación histórica.");
   }, [authorized, session?.access_token]);
   useEffect(() => { loadHistoricalReplay(); }, [loadHistoricalReplay]);
+  const loadExplicitRetries = useCallback(async () => {
+    if (!authorized || !session?.access_token) return;
+    const response = await fetch("/api/operaciones/shadow-ai-explicit-retry", { headers: { Authorization: `Bearer ${session.access_token}` } });
+    const json = await response.json();
+    if (response.ok) setExplicitRetries(json.candidates || []); else if (response.status !== 403) setError(json.error || "No se pudo auditar retries explícitos.");
+  }, [authorized, session?.access_token]);
+  useEffect(() => { loadExplicitRetries(); }, [loadExplicitRetries]);
+  const executeExplicitRetry = async (candidate) => {
+    if (!candidate?.eligible || !window.confirm(`¿Autorizar un child run para ${candidate.runRef}? El run original permanecerá intacto.`)) return;
+    setExplicitRetryBusy(true); setError("");
+    const response = await fetch("/api/operaciones/shadow-ai-explicit-retry", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ parentRunId: candidate.runId, authorization: "explicit_user_authorized" }) });
+    const json = await response.json(); setExplicitRetryBusy(false);
+    if (!response.ok) return setError(json.reason || json.error || "Retry explícito bloqueado.");
+    await loadExplicitRetries(); await load();
+  };
   const reviewHistoricalReplay = async (caseId) => {
     const draft=historicalReviewDrafts[caseId]||{};
     setHistoricalReplayBusy(true); setError("");
@@ -239,6 +255,15 @@ export default function ShadowCoordinatorPage() {
           {item.error_code && <p><strong>Bloqueo/error:</strong> {item.error_code}</p>}
         </article>)}
       </details>
+      {authorized && <details style={{ ...card, marginBottom: 16 }}><summary><strong>Retry administrativo de Auto-Real</strong></summary>
+        <p style={{color:brand.grayLight}}>Crea un child run auditable; nunca reabre ni modifica el run original. Outbound y R1 deben permanecer apagados.</p>
+        {!explicitRetries.length ? <p>No hay runs terminales recientes para auditar.</p> : explicitRetries.map((item)=><article key={item.runId} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}>
+          <strong>Run {item.runRef}… · turno {item.turnRef ? `${item.turnRef}…` : "no reconstruible"}</strong>
+          <p><strong>Precheck:</strong> {item.eligible ? "Elegible" : `Bloqueado — ${item.reason}`}</p>
+          <small>{new Date(item.createdAt).toLocaleString("es-MX")} · parent {item.status}</small>
+          {item.eligible && <div><button disabled={explicitRetryBusy} onClick={()=>executeExplicitRetry(item)}>Autorizar child run</button></div>}
+        </article>)}
+      </details>}
       {authorized && <details style={{ ...card, marginBottom: 16 }}><summary><strong>Evaluación histórica 3B</strong></summary>
         <p style={{color:brand.grayLight}}>Carril aislado de historical replay. No modifica conversaciones, runs naturales ni acciones naturales, y no puede enviar mensajes.</p>
         <button disabled={historicalReplayBusy} onClick={()=>operateHistoricalReplay("preview")}>Previsualizar cohorte</button>{historicalReplayPreview&&<><p>{historicalReplayPreview.selected} elegibles · mantenimiento {historicalReplayPreview.counts?.maintenance||0} · pagos {historicalReplayPreview.counts?.payment||0} · pendientes {historicalReplayPreview.counts?.administrative_pending||0}</p>{(historicalReplayPreview.cases||[]).map((item)=><label key={item.historicalTurnKey} style={{display:"block",padding:"3px 0"}}><input type="checkbox" checked={historicalReplayTurnKeys.includes(item.historicalTurnKey)} disabled={!historicalReplayTurnKeys.includes(item.historicalTurnKey)&&historicalReplayTurnKeys.length>=30} onChange={(event)=>setHistoricalReplayTurnKeys((current)=>event.target.checked?[...current,item.historicalTurnKey]:current.filter((key)=>key!==item.historicalTurnKey))}/> {item.domain} · {item.messageCount} mensaje(s) · {new Date(item.occurredAt).toLocaleDateString("es-MX")} · respuesta humana {item.humanResponseAvailable?"sí":"no"}</label>)}<button disabled={historicalReplayBusy||!historicalReplayTurnKeys.length} onClick={()=>operateHistoricalReplay("prepare",{turnKeys:historicalReplayTurnKeys})}>Preparar selección ({historicalReplayTurnKeys.length}/30)</button></>}
