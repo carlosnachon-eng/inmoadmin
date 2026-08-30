@@ -90,14 +90,24 @@ export default function ShadowCoordinatorPage() {
     if (!authorized || !session?.access_token || outputAbBusy) return;
     setOutputAbBusy(fixtureId); setError("");
     try {
-      const response = await fetch("/api/operaciones/shadow-ai-output-ab-eval", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ fixtureId }),
-      });
-      const json = await response.json();
-      if (!response.ok) setError(json.error || "No se pudo ejecutar la evaluación A/B.");
-      else setOutputAbResults((current) => ({ ...current, [fixtureId]: json.result }));
+      const runVariant = async (variant) => {
+        const response = await fetch("/api/operaciones/shadow-ai-output-ab-eval", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ fixtureId, variant }),
+        });
+        const json = await response.json();
+        if (!response.ok) throw new Error(json.error || "evaluation_failed");
+        return json.result;
+      };
+      const structured = await runVariant("structured");
+      const textual = await runVariant("text_json_local");
+      setOutputAbResults((current) => ({ ...current, [fixtureId]: {
+        fixture_id: fixtureId,
+        structured: structured.metrics,
+        text_json_local: textual.metrics,
+        semantic_equivalence: Boolean(structured.semantic_projection && textual.semantic_projection && JSON.stringify(structured.semantic_projection) === JSON.stringify(textual.semantic_projection)),
+      } }));
     } catch {
       setError("No se pudo ejecutar la evaluación A/B.");
     } finally {
