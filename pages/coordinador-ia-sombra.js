@@ -278,7 +278,7 @@ export default function ShadowCoordinatorPage() {
         <p style={{color:brand.grayLight}}>Fixtures sintéticos. Compara structured output nativo con JSON textual validado localmente. No ejecuta tools, outbound ni escrituras.</p>
         {["maintenance-missing-location","payment-missing-period","administrative-pending-document"].map((fixtureId)=><article key={fixtureId} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}>
           <strong>{fixtureId}</strong>
-          <div><button disabled={Boolean(outputAbBusy)} onClick={()=>runOutputAbFixture(fixtureId)}>{outputAbBusy===fixtureId?"Ejecutando…":"Ejecutar A/B"}</button></div>
+          <div><button type="button" disabled={Boolean(outputAbBusy)} onClick={()=>runOutputAbFixture(fixtureId)}>{outputAbBusy===fixtureId?"Ejecutando…":"Ejecutar A/B"}</button></div>
           {outputAbResults[fixtureId]&&<pre style={{whiteSpace:"pre-wrap",fontSize:12}}>{JSON.stringify(outputAbResults[fixtureId],null,2)}</pre>}
         </article>)}
       </details>}
