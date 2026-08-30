@@ -119,6 +119,40 @@ test("state machine distingue JSON inválido de transporte y conserva metadata p
   assert.equal(db.writes.some((item)=>item.table==="shadow_ai_decisions"),false);
 });
 
+test("text_json_local repara una vez, valida localmente y sólo entonces persiste decisión", async()=>{
+  const stored={id:"text-json-repair",provider:"synthetic",direction:"inbound",sanitized_text:"Entrada sintética",attachment_metadata:[],provider_metadata:{syntheticScenario:"p3-01"},external_message_id:"synthetic-repair",occurred_at:"2026-08-24T16:35:47Z"};
+  const db=fakeAiDb([],{filterIdempotencyKey:true,tableRows:{shadow_messages:[stored]}});let repairs=0;
+  const result=await startShadowAiStateMachine(db,{messageId:stored.id,envelope:{...synthetic,sanitizedText:stored.sanitized_text}},{
+    env:{...devEnv,SHADOW_AI_OUTPUT_MODE:"text_json_local"},
+    modelCall:async()=>({id:"req_invalid",text:"```json\n{\n```",usage:{input_tokens:20,output_tokens:4}}),
+    repairModelCall:async()=>{repairs+=1;return{id:"req_repaired",text:JSON.stringify(validDecision),usage:{input_tokens:30,output_tokens:10}};},
+  });
+  assert.equal(result.status,"completed");assert.equal(repairs,1);
+  assert.equal(result.telemetry.anthropic_requests.length,2);
+  assert.equal(result.telemetry.anthropic_requests[0].parse_success,true);
+  assert.equal(result.telemetry.anthropic_requests[0].schema_success,true);
+  assert.equal(result.telemetry.anthropic_requests[0].repair_attempted,true);
+  assert.equal(result.telemetry.anthropic_requests[0].repair_success,true);
+  assert.equal(result.telemetry.anthropic_requests[1].repair_attempt,true);
+  assert.equal(db.writes.some((item)=>item.table==="shadow_ai_decisions"&&item.action==="insert"),true);
+  const completed=db.writes.find((item)=>item.table==="shadow_ai_runs"&&item.payload.status==="completed");
+  assert.equal(completed.payload.input_tokens,50);assert.equal(completed.payload.output_tokens,14);
+});
+
+test("text_json_local inválido tras repair falla cerrado sin tools, decisión, outbound ni R1", async()=>{
+  const stored={id:"text-json-fail",provider:"synthetic",direction:"inbound",sanitized_text:"Entrada sintética",attachment_metadata:[],provider_metadata:{syntheticScenario:"p3-01"},external_message_id:"synthetic-fail",occurred_at:"2026-08-24T16:35:47Z"};
+  const db=fakeAiDb([],{filterIdempotencyKey:true,tableRows:{shadow_messages:[stored]}});let tools=0;
+  const result=await startShadowAiStateMachine(db,{messageId:stored.id,envelope:{...synthetic,sanitizedText:stored.sanitized_text}},{
+    env:{...devEnv,SHADOW_AI_OUTPUT_MODE:"text_json_local"},modelCall:async()=>({id:"req_invalid",text:"no json",usage:{input_tokens:20,output_tokens:4}}),repairModelCall:async()=>({id:"req_bad_repair",text:"{}",usage:{input_tokens:10,output_tokens:2}}),executeTool:async()=>{tools+=1;return[];},
+  });
+  assert.equal(result.status,"error");assert.equal(tools,0);
+  assert.equal(result.telemetry.anthropic_requests[0].repair_attempted,true);
+  assert.equal(result.telemetry.anthropic_requests[0].repair_success,false);
+  assert.equal(result.telemetry.anthropic_requests[0].invalid_output,true);
+  assert.equal(db.writes.some((item)=>item.table==="shadow_ai_decisions"),false);
+  assert.equal(db.writes.some((item)=>["shadow_conversation_actions","administrative_work_cases"].includes(item.table)),false);
+});
+
 test("grounding determinístico bloquea contradicciones críticas y conserva evidencia canónica",()=>{
   const paymentId="f2a30000-0000-4000-8300-000000000001";
   const tools=[{name:"get_payment_summary",ok:true,result:[{entityType:"payment",internalId:paymentId,status:"pagado",period:"2026-08",amount:12500}]}];
