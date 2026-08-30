@@ -11,5 +11,9 @@ export default async function handler(req,res){
   if(process.env.SHADOW_OUTBOUND_ENABLED==="true"||process.env.SHADOW_ADMIN_OUTBOUND_ENABLED==="true"||process.env.SHADOW_ADMIN_WORK_R1_ENABLED==="true")return res.status(409).json({ok:false,error:"unsafe_capability_state"});
   const fixtureId=String(req.body?.fixtureId||"");if(!Object.hasOwn(SHADOW_OUTPUT_AB_FIXTURES,fixtureId))return res.status(400).json({ok:false,error:"fixture_not_allowlisted"});
   const variant=String(req.body?.variant||"");if(!["structured","text_json_local"].includes(variant))return res.status(400).json({ok:false,error:"variant_not_allowlisted"});
-  try{return res.status(200).json({ok:true,result:await runShadowOutputAbVariant(fixtureId,variant)});}catch(error){return res.status(500).json({ok:false,error:String(error?.message||"evaluation_failed").slice(0,80)});}
+  try{
+    const result=await runShadowOutputAbVariant(fixtureId,variant);
+    console.info("[shadow-ai-output-ab-eval-result]",JSON.stringify({fixture_id:result.fixture_id,variant:result.variant,metrics:result.metrics}));
+    return res.status(200).json({ok:true,result});
+  }catch(error){return res.status(500).json({ok:false,error:String(error?.message||"evaluation_failed").slice(0,80)});}
 }
