@@ -36,6 +36,7 @@ export default function ShadowCoordinatorPage() {
   const [historicalReplay, setHistoricalReplay] = useState(null); const [historicalReplayBusy, setHistoricalReplayBusy] = useState(false); const [historicalReplayPreview, setHistoricalReplayPreview] = useState(null); const [historicalReplayTurnKeys, setHistoricalReplayTurnKeys] = useState([]);
   const [historicalReviewDrafts, setHistoricalReviewDrafts] = useState({});
   const [explicitRetries, setExplicitRetries] = useState([]); const [explicitRetryBusy, setExplicitRetryBusy] = useState(false);
+  const [outputAbResults, setOutputAbResults] = useState({}); const [outputAbBusy, setOutputAbBusy] = useState("");
   const qaDevUiEnabled = isQaDevUiEnabled(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const qaFixtureScope = useMemo(() => qaCampaignFixtureScope(qaCampaignId), [qaCampaignId]);
   useEffect(() => { supabase.auth.getSession().then(({ data: { session: value } }) => { setSession(value); setReady(true); }); }, []);
@@ -85,6 +86,24 @@ export default function ShadowCoordinatorPage() {
     if (response.ok) setExplicitRetries(json.candidates || []); else if (response.status !== 403) setError(json.error || "No se pudo auditar retries explícitos.");
   }, [authorized, session?.access_token]);
   useEffect(() => { loadExplicitRetries(); }, [loadExplicitRetries]);
+  const runOutputAbFixture = async (fixtureId) => {
+    if (!authorized || !session?.access_token || outputAbBusy) return;
+    setOutputAbBusy(fixtureId); setError("");
+    try {
+      const response = await fetch("/api/operaciones/shadow-ai-output-ab-eval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ fixtureId }),
+      });
+      const json = await response.json();
+      if (!response.ok) setError(json.error || "No se pudo ejecutar la evaluación A/B.");
+      else setOutputAbResults((current) => ({ ...current, [fixtureId]: json.result }));
+    } catch {
+      setError("No se pudo ejecutar la evaluación A/B.");
+    } finally {
+      setOutputAbBusy("");
+    }
+  };
   const executeExplicitRetry = async (candidate) => {
     if (!candidate?.eligible || !window.confirm(`¿Autorizar un child run para ${candidate.runRef}? El run original permanecerá intacto.`)) return;
     setExplicitRetryBusy(true); setError("");
@@ -255,6 +274,14 @@ export default function ShadowCoordinatorPage() {
           {item.error_code && <p><strong>Bloqueo/error:</strong> {item.error_code}</p>}
         </article>)}
       </details>
+      {qaDevUiEnabled && <details style={{ ...card, marginBottom: 16 }} open><summary><strong>DEV · A/B de salida Auto-Real</strong></summary>
+        <p style={{color:brand.grayLight}}>Fixtures sintéticos. Compara structured output nativo con JSON textual validado localmente. No ejecuta tools, outbound ni escrituras.</p>
+        {["maintenance-missing-location","payment-missing-period","administrative-pending-document"].map((fixtureId)=><article key={fixtureId} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}>
+          <strong>{fixtureId}</strong>
+          <div><button disabled={Boolean(outputAbBusy)} onClick={()=>runOutputAbFixture(fixtureId)}>{outputAbBusy===fixtureId?"Ejecutando…":"Ejecutar A/B"}</button></div>
+          {outputAbResults[fixtureId]&&<pre style={{whiteSpace:"pre-wrap",fontSize:12}}>{JSON.stringify(outputAbResults[fixtureId],null,2)}</pre>}
+        </article>)}
+      </details>}
       {authorized && <details style={{ ...card, marginBottom: 16 }}><summary><strong>Retry administrativo de Auto-Real</strong></summary>
         <p style={{color:brand.grayLight}}>Crea un child run auditable; nunca reabre ni modifica el run original. Outbound y R1 deben permanecer apagados.</p>
         {!explicitRetries.length ? <p>No hay runs terminales recientes para auditar.</p> : explicitRetries.map((item)=><article key={item.runId} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}>
