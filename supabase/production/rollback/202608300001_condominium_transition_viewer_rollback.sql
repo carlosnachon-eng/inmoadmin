@@ -16,4 +16,3 @@ drop policy if exists operation_controls_transition_viewer_select on public.cond
 drop function if exists public.condominium_transition_viewer_permission(uuid,text);
 delete from public.roles where id='antive_transition' and nombre='Antive — Transición / Consulta' and es_externo=true;
 commit;
-

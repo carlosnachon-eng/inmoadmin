@@ -22,4 +22,3 @@ begin
 end $$;
 select 'CONDOMINIUM_TRANSITION_VIEWER_CHECKS_OK' as result;
 rollback;
-

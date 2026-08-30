@@ -54,4 +54,3 @@ create policy operation_controls_transition_viewer_select on public.condominium_
 for select to authenticated using(public.condominium_transition_viewer_permission(condominio_id,'transition'));
 
 commit;
-
