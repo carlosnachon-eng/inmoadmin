@@ -276,6 +276,12 @@ export default function Home() {
     const perfilInternoActivo = perfil?.role_id && perfil.active !== false && !perfil.roles?.es_externo;
     if (perfilInternoActivo) return;
 
+    const perfilAntiveActivo = perfil?.role_id === "antive_transition" && perfil.active !== false && perfil.roles?.es_externo;
+    if (perfilAntiveActivo && typeof window !== "undefined") {
+      if (window.location.pathname !== "/antive-transicion") window.location.replace("/antive-transicion");
+      return;
+    }
+
     const perfilInquilinoActivo = perfil?.role_id === "inquilino" && perfil.active !== false && perfil.roles?.es_externo;
     if (perfilInquilinoActivo && typeof window !== "undefined") {
       if (window.location.pathname !== "/inquilino") window.location.replace("/inquilino");

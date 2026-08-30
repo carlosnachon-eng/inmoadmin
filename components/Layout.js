@@ -75,6 +75,16 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
   const esAdmin = yaTienePermisos ? esAdminProp : permisosHook.esAdmin;
   const perfilPermisos = yaTienePermisos ? profile : permisosHook.perfil;
 
+  const esAntiveTransicion = perfilPermisos?.active !== false &&
+    perfilPermisos?.role_id === "antive_transition" &&
+    perfilPermisos?.roles?.es_externo === true;
+
+  useEffect(() => {
+    if (esAntiveTransicion && router.pathname !== "/antive-transicion") {
+      router.replace("/antive-transicion");
+    }
+  }, [esAntiveTransicion, router]);
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -99,6 +109,8 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
 
   const currentLabel = navFiltrado.find(n => n.id === view)?.label || "Inicio";
   const nombreRol = perfilPermisos?.roles?.nombre || (esAdmin ? "Administrador" : "Staff");
+
+  if (esAntiveTransicion) return null;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif", background: brand.bg }}>
