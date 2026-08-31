@@ -4,6 +4,21 @@ begin;
 set local lock_timeout='5s';
 set local statement_timeout='30s';
 
+do $$
+begin
+  if to_regclass('public.partner_users') is null then
+    create table public.partner_users (
+      id uuid primary key default gen_random_uuid(),
+      auth_user_id uuid not null,
+      active boolean not null default true
+    );
+    comment on table public.partner_users is
+      'DEV_ONLY_MINIMAL_PARTNER_USERS_FOR_CONDOMINIUM_OWNER_ONBOARDING_QA';
+    create index partner_users_auth_user_active_dev_idx
+      on public.partner_users(auth_user_id,active);
+  end if;
+end $$;
+
 insert into public.roles(id,nombre,descripcion,es_externo)
 values(
   'propietario',

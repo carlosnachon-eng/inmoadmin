@@ -141,7 +141,7 @@ test("alta cubre confirmación, duplicado, doble clic, identidad ambigua y fallo
   assert.match(endpoint, /insertError\?\.code === "23505"/);
   assert.match(endpoint, /AUTH_CREATE_FAILED/);
   assert.match(endpoint, /RELATION_WRITE_FAILED/);
-  assert.match(endpoint, /deleteUser\(authUser\.id\)/);
+  assert.match(endpoint, /cleanupNewOwnerIdentity\(authAdmin, authUser\.id\)/);
 });
 
 test("una identidad relacionada con otro condominio no puede cruzar tenants", () => {
@@ -169,8 +169,15 @@ test("el backend revisa efectos secundarios después de crear la identidad Auth"
   assert.ok(createIndex >= 0);
   assert.ok(postCreateReviewIndex > createIndex);
   const catchIndex = endpoint.indexOf("} catch (error) {", postCreateReviewIndex);
-  const catchCleanupIndex = endpoint.indexOf("deleteUser(authUser.id)", catchIndex);
+  const catchCleanupIndex = endpoint.indexOf("cleanupNewOwnerIdentity(authAdmin, authUser.id)", catchIndex);
   assert.ok(catchCleanupIndex > catchIndex);
+});
+
+test("una falla posterior a Auth limpia también el perfil creado por el trigger", () => {
+  assert.match(endpoint, /async function cleanupNewOwnerIdentity/);
+  assert.match(endpoint, /authAdmin\.auth\.admin\.deleteUser\(authUserId\)/);
+  assert.match(endpoint, /\.from\("profiles"\)[\s\S]*\.delete\(\)[\s\S]*\.eq\("id", authUserId\)/);
+  assert.match(endpoint, /PROFILE_CLEANUP_FAILED/);
 });
 
 test("revocación conserva relación y datos administrativos", () => {

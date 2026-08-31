@@ -117,6 +117,26 @@ async function assessAuthIdentity(authAdmin, authUser, { knownPortalIdentity = f
   });
 }
 
+async function cleanupNewOwnerIdentity(authAdmin, authUserId) {
+  const { error: authDeleteError } = await authAdmin.auth.admin.deleteUser(authUserId);
+  if (authDeleteError) {
+    console.error("condominium_portal_auth_cleanup_failed", { code: "AUTH_CLEANUP_FAILED" });
+    return false;
+  }
+
+  // Some schemas do not cascade auth.users deletion into profiles. This id
+  // belongs to an identity created by the current request, never an existing user.
+  const { error: profileDeleteError } = await authAdmin
+    .from("profiles")
+    .delete()
+    .eq("id", authUserId);
+  if (profileDeleteError) {
+    console.error("condominium_portal_profile_cleanup_failed", { code: "PROFILE_CLEANUP_FAILED" });
+    return false;
+  }
+  return true;
+}
+
 async function hasLegacyTenantEmailCollision(authAdmin, email, condominioId) {
   const [{ data: ownerMatches, error: ownerError }, { data: residentMatches, error: residentError }] = await Promise.all([
     authAdmin
@@ -245,15 +265,13 @@ async function handleEnable({ req, res, operatorDb, authAdmin, operator }) {
       createdNow = true;
       const assessment = await assessAuthIdentity(authAdmin, authUser);
       if (!assessment.compatible) {
-        const cleanup = await authAdmin.auth.admin.deleteUser(authUser.id);
-        if (cleanup.error) console.error("condominium_portal_auth_cleanup_failed", { code: "AUTH_CLEANUP_FAILED" });
+        await cleanupNewOwnerIdentity(authAdmin, authUser.id);
         return response(res, 409, "AUTH_IDENTITY_REVIEW_REQUIRED");
       }
     }
   } catch (error) {
     if (createdNow && authUser?.id) {
-      const cleanup = await authAdmin.auth.admin.deleteUser(authUser.id);
-      if (cleanup.error) console.error("condominium_portal_auth_cleanup_failed", { code: "AUTH_CLEANUP_FAILED" });
+      await cleanupNewOwnerIdentity(authAdmin, authUser.id);
     }
     console.error("condominium_portal_auth_failed", { code: error?.code || "AUTH_OPERATION_FAILED" });
     return response(res, 503, "AUTH_OPERATION_FAILED");
@@ -299,8 +317,7 @@ async function handleEnable({ req, res, operatorDb, authAdmin, operator }) {
       }
     }
     if (createdNow && authUser?.id) {
-      const cleanup = await authAdmin.auth.admin.deleteUser(authUser.id);
-      if (cleanup.error) console.error("condominium_portal_auth_cleanup_failed", { code: "AUTH_CLEANUP_FAILED" });
+      await cleanupNewOwnerIdentity(authAdmin, authUser.id);
     }
     console.error("condominium_portal_relation_failed", { code: insertError?.code || "RELATION_NOT_CONFIRMED" });
     return response(res, 503, "RELATION_WRITE_FAILED");

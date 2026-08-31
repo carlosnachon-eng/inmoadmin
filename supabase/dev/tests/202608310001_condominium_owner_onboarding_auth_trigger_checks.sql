@@ -8,6 +8,9 @@ declare
   trigger_definition text;
   role_external boolean;
 begin
+  if to_regclass('public.partner_users') is null then
+    raise exception 'TEST: falta partner_users para reproducir el chequeo productivo';
+  end if;
   if to_regprocedure('public.handle_new_user()') is null then
     raise exception 'TEST: falta public.handle_new_user()';
   end if;
