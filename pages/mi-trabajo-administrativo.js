@@ -50,6 +50,7 @@ const SOURCE_LABELS = {
   cuotas_condominio: "Cuotas de condominio",
   firma_etapas: "Etapas de firma",
   administrative_work: "Trabajo Administrativo durable",
+  administrative_work_approvals: "Aprobaciones de Trabajo Administrativo",
 };
 
 const ACTION_LABELS = {
@@ -192,6 +193,16 @@ export default function MiTrabajoAdministrativo() {
     if (profile && !authorized) setLoading(false);
     if (authorized) loadData();
   }, [authorized, loadData, profile]);
+
+  useEffect(() => {
+    if (!data?.items?.length || typeof window === "undefined") return;
+    const workItemId = new URLSearchParams(window.location.search).get("workItemId");
+    if (!workItemId) return;
+    const item = data.items.find((candidate) => candidate.durableWorkItemId === workItemId);
+    if (!item) return;
+    setSelectedItem(item);
+    setHistory({ contextKey: item.contextKey, actions: item.metadata?.history || [], loading: false });
+  }, [data]);
 
   const summaries = useMemo(() => [...BUCKETS, ...QUALITY_CARDS].map(([key, label, color, bg, border]) => ({
     key, label, color, bg, border, count: Number(data?.summary?.[key] || 0),
@@ -419,7 +430,7 @@ export default function MiTrabajoAdministrativo() {
             <dl style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "10px 14px", marginTop: 22, fontSize: 13 }}>
               <dt>Prioridad</dt><dd style={{ margin: 0 }}>{selectedItem.priority}</dd>
               <dt>Categoría</dt><dd style={{ margin: 0 }}>{selectedItem.presentationCategory === "data_quality" ? "Datos incompletos" : selectedItem.presentationCategory === "historical_review" ? "Histórico por revisar" : BUCKET_STYLE[selectedItem.bucket]?.label}</dd>
-              <dt>Regla</dt><dd style={{ margin: 0 }}>{RULE_LABELS[selectedItem.ruleKey] || selectedItem.ruleKey.replace(/_/g, " ")}</dd>
+              <dt>Regla</dt><dd style={{ margin: 0 }}>{selectedItem.ruleKey ? (RULE_LABELS[selectedItem.ruleKey] || selectedItem.ruleKey.replace(/_/g, " ")) : "Trabajo durable"}</dd>
               {selectedItem.metadata?.propertyLabel && <><dt>Propiedad</dt><dd style={{ margin: 0 }}>{selectedItem.metadata.propertyLabel}</dd></>}
               {selectedItem.metadata?.period && <><dt>Periodo</dt><dd style={{ margin: 0 }}>{selectedItem.metadata.period}</dd></>}
               <dt>Fecha</dt><dd style={{ margin: 0 }}>{formatDate(selectedItem.dueAt || selectedItem.lastActivityAt)}</dd>

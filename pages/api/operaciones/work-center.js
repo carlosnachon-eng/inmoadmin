@@ -99,7 +99,7 @@ const SOURCE_QUERIES = {
   administrative_work_history: (client) => client
     .from("administrative_work_history").select("id,work_item_id,action_type,actor_type,reason,capability,previous_state,new_state,created_at").order("created_at", { ascending: false }),
   administrative_work_approvals: (client) => client
-    .from("administrative_work_approvals").select("id,work_item_id,approval_type,status,created_at").eq("status", "pending"),
+    .from("administrative_work_approvals").select("id,work_item_id,requested_capability,risk_tier,status,reason_safe,created_at,expires_at").eq("status", "pending"),
 };
 
 const durablePresentation = (row, sources) => {
