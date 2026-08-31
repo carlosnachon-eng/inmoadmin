@@ -11,6 +11,13 @@ begin
   if to_regclass('public.partner_users') is null then
     raise exception 'TEST: falta partner_users para reproducir el chequeo productivo';
   end if;
+  if not exists (
+    select 1 from information_schema.role_table_grants
+    where table_schema='public' and table_name='partner_users'
+      and grantee='service_role' and privilege_type='SELECT'
+  ) then
+    raise exception 'TEST: service_role no puede validar partner_users';
+  end if;
   if to_regprocedure('public.handle_new_user()') is null then
     raise exception 'TEST: falta public.handle_new_user()';
   end if;

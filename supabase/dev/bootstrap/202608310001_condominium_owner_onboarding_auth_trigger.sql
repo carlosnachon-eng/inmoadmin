@@ -19,6 +19,10 @@ begin
   end if;
 end $$;
 
+alter table public.partner_users enable row level security;
+revoke all on public.partner_users from public,anon,authenticated;
+grant select on public.partner_users to service_role;
+
 insert into public.roles(id,nombre,descripcion,es_externo)
 values(
   'propietario',
