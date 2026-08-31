@@ -54,6 +54,7 @@ test("turn breve recibe sólo contexto anterior sanitizado y nunca la respuesta 
   const envelope=realShadowTurnEnvelope(turns[2],conversation);
   assert.match(JSON.stringify(envelope.providerMetadata.priorConversation),/Montpellier/);
   assert.match(JSON.stringify(envelope.providerMetadata.priorConversation),/Perfecto, gracias/);
+  assert.ok(envelope.providerMetadata.priorConversation.every(x=>x.actor===(x.direction==="inbound"?"contact":"emporio_human")));
   assert.doesNotMatch(JSON.stringify(envelope),/Respuesta posterior secreta/);
   assert.ok(envelope.providerMetadata.priorConversation.length<=REAL_SHADOW_CONTEXT_MAX_MESSAGES);
   assert.ok(JSON.stringify(envelope.providerMetadata.priorConversation).length<REAL_SHADOW_CONTEXT_MAX_CHARS+1000);
@@ -88,7 +89,7 @@ test("prompt vigente no vuelve pendientes los turns reales ya completados con un
 });
 
 test("prompt/runtime v10 distingue actor antes de 3B sin reanalizar completed o failed previos", () => {
-  assert.equal(REAL_SHADOW_AUTO_AI_PROMPT_VERSION,"administradora-ia-emporio-real-shadow-v10");
+  assert.equal(REAL_SHADOW_AUTO_AI_PROMPT_VERSION,"administradora-ia-emporio-real-shadow-v11");
   const completed={id:"completed-v2",status:"completed",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
   const failed={id:"failed-v2",status:"timeout",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
   assert.equal(selectAutoRealRun([completed])?.id,"completed-v2");
@@ -120,6 +121,7 @@ test("regresión real sanitizada conserva turn completo y 932 caracteres previos
   assert.deepEqual(turn.messageIds,["57e3b8ce-9646-44fd-9987-f7030e9a652f","59592da0-6e15-4aae-952c-8b5a2c619692"]);
   const snapshot=createShadowAiInputSnapshot(realShadowTurnEnvelope(turn,realConversation));
   assert.equal(snapshot.providerMetadata.priorConversation.reduce((sum,item)=>sum+item.sanitizedText.length,0),932);
+  assert.deepEqual(snapshot.providerMetadata.priorConversation.map(x=>x.actor),["contact","emporio_human"]);
   const run={input_kind:"conversational_message",round_state_json:{inputSnapshot:snapshot}};
   const reloadedAnchor={provider:"respond_admin",direction:"inbound",sanitized_text:"Sólo anchor",provider_metadata:{},occurred_at:"2026-08-22T15:01:47Z"};
   const finalEnvelope=inputEnvelopeForShadowAiRun(run,reloadedAnchor,null,realConversation);
