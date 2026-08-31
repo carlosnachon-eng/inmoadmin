@@ -51,13 +51,17 @@ test("conserva cada estado específico devuelto por backend", () => {
   assert.equal(portalStateForBackendCode("UNEXPECTED_ERROR"), PORTAL_ACCESS_STATES.ERROR);
 });
 
-test("alta Auth solicita al trigger el rol externo propietario sin enviar invitación", () => {
-  assert.deepEqual(ownerPortalAuthMetadata(), {
-    app_metadata: { identity_type: "condominium_owner" },
+test("alta Auth solicita al trigger el rol externo propietario y marca el intento sin enviar invitación", () => {
+  assert.deepEqual(ownerPortalAuthMetadata("attempt-id"), {
+    app_metadata: {
+      identity_type: "condominium_owner",
+      onboarding_attempt_id: "attempt-id",
+    },
     user_metadata: { rol_pretendido: "propietario" },
   });
   assert.match(endpoint, /email_confirm:\s*true/);
-  assert.match(endpoint, /\.\.\.ownerPortalAuthMetadata\(\)/);
+  assert.match(endpoint, /\.\.\.ownerPortalAuthMetadata\(onboardingAttemptId\)/);
+  assert.match(endpoint, /onboardingAttemptId = randomUUID\(\)/);
   assert.doesNotMatch(endpoint, /inviteUserByEmail|generateLink|password\s*:/);
 });
 
@@ -141,7 +145,7 @@ test("alta cubre confirmación, duplicado, doble clic, identidad ambigua y fallo
   assert.match(endpoint, /insertError\?\.code === "23505"/);
   assert.match(endpoint, /AUTH_CREATE_FAILED/);
   assert.match(endpoint, /RELATION_WRITE_FAILED/);
-  assert.match(endpoint, /cleanupNewOwnerIdentity\(authAdmin, authUser\.id\)/);
+  assert.match(endpoint, /cleanupNewOwnerIdentity\(authAdmin, \{/);
 });
 
 test("una identidad relacionada con otro condominio no puede cruzar tenants", () => {
@@ -169,14 +173,18 @@ test("el backend revisa efectos secundarios después de crear la identidad Auth"
   assert.ok(createIndex >= 0);
   assert.ok(postCreateReviewIndex > createIndex);
   const catchIndex = endpoint.indexOf("} catch (error) {", postCreateReviewIndex);
-  const catchCleanupIndex = endpoint.indexOf("cleanupNewOwnerIdentity(authAdmin, authUser.id)", catchIndex);
+  const catchCleanupIndex = endpoint.indexOf("cleanupNewOwnerIdentity(authAdmin, {", catchIndex);
   assert.ok(catchCleanupIndex > catchIndex);
 });
 
-test("una falla posterior a Auth limpia también el perfil creado por el trigger", () => {
+test("una falla posterior a Auth usa el cleanup acotado antes de borrar la identidad", () => {
   assert.match(endpoint, /async function cleanupNewOwnerIdentity/);
+  assert.match(endpoint, /\.rpc\(\s*"cleanup_condominium_owner_onboarding_profile"/);
+  assert.match(endpoint, /p_auth_user_id:\s*authUserId/);
+  assert.match(endpoint, /p_onboarding_attempt_id:\s*attemptId/);
+  assert.match(endpoint, /p_operator_id:\s*operatorUserId/);
   assert.match(endpoint, /authAdmin\.auth\.admin\.deleteUser\(authUserId\)/);
-  assert.match(endpoint, /\.from\("profiles"\)[\s\S]*\.delete\(\)[\s\S]*\.eq\("id", authUserId\)/);
+  assert.doesNotMatch(endpoint, /\.from\("profiles"\)[\s\S]{0,160}\.delete\(/);
   assert.match(endpoint, /PROFILE_CLEANUP_FAILED/);
 });
 

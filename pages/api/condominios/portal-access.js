@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 import {
   activePortalAccess,
   assessOwnerPortalIdentity,
@@ -117,21 +118,25 @@ async function assessAuthIdentity(authAdmin, authUser, { knownPortalIdentity = f
   });
 }
 
-async function cleanupNewOwnerIdentity(authAdmin, authUserId) {
-  const { error: authDeleteError } = await authAdmin.auth.admin.deleteUser(authUserId);
-  if (authDeleteError) {
-    console.error("condominium_portal_auth_cleanup_failed", { code: "AUTH_CLEANUP_FAILED" });
+async function cleanupNewOwnerIdentity(authAdmin, { authUserId, attemptId, operatorUserId }) {
+  const { data: cleanupResult, error: cleanupError } = await authAdmin.rpc(
+    "cleanup_condominium_owner_onboarding_profile",
+    {
+      p_auth_user_id: authUserId,
+      p_onboarding_attempt_id: attemptId,
+      p_operator_id: operatorUserId,
+      p_reason_code: "ONBOARDING_ABORTED_BEFORE_ACCESS",
+    },
+  );
+  const cleanupCode = cleanupResult?.result_code;
+  if (cleanupError || !["PROFILE_DELETED", "PROFILE_ALREADY_ABSENT", "ALREADY_COMPLETE"].includes(cleanupCode)) {
+    console.error("condominium_portal_profile_cleanup_failed", { code: cleanupCode || "PROFILE_CLEANUP_FAILED" });
     return false;
   }
 
-  // Some schemas do not cascade auth.users deletion into profiles. This id
-  // belongs to an identity created by the current request, never an existing user.
-  const { error: profileDeleteError } = await authAdmin
-    .from("profiles")
-    .delete()
-    .eq("id", authUserId);
-  if (profileDeleteError) {
-    console.error("condominium_portal_profile_cleanup_failed", { code: "PROFILE_CLEANUP_FAILED" });
+  const { error: authDeleteError } = await authAdmin.auth.admin.deleteUser(authUserId);
+  if (authDeleteError) {
+    console.error("condominium_portal_auth_cleanup_failed", { code: "AUTH_CLEANUP_FAILED" });
     return false;
   }
   return true;
@@ -246,6 +251,7 @@ async function handleEnable({ req, res, operatorDb, authAdmin, operator }) {
 
   let authUser;
   let createdNow = false;
+  let onboardingAttemptId = null;
   try {
     authUser = await findAuthUserByEmail(authAdmin, email);
     if (authUser) {
@@ -255,23 +261,32 @@ async function handleEnable({ req, res, operatorDb, authAdmin, operator }) {
         return response(res, 409, "AUTH_IDENTITY_REVIEW_REQUIRED");
       }
     } else {
+      onboardingAttemptId = randomUUID();
       const created = await authAdmin.auth.admin.createUser({
         email,
         email_confirm: true,
-        ...ownerPortalAuthMetadata(),
+        ...ownerPortalAuthMetadata(onboardingAttemptId),
       });
       if (created.error || !created.data?.user?.id) return response(res, 503, "AUTH_CREATE_FAILED");
       authUser = created.data.user;
       createdNow = true;
       const assessment = await assessAuthIdentity(authAdmin, authUser);
       if (!assessment.compatible) {
-        await cleanupNewOwnerIdentity(authAdmin, authUser.id);
+        await cleanupNewOwnerIdentity(authAdmin, {
+          authUserId: authUser.id,
+          attemptId: onboardingAttemptId,
+          operatorUserId: operator.userId,
+        });
         return response(res, 409, "AUTH_IDENTITY_REVIEW_REQUIRED");
       }
     }
   } catch (error) {
     if (createdNow && authUser?.id) {
-      await cleanupNewOwnerIdentity(authAdmin, authUser.id);
+      await cleanupNewOwnerIdentity(authAdmin, {
+        authUserId: authUser.id,
+        attemptId: onboardingAttemptId,
+        operatorUserId: operator.userId,
+      });
     }
     console.error("condominium_portal_auth_failed", { code: error?.code || "AUTH_OPERATION_FAILED" });
     return response(res, 503, "AUTH_OPERATION_FAILED");
@@ -317,7 +332,11 @@ async function handleEnable({ req, res, operatorDb, authAdmin, operator }) {
       }
     }
     if (createdNow && authUser?.id) {
-      await cleanupNewOwnerIdentity(authAdmin, authUser.id);
+      await cleanupNewOwnerIdentity(authAdmin, {
+        authUserId: authUser.id,
+        attemptId: onboardingAttemptId,
+        operatorUserId: operator.userId,
+      });
     }
     console.error("condominium_portal_relation_failed", { code: insertError?.code || "RELATION_NOT_CONFIRMED" });
     return response(res, 503, "RELATION_WRITE_FAILED");
