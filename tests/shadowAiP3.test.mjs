@@ -650,10 +650,11 @@ test("A/C: loop ejecuta argumentos válidos y espera IDs de la ronda anterior",a
   assert.equal(result.decision.entityResolutionStatus,"resolved"); assert.equal(result.decision.resolvedEntities.some(x=>x.internalId===propertyId),true);
 });
 
-test("B: tool sin required no ejecuta y Claude puede corregir en ronda siguiente",async()=>{
+test("B: tool sin required se elimina antes de ejecutar y no consume otra ronda",async()=>{
   const db=fakeAiDb(); const invalid={...validDecision,proposedToolCalls:[toolCall("find_properties",{})]};
   const result=await runShadowAi(db,{messageId:"invalid-args",envelope:{...synthetic,sanitizedText:"Montpellier"},deterministic:{}},{env:devEnv,modelCall:sequenceModel([invalid,validDecision])});
-  assert.equal(result.status,"completed"); assert.equal(result.rounds,2); assert.equal(result.tools[0].ok,false); assert.equal(result.tools[0].error,"invalid_tool_arguments");
+  assert.equal(result.status,"completed"); assert.equal(result.rounds,1); assert.equal(result.tools.length,0);
+  assert.equal(result.decision.safetyFlags.includes("invalid_tool_arguments_plan_blocked"),true);
   assert.equal(db.reads.filter(x=>x==="properties").length,0);
 });
 
@@ -730,10 +731,11 @@ test("I: recall usa tools únicas, no duplica crédito y detecta omisión p3-03"
   assert.equal(complete.toolRequiredNowRecall,1); assert.equal(complete.toolRequiredNowPrecision,1);
 });
 
-test("H: loop nunca supera tres rondas ni ejecuta tools nuevas en la última",async()=>{
+test("H: propuestas inválidas repetidas no fuerzan el loop de tres rondas",async()=>{
   const invalid={...validDecision,proposedToolCalls:[toolCall("find_properties",{})]}; let calls=0;
   const result=await runShadowAi(fakeAiDb(),{messageId:"three-rounds",envelope:{...synthetic,sanitizedText:"QA"},deterministic:{}},{env:devEnv,modelCall:async()=>{calls++;return{text:JSON.stringify(invalid),usage:{}};}});
-  assert.equal(calls,3); assert.equal(result.rounds,3); assert.equal(result.tools.length,3); assert.equal(result.tools.every(x=>!x.ok),true);
+  assert.equal(calls,1); assert.equal(result.rounds,1); assert.equal(result.tools.length,0);
+  assert.equal(result.decision.safetyFlags.includes("invalid_tool_arguments_plan_blocked"),true);
 });
 
 test("runner bloquea completed y running sin llamar al modelo",async()=>{
