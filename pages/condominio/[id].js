@@ -11,6 +11,7 @@ import {
   PORTAL_ACCESS_STATES,
   classifyUnitPortalState,
   normalizePortalEmail,
+  portalStateForBackendCode,
 } from "../../lib/condominios/portalAccess.mjs";
 import { buildHistoricalPortfolio } from "../../lib/condominios/historicalPortfolio.mjs";
 
@@ -133,7 +134,7 @@ export default function CondominioDetalle() {
   const [historicalRecoveries, setHistoricalRecoveries] = useState([]);
   const [portalModal, setPortalModal] = useState(null);
   const [portalBusyUnitId, setPortalBusyUnitId] = useState(null);
-  const [portalUnitErrors, setPortalUnitErrors] = useState({});
+  const [portalUnitStates, setPortalUnitStates] = useState({});
   const [recoveryModal, setRecoveryModal] = useState(null);
   const [recoveryEvidence, setRecoveryEvidence] = useState(null);
   const [recoveryForm, setRecoveryForm] = useState({});
@@ -424,7 +425,7 @@ export default function CondominioDetalle() {
       email: unit?.propietario_email,
       accesses: accessesForUnit(unit?.id),
       busy: portalBusyUnitId === unit?.id,
-      error: portalUnitErrors[unit?.id] === true,
+      overrideState: portalUnitStates[unit?.id] || null,
     });
     return state === PORTAL_ACCESS_STATES.HABILITADO && !operationControls.ownerPortalEnabled
       ? PORTAL_ACCESS_STATES.PORTAL_GENERAL_APAGADO
@@ -439,6 +440,7 @@ export default function CondominioDetalle() {
     [PORTAL_ACCESS_STATES.PORTAL_GENERAL_APAGADO]: { label: "Portal general apagado", color: "#92400e", background: "#fef3c7" },
     [PORTAL_ACCESS_STATES.MULTIUNIDAD_POR_CONFIRMAR]: { label: "Multiunidad por confirmar", color: "#92400e", background: "#fef3c7" },
     [PORTAL_ACCESS_STATES.CORREO_COMPARTIDO]: { label: "Correo compartido en revisión", color: "#991b1b", background: "#fee2e2" },
+    [PORTAL_ACCESS_STATES.COINCIDENCIA_LEGACY_EN_REVISION]: { label: "Coincidencia con otro condominio", color: "#991b1b", background: "#fee2e2" },
     [PORTAL_ACCESS_STATES.IDENTIDAD_AUTH_EN_REVISION]: { label: "Identidad Auth en revisión", color: "#991b1b", background: "#fee2e2" },
     [PORTAL_ACCESS_STATES.REVOCADO]: { label: "Acceso revocado", color: "#6b7280", background: "#f3f4f6" },
     [PORTAL_ACCESS_STATES.ERROR]: { label: "Error de habilitación", color: "#991b1b", background: "#fee2e2" },
@@ -451,6 +453,7 @@ export default function CondominioDetalle() {
     MULTIUNIT_CONFIRMATION_REQUIRED: "Este correo ya tiene otra unidad controlada. Confirma expresamente el acceso multiunidad.",
     SHARED_EMAIL_REVIEW_REQUIRED: "La unidad ya tiene otro acceso activo. Revisa cotitularidad o correo compartido.",
     AUTH_IDENTITY_REVIEW_REQUIRED: "La identidad Auth ya existe y requiere revisión antes de vincularla.",
+    LEGACY_TENANT_REVIEW_REQUIRED: "El correo coincide con una unidad de otro condominio legacy. Revisa la identidad antes de continuar.",
     REACTIVATION_REVIEW_REQUIRED: "Existe una relación revocada. La reactivación requiere revisión.",
     OPERATION_NOT_ALLOWED: "No tienes permiso para administrar accesos del portal.",
     CONTROLLED_CONDOMINIUM_REQUIRED: "Este flujo sólo está disponible para condominios controlados.",
@@ -475,7 +478,7 @@ export default function CondominioDetalle() {
     const unit = portalModal?.unit;
     if (!unit?.id || portalModal?.emailConfirmed !== true) return;
     setPortalBusyUnitId(unit.id);
-    setPortalUnitErrors(current => ({ ...current, [unit.id]: false }));
+    setPortalUnitStates(current => ({ ...current, [unit.id]: null }));
     const result = await callPortalAccess({
       action: "enable",
       condominioId: id,
@@ -486,6 +489,7 @@ export default function CondominioDetalle() {
     setPortalBusyUnitId(null);
 
     if (result.code === "MULTIUNIT_CONFIRMATION_REQUIRED") {
+      setPortalUnitStates(current => ({ ...current, [unit.id]: PORTAL_ACCESS_STATES.MULTIUNIDAD_POR_CONFIRMAR }));
       setPortalModal(current => ({
         ...current,
         reviewState: PORTAL_ACCESS_STATES.MULTIUNIDAD_POR_CONFIRMAR,
@@ -495,16 +499,13 @@ export default function CondominioDetalle() {
       return;
     }
     if (!result.ok) {
-      const reviewState = result.code === "SHARED_EMAIL_REVIEW_REQUIRED"
-        ? PORTAL_ACCESS_STATES.CORREO_COMPARTIDO
-        : result.code === "AUTH_IDENTITY_REVIEW_REQUIRED"
-          ? PORTAL_ACCESS_STATES.IDENTIDAD_AUTH_EN_REVISION
-          : PORTAL_ACCESS_STATES.ERROR;
-      setPortalUnitErrors(current => ({ ...current, [unit.id]: true }));
+      const reviewState = portalStateForBackendCode(result.code);
+      setPortalUnitStates(current => ({ ...current, [unit.id]: reviewState }));
       setPortalModal(current => ({ ...current, reviewState, error: portalErrorMessage(result.code) }));
       return;
     }
 
+    setPortalUnitStates(current => ({ ...current, [unit.id]: null }));
     setPortalModal(null);
     showToast(result.code === "ALREADY_ENABLED" ? "El portal ya estaba habilitado" : "Portal habilitado");
     await loadData();
@@ -513,11 +514,11 @@ export default function CondominioDetalle() {
   const revocarPortal = async (unit, access) => {
     if (!access?.id || !window.confirm(`¿Revocar el acceso al portal de la unidad ${unit.numero}?`)) return;
     setPortalBusyUnitId(unit.id);
-    setPortalUnitErrors(current => ({ ...current, [unit.id]: false }));
+    setPortalUnitStates(current => ({ ...current, [unit.id]: null }));
     const result = await callPortalAccess({ action: "revoke", condominioId: id, unidadId: unit.id, accessId: access.id });
     setPortalBusyUnitId(null);
     if (!result.ok) {
-      setPortalUnitErrors(current => ({ ...current, [unit.id]: true }));
+      setPortalUnitStates(current => ({ ...current, [unit.id]: PORTAL_ACCESS_STATES.ERROR }));
       showToast("No fue posible revocar el acceso", false);
       return;
     }

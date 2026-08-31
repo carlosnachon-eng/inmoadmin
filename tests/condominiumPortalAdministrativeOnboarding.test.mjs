@@ -3,10 +3,13 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import {
   PORTAL_ACCESS_STATES,
+  assessOwnerPortalIdentity,
   classifyUnitPortalState,
   isValidPortalEmail,
   maskPortalEmail,
   normalizePortalEmail,
+  ownerPortalAuthMetadata,
+  portalStateForBackendCode,
   requiresMultiUnitConfirmation,
 } from "../lib/condominios/portalAccess.mjs";
 
@@ -33,6 +36,75 @@ test("clasifica estados de unidad sin convertir correo en autorización", () => 
     email: "owner@example.com",
     accesses: [{ email_normalized: "owner@example.com", active: false, revoked_at: "2026-08-27T00:00:00Z" }],
   }), PORTAL_ACCESS_STATES.REVOCADO);
+  assert.equal(classifyUnitPortalState({
+    email: "owner@example.com",
+    accesses: [],
+    overrideState: PORTAL_ACCESS_STATES.IDENTIDAD_AUTH_EN_REVISION,
+  }), PORTAL_ACCESS_STATES.IDENTIDAD_AUTH_EN_REVISION);
+});
+
+test("conserva cada estado específico devuelto por backend", () => {
+  assert.equal(portalStateForBackendCode("AUTH_IDENTITY_REVIEW_REQUIRED"), PORTAL_ACCESS_STATES.IDENTIDAD_AUTH_EN_REVISION);
+  assert.equal(portalStateForBackendCode("MULTIUNIT_CONFIRMATION_REQUIRED"), PORTAL_ACCESS_STATES.MULTIUNIDAD_POR_CONFIRMAR);
+  assert.equal(portalStateForBackendCode("SHARED_EMAIL_REVIEW_REQUIRED"), PORTAL_ACCESS_STATES.CORREO_COMPARTIDO);
+  assert.equal(portalStateForBackendCode("LEGACY_TENANT_REVIEW_REQUIRED"), PORTAL_ACCESS_STATES.COINCIDENCIA_LEGACY_EN_REVISION);
+  assert.equal(portalStateForBackendCode("UNEXPECTED_ERROR"), PORTAL_ACCESS_STATES.ERROR);
+});
+
+test("alta Auth solicita al trigger el rol externo propietario sin enviar invitación", () => {
+  assert.deepEqual(ownerPortalAuthMetadata(), {
+    app_metadata: { identity_type: "condominium_owner" },
+    user_metadata: { rol_pretendido: "propietario" },
+  });
+  assert.match(endpoint, /email_confirm:\s*true/);
+  assert.match(endpoint, /\.\.\.ownerPortalAuthMetadata\(\)/);
+  assert.doesNotMatch(endpoint, /inviteUserByEmail|generateLink|password\s*:/);
+});
+
+const compatibleAuth = {
+  id: "synthetic-owner",
+  email_confirmed_at: "2026-08-31T12:00:00Z",
+  app_metadata: { identity_type: "condominium_owner" },
+};
+const compatibleProfile = { id: "synthetic-owner", role_id: "propietario", active: true };
+
+test("perfil externo propietario marcado es compatible y un rol inesperado aborta", () => {
+  assert.equal(assessOwnerPortalIdentity({
+    authUser: compatibleAuth,
+    profile: compatibleProfile,
+    roleIsExternal: true,
+  }).compatible, true);
+  assert.equal(assessOwnerPortalIdentity({
+    authUser: compatibleAuth,
+    profile: { ...compatibleProfile, role_id: "asesor" },
+    roleIsExternal: false,
+  }).compatible, false);
+});
+
+test("identidad interna, partner, membresía o permiso incompatible se rechazan", () => {
+  const base = { authUser: compatibleAuth, profile: compatibleProfile, roleIsExternal: true };
+  assert.equal(assessOwnerPortalIdentity({ ...base, roleIsExternal: false }).compatible, false);
+  assert.equal(assessOwnerPortalIdentity({ ...base, activePartner: true }).compatible, false);
+  assert.equal(assessOwnerPortalIdentity({ ...base, activeMemberships: 1 }).compatible, false);
+  assert.equal(assessOwnerPortalIdentity({ ...base, hasInternalPermissions: true }).compatible, false);
+});
+
+test("preexistente compatible puede completar primera relación; C-24 sin marcador sigue en revisión", () => {
+  const partialFromEndpoint = assessOwnerPortalIdentity({
+    authUser: compatibleAuth,
+    profile: compatibleProfile,
+    roleIsExternal: true,
+    knownPortalIdentity: false,
+  });
+  assert.equal(partialFromEndpoint.compatible, true);
+
+  const ambiguousPreexisting = assessOwnerPortalIdentity({
+    authUser: { ...compatibleAuth, app_metadata: {} },
+    profile: compatibleProfile,
+    roleIsExternal: true,
+    knownPortalIdentity: false,
+  });
+  assert.equal(ambiguousPreexisting.compatible, false);
 });
 
 test("multiunidad requiere confirmación explícita", () => {
@@ -78,14 +150,27 @@ test("una identidad relacionada con otro condominio no puede cruzar tenants", ()
   assert.match(endpoint, /AUTH_IDENTITY_REVIEW_REQUIRED/);
 });
 
+test("coincidencia legacy de otro tenant se bloquea antes de crear Auth, como A-06", () => {
+  const legacyCheck = endpoint.indexOf("await hasLegacyTenantEmailCollision");
+  const createIdentity = endpoint.indexOf("auth.admin.createUser");
+  assert.ok(legacyCheck >= 0);
+  assert.ok(createIdentity > legacyCheck);
+  assert.match(endpoint, /LEGACY_TENANT_REVIEW_REQUIRED/);
+  assert.match(endpoint, /\.neq\("condominio_id", condominioId\)/);
+  assert.match(endpoint, /condominium_operation_controls/);
+});
+
 test("el backend revisa efectos secundarios después de crear la identidad Auth", () => {
   const createIndex = endpoint.indexOf("auth.admin.createUser");
   const postCreateReviewIndex = endpoint.indexOf(
-    "hasIncompatibleAuthIdentity(authAdmin, authUser)",
+    "assessAuthIdentity(authAdmin, authUser)",
     createIndex,
   );
   assert.ok(createIndex >= 0);
   assert.ok(postCreateReviewIndex > createIndex);
+  const catchIndex = endpoint.indexOf("} catch (error) {", postCreateReviewIndex);
+  const catchCleanupIndex = endpoint.indexOf("deleteUser(authUser.id)", catchIndex);
+  assert.ok(catchCleanupIndex > catchIndex);
 });
 
 test("revocación conserva relación y datos administrativos", () => {
@@ -103,6 +188,9 @@ test("UI confirma correo, muestra estados reales y no envía PII libremente", ()
   assert.match(adminPage, /PORTAL_ACCESS_STATES\.PORTAL_GENERAL_APAGADO/);
   assert.match(adminPage, /PORTAL_ACCESS_STATES\.LISTO_PARA_HABILITAR/);
   assert.match(adminPage, /Revoca primero el acceso activo antes de cambiar el correo/);
+  assert.match(adminPage, /portalStateForBackendCode\(result\.code\)/);
+  assert.match(adminPage, /COINCIDENCIA_LEGACY_EN_REVISION/);
+  assert.doesNotMatch(adminPage, /setPortalUnitErrors/);
   assert.match(adminPage, /if \(result\.error\)/);
   assert.doesNotMatch(adminPage, /action: "enable"[\s\S]{0,180}(?:email|correo):/i);
 });
