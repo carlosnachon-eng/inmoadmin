@@ -21,8 +21,8 @@ test("correo recibido puede reconocerse sin afirmar identidad", () => {
   assert.equal(resolution.case_status, "insufficient_identity_context");
   assert.equal(resolution.requires_human, true);
   assert.equal(action.conversation_action, "acknowledge_received_information");
-  assert.equal(action.requires_human, false);
-  assert.equal(action.auto_send_eligible, true);
+  assert.equal(action.requires_human, true);
+  assert.equal(action.auto_send_eligible, false);
   assert.match(action.proposed_message, /recibí la información/i);
   assert.doesNotMatch(action.proposed_message, /inquilin|propietari|contrato|pago/i);
 });
@@ -30,7 +30,7 @@ test("correo recibido puede reconocerse sin afirmar identidad", () => {
 test("comprobante recibido sólo reconoce evidencia pendiente de validación", () => {
   const { action } = evaluate({ text: "Les mando el comprobante", intent: "pago_renta", metadata: { attachmentContext: { present: true, interpreted: true, items: [] } } });
   assert.equal(action.conversation_action, "acknowledge_received_information");
-  assert.equal(action.auto_send_eligible, true);
+  assert.equal(action.auto_send_eligible, false);
   assert.match(action.proposed_message, /recibí el comprobante.*pendiente de validación/i);
   assert.doesNotMatch(action.proposed_message, /pago (?:aplicado|confirmado)|saldo|banco/i);
 });
@@ -40,14 +40,14 @@ test("humedad sin ubicación formula una sola pregunta segura", () => {
   assert.equal(action.conversation_action, "ask_missing_information");
   assert.deepEqual(action.missing_information, ["location"]);
   assert.equal(action.identity_independent_kind, "maintenance_location");
-  assert.equal(action.auto_send_eligible, true);
+  assert.equal(action.auto_send_eligible, false);
   assert.match(action.proposed_message, /en qué parte/i);
 });
 
 test("referencia C24 no resuelta aclara propiedad sin afirmar pertenencia", () => {
   const { action } = evaluate({ text: "Soy del C24" });
   assert.equal(action.conversation_action, "clarify_property");
-  assert.equal(action.auto_send_eligible, true);
+  assert.equal(action.auto_send_eligible, false);
   assert.match(action.proposed_message, /a qué propiedad o unidad/i);
   assert.doesNotMatch(action.proposed_message, /tu(?:s)? propiedad/i);
 });

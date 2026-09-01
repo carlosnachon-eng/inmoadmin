@@ -38,8 +38,8 @@ test("regresión sanitizada Terrania: respuesta segura y handoff sensible coexis
   assert.equal(resolution.operational_follow_up.type, "sensitive_internal_handoff");
   assert.equal(resolution.operational_follow_up.executable, false);
   assert.equal(action.conversation_action, "acknowledge_received_information");
-  assert.equal(action.requires_human, false);
-  assert.equal(action.auto_send_eligible, true);
+  assert.equal(action.requires_human, true);
+  assert.equal(action.auto_send_eligible, false);
   assert.match(action.proposed_message, /reporte.*imágenes.*comprobante/i);
   assert.match(action.proposed_message, /fuga.*inundación.*pieza hidráulica/i);
   assert.match(action.proposed_message, /¿el flujo de agua ya quedó contenido\?/i);
