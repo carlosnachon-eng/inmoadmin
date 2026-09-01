@@ -1,9 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 import {
   activePortalAccess,
+  assessOwnerPortalIdentity,
   isValidPortalEmail,
   maskPortalEmail,
   normalizePortalEmail,
+  ownerPortalAuthMetadata,
   requiresMultiUnitConfirmation,
 } from "../../../lib/condominios/portalAccess.mjs";
 
@@ -73,16 +76,100 @@ async function findAuthUserByEmail(authAdmin, email) {
   throw Object.assign(new Error("AUTH_LOOKUP_LIMIT_REACHED"), { code: "AUTH_LOOKUP_LIMIT_REACHED" });
 }
 
-async function hasIncompatibleAuthIdentity(authAdmin, authUser) {
-  if (!authUser?.id || authUser.deleted_at || authUser.banned_until) return true;
-  if (!authUser.email_confirmed_at) return true;
-
-  const [{ data: profile, error: profileError }, { data: partner, error: partnerError }] = await Promise.all([
-    authAdmin.from("profiles").select("id, role_id, active").eq("id", authUser.id).maybeSingle(),
+async function assessAuthIdentity(authAdmin, authUser, { knownPortalIdentity = false } = {}) {
+  const [
+    { data: profile, error: profileError },
+    { data: partner, error: partnerError },
+    { data: memberships, error: membershipError },
+  ] = await Promise.all([
+    authAdmin.from("profiles").select("id, role_id, active, roles:role_id(es_externo)").eq("id", authUser.id).maybeSingle(),
     authAdmin.from("partner_users").select("id, active").eq("auth_user_id", authUser.id).eq("active", true).maybeSingle(),
+    authAdmin
+      .from("condominium_access_memberships")
+      .select("id")
+      .eq("principal_user_id", authUser.id)
+      .eq("active", true)
+      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`),
   ]);
-  if (profileError || partnerError) throw Object.assign(new Error("AUTH_IDENTITY_CHECK_FAILED"), { code: "AUTH_IDENTITY_CHECK_FAILED" });
-  return Boolean(partner || (profile?.active === true && profile?.role_id));
+  if (profileError || partnerError || membershipError) {
+    throw Object.assign(new Error("AUTH_IDENTITY_CHECK_FAILED"), { code: "AUTH_IDENTITY_CHECK_FAILED" });
+  }
+
+  const { data: internalPermissions, error: permissionError } = profile?.role_id
+    ? await authAdmin
+      .from("permisos_modulo")
+      .select("modulo")
+      .eq("role_id", profile.role_id)
+      .or("puede_ver.eq.true,puede_editar.eq.true")
+    : { data: [], error: null };
+  if (permissionError) {
+    throw Object.assign(new Error("AUTH_IDENTITY_CHECK_FAILED"), { code: "AUTH_IDENTITY_CHECK_FAILED" });
+  }
+
+  const role = Array.isArray(profile?.roles) ? profile.roles[0] : profile?.roles;
+  return assessOwnerPortalIdentity({
+    authUser,
+    profile,
+    roleIsExternal: role?.es_externo === true,
+    activePartner: Boolean(partner),
+    activeMemberships: memberships?.length || 0,
+    hasInternalPermissions: (internalPermissions?.length || 0) > 0,
+    knownPortalIdentity,
+  });
+}
+
+async function cleanupNewOwnerIdentity(authAdmin, { authUserId, attemptId, operatorUserId }) {
+  const { data: cleanupResult, error: cleanupError } = await authAdmin.rpc(
+    "cleanup_condominium_owner_onboarding_profile",
+    {
+      p_auth_user_id: authUserId,
+      p_onboarding_attempt_id: attemptId,
+      p_operator_id: operatorUserId,
+      p_reason_code: "ONBOARDING_ABORTED_BEFORE_ACCESS",
+    },
+  );
+  const cleanupCode = cleanupResult?.result_code;
+  if (cleanupError || !["PROFILE_DELETED", "PROFILE_ALREADY_ABSENT", "ALREADY_COMPLETE"].includes(cleanupCode)) {
+    console.error("condominium_portal_profile_cleanup_failed", { code: cleanupCode || "PROFILE_CLEANUP_FAILED" });
+    return false;
+  }
+
+  const { error: authDeleteError } = await authAdmin.auth.admin.deleteUser(authUserId);
+  if (authDeleteError) {
+    console.error("condominium_portal_auth_cleanup_failed", { code: "AUTH_CLEANUP_FAILED" });
+    return false;
+  }
+  return true;
+}
+
+async function hasLegacyTenantEmailCollision(authAdmin, email, condominioId) {
+  const [{ data: ownerMatches, error: ownerError }, { data: residentMatches, error: residentError }] = await Promise.all([
+    authAdmin
+      .from("unidades_condominio")
+      .select("condominio_id")
+      .eq("activo", true)
+      .neq("condominio_id", condominioId)
+      .ilike("propietario_email", email),
+    authAdmin
+      .from("unidades_condominio")
+      .select("condominio_id")
+      .eq("activo", true)
+      .neq("condominio_id", condominioId)
+      .ilike("residente_email", email),
+  ]);
+  if (ownerError || residentError) {
+    throw Object.assign(new Error("LEGACY_ACCESS_CHECK_FAILED"), { code: "LEGACY_ACCESS_CHECK_FAILED" });
+  }
+
+  const candidateIds = [...new Set([...(ownerMatches || []), ...(residentMatches || [])].map((row) => row.condominio_id).filter(Boolean))];
+  if (candidateIds.length === 0) return false;
+  const { data: controlled, error: controlError } = await authAdmin
+    .from("condominium_operation_controls")
+    .select("condominio_id")
+    .in("condominio_id", candidateIds);
+  if (controlError) throw Object.assign(new Error("LEGACY_ACCESS_CHECK_FAILED"), { code: "LEGACY_ACCESS_CHECK_FAILED" });
+  const controlledIds = new Set((controlled || []).map((row) => row.condominio_id));
+  return candidateIds.some((candidateId) => !controlledIds.has(candidateId));
 }
 
 async function loadControlledUnit(operatorDb, condominioId, unidadId) {
@@ -116,6 +203,15 @@ async function handleEnable({ req, res, operatorDb, authAdmin, operator }) {
   const email = normalizePortalEmail(scope.unit.propietario_email);
   if (!email) return response(res, 400, "EMAIL_REQUIRED");
   if (!isValidPortalEmail(email)) return response(res, 400, "INVALID_EMAIL");
+
+  try {
+    if (await hasLegacyTenantEmailCollision(authAdmin, email, condominioId)) {
+      return response(res, 409, "LEGACY_TENANT_REVIEW_REQUIRED");
+    }
+  } catch (error) {
+    console.error("condominium_portal_legacy_check_failed", { code: error?.code || "LEGACY_ACCESS_CHECK_FAILED" });
+    return response(res, 503, "LEGACY_ACCESS_CHECK_FAILED");
+  }
 
   const { data: exactAccess, error: exactError } = await operatorDb
     .from("condominium_unit_portal_access")
@@ -155,29 +251,43 @@ async function handleEnable({ req, res, operatorDb, authAdmin, operator }) {
 
   let authUser;
   let createdNow = false;
+  let onboardingAttemptId = null;
   try {
     authUser = await findAuthUserByEmail(authAdmin, email);
     if (authUser) {
       const recognizedPortalIdentity = Boolean(exactAccess?.active) || emailActiveAccesses.length > 0;
-      if (!recognizedPortalIdentity || await hasIncompatibleAuthIdentity(authAdmin, authUser)) {
+      const assessment = await assessAuthIdentity(authAdmin, authUser, { knownPortalIdentity: recognizedPortalIdentity });
+      if (!assessment.compatible) {
         return response(res, 409, "AUTH_IDENTITY_REVIEW_REQUIRED");
       }
     } else {
+      onboardingAttemptId = randomUUID();
       const created = await authAdmin.auth.admin.createUser({
         email,
         email_confirm: true,
-        app_metadata: { identity_type: "condominium_owner" },
+        ...ownerPortalAuthMetadata(onboardingAttemptId),
       });
       if (created.error || !created.data?.user?.id) return response(res, 503, "AUTH_CREATE_FAILED");
       authUser = created.data.user;
       createdNow = true;
-      if (await hasIncompatibleAuthIdentity(authAdmin, authUser)) {
-        const cleanup = await authAdmin.auth.admin.deleteUser(authUser.id);
-        if (cleanup.error) console.error("condominium_portal_auth_cleanup_failed", { code: "AUTH_CLEANUP_FAILED" });
+      const assessment = await assessAuthIdentity(authAdmin, authUser);
+      if (!assessment.compatible) {
+        await cleanupNewOwnerIdentity(authAdmin, {
+          authUserId: authUser.id,
+          attemptId: onboardingAttemptId,
+          operatorUserId: operator.userId,
+        });
         return response(res, 409, "AUTH_IDENTITY_REVIEW_REQUIRED");
       }
     }
   } catch (error) {
+    if (createdNow && authUser?.id) {
+      await cleanupNewOwnerIdentity(authAdmin, {
+        authUserId: authUser.id,
+        attemptId: onboardingAttemptId,
+        operatorUserId: operator.userId,
+      });
+    }
     console.error("condominium_portal_auth_failed", { code: error?.code || "AUTH_OPERATION_FAILED" });
     return response(res, 503, "AUTH_OPERATION_FAILED");
   }
@@ -222,8 +332,11 @@ async function handleEnable({ req, res, operatorDb, authAdmin, operator }) {
       }
     }
     if (createdNow && authUser?.id) {
-      const cleanup = await authAdmin.auth.admin.deleteUser(authUser.id);
-      if (cleanup.error) console.error("condominium_portal_auth_cleanup_failed", { code: "AUTH_CLEANUP_FAILED" });
+      await cleanupNewOwnerIdentity(authAdmin, {
+        authUserId: authUser.id,
+        attemptId: onboardingAttemptId,
+        operatorUserId: operator.userId,
+      });
     }
     console.error("condominium_portal_relation_failed", { code: insertError?.code || "RELATION_NOT_CONFIRMED" });
     return response(res, 503, "RELATION_WRITE_FAILED");
