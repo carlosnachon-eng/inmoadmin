@@ -46,7 +46,7 @@ test("detalle durable resuelve etiquetas humanas sin exponer UUID como presentac
   assert.match(api, /propertyLabel: safeLabel\(property\?\.name \|\| contract\?\.property_name \|\| condominium\?\.nombre\)/);
   assert.match(api, /unit\?\.numero \? `Unidad/);
   assert.match(api, /contractLabel: contract \?/);
-  assert.match(api, /originLabel: row\.primary_source_type === "whatsapp" \? "WhatsApp Administración"/);
+  assert.match(api, /originLabel: row\.primary_source_type === "whatsapp" && row\.primary_source_id \? "WhatsApp Administración"/);
   assert.match(ui, />Cliente</);
   assert.match(ui, />Qué hizo la Administradora IA</);
   assert.match(ui, />Qué queda pendiente para humano</);
@@ -58,4 +58,13 @@ test("origen WhatsApp usa navegación segura y no muestra identificadores opacos
   assert.match(api, /String\(channel\) !== "544519"/);
   assert.match(ui, />Ver conversación</);
   assert.doesNotMatch(ui, />\{selectedItem\.metadata\?\.clientIdentityId\}</);
+});
+
+test("regresión del work item 28385513 conserva el origen primario y sólo enlaza su conversación Admin", () => {
+  assert.match(api, /responsible_profile_id,primary_source_type,primary_source_id,next_step/);
+  assert.match(api, /external_message_id,direction,sanitized_text/);
+  assert.match(api, /const durableMessageSourceId = \(message\)[\s\S]*`msg:\$\{crypto\.createHash\("sha256"\)/);
+  assert.match(api, /row\.primary_source_type === "whatsapp"[\s\S]*row\.primary_source_id[\s\S]*durableMessageSourceId\(origin\.message\) === row\.primary_source_id[\s\S]*origin\.message\?\.direction === "inbound"/);
+  assert.match(api, /const conversationUrl = sourceMessage[\s\S]*respondInboxLink\(origin\.conversation\?\.respond_contact_id, origin\.conversation\?\.channel\)/);
+  assert.match(api, /originLabel: row\.primary_source_type === "whatsapp" && row\.primary_source_id \? "WhatsApp Administración"/);
 });

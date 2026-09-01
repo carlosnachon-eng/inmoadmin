@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import crypto from "node:crypto";
 import {
   buildAdministrativeWorkCenter,
   isAdministrativeWorkCenterRole,
@@ -92,7 +93,7 @@ const SOURCE_QUERIES = {
     .eq("active", true),
   administrative_work_items: (client) => client
     .from("administrative_work_items")
-    .select("id,domain,work_type,title,status,priority,client_identity_id,contract_id,property_id,condominium_id,unit_id,responsible_area,responsible_profile_id,next_step,follow_up_at,information_received_at,requires_authorization,duplicate_of_id,created_at,updated_at")
+    .select("id,domain,work_type,title,status,priority,client_identity_id,contract_id,property_id,condominium_id,unit_id,responsible_area,responsible_profile_id,primary_source_type,primary_source_id,next_step,follow_up_at,information_received_at,requires_authorization,duplicate_of_id,created_at,updated_at")
     .order("updated_at", { ascending: false }),
   administrative_work_evidence: (client) => client
     .from("administrative_work_evidence").select("id,work_item_id,evidence_type,reference_type,summary_safe,received_at,created_at"),
@@ -108,6 +109,10 @@ const safeLabel = (value, fallback = "No resuelto") => {
   const text = String(value || "").trim();
   return text ? text.slice(0, 500) : fallback;
 };
+
+const durableMessageSourceId = (message) => message
+  ? `msg:${crypto.createHash("sha256").update(String(message.external_message_id || message.id || "")).digest("hex")}`
+  : null;
 
 const AI_ACTION_LABELS = {
   create_administrative_pending: "Creó el trabajo administrativo y lo dejó abierto para seguimiento.",
@@ -139,7 +144,7 @@ async function loadDurableOrigins(admin, historyRows = []) {
   const messageIds = [...new Set((runs || []).map((row) => row.message_id).filter(Boolean))];
   if (!messageIds.length) return new Map();
   const { data: messages, error: messagesError } = await admin.from("shadow_messages")
-    .select("id,conversation_id,direction,sanitized_text,message_type,attachment_metadata").in("id", messageIds);
+    .select("id,conversation_id,external_message_id,direction,sanitized_text,message_type,attachment_metadata").in("id", messageIds);
   if (messagesError) throw messagesError;
   const conversationIds = [...new Set((messages || []).map((row) => row.conversation_id).filter(Boolean))];
   const { data: conversations, error: conversationsError } = conversationIds.length
@@ -172,11 +177,18 @@ const durablePresentation = (row, sources, origins = new Map()) => {
   const ownerContract = roles.includes("owner") ? (sources.contracts || []).find((item) => item.property_id === row.property_id && item.owner_name) : null;
   const clientName = roles.includes("tenant") ? contract?.tenant_name : roles.includes("owner") ? (contract?.owner_name || ownerContract?.owner_name) : null;
   const origin = origins.get(row.id) || {};
-  const sourceMessage = origin.message?.direction === "inbound" ? origin.message : null;
+  const sourceMessage = row.primary_source_type === "whatsapp"
+    && row.primary_source_id
+    && durableMessageSourceId(origin.message) === row.primary_source_id
+    && origin.message?.direction === "inbound"
+    ? origin.message
+    : null;
   const sourceAttachments = Array.isArray(sourceMessage?.attachment_metadata) ? sourceMessage.attachment_metadata : [];
   const evidenceTypes = [...new Set([...evidence.map((item) => item.evidence_type), ...sourceAttachments.map((item) => item?.type || item?.mediaType || "archivo")])];
   const aiActions = rawHistory.filter((item) => item.actor_type === "ai").map((item) => AI_ACTION_LABELS[item.capability] || `Registró ${safeLabel(item.action_type).replace(/_/g, " ")}.`);
-  const conversationUrl = row.primary_source_type === "whatsapp" ? respondInboxLink(origin.conversation?.respond_contact_id, origin.conversation?.channel) : null;
+  const conversationUrl = sourceMessage
+    ? respondInboxLink(origin.conversation?.respond_contact_id, origin.conversation?.channel)
+    : null;
   return {
     contextKey: `durable:${row.id}`, durableWorkItemId: row.id, sourceType: "administrative_work",
     title: row.title, reason: `Trabajo durable · ${row.domain}`, recommendedAction: row.next_step || "Revisar seguimiento operativo.",
@@ -191,7 +203,7 @@ const durablePresentation = (row, sources, origins = new Map()) => {
       propertyLabel: safeLabel(property?.name || contract?.property_name || condominium?.nombre),
       unitLabel: unit?.numero ? `Unidad ${safeLabel(unit.numero)}` : null,
       contractLabel: contract ? `${safeLabel(contract.property_name)} · ${safeLabel(contract.status)}` : "No resuelto",
-      originLabel: row.primary_source_type === "whatsapp" ? "WhatsApp Administración" : safeLabel(row.primary_source_type),
+      originLabel: row.primary_source_type === "whatsapp" && row.primary_source_id ? "WhatsApp Administración" : safeLabel(row.primary_source_type),
       conversationUrl,
       issueSummary: safeLabel(sourceMessage?.sanitized_text),
       evidenceCount: evidence.length + sourceAttachments.length,
