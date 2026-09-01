@@ -373,7 +373,13 @@ export default function Checador() {
     return { lat: pos.coords.latitude, lng: pos.coords.longitude }
   }
 
-  const vehiculoActual = movimientosVehiculo[0]?.tipo === 'regreso_vehiculo' ? null : (movimientosVehiculo[0] || null)
+  // El vehículo en uso se determina únicamente con la bitácora de hoy. Así una
+  // toma sin devolución de un día anterior no bloquea la operación del día actual.
+  const movimientosVehiculoHoy = movimientosVehiculo.filter(m => m.fecha === getFechaMexico())
+  const ultimoMovimientoVehiculoHoy = movimientosVehiculoHoy[0] || null
+  const vehiculoActual = ultimoMovimientoVehiculoHoy?.tipo === 'regreso_vehiculo'
+    ? null
+    : ultimoMovimientoVehiculoHoy
 
   const getNombreVehiculoForm = () => {
     if (formVehiculo.vehiculo_id === 'otro') return formVehiculo.vehiculo_nombre_manual.trim()
@@ -479,6 +485,23 @@ export default function Checador() {
     }
     const res = await registrarMovimientoVehiculo('cambio_vehiculo', { lat, lng })
     if (res.ok) showToast('🚗 Cambio de vehículo registrado')
+    setGuardandoVehiculo(false)
+  }
+
+  const tomarVehiculo = async () => {
+    if (!persona || persona.rol !== 'chofer' || vehiculoActual) return
+    setGuardandoVehiculo(true)
+    let lat = null, lng = null
+    try {
+      const gps = await obtenerGPS()
+      lat = gps.lat; lng = gps.lng
+    } catch (e) {
+      showToast('⚠️ Debes habilitar el GPS para tomar vehículo', false)
+      setGuardandoVehiculo(false)
+      return
+    }
+    const res = await registrarMovimientoVehiculo('toma_vehiculo', { lat, lng })
+    if (res.ok) showToast('🚗 Toma de vehículo registrada')
     setGuardandoVehiculo(false)
   }
 
@@ -942,29 +965,18 @@ export default function Checador() {
                   )}
 
                   <div style={{ display: 'grid', gap: 10 }}>
-                    {(!vehiculoActual || formVehiculo.vehiculo_id || formVehiculo.vehiculo_nombre_manual) && (
-                      <>
-                        <select value={formVehiculo.vehiculo_id} onChange={e => setFormVehiculo(f => ({ ...f, vehiculo_id: e.target.value, vehiculo_nombre_manual: e.target.value === 'otro' ? f.vehiculo_nombre_manual : '' }))}
-                          style={{ width: '100%', padding: '11px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
-                          <option value="">Selecciona vehículo...</option>
-                          {vehiculos.map(v => (
-                            <option key={v.id} value={v.id}>{v.nombre}{v.placas ? ` · ${v.placas}` : ''}</option>
-                          ))}
-                          <option value="otro">Otro vehículo / apoyo familiar</option>
-                        </select>
-                        {formVehiculo.vehiculo_id === 'otro' && (
-                          <input value={formVehiculo.vehiculo_nombre_manual} onChange={e => setFormVehiculo(f => ({ ...f, vehiculo_nombre_manual: e.target.value }))}
-                            placeholder="Ej: Auto Carlos, camioneta Karla, vehículo familiar..."
-                            style={{ width: '100%', padding: '11px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
-                        )}
-                      </>
-                    )}
-
-                    {vehiculoActual && !formVehiculo.vehiculo_id && !formVehiculo.vehiculo_nombre_manual && (
-                      <button onClick={() => setFormVehiculo(f => ({ ...f, vehiculo_id: 'otro' }))}
-                        style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e40af', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
-                        Cambiar a otro vehículo
-                      </button>
+                    <select value={formVehiculo.vehiculo_id} onChange={e => setFormVehiculo(f => ({ ...f, vehiculo_id: e.target.value, vehiculo_nombre_manual: e.target.value === 'otro' ? f.vehiculo_nombre_manual : '' }))}
+                      style={{ width: '100%', padding: '11px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
+                      <option value="">{vehiculoActual ? 'Selecciona el vehículo al que cambiará...' : 'Selecciona el vehículo que toma...'}</option>
+                      {vehiculos.map(v => (
+                        <option key={v.id} value={v.id}>{v.nombre}{v.placas ? ` · ${v.placas}` : ''}</option>
+                      ))}
+                      <option value="otro">Otro vehículo / apoyo familiar</option>
+                    </select>
+                    {formVehiculo.vehiculo_id === 'otro' && (
+                      <input value={formVehiculo.vehiculo_nombre_manual} onChange={e => setFormVehiculo(f => ({ ...f, vehiculo_nombre_manual: e.target.value }))}
+                        placeholder="Ej: Auto Carlos, camioneta Karla, vehículo familiar..."
+                        style={{ width: '100%', padding: '11px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
                     )}
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1011,6 +1023,12 @@ export default function Checador() {
                       <button onClick={cambiarVehiculo} disabled={guardandoVehiculo || guardando}
                         style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: guardandoVehiculo ? '#e5e7eb' : '#1e40af', color: guardandoVehiculo ? '#9ca3af' : '#fff', fontSize: 14, fontWeight: 900, cursor: guardandoVehiculo ? 'not-allowed' : 'pointer' }}>
                         🔁 Registrar cambio de vehículo
+                      </button>
+                    )}
+                    {!vehiculoActual && (formVehiculo.vehiculo_id || formVehiculo.vehiculo_nombre_manual) && (
+                      <button onClick={tomarVehiculo} disabled={guardandoVehiculo || guardando}
+                        style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: guardandoVehiculo ? '#e5e7eb' : '#047857', color: guardandoVehiculo ? '#9ca3af' : '#fff', fontSize: 14, fontWeight: 900, cursor: guardandoVehiculo ? 'not-allowed' : 'pointer' }}>
+                        🚗 Registrar toma de vehículo
                       </button>
                     )}
                   </div>
