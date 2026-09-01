@@ -1339,7 +1339,11 @@ export default function Liquidaciones() {
       body: propsProp.map(prop => {
         const c = contratosProp.find(c => c.property_name === prop.name);
         const com = c ? calcComision(c) : 0;
-        const pago = pagosMesPDF.find(p => p.property_name === prop.name);
+        // La relación financiera estable es el contrato. El nombre de la propiedad
+        // puede contener errores históricos o haber cambiado después de crear pagos.
+        const pago = c
+          ? pagosMesPDF.find(p => p.contract_id === c.id)
+          : pagosMesPDF.find(p => p.property_name === prop.name);
         const estado = pago ? (pago.status === "pagado" ? "Pagado" : pago.status === "atrasado" ? "Atrasado" : "Pendiente") : "—";
         return [
           prop.name,
