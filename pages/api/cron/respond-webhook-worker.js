@@ -15,6 +15,7 @@ import {
   readRespondMessages,
   shouldPersistRespondSnapshot,
 } from "../../../lib/ejecutivo/respondSync";
+import { reconcilePendingRespondOutgoingOrigins } from "../../../lib/shadow/outboundOrigin";
 
 const DEFAULT_WORKER_CONTACT_LIMIT = 20;
 const SAFE_WORKER_CONTACT_LIMIT = 1;
@@ -160,7 +161,13 @@ export default async function handler(req, res) {
       contactsOutsideSales: 0,
       messageRequests: 0,
       errors: [],
+      outboundOriginReconciliation: null,
     };
+
+    try { result.outboundOriginReconciliation = await reconcilePendingRespondOutgoingOrigins(admin); }
+    catch (error) {
+      result.outboundOriginReconciliation = { status: "retry_pending", error: String(error?.message || "origin_reconciliation_failed").slice(0, 80) };
+    }
 
     for (const claim of claims || []) {
       try {
