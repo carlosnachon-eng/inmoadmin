@@ -476,7 +476,7 @@ test("cada tool tiene schema nominal estricto y rechaza argumentos faltantes o e
 });
 
 test("prompt v8 exige grounding y prohíbe tools prematuras, promesas y recomendaciones jurídicas categóricas",()=>{
-  assert.equal(SHADOW_AI_PROMPT_VERSION,"administradora-ia-emporio-v8");
+  assert.equal(SHADOW_AI_PROMPT_VERSION,"administradora-ia-emporio-v9");
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/evidenceLedger canónico/i);
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/factualClaims/i);
   assert.match(SHADOW_AI_SYSTEM_PROMPT,/executionCommitment debe ser none/i);
@@ -776,7 +776,7 @@ test("runner permite error explícito, crea run encadenado y conserva prompt/mod
   assert.equal(result.status,"completed"); assert.equal(db.runs.some(row=>row.id==="run-error"),true);
   const insert=db.writes.find(x=>x.table==="shadow_ai_runs"&&x.action==="insert");
   assert.equal(insert.payload.retry_of_run_id,"run-error"); assert.equal(insert.payload.attempt_number,2);
-  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v8");
+  assert.equal(insert.payload.model,"claude-haiku-4-5-20251001"); assert.equal(insert.payload.prompt_version,"administradora-ia-emporio-v9");
   assert.equal(db.writes.filter(x=>x.table==="shadow_ai_decisions"&&x.action==="insert").length,1);
   assert.equal(result.telemetry.retry_authorization,"explicit_user_authorized");
 });
@@ -826,8 +826,8 @@ test("respuesta Anthropic a 80s queda permitida y registra versión/output compl
   assert.equal(result.telemetry.anthropic_requests[0].request_number,1);
   assert.equal(result.telemetry.anthropic_requests[0].round_number,1);
   assert.equal(result.telemetry.anthropic_requests[0].output_state,"complete");
-  assert.equal(result.telemetry.schema_version,"shadow-ai-decision-v8");
-  assert.equal(result.telemetry.prompt_version,"administradora-ia-emporio-v8");
+  assert.equal(result.telemetry.schema_version,"shadow-ai-decision-v9");
+  assert.equal(result.telemetry.prompt_version,"administradora-ia-emporio-v9");
   assert.equal(result.telemetry.rounds[0].round_number,1);
 });
 
