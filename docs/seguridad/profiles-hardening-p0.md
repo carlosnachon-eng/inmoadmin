@@ -47,3 +47,8 @@ Su ejecución reabriría el P0 y requiere una autorización de incidente distint
 Antes de cada prueba Preview se debe confirmar rama, HEAD, target Preview,
 project ref DEV, `SUPABASE_ENVIRONMENT=dev`, ausencia de referencia productiva
 y ausencia de secretos en bundle/logs.
+
+Los deployments creados por CLI sin `gitSource` no se consideran branch-scoped,
+aunque se ejecuten desde una rama local. Deben eliminarse sin probarlos si el
+bundle no confirma DEV. Para esta validación sólo es aceptable un deployment
+generado por la integración Git cuya metadata coincida con la rama y el HEAD.
