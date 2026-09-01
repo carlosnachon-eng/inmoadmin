@@ -40,3 +40,22 @@ test("deep link durable abre el detalle y tolera ausencia de ruleKey", () => {
   assert.match(ui, /selectedItem\.ruleKey \?/);
   assert.match(ui, /"Trabajo durable"/);
 });
+
+test("detalle durable resuelve etiquetas humanas sin exponer UUID como presentación", () => {
+  assert.match(api, /clientName: safeLabel\(clientName\)/);
+  assert.match(api, /propertyLabel: safeLabel\(property\?\.name \|\| contract\?\.property_name \|\| condominium\?\.nombre\)/);
+  assert.match(api, /unit\?\.numero \? `Unidad/);
+  assert.match(api, /contractLabel: contract \?/);
+  assert.match(api, /originLabel: row\.primary_source_type === "whatsapp" \? "WhatsApp Administración"/);
+  assert.match(ui, />Cliente</);
+  assert.match(ui, />Qué hizo la Administradora IA</);
+  assert.match(ui, />Qué queda pendiente para humano</);
+  assert.match(ui, />Siguiente paso recomendado</);
+});
+
+test("origen WhatsApp usa navegación segura y no muestra identificadores opacos", () => {
+  assert.match(api, /respondInboxLink\(origin\.conversation\?\.respond_contact_id/);
+  assert.match(api, /String\(channel\) !== "544519"/);
+  assert.match(ui, />Ver conversación</);
+  assert.doesNotMatch(ui, />\{selectedItem\.metadata\?\.clientIdentityId\}</);
+});

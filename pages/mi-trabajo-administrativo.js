@@ -440,6 +440,24 @@ export default function MiTrabajoAdministrativo() {
               {selectedItem.metadata?.contractRelation && <><dt>Contrato</dt><dd style={{ margin: 0 }}>{CONTRACT_RELATION_LABELS[selectedItem.metadata.contractRelation] || selectedItem.metadata.contractRelation}</dd></>}
               {selectedItem.durableWorkItemId && <><dt>Estado durable</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.status}</dd><dt>Evidencias</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.evidenceCount || 0}{(selectedItem.metadata?.evidence || []).map((item) => <div key={item.id}>{item.evidence_type} · {item.summary_safe || "Referencia sanitizada"}</div>)}</dd><dt>Aprobaciones</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.approvals?.length || 0} pendientes</dd></>}
             </dl>
+            {selectedItem.durableWorkItemId && <section style={{ marginTop: 20, padding: 14, background: "#f8fafc", border: `1px solid ${brand.border}`, borderRadius: 10 }}>
+              <strong>Contexto operativo</strong>
+              <dl style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "9px 14px", margin: "12px 0 0", fontSize: 13 }}>
+                <dt>Cliente</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.clientName || "No resuelto"}</dd>
+                <dt>Rol</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.roleLabel || "No resuelto"}</dd>
+                <dt>Propiedad/unidad</dt><dd style={{ margin: 0 }}>{[selectedItem.metadata?.propertyLabel, selectedItem.metadata?.unitLabel].filter(Boolean).join(" · ") || "No resuelto"}</dd>
+                <dt>Contrato</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.contractLabel || "No resuelto"}</dd>
+                <dt>Origen</dt><dd style={{ margin: 0 }}>{selectedItem.metadata?.originLabel || "No resuelto"}</dd>
+              </dl>
+              {selectedItem.metadata?.conversationUrl && <a href={selectedItem.metadata.conversationUrl} target="_blank" rel="noreferrer" style={{ marginTop: 12, display: "inline-flex", color: brand.red, fontWeight: 800 }}>Ver conversación</a>}
+            </section>}
+            {selectedItem.durableWorkItemId && <section style={{ marginTop: 20 }}>
+              <strong>Resumen del asunto</strong><p>{selectedItem.metadata?.issueSummary || "No resuelto"}</p>
+              <strong>Evidencia recibida</strong><p>{selectedItem.metadata?.evidenceCount ? `${selectedItem.metadata.evidenceCount} · ${(selectedItem.metadata?.evidenceTypes || []).join(", ") || "tipo no resuelto"}` : "Sin evidencia vinculada"}</p>
+              <strong>Qué hizo la Administradora IA</strong><ul>{(selectedItem.metadata?.aiActions || ["No resuelto"]).map((action, index) => <li key={`${index}:${action}`}>{action}</li>)}</ul>
+              <strong>Qué queda pendiente para humano</strong><p>{selectedItem.metadata?.humanPending || "No resuelto"}</p>
+              <strong>Siguiente paso recomendado</strong><p>{selectedItem.metadata?.recommendedNextStep || "No resuelto"}</p>
+            </section>}
             <div style={{ marginTop: 20 }}><strong>Motivo</strong><p>{selectedItem.reason}</p><strong>Acción recomendada</strong><p>{selectedItem.recommendedAction}</p></div>
             {selectedItem.dataQuality?.missingFields?.length > 0 && <section style={{ marginTop: 18, padding: 14, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10 }}><strong>Datos necesarios</strong><ul>{selectedItem.dataQuality.missingFields.map((field) => <li key={field}>{MISSING_FIELD_LABELS[field] || field.replace(/_/g, " ")}</li>)}</ul></section>}
             {selectedItem.metadata?.requiresFinancialAuthorization && ["admin", "coord_operaciones"].includes(profile?.role_id) && <section style={{ marginTop: 18, padding: 14, background: "#faf5ff", borderRadius: 10 }}><strong>Revisión financiera requerida</strong><p style={{ marginBottom: 0 }}>Los importes permanecen sujetos a autorización humana. Esta vista no ejecuta movimientos.</p></section>}

@@ -14,7 +14,7 @@ const SOURCE_QUERIES = {
     .select("id, contract_id, property_name, due_date, payment_date, amount, status, recibido_por, receipt_url, created_at"),
   contracts: (client) => client
     .from("contracts")
-    .select("id, property_name, start_date, end_date, status, monthly_rent, commission_type, commission_value, rent_receiver, created_at"),
+    .select("id, property_id, property_name, tenant_name, owner_name, tenant_client_id, start_date, end_date, status, monthly_rent, commission_type, commission_value, rent_receiver, created_at"),
   maintenance_tickets: (client) => client
     .from("maintenance_tickets")
     .select("id, property_name, assigned_to, priority, status, payer, charged_amount, advance_paid, advance_amount, descontado_de_liquidacion, fecha_cobro_propietario, recibo_cobro_id, created_at, updated_at"),
@@ -43,10 +43,10 @@ const SOURCE_QUERIES = {
     .eq("status", "activo"),
   condominios: (client) => client
     .from("condominios")
-    .select("id, activo"),
+    .select("id, nombre, activo"),
   unidades_condominio: (client) => client
     .from("unidades_condominio")
-    .select("id, condominio_id, activo"),
+    .select("id, condominio_id, numero, activo"),
   cuotas_condominio: (client) => client
     .from("cuotas_condominio")
     .select("id, condominio_id, unidad_id, periodo, monto, status, fecha_vencimiento, comprobante_url, created_at"),
@@ -62,7 +62,7 @@ const SOURCE_QUERIES = {
     .select("id, servicio_id, contract_id, property_name, tipo, periodo, status, monto, fecha_limite, comprobante_url, gasto_id, created_at"),
   properties: (client) => client
     .from("properties")
-    .select("id, name, owner_email"),
+    .select("id, name, status, owner_client_id"),
   owner_payments: (client) => client
     .from("owner_payments")
     .select("id, owner_email, period_description, amount_paid, status, payment_date, created_at"),
@@ -97,15 +97,86 @@ const SOURCE_QUERIES = {
   administrative_work_evidence: (client) => client
     .from("administrative_work_evidence").select("id,work_item_id,evidence_type,reference_type,summary_safe,received_at,created_at"),
   administrative_work_history: (client) => client
-    .from("administrative_work_history").select("id,work_item_id,action_type,actor_type,reason,capability,previous_state,new_state,created_at").order("created_at", { ascending: false }),
+    .from("administrative_work_history").select("id,work_item_id,action_type,actor_type,reason,capability,idempotency_key,previous_state,new_state,created_at").order("created_at", { ascending: false }),
   administrative_work_approvals: (client) => client
     .from("administrative_work_approvals").select("id,work_item_id,requested_capability,risk_tier,status,reason_safe,created_at,expires_at").eq("status", "pending"),
+  client_identity_roles: (client) => client
+    .from("client_identity_roles").select("client_identity_id,role_kind,status").eq("status", "active"),
 };
 
-const durablePresentation = (row, sources) => {
+const safeLabel = (value, fallback = "No resuelto") => {
+  const text = String(value || "").trim();
+  return text ? text.slice(0, 500) : fallback;
+};
+
+const AI_ACTION_LABELS = {
+  create_administrative_pending: "Creó el trabajo administrativo y lo dejó abierto para seguimiento.",
+  append_structured_internal_note: "Agregó una nota interna estructurada.",
+  link_received_evidence: "Vinculó evidencia recibida al trabajo.",
+  mark_information_received: "Marcó la información como recibida.",
+  set_nonfinancial_next_step: "Definió el siguiente paso no financiero.",
+  schedule_nonfinancial_follow_up: "Programó un seguimiento no financiero.",
+  mark_possible_duplicate: "Marcó el trabajo como posible duplicado.",
+  assign_operational_responsible: "Asignó un responsable operativo.",
+};
+
+function respondInboxLink(contactId, channel) {
+  const workspaceId = process.env.RESPOND_IO_WORKSPACE_ID;
+  if (!contactId || !workspaceId || String(channel) !== "544519") return null;
+  return `https://app.respond.io/space/${encodeURIComponent(String(workspaceId))}/inbox/${encodeURIComponent(String(contactId))}`;
+}
+
+async function loadDurableOrigins(admin, historyRows = []) {
+  const workRunPairs = historyRows.map((row) => {
+    const match = /^ai:r1:([0-9a-f-]{36})$/i.exec(String(row.idempotency_key || ""));
+    return match ? { workItemId: row.work_item_id, runId: match[1] } : null;
+  }).filter(Boolean);
+  const runIds = [...new Set(workRunPairs.map((item) => item.runId))];
+  if (!runIds.length) return new Map();
+
+  const { data: runs, error: runsError } = await admin.from("shadow_ai_runs").select("id,message_id").in("id", runIds);
+  if (runsError) throw runsError;
+  const messageIds = [...new Set((runs || []).map((row) => row.message_id).filter(Boolean))];
+  if (!messageIds.length) return new Map();
+  const { data: messages, error: messagesError } = await admin.from("shadow_messages")
+    .select("id,conversation_id,direction,sanitized_text,message_type,attachment_metadata").in("id", messageIds);
+  if (messagesError) throw messagesError;
+  const conversationIds = [...new Set((messages || []).map((row) => row.conversation_id).filter(Boolean))];
+  const { data: conversations, error: conversationsError } = conversationIds.length
+    ? await admin.from("shadow_conversations").select("id,channel,respond_contact_id").in("id", conversationIds)
+    : { data: [], error: null };
+  if (conversationsError) throw conversationsError;
+
+  const runById = new Map((runs || []).map((row) => [row.id, row]));
+  const messageById = new Map((messages || []).map((row) => [row.id, row]));
+  const conversationById = new Map((conversations || []).map((row) => [row.id, row]));
+  return new Map(workRunPairs.map(({ workItemId, runId }) => {
+    const run = runById.get(runId);
+    const message = run ? messageById.get(run.message_id) : null;
+    const conversation = message ? conversationById.get(message.conversation_id) : null;
+    return [workItemId, { message, conversation }];
+  }));
+}
+
+const durablePresentation = (row, sources, origins = new Map()) => {
   const evidence = (sources.administrative_work_evidence || []).filter((x) => x.work_item_id === row.id);
-  const history = (sources.administrative_work_history || []).filter((x) => x.work_item_id === row.id).slice(0, 10);
+  const rawHistory = (sources.administrative_work_history || []).filter((x) => x.work_item_id === row.id).slice(0, 10);
+  const history = rawHistory.map(({ idempotency_key, ...item }) => item);
   const approvals = (sources.administrative_work_approvals || []).filter((x) => x.work_item_id === row.id);
+  const contract = (sources.contracts || []).find((item) => item.id === row.contract_id) || null;
+  const property = (sources.properties || []).find((item) => item.id === row.property_id) || null;
+  const condominium = (sources.condominios || []).find((item) => item.id === row.condominium_id) || null;
+  const unit = (sources.unidades_condominio || []).find((item) => item.id === row.unit_id) || null;
+  const roles = (sources.client_identity_roles || []).filter((item) => item.client_identity_id === row.client_identity_id).map((item) => item.role_kind);
+  const roleLabel = roles.length ? roles.map((role) => role === "tenant" ? "Inquilino" : role === "owner" ? "Propietario" : role).join(" / ") : "No resuelto";
+  const ownerContract = roles.includes("owner") ? (sources.contracts || []).find((item) => item.property_id === row.property_id && item.owner_name) : null;
+  const clientName = roles.includes("tenant") ? contract?.tenant_name : roles.includes("owner") ? (contract?.owner_name || ownerContract?.owner_name) : null;
+  const origin = origins.get(row.id) || {};
+  const sourceMessage = origin.message?.direction === "inbound" ? origin.message : null;
+  const sourceAttachments = Array.isArray(sourceMessage?.attachment_metadata) ? sourceMessage.attachment_metadata : [];
+  const evidenceTypes = [...new Set([...evidence.map((item) => item.evidence_type), ...sourceAttachments.map((item) => item?.type || item?.mediaType || "archivo")])];
+  const aiActions = rawHistory.filter((item) => item.actor_type === "ai").map((item) => AI_ACTION_LABELS[item.capability] || `Registró ${safeLabel(item.action_type).replace(/_/g, " ")}.`);
+  const conversationUrl = row.primary_source_type === "whatsapp" ? respondInboxLink(origin.conversation?.respond_contact_id, origin.conversation?.channel) : null;
   return {
     contextKey: `durable:${row.id}`, durableWorkItemId: row.id, sourceType: "administrative_work",
     title: row.title, reason: `Trabajo durable · ${row.domain}`, recommendedAction: row.next_step || "Revisar seguimiento operativo.",
@@ -114,7 +185,22 @@ const durablePresentation = (row, sources) => {
     responsibleProfileId: row.responsible_profile_id, dueAt: row.follow_up_at, lastActivityAt: row.updated_at,
     href: `/mi-trabajo-administrativo?workItemId=${encodeURIComponent(row.id)}`,
     supervision: { requiresAuthorization: Boolean(row.requires_authorization), status: "durable" },
-    metadata: { domain: row.domain, workType: row.work_type, status: row.status, clientIdentityId: row.client_identity_id, contractId: row.contract_id, propertyId: row.property_id, condominiumId: row.condominium_id, unitId: row.unit_id, evidenceCount: evidence.length, evidence, history, approvals },
+    metadata: {
+      domain: row.domain, workType: row.work_type, status: row.status,
+      clientName: safeLabel(clientName), roleLabel,
+      propertyLabel: safeLabel(property?.name || contract?.property_name || condominium?.nombre),
+      unitLabel: unit?.numero ? `Unidad ${safeLabel(unit.numero)}` : null,
+      contractLabel: contract ? `${safeLabel(contract.property_name)} · ${safeLabel(contract.status)}` : "No resuelto",
+      originLabel: row.primary_source_type === "whatsapp" ? "WhatsApp Administración" : safeLabel(row.primary_source_type),
+      conversationUrl,
+      issueSummary: safeLabel(sourceMessage?.sanitized_text),
+      evidenceCount: evidence.length + sourceAttachments.length,
+      evidenceTypes,
+      evidence, history, approvals,
+      aiActions: aiActions.length ? aiActions : ["No resuelto"],
+      humanPending: safeLabel(row.next_step),
+      recommendedNextStep: safeLabel(row.next_step),
+    },
   };
 };
 
@@ -212,11 +298,18 @@ export default async function handler(req, res) {
       if (result.error) sourcesWithError.push(result.error);
     });
 
+    let durableOrigins = new Map();
+    try {
+      durableOrigins = await loadDurableOrigins(admin, sources.administrative_work_history || []);
+    } catch (originError) {
+      console.error("[administrative-work-center:durable-origin]", originError?.code || "query_error", originError?.message || originError);
+    }
+
     const caseStatus = req.query.status === "resolved" ? "resolved" : "active";
     const workCenter = buildAdministrativeWorkCenter(sources, { caseStatus });
     const durableItems = (sources.administrative_work_items || [])
       .filter((row) => caseStatus === "resolved" ? row.status === "resolved" : !["resolved", "cancelled"].includes(row.status))
-      .map((row) => durablePresentation(row, sources));
+      .map((row) => durablePresentation(row, sources, durableOrigins));
     const r1NotBefore = administrativeWorkR1NotBefore(process.env);
     const r1ActionCount = r1NotBefore ? (sources.administrative_work_history || []).filter((row) => row.actor_type === "ai" && new Date(row.created_at).getTime() >= new Date(r1NotBefore).getTime()).length : 0;
     return res.status(200).json({
