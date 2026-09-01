@@ -162,6 +162,27 @@ test("migración impone atomicidad, temporalidad, acción y contenido en SQL", (
   assert.match(sql, /sin seeds ni activación/);
 });
 
+test("checks SQL validan índices, constraints, trigger exacto y estado inicial sin escribir", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/202609010002_shadow_admin_outbound_canary_1of1_checks.sql", import.meta.url), "utf8");
+  for (const index of [
+    "shadow_admin_outbound_canaries_single_open_uidx",
+    "shadow_admin_outbound_canaries_claimed_action_uidx",
+    "shadow_admin_outbound_canaries_claimed_outbound_uidx",
+    "shadow_admin_outbound_messages_canary_uidx",
+  ]) assert.match(sql, new RegExp(index));
+  assert.match(sql, /pg_get_constraintdef/);
+  assert.match(sql, /max_claims=1/);
+  assert.match(sql, /acknowledge_received_information/);
+  assert.match(sql, /canary claim\/state coherence constraint missing/);
+  assert.match(sql, /tgfoid='public\.sync_shadow_admin_outbound_canary_result\(\)'::regprocedure/);
+  assert.match(sql, /t\.tgrelid='public\.shadow_admin_outbound_messages'::regclass/);
+  assert.match(sql, /t\.tgtype=21/);
+  assert.match(sql, /cardinality\(t\.tgattr::smallint\[\]\)=2/);
+  assert.match(sql, /migration must not arm or seed a canary/);
+  assert.match(sql, /migration must not claim outbound work/);
+  assert.doesNotMatch(sql, /\b(insert into|update public\.|delete from|truncate table)\b/i);
+});
+
 test("canary no incorpora escrituras ERP/R1 ni retry", () => {
   const source = readFileSync(new URL("../lib/shadow/ai/adminOutbound.js", import.meta.url), "utf8");
   assert.doesNotMatch(source, /administrative_work_history|maintenance_tickets|payments|contracts.*update|properties.*update/i);
