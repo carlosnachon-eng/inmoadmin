@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { selectRelevantPriorContext } from "../lib/shadow/ai/conversationTurns.js";
 import { effectiveContractState } from "../lib/shadow/identityBridge.js";
 import { buildShadowOperationalResolution, hasPositiveMaintenanceEvidence } from "../lib/shadow/ai/operationalResolution.js";
+import { buildConversationAction } from "../lib/shadow/ai/conversationAction.js";
 import { administrativeWorkR1SourceEligible, planAdministrativeWorkR1, R1_CONFIDENCE_THRESHOLDS } from "../lib/shadow/ai/administrativeWorkR1.js";
 
 const id = (n) => `20000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -54,7 +55,12 @@ test("Eduardo se canonicaliza como property_handover y nunca maintenance", () =>
   assert.equal(resolution.requires_human, true);
   assert.ok(resolution.missing_information.includes("physical_handover_confirmation"));
   assert.equal(resolution.domain_evidence.maintenance, false);
-  assert.equal(administrativeWorkR1SourceEligible({ envelope, resolution, context, env }).eligible, false);
+  const action = buildConversationAction({ resolution, decision: { intent: "mantenimiento", confidence: 0.95 }, turn: { settled: true } });
+  assert.equal(action.case_domain, "property_handover");
+  assert.equal(action.conversation_action, "no_message");
+  assert.equal(action.proposed_message, "");
+  assert.equal(action.auto_send_eligible, false);
+  assert.equal(administrativeWorkR1SourceEligible({ envelope, resolution, context, conversationAction: action, env }).eligible, false);
 });
 
 test("llaves en entrega no constituyen mantenimiento", () => {
