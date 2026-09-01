@@ -50,6 +50,7 @@ end $$;
 update public.condominium_operation_controls set real_payments_enabled = true
 where condominio_id = (select condominio_id from reserve_fund_test_scope);
 grant select on reserve_fund_test_scope to authenticated;
+grant select on reserve_fund_unchanged_before to authenticated;
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub', (select admin_id from reserve_fund_test_scope), 'role', 'authenticated'
 )::text, true);
