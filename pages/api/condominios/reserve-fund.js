@@ -4,7 +4,7 @@ import {
   RESERVE_FUND_EVIDENCE_BUCKET,
   decodeReserveFundEvidenceBase64,
   isReserveFundUuid,
-  reserveFundContributionPublicShape,
+  reserveFundReceiptPublicShape,
   reserveFundErrorCode,
   reserveFundEvidencePath,
   validateReserveFundCreateInput,
@@ -64,32 +64,32 @@ async function authorizeOperator(req, serviceDb) {
   return { token, userId: authData.user.id };
 }
 
-async function loadScopedContribution(operatorDb, { contributionId, condominioId, unidadId }) {
-  if (![contributionId, condominioId, unidadId].every(isReserveFundUuid)) {
+async function loadScopedReceipt(operatorDb, { receiptId, condominioId }) {
+  if (![receiptId, condominioId].every(isReserveFundUuid)) {
     return { error: "INVALID_SCOPE", status: 400 };
   }
   const { data, error } = await operatorDb
-    .from("condominium_reserve_fund_contributions")
-    .select("*")
-    .eq("id", contributionId)
+    .from("condominium_reserve_fund_receipts")
+    .select("*, contributions:condominium_reserve_fund_contributions(id, unidad_id, amount)")
+    .eq("id", receiptId)
     .eq("condominio_id", condominioId)
-    .eq("unidad_id", unidadId)
     .maybeSingle();
-  if (error) return { error: "CONTRIBUTION_LOOKUP_FAILED", status: 503 };
-  if (!data) return { error: "CONTRIBUTION_NOT_FOUND", status: 404 };
+  if (error) return { error: "RECEIPT_LOOKUP_FAILED", status: 503 };
+  if (!data) return { error: "RECEIPT_NOT_FOUND", status: 404 };
   return { data };
 }
 
-async function validateCreateScope(operatorDb, { condominioId, unidadId }) {
+async function validateCreateScope(operatorDb, { condominioId, allocations }) {
+  const unitIds = allocations.map(allocation => allocation.unidadId);
   const { data, error } = await operatorDb
     .from("unidades_condominio")
     .select("id, condominio_id, activo")
-    .eq("id", unidadId)
+    .in("id", unitIds)
     .eq("condominio_id", condominioId)
     .eq("activo", true)
-    .maybeSingle();
+    ;
   if (error) return { error: "SCOPE_LOOKUP_FAILED", status: 503 };
-  if (!data) return { error: "UNIT_NOT_FOUND", status: 404 };
+  if (!Array.isArray(data) || data.length !== unitIds.length) return { error: "UNIT_NOT_FOUND", status: 404 };
   return { data };
 }
 
@@ -98,17 +98,16 @@ async function createContribution({ req, res, operatorDb, serviceDb }) {
   if (inputError) return response(res, 400, inputError);
 
   const {
-    condominioId, unidadId, amount, sourceOrganization, paymentReference,
+    condominioId, allocations, sourceOrganization, paymentReference,
     proofDate, idempotencyKey, evidence,
   } = req.body;
   const scope = await validateCreateScope(operatorDb, req.body);
   if (scope.error) return response(res, scope.status, scope.error);
 
-  const contributionId = idempotencyKey;
+  const receiptId = idempotencyKey;
   const evidencePath = reserveFundEvidencePath({
     condominioId,
-    unidadId,
-    contributionId,
+    receiptId,
     mimeType: evidence.mimeType,
   });
   const bytes = decodeReserveFundEvidenceBase64(evidence.base64);
@@ -125,15 +124,28 @@ async function createContribution({ req, res, operatorDb, serviceDb }) {
       console.error("reserve_fund_evidence_upload_failed", { code: "EVIDENCE_UPLOAD_FAILED" });
       return response(res, 503, "EVIDENCE_UPLOAD_FAILED");
     }
+    const { data: existingReceipt, error: existingReceiptError } = await serviceDb
+      .from("condominium_reserve_fund_receipts")
+      .select("id, condominio_id, evidence_sha256, idempotency_key")
+      .eq("id", receiptId)
+      .eq("condominio_id", condominioId)
+      .maybeSingle();
+    if (existingReceiptError || !existingReceipt
+        || existingReceipt.evidence_sha256 !== evidenceSha256
+        || existingReceipt.idempotency_key !== idempotencyKey) {
+      return response(res, 409, "EVIDENCE_CONFLICT");
+    }
   } else {
     uploadedNow = true;
   }
 
-  const { data, error } = await operatorDb.rpc("condominium_create_reserve_fund_contribution", {
-    p_contribution_id: contributionId,
+  const { data, error } = await operatorDb.rpc("condominium_create_reserve_fund_receipt", {
+    p_receipt_id: receiptId,
     p_condominio_id: condominioId,
-    p_unidad_id: unidadId,
-    p_amount: Number(amount),
+    p_allocations: allocations.map(allocation => ({
+      unidad_id: allocation.unidadId,
+      amount: Number(allocation.amount),
+    })),
     p_source_organization: String(sourceOrganization).trim(),
     p_proof_date: proofDate,
     p_payment_reference: String(paymentReference).trim(),
@@ -147,13 +159,15 @@ async function createContribution({ req, res, operatorDb, serviceDb }) {
     console.error("reserve_fund_create_failed", { code });
     return response(res, code === "OPERATION_NOT_ALLOWED" ? 403 : 409, code);
   }
+  const scoped = await loadScopedReceipt(operatorDb, { receiptId: data.id, condominioId });
+  if (scoped.error) return response(res, scoped.status, scoped.error);
   return response(res, 200, "RESERVE_FUND_PENDING", {
-    contribution: reserveFundContributionPublicShape(data),
+    receipt: reserveFundReceiptPublicShape(scoped.data),
   });
 }
 
-async function reconcileContribution({ req, res, operatorDb }) {
-  const scope = await loadScopedContribution(operatorDb, req.body || {});
+async function reconcileReceipt({ req, res, operatorDb }) {
+  const scope = await loadScopedReceipt(operatorDb, req.body || {});
   if (scope.error) return response(res, scope.status, scope.error);
   const depositDate = String(req.body?.depositDate || "");
   const bankConfirmedBy = String(req.body?.bankConfirmedBy || "").trim();
@@ -161,8 +175,8 @@ async function reconcileContribution({ req, res, operatorDb }) {
     return response(res, 400, "INVALID_DEPOSIT_DATE");
   }
   if (bankConfirmedBy.length < 2) return response(res, 400, "INVALID_BANK_CONFIRMATION");
-  const { data, error } = await operatorDb.rpc("condominium_reconcile_reserve_fund_contribution", {
-    p_contribution_id: scope.data.id,
+  const { data, error } = await operatorDb.rpc("condominium_reconcile_reserve_fund_receipt", {
+    p_receipt_id: scope.data.id,
     p_deposit_date: depositDate,
     p_bank_confirmed_by: bankConfirmedBy,
   });
@@ -172,17 +186,17 @@ async function reconcileContribution({ req, res, operatorDb }) {
     return response(res, code === "OPERATION_NOT_ALLOWED" ? 403 : 409, code);
   }
   return response(res, 200, "RESERVE_FUND_RECONCILED", {
-    contribution: reserveFundContributionPublicShape(data),
+    receipt: reserveFundReceiptPublicShape({ ...data, contributions: scope.data.contributions }),
   });
 }
 
-async function reverseContribution({ req, res, operatorDb }) {
-  const scope = await loadScopedContribution(operatorDb, req.body || {});
+async function reverseReceipt({ req, res, operatorDb }) {
+  const scope = await loadScopedReceipt(operatorDb, req.body || {});
   if (scope.error) return response(res, scope.status, scope.error);
   const reason = String(req.body?.reason || "").trim();
   if (reason.length < 5) return response(res, 400, "REVERSAL_REASON_REQUIRED");
-  const { data, error } = await operatorDb.rpc("condominium_reverse_reserve_fund_contribution", {
-    p_contribution_id: scope.data.id,
+  const { data, error } = await operatorDb.rpc("condominium_reverse_reserve_fund_receipt", {
+    p_receipt_id: scope.data.id,
     p_reason: reason,
   });
   if (error || !data?.id || data.status !== "reversed") {
@@ -191,12 +205,12 @@ async function reverseContribution({ req, res, operatorDb }) {
     return response(res, code === "OPERATION_NOT_ALLOWED" ? 403 : 409, code);
   }
   return response(res, 200, "RESERVE_FUND_REVERSED", {
-    contribution: reserveFundContributionPublicShape(data),
+    receipt: reserveFundReceiptPublicShape({ ...data, contributions: scope.data.contributions }),
   });
 }
 
 async function viewEvidence({ req, res, operatorDb, serviceDb }) {
-  const scope = await loadScopedContribution(operatorDb, req.body || {});
+  const scope = await loadScopedReceipt(operatorDb, req.body || {});
   if (scope.error) return response(res, scope.status, scope.error);
   if (!scope.data.evidence_path) return response(res, 404, "EVIDENCE_NOT_FOUND");
   const { data, error } = await serviceDb.storage
@@ -218,8 +232,8 @@ export default async function handler(req, res) {
 
   try {
     if (req.body?.action === "create") return await createContribution({ req, res, operatorDb, serviceDb });
-    if (req.body?.action === "reconcile") return await reconcileContribution({ req, res, operatorDb });
-    if (req.body?.action === "reverse") return await reverseContribution({ req, res, operatorDb });
+    if (req.body?.action === "reconcile") return await reconcileReceipt({ req, res, operatorDb });
+    if (req.body?.action === "reverse") return await reverseReceipt({ req, res, operatorDb });
     if (req.body?.action === "evidence") return await viewEvidence({ req, res, operatorDb, serviceDb });
     return response(res, 400, "INVALID_ACTION");
   } catch (error) {

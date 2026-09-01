@@ -135,7 +135,7 @@ export default function CondominioDetalle() {
   const [historicalAccounts, setHistoricalAccounts] = useState([]);
   const [historicalPayments, setHistoricalPayments] = useState([]);
   const [historicalRecoveries, setHistoricalRecoveries] = useState([]);
-  const [reserveFundContributions, setReserveFundContributions] = useState([]);
+  const [reserveFundReceipts, setReserveFundReceipts] = useState([]);
   const [portalModal, setPortalModal] = useState(null);
   const [portalBusyUnitId, setPortalBusyUnitId] = useState(null);
   const [portalUnitStates, setPortalUnitStates] = useState({});
@@ -178,8 +178,7 @@ export default function CondominioDetalle() {
   });
 
   const emptyReserveFundForm = () => ({
-    unidadId: "",
-    amount: "",
+    allocations: [{ unidadId: "", amount: "" }],
     sourceOrganization: "ANTIVE",
     paymentReference: "",
     proofDate: new Date().toISOString().split("T")[0],
@@ -234,7 +233,7 @@ export default function CondominioDetalle() {
       supabase.from("condominium_historical_accounts").select("id, condominio_id, unidad_id, source_organization, source_label, cutoff_date, reported_charges, reported_payments, reported_balance, review_status, created_at").eq("condominio_id", id).order("cutoff_date", { ascending: false }),
       supabase.from("condominium_historical_payments").select("id, condominio_id, historical_account_id, unidad_id, reported_period, reported_amount, received_by, source_label, review_status").eq("condominio_id", id).order("reported_period", { ascending: false }),
       supabase.from("condominium_historical_recoveries").select("id, condominio_id, historical_account_id, unidad_id, amount, deposit_total, payment_reference, proof_received_at, collected_at, custodian_organization, bank_confirmation_reference, current_fee_id, status, applied_at, reversed_at, reversal_reason, evidence_path").eq("condominio_id", id).order("proof_received_at", { ascending: false }),
-      supabase.from("condominium_reserve_fund_contributions").select("id, condominio_id, unidad_id, amount, source_organization, proof_date, deposit_date, payment_reference, status, bank_confirmed_by, reconciled_at, reversed_at, reversal_reason, created_at").eq("condominio_id", id).order("proof_date", { ascending: false }),
+      supabase.from("condominium_reserve_fund_receipts").select("id, condominio_id, total_amount, source_organization, proof_date, deposit_date, payment_reference, status, bank_confirmed_by, reconciled_at, reversed_at, reversal_reason, created_at, contributions:condominium_reserve_fund_contributions(id, unidad_id, amount)").eq("condominio_id", id).order("proof_date", { ascending: false }),
     ]);
     setCond(condData);
     setUnidades(unidadesData || []);
@@ -248,7 +247,7 @@ export default function CondominioDetalle() {
     setHistoricalAccounts(historicalAccountError ? [] : historicalAccountData || []);
     setHistoricalPayments(historicalPaymentError ? [] : historicalPaymentData || []);
     setHistoricalRecoveries(historicalRecoveryError ? [] : historicalRecoveryData || []);
-    setReserveFundContributions(reserveFundError ? [] : reserveFundData || []);
+    setReserveFundReceipts(reserveFundError ? [] : reserveFundData || []);
     setLoading(false);
   };
 
@@ -276,13 +275,13 @@ export default function CondominioDetalle() {
   const pendingHistoricalRecoveries = historicalRecoveries.filter(recovery => recovery.status === "PENDIENTE_APLICACION");
   const appliedHistoricalRecoveries = historicalRecoveries.filter(recovery => recovery.status === "APLICADO");
   const reversedHistoricalRecoveries = historicalRecoveries.filter(recovery => recovery.status === "REVERSADO");
-  const pendingReserveFund = reserveFundContributions.filter(contribution => contribution.status === "pending");
-  const reconciledReserveFund = reserveFundContributions.filter(contribution => contribution.status === "reconciled");
-  const reversedReserveFund = reserveFundContributions.filter(contribution => contribution.status === "reversed");
+  const pendingReserveFund = reserveFundReceipts.filter(receipt => receipt.status === "pending");
+  const reconciledReserveFund = reserveFundReceipts.filter(receipt => receipt.status === "reconciled");
+  const reversedReserveFund = reserveFundReceipts.filter(receipt => receipt.status === "reversed");
   const reserveFundTotals = {
-    pending: pendingReserveFund.reduce((sum, contribution) => sum + Number(contribution.amount || 0), 0),
-    reconciled: reconciledReserveFund.reduce((sum, contribution) => sum + Number(contribution.amount || 0), 0),
-    reversed: reversedReserveFund.reduce((sum, contribution) => sum + Number(contribution.amount || 0), 0),
+    pending: pendingReserveFund.reduce((sum, receipt) => sum + Number(receipt.total_amount || 0), 0),
+    reconciled: reconciledReserveFund.reduce((sum, receipt) => sum + Number(receipt.total_amount || 0), 0),
+    reversed: reversedReserveFund.reduce((sum, receipt) => sum + Number(receipt.total_amount || 0), 0),
   };
 
   const recoveryErrorMessage = (code) => ({
@@ -291,6 +290,7 @@ export default function CondominioDetalle() {
     INVALID_REFERENCE: "Ingresa una referencia válida.",
     INVALID_EVIDENCE: "Adjunta un PDF, JPG o PNG de hasta 5 MB.",
     INVALID_EVIDENCE_TYPE: "El comprobante debe ser PDF, JPG o PNG.",
+    EVIDENCE_CONFLICT: "Ya existe un archivo para este intento y requiere revisión antes de continuar.",
     DUPLICATE_RECOVERY: "Este comprobante ya fue registrado.",
     HISTORICAL_BALANCE_EXCEEDED: "La recuperación excede el saldo histórico pendiente.",
     CURRENT_FEE_NOT_APPLICABLE: "La cuota corriente seleccionada ya no puede aplicarse.",
@@ -405,6 +405,7 @@ export default function CondominioDetalle() {
 
   const reserveFundErrorMessage = (code) => ({
     INVALID_AMOUNT: "Ingresa un importe válido para Fondo de Reserva.",
+    INVALID_ALLOCATIONS: "Selecciona unidades distintas e indica un importe válido para cada una.",
     INVALID_SOURCE: "Indica el origen de la aportación.",
     INVALID_REFERENCE: "Ingresa una referencia válida.",
     INVALID_PROOF_DATE: "Indica cuándo se recibió el comprobante.",
@@ -445,8 +446,10 @@ export default function CondominioDetalle() {
     const result = await callReserveFund({
       action: "create",
       condominioId: id,
-      unidadId: reserveFundForm.unidadId,
-      amount: Number(reserveFundForm.amount),
+      allocations: (reserveFundForm.allocations || []).map(allocation => ({
+        unidadId: allocation.unidadId,
+        amount: Number(allocation.amount),
+      })),
       sourceOrganization: reserveFundForm.sourceOrganization,
       paymentReference: reserveFundForm.paymentReference,
       proofDate: reserveFundForm.proofDate,
@@ -462,13 +465,12 @@ export default function CondominioDetalle() {
   };
 
   const submitReserveFundReconcile = async () => {
-    if (!reserveFundModal?.contribution) return;
+    if (!reserveFundModal?.receipt) return;
     setSaving(true);
     const result = await callReserveFund({
       action: "reconcile",
-      contributionId: reserveFundModal.contribution.id,
+      receiptId: reserveFundModal.receipt.id,
       condominioId: id,
-      unidadId: reserveFundModal.contribution.unidad_id,
       depositDate: reserveFundForm.depositDate,
       bankConfirmedBy: reserveFundForm.bankConfirmedBy,
     });
@@ -480,13 +482,12 @@ export default function CondominioDetalle() {
   };
 
   const submitReserveFundReverse = async () => {
-    if (!reserveFundModal?.contribution) return;
+    if (!reserveFundModal?.receipt) return;
     setSaving(true);
     const result = await callReserveFund({
       action: "reverse",
-      contributionId: reserveFundModal.contribution.id,
+      receiptId: reserveFundModal.receipt.id,
       condominioId: id,
-      unidadId: reserveFundModal.contribution.unidad_id,
       reason: reserveFundForm.reversalReason,
     });
     setSaving(false);
@@ -496,12 +497,11 @@ export default function CondominioDetalle() {
     await loadData();
   };
 
-  const viewReserveFundEvidence = async (contribution) => {
+  const viewReserveFundEvidence = async (receipt) => {
     const result = await callReserveFund({
       action: "evidence",
-      contributionId: contribution.id,
+      receiptId: receipt.id,
       condominioId: id,
-      unidadId: contribution.unidad_id,
     });
     if (!result.ok || !result.signedUrl) return showToast(reserveFundErrorMessage(result.code), false);
     window.open(result.signedUrl, "_blank", "noopener,noreferrer");
@@ -1499,26 +1499,26 @@ export default function CondominioDetalle() {
                 ))}
               </div>
 
-              {reserveFundContributions.length === 0 ? (
+              {reserveFundReceipts.length === 0 ? (
                 <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>No existen aportaciones registradas.</p>
               ) : (
                 <div style={{ overflowX: "auto", background: "#fff", borderRadius: 10 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
-                    <thead><tr style={{ background: "#f9fafb" }}>{["Unidad", "Importe", "Origen", "Referencia", "Fecha comprobante", "Depósito", "Confirmó", "Estado", "Acciones"].map(header => <th key={header} style={{ padding: "9px 10px", textAlign: "left", fontSize: 10, color: "#6b7280", textTransform: "uppercase" }}>{header}</th>)}</tr></thead>
-                    <tbody>{reserveFundContributions.map(contribution => (
-                      <tr key={contribution.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                        <td style={{ padding: 10, fontWeight: 800 }}>{unidades.find(unit => unit.id === contribution.unidad_id)?.numero || "—"}</td>
-                        <td style={{ padding: 10, fontWeight: 700 }}>{fmt(contribution.amount)}</td>
-                        <td style={{ padding: 10 }}>{contribution.source_organization}</td>
-                        <td style={{ padding: 10 }}>{contribution.payment_reference}</td>
-                        <td style={{ padding: 10 }}>{contribution.proof_date || "—"}</td>
-                        <td style={{ padding: 10 }}>{contribution.deposit_date || "—"}</td>
-                        <td style={{ padding: 10 }}>{contribution.bank_confirmed_by || "—"}</td>
-                        <td style={{ padding: 10 }}><StatusBadge status={contribution.status} /></td>
+                    <thead><tr style={{ background: "#f9fafb" }}>{["Unidades / aplicaciones", "Importe total", "Origen", "Referencia", "Fecha comprobante", "Depósito", "Confirmó", "Estado", "Acciones"].map(header => <th key={header} style={{ padding: "9px 10px", textAlign: "left", fontSize: 10, color: "#6b7280", textTransform: "uppercase" }}>{header}</th>)}</tr></thead>
+                    <tbody>{reserveFundReceipts.map(receipt => (
+                      <tr key={receipt.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: 10, fontWeight: 800 }}>{(receipt.contributions || []).map(contribution => `${unidades.find(unit => unit.id === contribution.unidad_id)?.numero || "—"} (${fmt(contribution.amount)})`).join(", ") || "—"}</td>
+                        <td style={{ padding: 10, fontWeight: 700 }}>{fmt(receipt.total_amount)}</td>
+                        <td style={{ padding: 10 }}>{receipt.source_organization}</td>
+                        <td style={{ padding: 10 }}>{receipt.payment_reference}</td>
+                        <td style={{ padding: 10 }}>{receipt.proof_date || "—"}</td>
+                        <td style={{ padding: 10 }}>{receipt.deposit_date || "—"}</td>
+                        <td style={{ padding: 10 }}>{receipt.bank_confirmed_by || "—"}</td>
+                        <td style={{ padding: 10 }}><StatusBadge status={receipt.status} /></td>
                         <td style={{ padding: 10 }}><div style={{ display: "flex", gap: 6 }}>
-                          <Btn small color="#1e40af" onClick={() => viewReserveFundEvidence(contribution)}>Evidencia</Btn>
-                          {contribution.status === "pending" && <Btn small color="#065f46" disabled={!operationControls.realPaymentsEnabled} onClick={() => { setReserveFundForm(emptyReserveFundForm()); setReserveFundModal({ mode: "reconcile", contribution }); }}>Conciliar</Btn>}
-                          {contribution.status === "reconciled" && <Btn small color="#991b1b" onClick={() => { setReserveFundForm(emptyReserveFundForm()); setReserveFundModal({ mode: "reverse", contribution }); }}>Revertir</Btn>}
+                          <Btn small color="#1e40af" onClick={() => viewReserveFundEvidence(receipt)}>Evidencia</Btn>
+                          {receipt.status === "pending" && <Btn small color="#065f46" disabled={!operationControls.realPaymentsEnabled} onClick={() => { setReserveFundForm(emptyReserveFundForm()); setReserveFundModal({ mode: "reconcile", receipt }); }}>Conciliar</Btn>}
+                          {receipt.status === "reconciled" && <Btn small color="#991b1b" onClick={() => { setReserveFundForm(emptyReserveFundForm()); setReserveFundModal({ mode: "reverse", receipt }); }}>Revertir</Btn>}
                         </div></td>
                       </tr>
                     ))}</tbody>
@@ -2037,16 +2037,22 @@ export default function CondominioDetalle() {
       {reserveFundModal?.mode === "create" && (
         <Modal title="Registrar aportación al Fondo de Reserva" onClose={() => { setReserveFundModal(null); setReserveFundEvidence(null); }}>
           <p style={{ marginTop: 0, background: "#f0fdf4", color: "#166534", borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 1.5 }}>Este movimiento se registrará en un control independiente. No modificará cuotas, históricos, recuperaciones, gastos ni KPI de cobranza.</p>
-          <Field label="Unidad *">
-            <Sel value={reserveFundForm.unidadId || ""} onChange={event => setReserveFundForm(current => ({ ...current, unidadId: event.target.value }))}>
-              <option value="">Seleccionar unidad</option>
-              {unidades.map(unit => <option key={unit.id} value={unit.id}>{unit.numero}</option>)}
-            </Sel>
+          <Field label="Aplicaciones por unidad *">
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(reserveFundForm.allocations || []).map((allocation, index) => (
+                <div key={index} style={{ display: "grid", gridTemplateColumns: "minmax(170px, 1fr) minmax(120px, .6fr) auto", gap: 8 }}>
+                  <Sel value={allocation.unidadId || ""} onChange={event => setReserveFundForm(current => ({ ...current, allocations: current.allocations.map((item, itemIndex) => itemIndex === index ? { ...item, unidadId: event.target.value } : item) }))}>
+                    <option value="">Seleccionar unidad</option>
+                    {unidades.map(unit => <option key={unit.id} value={unit.id}>{unit.numero}</option>)}
+                  </Sel>
+                  <Input aria-label={`Importe unidad ${index + 1}`} type="number" min="0.01" step="0.01" placeholder="Importe" value={allocation.amount || ""} onChange={event => setReserveFundForm(current => ({ ...current, allocations: current.allocations.map((item, itemIndex) => itemIndex === index ? { ...item, amount: event.target.value } : item) }))} />
+                  <button type="button" disabled={(reserveFundForm.allocations || []).length === 1} onClick={() => setReserveFundForm(current => ({ ...current, allocations: current.allocations.filter((_, itemIndex) => itemIndex !== index) }))} style={{ border: "none", borderRadius: 8, padding: "0 11px", cursor: (reserveFundForm.allocations || []).length === 1 ? "not-allowed" : "pointer" }}>✕</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setReserveFundForm(current => ({ ...current, allocations: [...current.allocations, { unidadId: "", amount: "" }] }))} style={{ alignSelf: "flex-start", border: "1px solid #86efac", background: "#fff", color: "#166534", borderRadius: 8, padding: "7px 10px", cursor: "pointer", fontWeight: 700 }}>+ Agregar otra unidad al mismo comprobante</button>
+            </div>
           </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Importe *"><Input type="number" min="0.01" step="0.01" value={reserveFundForm.amount || ""} onChange={event => setReserveFundForm(current => ({ ...current, amount: event.target.value }))} /></Field>
-            <Field label="Origen *"><Input maxLength={160} value={reserveFundForm.sourceOrganization || ""} onChange={event => setReserveFundForm(current => ({ ...current, sourceOrganization: event.target.value }))} /></Field>
-          </div>
+          <Field label="Origen *"><Input maxLength={160} value={reserveFundForm.sourceOrganization || ""} onChange={event => setReserveFundForm(current => ({ ...current, sourceOrganization: event.target.value }))} /></Field>
           <Field label="Referencia *"><Input maxLength={160} value={reserveFundForm.paymentReference || ""} onChange={event => setReserveFundForm(current => ({ ...current, paymentReference: event.target.value }))} placeholder="Referencia informada en el comprobante" /></Field>
           <Field label="Fecha del comprobante *"><Input type="date" value={reserveFundForm.proofDate || ""} onChange={event => setReserveFundForm(current => ({ ...current, proofDate: event.target.value }))} /></Field>
           <Field label="Evidencia privada *">
@@ -2055,10 +2061,10 @@ export default function CondominioDetalle() {
               <label htmlFor="reserve-fund-evidence" style={{ cursor: "pointer" }}>{reserveFundEvidence ? <strong style={{ color: "#065f46", fontSize: 13 }}>✓ {reserveFundEvidence.name}</strong> : <span style={{ color: "#6b7280", fontSize: 13 }}>📎 Adjuntar PDF, JPG o PNG (máximo 5 MB)</span>}</label>
             </div>
           </Field>
-          <p style={{ color: "#6b7280", fontSize: 11 }}>El comprobante permanecerá privado. El registro iniciará como pendiente y no se considerará conciliado hasta confirmar el depósito.</p>
+          <p style={{ color: "#6b7280", fontSize: 11 }}>El comprobante permanecerá privado y puede respaldar una o varias unidades. Todas sus aplicaciones se concilian o revierten juntas.</p>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <button disabled={saving} onClick={() => { setReserveFundModal(null); setReserveFundEvidence(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn color="#166534" disabled={saving || !reserveFundEvidence || !reserveFundForm.unidadId || !reserveFundForm.amount || !reserveFundForm.sourceOrganization?.trim() || !reserveFundForm.paymentReference?.trim() || !reserveFundForm.proofDate} onClick={submitReserveFundCreate}>{saving ? "Registrando…" : "Registrar pendiente"}</Btn>
+            <Btn color="#166534" disabled={saving || !reserveFundEvidence || !(reserveFundForm.allocations || []).length || reserveFundForm.allocations.some(allocation => !allocation.unidadId || !(Number(allocation.amount) > 0)) || new Set(reserveFundForm.allocations.map(allocation => allocation.unidadId)).size !== reserveFundForm.allocations.length || !reserveFundForm.sourceOrganization?.trim() || !reserveFundForm.paymentReference?.trim() || !reserveFundForm.proofDate} onClick={submitReserveFundCreate}>{saving ? "Registrando…" : "Registrar pendiente"}</Btn>
           </div>
         </Modal>
       )}
@@ -2066,10 +2072,10 @@ export default function CondominioDetalle() {
       {/* ── Fondo de Reserva: conciliación ── */}
       {reserveFundModal?.mode === "reconcile" && (
         <Modal title="Conciliar aportación al Fondo de Reserva" onClose={() => setReserveFundModal(null)}>
-          <p style={{ marginTop: 0, color: "#6b7280", fontSize: 13, lineHeight: 1.6 }}>Unidad: <strong>{unidades.find(unit => unit.id === reserveFundModal.contribution.unidad_id)?.numero || "—"}</strong><br />Importe: <strong>{fmt(reserveFundModal.contribution.amount)}</strong><br />Referencia: <strong>{reserveFundModal.contribution.payment_reference}</strong></p>
+          <p style={{ marginTop: 0, color: "#6b7280", fontSize: 13, lineHeight: 1.6 }}>Unidades: <strong>{(reserveFundModal.receipt.contributions || []).map(contribution => unidades.find(unit => unit.id === contribution.unidad_id)?.numero || "—").join(", ")}</strong><br />Importe total: <strong>{fmt(reserveFundModal.receipt.total_amount)}</strong><br />Referencia: <strong>{reserveFundModal.receipt.payment_reference}</strong></p>
           <Field label="Fecha confirmada del depósito *"><Input type="date" value={reserveFundForm.depositDate || ""} onChange={event => setReserveFundForm(current => ({ ...current, depositDate: event.target.value }))} /></Field>
           <Field label="Confirmado por *"><Input maxLength={160} value={reserveFundForm.bankConfirmedBy || ""} onChange={event => setReserveFundForm(current => ({ ...current, bankConfirmedBy: event.target.value }))} placeholder="Persona u organización que confirmó el depósito" /></Field>
-          <p style={{ background: "#ecfdf5", color: "#065f46", borderRadius: 8, padding: 10, fontSize: 12 }}>La conciliación confirma esta aportación únicamente. No aplica pagos de mantenimiento ni modifica saldos de cartera.</p>
+          <p style={{ background: "#ecfdf5", color: "#065f46", borderRadius: 8, padding: 10, fontSize: 12 }}>La conciliación confirma el comprobante y todas sus aplicaciones por unidad en una operación. No aplica pagos de mantenimiento ni modifica saldos de cartera.</p>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <button disabled={saving} onClick={() => setReserveFundModal(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
             <Btn color="#065f46" disabled={saving || !operationControls.realPaymentsEnabled || !reserveFundForm.depositDate || !reserveFundForm.bankConfirmedBy?.trim()} onClick={submitReserveFundReconcile}>{saving ? "Conciliando…" : "Confirmar conciliación"}</Btn>
