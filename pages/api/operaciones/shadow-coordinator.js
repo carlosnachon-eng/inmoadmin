@@ -4,6 +4,7 @@ import { shadowContextState } from "../../../lib/shadow/pipeline";
 import { realShadowDevCloneEligibility, realShadowMessageEligibility } from "../../../lib/shadow/ai/realMessage";
 import { REAL_SHADOW_AI_PROMPT_VERSION } from "../../../lib/shadow/ai/realPrompt";
 import { assertManualAuthorizationEnvironment, manualAuthorizationState } from "../../../lib/shadow/ai/manualAuthorization";
+import { resolvePersistedShadowMessageOrigin, sanitizedProviderMessageRef } from "../../../lib/shadow/outboundOrigin";
 
 const client = (key, token) => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, key, {
   global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
@@ -70,6 +71,13 @@ export default async function handler(req, res) {
     try { manualEnvironment = assertManualAuthorizationEnvironment(process.env); } catch { manualEnvironment = null; }
     const realManualEnabled = manualEnvironment?.mode === "production";
     const realManualDevTestEnabled = manualEnvironment?.mode === "dev_test";
+    const rawOutboundMessages = adminOutboundMessages.data || [];
+    const outboundByProviderMessageId = new Map(rawOutboundMessages
+      .filter((item) => item.provider_message_id)
+      .map((item) => [String(item.provider_message_id), item]));
+    const shadowMessageByExternalId = new Map((messages.data || [])
+      .filter((item) => item.external_message_id)
+      .map((item) => [String(item.external_message_id), item]));
     const enrichedMessages = (messages.data || []).map((message) => {
       const matchCount = messageMatches.get(message.id) || 0;
       const state = shadowContextState(
@@ -84,7 +92,8 @@ export default async function handler(req, res) {
       const authorization = authorizationsByMessage.get(message.id) || null;
       const authorizationState = manualAuthorizationState(authorization);
       const enabled = realManualEnabled || realManualDevTestEnabled;
-      return { ...message, semantic_context_needed: state.semanticContextNeeded, context_status: state.contextStatus, real_shadow: {
+      const resolvedOrigin = resolvePersistedShadowMessageOrigin(message, outboundByProviderMessageId);
+      return { ...message, ...resolvedOrigin, semantic_context_needed: state.semanticContextNeeded, context_status: state.contextStatus, real_shadow: {
         eligible: enabled && realEligibility.allowed && !realRun && authorizationState === "active",
         authorizable: enabled && realEligibility.allowed && !realRun && authorizationState !== "active",
         devTest: realManualDevTestEnabled && realEligibility.allowed, reason: realEligibility.reason,
@@ -93,7 +102,18 @@ export default async function handler(req, res) {
       } };
     });
     const actionsById = new Map((conversationActions.data || []).map((item) => [item.id, item]));
-    const outboundMessages = (adminOutboundMessages.data || []).map((item) => ({ ...item, provider_message_ref: item.provider_message_id ? `${String(item.provider_message_id).slice(0,8)}…` : null, provider_message_id: undefined, action: actionsById.get(item.conversation_action_id) || null }));
+    const outboundMessages = rawOutboundMessages.map((item) => {
+      const echo = item.provider_message_id ? shadowMessageByExternalId.get(String(item.provider_message_id)) || null : null;
+      return {
+        ...item,
+        origin: "inmoadmin_admin_ai",
+        origin_resolution: echo ? "provider_message_id_exact_match" : "sender_claim_without_echo",
+        echo_message_id: echo?.id || null,
+        provider_message_ref: sanitizedProviderMessageRef(item.provider_message_id),
+        provider_message_id: undefined,
+        action: actionsById.get(item.conversation_action_id) || null,
+      };
+    });
     return res.status(200).json({ ok: true, messages: enrichedMessages, operationalEvents: operationalEvents.data || [], conversations: conversations.data || [], matches: matches.data || [], evaluations: evaluations.data || [], aiRuns: aiRuns.data || [], aiDecisions: aiDecisions.data || [], toolAudit: toolAudit.data || [], conversationActions: conversationActions.data || [], adminOutboundMessages: outboundMessages, metrics: counts, realManualEnabled, realManualDevTestEnabled, aiStatus: (aiRuns.data || []).some((x)=>x.status==="completed") ? "executed_qa" : "not_executed" });
   } catch (error) {
     console.error("[shadow-coordinator]", error?.message || error);

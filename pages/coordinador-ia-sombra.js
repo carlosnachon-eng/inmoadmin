@@ -12,7 +12,14 @@ const EVALUATIONS = [
 ];
 const likelihoodLabel = { high: "Alta", medium: "Media", low: "Baja", unknown: "Sin determinar" };
 const providerLabel = { respond_admin: "WhatsApp Administración", respond: "Respond.io", synthetic: "Fixture sintético" };
-const directionLabel = { inbound: "Cliente", outbound: "Salida", outbound_human: "Respuesta humana desde WhatsApp Business App" };
+const directionLabel = {
+  inbound: "Cliente", outbound: "Salida de origen desconocido",
+  outbound_human: "Respuesta humana desde WhatsApp Business App",
+  outbound_ai_inmoadmin: "Administradora IA de InmoAdmin",
+  outbound_respond_ai: "AI Agent de Respond",
+  outbound_unknown: "Salida de origen desconocido",
+};
+const originLabel = { contact: "Cliente", human: "Humano", inmoadmin_admin_ai: "Administradora IA", respond_ai: "Respond AI", unknown: "Desconocido" };
 const REPLAY_RATINGS = [["correct","Correcta"],["acceptable_with_changes","Aceptable con cambios"],["incorrect","Incorrecta"],["should_escalate","Debió escalar"],["not_evaluable","No evaluable"]];
 const REPLAY_REASONS = ["tone","missing_information","wrong_question","requested_existing_document","invented_fact","incorrect_context","unnecessary_escalation","financial_risk","legal_risk","should_have_asked","should_have_stayed_silent","other"];
 
@@ -163,7 +170,10 @@ export default function ShadowCoordinatorPage() {
   const selectedFixtureId = selected?.provider_metadata?.syntheticScenario;
   const aiRun = useMemo(() => (data?.aiRuns || []).find((item) => selected?.real_shadow?.runId ? item.id === selected.real_shadow.runId : item.message_id === selectedId && (!selectedFixtureId || item.campaign_id === qaCampaignId)), [data, selected, selectedId, selectedFixtureId, qaCampaignId]);
   const aiDecision = useMemo(() => (data?.aiDecisions || []).find((item) => item.ai_run_id === aiRun?.id), [data, aiRun?.id]);
-  const laterHumanResponse = useMemo(() => !selected ? null : (aiRun?.telemetry_json?.human_response_id ? (data?.messages || []).find((item)=>item.id===aiRun.telemetry_json.human_response_id) : (data?.messages || []).filter((item) => item.conversation_id === selected.conversation_id && item.direction === "outbound_human" && new Date(item.occurred_at) > new Date(selected.occurred_at)).sort((a,b)=>new Date(a.occurred_at)-new Date(b.occurred_at))[0]) || null, [data, selected, aiRun]);
+  const normalizedConversationAction = useMemo(() => (data?.conversationActions || []).find((item) => item.ai_run_id === aiRun?.id), [data, aiRun?.id]);
+  const outboundDelivery = useMemo(() => (data?.adminOutboundMessages || []).find((item) => item.conversation_action_id === normalizedConversationAction?.id), [data, normalizedConversationAction?.id]);
+  const sentEcho = useMemo(() => !outboundDelivery?.echo_message_id ? null : (data?.messages || []).find((item) => item.id === outboundDelivery.echo_message_id), [data, outboundDelivery?.echo_message_id]);
+  const laterHumanResponse = useMemo(() => !selected ? null : (aiRun?.telemetry_json?.human_response_id ? (data?.messages || []).find((item)=>item.id===aiRun.telemetry_json.human_response_id && (item.resolved_direction || item.direction)==="outbound_human") : (data?.messages || []).filter((item) => item.conversation_id === selected.conversation_id && (item.resolved_direction || item.direction) === "outbound_human" && new Date(item.occurred_at) > new Date(selected.occurred_at)).sort((a,b)=>new Date(a.occurred_at)-new Date(b.occurred_at))[0]) || null, [data, selected, aiRun]);
   const turnMessages = useMemo(() => (aiRun?.telemetry_json?.turn_message_ids || []).map((id)=>(data?.messages || []).find((item)=>item.id===id)).filter(Boolean), [data, aiRun]);
   const aiTools = aiDecision?.tool_summary || [];
   const intentCounts = useMemo(() => (data?.messages || []).reduce((acc, item) => ({ ...acc, [item.intent]: (acc[item.intent] || 0) + 1 }), {}), [data]);
@@ -276,11 +286,12 @@ export default function ShadowCoordinatorPage() {
       </details>
       <details style={{ ...card, marginBottom: 16 }}><summary><strong>Mensajes enviados por Administradora IA</strong></summary>
         <p style={{color:brand.grayLight}}>Carril exclusivo de Administración 544519. El límite inicial es 10 claims acumulados; no ejecuta acciones ERP.</p>
+        <p><strong>Contador:</strong> {(data?.adminOutboundMessages || []).length}/10</p>
         {!(data?.adminOutboundMessages || []).length ? <p>No hay mensajes enviados por la Administradora IA.</p> : (data.adminOutboundMessages || []).map((item)=><article key={item.id} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}>
           <strong>{item.case_domain} · {item.conversation_action}</strong>
           <p>{item.action?.proposed_message || "Mensaje no disponible."}</p>
           <p><strong>Estado:</strong> {item.status} · <strong>Confianza:</strong> {Math.round(Number(item.action?.confidence||0)*100)}% · <strong>Evidencia:</strong> {(item.action?.evidence_refs||[]).length} referencia(s)</p>
-          <p><strong>Provider ref:</strong> {item.provider_message_ref || "—"} · <strong>Enviado:</strong> {item.sent_at ? new Date(item.sent_at).toLocaleString("es-MX") : "No"}</p>
+          <p><strong>Provider ref:</strong> {item.provider_message_ref || "—"} · <strong>Enviado:</strong> {item.sent_at ? new Date(item.sent_at).toLocaleString("es-MX") : "No"} · <strong>Origen:</strong> {originLabel[item.origin] || "Desconocido"}</p>
           {item.error_code && <p><strong>Bloqueo/error:</strong> {item.error_code}</p>}
         </article>)}
       </details>
@@ -320,10 +331,10 @@ export default function ShadowCoordinatorPage() {
         {[["High", likelihoodCounts.high], ["Medium", likelihoodCounts.medium], ["Low", likelihoodCounts.low], ["Unknown", likelihoodCounts.unknown]].map(([label,value]) => <div key={label}><strong>{value}</strong><div style={{ color: brand.grayLight, fontSize: 12 }}>{label}</div></div>)}
       </section>
       <div className="shadow-workspace">
-        <section style={{ ...card, maxHeight: "72vh", overflow: "auto" }}><h2 style={{ fontSize: 16 }}>Conversaciones observadas</h2>{(data?.messages || []).map((item) => <button key={item.id} onClick={() => setSelectedId(item.id)} style={{ width: "100%", textAlign: "left", border: `1px solid ${item.id===selectedId ? brand.red : brand.border}`, background: item.id===selectedId ? brand.redLight : "#fff", borderRadius: 9, padding: 10, marginBottom: 8, cursor: "pointer" }}><strong>{item.direction === "outbound_human" ? "Respuesta humana" : item.intent.replaceAll("_", " ")}</strong><div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: brand.gray }}>{item.sanitized_text}</div><small>{directionLabel[item.direction] || item.direction} · {likelihoodLabel[item.administrative_likelihood]} · {new Date(item.occurred_at).toLocaleString("es-MX")}</small></button>)}</section>
+        <section style={{ ...card, maxHeight: "72vh", overflow: "auto" }}><h2 style={{ fontSize: 16 }}>Conversaciones observadas</h2>{(data?.messages || []).map((item) => { const direction = item.resolved_direction || item.direction; return <button key={item.id} onClick={() => setSelectedId(item.id)} style={{ width: "100%", textAlign: "left", border: `1px solid ${item.id===selectedId ? brand.red : brand.border}`, background: item.id===selectedId ? brand.redLight : "#fff", borderRadius: 9, padding: 10, marginBottom: 8, cursor: "pointer" }}><strong>{direction === "outbound_human" ? "Respuesta humana" : direction === "outbound_ai_inmoadmin" ? "Administradora IA" : item.intent.replaceAll("_", " ")}</strong><div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: brand.gray }}>{item.sanitized_text}</div><small>{directionLabel[direction] || direction} · {likelihoodLabel[item.administrative_likelihood]} · {new Date(item.occurred_at).toLocaleString("es-MX")}</small></button>;})}</section>
         <section style={card}>{selected ? <>
           <h2 style={{ marginTop: 0 }}>Detalle del mensaje</h2><blockquote style={{ margin: "12px 0", padding: 14, background: "#f9fafb", borderLeft: `4px solid ${brand.red}` }}>{selected.sanitized_text}</blockquote>
-          <p><strong>Origen:</strong> {providerLabel[conversation?.provider] || conversation?.provider} · <strong>Dirección:</strong> {directionLabel[selected.direction] || selected.direction} · <strong>Contacto:</strong> {conversation?.contact_hash?.slice(0,12)}…</p>
+          <p><strong>Origen:</strong> {originLabel[selected.message_origin] || providerLabel[conversation?.provider] || conversation?.provider} · <strong>Dirección:</strong> {directionLabel[selected.resolved_direction || selected.direction] || selected.resolved_direction || selected.direction} · <strong>Contacto:</strong> {conversation?.contact_hash?.slice(0,12)}…</p>
           {conversation?.provider === "respond_admin" && <details><summary>Detalle técnico</summary><p><code>provider=respond_admin</code> · canal pseudorreferenciado por configuración server-side.</p></details>}
           <p><strong>Intención:</strong> {selected.intent} · <strong>Probabilidad administrativa:</strong> {likelihoodLabel[selected.administrative_likelihood]}</p>
           <p><strong>Reglas:</strong> {(selected.reason_codes || []).join(", ") || "Sin señales"}</p>
@@ -349,6 +360,12 @@ export default function ShadowCoordinatorPage() {
               <p><strong>Acción propuesta:</strong> {aiDecision.proposed_action}</p>
               {aiDecision.decision_json?.responseBlocked ? <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:10,color:"#991b1b"}}><strong>Respuesta bloqueada</strong><p style={{marginBottom:0}}>{aiDecision.proposed_response}</p></div> : <p><strong>Respuesta propuesta:</strong> {aiDecision.proposed_response}</p>}
               <p><strong>Confianza:</strong> {Math.round(Number(aiDecision.confidence||0)*100)}% · <strong>Requiere humano:</strong> {aiDecision.requires_human ? "Sí" : "No"}</p>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:8,marginTop:10}}>
+                <div style={{...card,background:"#fff"}}><strong>1. Salida inicial del modelo</strong><p>{aiDecision.proposed_response || "Sin mensaje propuesto."}</p><small>{aiDecision.proposed_action || "Sin acción"}</small></div>
+                <div style={{...card,background:"#fff"}}><strong>2. Acción normalizada 3B</strong><p>{normalizedConversationAction?.proposed_message || "Sin mensaje normalizado."}</p><small>{normalizedConversationAction ? `${normalizedConversationAction.case_domain} / ${normalizedConversationAction.conversation_action}` : "No disponible"}</small></div>
+                <div style={{...card,background:"#fff"}}><strong>3. Mensaje final enviado</strong><p>{outboundDelivery?.status === "sent" ? (outboundDelivery.action?.proposed_message || "Mensaje enviado sin texto disponible.") : "No enviado."}</p><small>{outboundDelivery?.provider_message_ref ? `Provider ref ${outboundDelivery.provider_message_ref}` : "Sin provider ref"}</small></div>
+                <div style={{...card,background:"#fff"}}><strong>4. Origen real</strong><p>{originLabel[sentEcho?.message_origin || outboundDelivery?.origin] || "Desconocido"}</p><small>{sentEcho?.origin_resolution || outboundDelivery?.origin_resolution || "Sin entrega asociada"}</small></div>
+              </div>
               {aiRun?.prompt_version?.includes("real-shadow") && <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}><div style={{...card,background:"#fff"}}><strong>Respuesta humana posterior</strong><p>{laterHumanResponse?.sanitized_text || "No existe una respuesta humana posterior persistida."}</p></div><div style={{...card,background:"#fff"}}><strong>Propuesta de IA (no enviada)</strong><p>{aiDecision.proposed_response}</p></div></div>}
               {aiDecision.escalation_reason && <p><strong>Motivo:</strong> {aiDecision.escalation_reason}</p>}
               <small>{aiRun.model} · {aiRun.prompt_version} · {aiRun.latency_ms || 0} ms</small>
