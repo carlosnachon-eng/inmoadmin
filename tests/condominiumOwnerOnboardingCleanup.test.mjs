@@ -6,13 +6,25 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 const migration = await read("../supabase/migrations/202608310002_condominium_owner_onboarding_cleanup.sql");
 const rollback = await read("../supabase/production/rollback/202608310002_condominium_owner_onboarding_cleanup_rollback.sql");
 const checks = await read("../supabase/production/tests/202608310002_condominium_owner_onboarding_cleanup_checks.sql");
+const authBootstrap = await read("../supabase/dev/bootstrap/202608310001_condominium_owner_onboarding_auth_trigger.sql");
 const endpoint = await read("../pages/api/condominios/portal-access.js");
 
 test("cleanup es SECURITY DEFINER, usa search_path fijo y no usa SQL dinámico", () => {
   assert.match(migration, /security definer/);
-  assert.match(migration, /set search_path=public,auth,pg_temp/);
+  assert.match(migration, /set search_path=public,pg_temp/);
+  assert.match(migration, /alter function public\.cleanup_condominium_owner_onboarding_profile\(uuid,uuid,uuid,text\)\s+owner to postgres/);
   assert.doesNotMatch(migration, /\bexecute\b\s+(?:format|\()/i);
   assert.match(migration, /public\.cleanup_condominium_owner_onboarding_profile/);
+});
+
+test("bootstrap DEV conserva exactamente el contrato endurecido de handle_new_user", () => {
+  assert.match(authBootstrap, /rol_solicitado in \('propietario','inquilino','condomino'\)/);
+  assert.match(authBootstrap, /AUTH_PROFILE_ROLE_NOT_ALLOWED/);
+  assert.match(authBootstrap, /AUTH_PROFILE_ROLE_NOT_CONFIGURED/);
+  assert.match(authBootstrap, /alter function public\.handle_new_user\(\) owner to postgres/);
+  assert.match(authBootstrap, /revoke all on function public\.handle_new_user\(\) from public, anon, authenticated, service_role/);
+  assert.match(authBootstrap, /grant execute on function public\.handle_new_user\(\) to supabase_auth_admin/);
+  assert.doesNotMatch(authBootstrap, /rol_solicitado\s*:=\s*'asesor';\s*end if;/);
 });
 
 test("sólo service_role puede ejecutar y no se amplía DELETE general", () => {

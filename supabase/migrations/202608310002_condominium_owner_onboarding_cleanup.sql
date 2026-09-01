@@ -48,7 +48,7 @@ create or replace function public.cleanup_condominium_owner_onboarding_profile(
 returns jsonb
 language plpgsql
 security definer
-set search_path=public,auth,pg_temp
+set search_path=public,pg_temp
 as $$
 declare
   v_user auth.users%rowtype;
@@ -117,7 +117,7 @@ begin
   elsif exists(select 1 from public.permisos_modulo pm where pm.role_id=v_profile.role_id and (pm.puede_ver or pm.puede_editar)) then
     v_result:='BLOCKED'; v_block_reason:='INTERNAL_PERMISSIONS_PRESENT';
   else
-    -- El perfil se elimina primero porque Producción no usa ON DELETE CASCADE.
+    -- La función privilegiada elimina únicamente el perfil temporal validado.
     -- La identidad Auth se elimina después mediante Admin API y sólo si este
     -- resultado confirma que no existe ningún acceso o actividad previa.
     delete from public.profiles where id=p_auth_user_id;
@@ -134,6 +134,9 @@ begin
   return jsonb_build_object('result_code',v_result,'reason_code',coalesce(v_block_reason,p_reason_code));
 end;
 $$;
+
+alter function public.cleanup_condominium_owner_onboarding_profile(uuid,uuid,uuid,text)
+owner to postgres;
 
 revoke all on function public.cleanup_condominium_owner_onboarding_profile(uuid,uuid,uuid,text)
 from public,anon,authenticated;
