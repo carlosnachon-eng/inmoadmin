@@ -188,6 +188,29 @@ export default function CondominioDetalle() {
     idempotencyKey: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "",
   });
 
+  const reserveFundUuid = () => typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "";
+  const emptyAntiveReserveFundRecord = () => ({
+    receiptId: reserveFundUuid(),
+    idempotencyKey: reserveFundUuid(),
+    unidadId: "",
+    amount: "",
+    sourceRange: "",
+  });
+  const emptyAntiveReserveFundForm = () => ({
+    batchId: reserveFundUuid(),
+    sourceFileSha256: "",
+    sourceSheet: "",
+    receivedConfirmedBy: "",
+    receivedConfirmedAt: new Date().toISOString().slice(0, 16),
+    receivedConfirmationNote: "",
+    records: [emptyAntiveReserveFundRecord()],
+    paymentReference: "",
+    proofDate: "",
+    depositDate: new Date().toISOString().split("T")[0],
+    bankConfirmedBy: "",
+    voidReason: "",
+  });
+
   const emptyUnidad = { numero: "", piso: "", propietario_nombre: "", propietario_email: "", propietario_telefono: "", residente_nombre: "", residente_email: "", residente_telefono: "", residente_es_propietario: true, notas: "" };
   const [formUnidad, setFormUnidad] = useState(emptyUnidad);
 
@@ -233,7 +256,7 @@ export default function CondominioDetalle() {
       supabase.from("condominium_historical_accounts").select("id, condominio_id, unidad_id, source_organization, source_label, cutoff_date, reported_charges, reported_payments, reported_balance, review_status, created_at").eq("condominio_id", id).order("cutoff_date", { ascending: false }),
       supabase.from("condominium_historical_payments").select("id, condominio_id, historical_account_id, unidad_id, reported_period, reported_amount, received_by, source_label, review_status").eq("condominio_id", id).order("reported_period", { ascending: false }),
       supabase.from("condominium_historical_recoveries").select("id, condominio_id, historical_account_id, unidad_id, amount, deposit_total, payment_reference, proof_received_at, collected_at, custodian_organization, bank_confirmation_reference, current_fee_id, status, applied_at, reversed_at, reversal_reason, evidence_path").eq("condominio_id", id).order("proof_received_at", { ascending: false }),
-      supabase.from("condominium_reserve_fund_receipts").select("id, condominio_id, total_amount, source_organization, proof_date, deposit_date, payment_reference, status, bank_confirmed_by, reconciled_at, reversed_at, reversal_reason, created_at, contributions:condominium_reserve_fund_contributions(id, unidad_id, amount)").eq("condominio_id", id).order("proof_date", { ascending: false }),
+      supabase.from("condominium_reserve_fund_receipts").select("id, condominio_id, total_amount, source_organization, record_kind, proof_date, deposit_date, payment_reference, status, bank_confirmed_by, reconciled_at, reversed_at, reversal_reason, voided_at, void_reason, import_batch_id, source_file_sha256, source_sheet, source_range, received_confirmed_by, received_confirmed_at, received_confirmation_note, evidence_enriched_at, evidence_path, created_at, contributions:condominium_reserve_fund_contributions(id, unidad_id, amount)").eq("condominio_id", id).order("created_at", { ascending: false }),
     ]);
     setCond(condData);
     setUnidades(unidadesData || []);
@@ -275,13 +298,15 @@ export default function CondominioDetalle() {
   const pendingHistoricalRecoveries = historicalRecoveries.filter(recovery => recovery.status === "PENDIENTE_APLICACION");
   const appliedHistoricalRecoveries = historicalRecoveries.filter(recovery => recovery.status === "APLICADO");
   const reversedHistoricalRecoveries = historicalRecoveries.filter(recovery => recovery.status === "REVERSADO");
+  const receivedByAntiveReserveFund = reserveFundReceipts.filter(receipt => receipt.status === "received_by_antive_unverified");
   const pendingReserveFund = reserveFundReceipts.filter(receipt => receipt.status === "pending");
   const reconciledReserveFund = reserveFundReceipts.filter(receipt => receipt.status === "reconciled");
-  const reversedReserveFund = reserveFundReceipts.filter(receipt => receipt.status === "reversed");
+  const closedReserveFund = reserveFundReceipts.filter(receipt => ["reversed", "voided"].includes(receipt.status));
   const reserveFundTotals = {
+    receivedByAntive: receivedByAntiveReserveFund.reduce((sum, receipt) => sum + Number(receipt.total_amount || 0), 0),
     pending: pendingReserveFund.reduce((sum, receipt) => sum + Number(receipt.total_amount || 0), 0),
     reconciled: reconciledReserveFund.reduce((sum, receipt) => sum + Number(receipt.total_amount || 0), 0),
-    reversed: reversedReserveFund.reduce((sum, receipt) => sum + Number(receipt.total_amount || 0), 0),
+    closed: closedReserveFund.reduce((sum, receipt) => sum + Number(receipt.total_amount || 0), 0),
   };
 
   const recoveryErrorMessage = (code) => ({
@@ -413,8 +438,20 @@ export default function CondominioDetalle() {
     INVALID_BANK_CONFIRMATION: "Indica quién confirmó el depósito.",
     INVALID_EVIDENCE: "Adjunta un PDF, JPG o PNG de hasta 5 MB.",
     INVALID_EVIDENCE_TYPE: "El comprobante debe ser PDF, JPG o PNG.",
+    INVALID_SOURCE_FILE_HASH: "El hash SHA-256 del archivo fuente debe tener 64 caracteres hexadecimales.",
+    INVALID_SOURCE_SHEET: "Indica la hoja exacta del Excel fuente.",
+    INVALID_SOURCE_RANGE: "Indica la celda o rango fuente de cada unidad.",
+    INVALID_ANTIVE_CONFIRMATION: "Indica quién confirmó la recepción por Antive.",
+    INVALID_ANTIVE_CONFIRMATION_DATE: "Indica la fecha de confirmación administrativa.",
+    INVALID_RECORDS: "Revisa los registros del lote histórico.",
+    DUPLICATE_SOURCE_RECORD: "La fuente administrativa ya fue registrada o está duplicada en el lote.",
+    IMPORT_BATCH_CONFLICT: "El identificador del lote ya fue utilizado con otros datos.",
     DUPLICATE_CONTRIBUTION: "Esta aportación o evidencia ya fue registrada.",
     CONTRIBUTION_NOT_PENDING: "La aportación ya no está pendiente.",
+    CONTRIBUTION_NOT_ENRICHABLE: "Este registro no admite evidencia adicional o ya fue completado.",
+    CONTRIBUTION_NOT_VOIDABLE: "El registro ya no puede anularse en su estado actual.",
+    EVIDENCE_REQUIRED_FOR_RECONCILIATION: "Falta evidencia documental suficiente para conciliar.",
+    VOID_REASON_REQUIRED: "Indica el motivo de anulación.",
     CONTRIBUTION_NOT_RECONCILED: "Sólo puede revertirse una aportación conciliada.",
     REAL_PAYMENTS_BLOCKED: "La confirmación de pagos está bloqueada para este condominio.",
     OPERATION_NOT_ALLOWED: "No tienes permiso para operar el Fondo de Reserva.",
@@ -464,6 +501,60 @@ export default function CondominioDetalle() {
     await loadData();
   };
 
+  const submitReserveFundAntiveReceived = async () => {
+    const confirmedAt = Date.parse(String(reserveFundForm.receivedConfirmedAt || ""));
+    if (Number.isNaN(confirmedAt)) return showToast("Indica una fecha válida de confirmación administrativa", false);
+    setSaving(true);
+    const result = await callReserveFund({
+      action: "import-antive-received",
+      condominioId: id,
+      batchId: reserveFundForm.batchId,
+      sourceFileSha256: String(reserveFundForm.sourceFileSha256 || "").trim().toLowerCase(),
+      sourceSheet: reserveFundForm.sourceSheet,
+      receivedConfirmedBy: reserveFundForm.receivedConfirmedBy,
+      receivedConfirmedAt: new Date(confirmedAt).toISOString(),
+      receivedConfirmationNote: reserveFundForm.receivedConfirmationNote,
+      records: (reserveFundForm.records || []).map(record => ({
+        receiptId: record.receiptId,
+        idempotencyKey: record.idempotencyKey,
+        unidadId: record.unidadId,
+        amount: Number(record.amount),
+        sourceRange: record.sourceRange,
+      })),
+    });
+    setSaving(false);
+    if (!result.ok) return showToast(reserveFundErrorMessage(result.code), false);
+    setReserveFundModal(null);
+    showToast(`${result.batch?.recordCount || 0} registro(s) recibido(s) por Antive — pendiente(s) de evidencia documental`);
+    await loadData();
+  };
+
+  const submitReserveFundEvidenceEnrichment = async () => {
+    if (!reserveFundModal?.receipt || !reserveFundEvidence) return;
+    setSaving(true);
+    let base64;
+    try {
+      base64 = await fileToBase64(reserveFundEvidence);
+    } catch {
+      setSaving(false);
+      return showToast("No fue posible leer el comprobante", false);
+    }
+    const result = await callReserveFund({
+      action: "enrich-evidence",
+      receiptId: reserveFundModal.receipt.id,
+      condominioId: id,
+      paymentReference: reserveFundForm.paymentReference,
+      proofDate: reserveFundForm.proofDate,
+      evidence: { mimeType: reserveFundEvidence.type, base64 },
+    });
+    setSaving(false);
+    if (!result.ok) return showToast(reserveFundErrorMessage(result.code), false);
+    setReserveFundModal(null);
+    setReserveFundEvidence(null);
+    showToast("Evidencia complementaria agregada; el registro conserva su origen Antive");
+    await loadData();
+  };
+
   const submitReserveFundReconcile = async () => {
     if (!reserveFundModal?.receipt) return;
     setSaving(true);
@@ -494,6 +585,23 @@ export default function CondominioDetalle() {
     if (!result.ok) return showToast(reserveFundErrorMessage(result.code), false);
     setReserveFundModal(null);
     showToast("Aportación al Fondo de Reserva reversada");
+    await loadData();
+  };
+
+  const submitReserveFundVoid = async () => {
+    if (!reserveFundModal?.receipt && !reserveFundModal?.batchId) return;
+    setSaving(true);
+    const result = await callReserveFund({
+      action: reserveFundModal.mode === "void-batch" ? "void-batch" : "void",
+      receiptId: reserveFundModal.receipt?.id,
+      batchId: reserveFundModal.batchId,
+      condominioId: id,
+      reason: reserveFundForm.voidReason,
+    });
+    setSaving(false);
+    if (!result.ok) return showToast(reserveFundErrorMessage(result.code), false);
+    setReserveFundModal(null);
+    showToast(reserveFundModal.mode === "void-batch" ? "Lote anulado con trazabilidad" : "Registro anulado con trazabilidad");
     await loadData();
   };
 
@@ -1483,14 +1591,18 @@ export default function CondominioDetalle() {
                   <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Aportaciones independientes</h3>
                   <p style={{ margin: "5px 0 0", color: "#4b5563", fontSize: 12, lineHeight: 1.5 }}>No forman parte de cuotas de mantenimiento, cartera histórica, recuperaciones, gastos ni KPI de cobranza.</p>
                 </div>
-                <Btn color="#166534" onClick={() => { setReserveFundForm(emptyReserveFundForm()); setReserveFundEvidence(null); setReserveFundModal({ mode: "create" }); }}>+ Registrar aportación</Btn>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Btn color="#166534" onClick={() => { setReserveFundForm(emptyReserveFundForm()); setReserveFundEvidence(null); setReserveFundModal({ mode: "create" }); }}>+ Registrar con comprobante</Btn>
+                  <Btn color="#1e40af" onClick={() => { setReserveFundForm(emptyAntiveReserveFundForm()); setReserveFundEvidence(null); setReserveFundModal({ mode: "antive-received" }); }}>+ Registrar recibido por Antive</Btn>
+                </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10, marginBottom: 14 }}>
                 {[
-                  { label: "Pendiente de conciliación", value: fmt(reserveFundTotals.pending) },
+                  { label: "Recibido por Antive — evidencia pendiente", value: fmt(reserveFundTotals.receivedByAntive) },
+                  { label: "Pendiente de recepción", value: fmt(reserveFundTotals.pending) },
                   { label: "Conciliado", value: fmt(reserveFundTotals.reconciled) },
-                  { label: "Reversado", value: fmt(reserveFundTotals.reversed) },
+                  { label: "Reversado / anulado", value: fmt(reserveFundTotals.closed) },
                 ].map(item => (
                   <div key={item.label} style={{ background: "#fff", borderRadius: 10, padding: "12px 14px" }}>
                     <p style={{ margin: 0, fontSize: 10, color: "#166534", textTransform: "uppercase", fontWeight: 700 }}>{item.label}</p>
@@ -1510,15 +1622,30 @@ export default function CondominioDetalle() {
                         <td style={{ padding: 10, fontWeight: 800 }}>{(receipt.contributions || []).map(contribution => `${unidades.find(unit => unit.id === contribution.unidad_id)?.numero || "—"} (${fmt(contribution.amount)})`).join(", ") || "—"}</td>
                         <td style={{ padding: 10, fontWeight: 700 }}>{fmt(receipt.total_amount)}</td>
                         <td style={{ padding: 10 }}>{receipt.source_organization}</td>
-                        <td style={{ padding: 10 }}>{receipt.payment_reference}</td>
+                        <td style={{ padding: 10 }}>{receipt.payment_reference || "Sin referencia"}</td>
                         <td style={{ padding: 10 }}>{receipt.proof_date || "—"}</td>
                         <td style={{ padding: 10 }}>{receipt.deposit_date || "—"}</td>
                         <td style={{ padding: 10 }}>{receipt.bank_confirmed_by || "—"}</td>
-                        <td style={{ padding: 10 }}><StatusBadge status={receipt.status} /></td>
+                        <td style={{ padding: 10, maxWidth: 220 }}>
+                          <strong style={{ color: receipt.status === "received_by_antive_unverified" ? "#1e40af" : "#374151" }}>
+                            {{
+                              received_by_antive_unverified: "Recibido por Antive — pendiente de evidencia documental",
+                              pending: "Pendiente de recepción",
+                              reconciled: "Conciliado",
+                              reversed: "Reversado",
+                              voided: "Anulado",
+                            }[receipt.status] || receipt.status}
+                          </strong>
+                          {receipt.record_kind === "antive_historical_report" && <small style={{ display: "block", marginTop: 4, color: "#6b7280" }}>Fuente: {receipt.source_sheet || "—"} / {receipt.source_range || "—"}</small>}
+                        </td>
                         <td style={{ padding: 10 }}><div style={{ display: "flex", gap: 6 }}>
-                          <Btn small color="#1e40af" onClick={() => viewReserveFundEvidence(receipt)}>Evidencia</Btn>
+                          {receipt.evidence_path && <Btn small color="#1e40af" onClick={() => viewReserveFundEvidence(receipt)}>Evidencia</Btn>}
+                          {receipt.status === "received_by_antive_unverified" && !receipt.evidence_path && <Btn small color="#1e40af" onClick={() => { setReserveFundForm(emptyAntiveReserveFundForm()); setReserveFundEvidence(null); setReserveFundModal({ mode: "enrich-evidence", receipt }); }}>Completar evidencia</Btn>}
+                          {receipt.status === "received_by_antive_unverified" && receipt.evidence_path && <Btn small color="#065f46" disabled={!operationControls.realPaymentsEnabled} onClick={() => { setReserveFundForm(emptyAntiveReserveFundForm()); setReserveFundModal({ mode: "reconcile", receipt }); }}>Conciliar</Btn>}
                           {receipt.status === "pending" && <Btn small color="#065f46" disabled={!operationControls.realPaymentsEnabled} onClick={() => { setReserveFundForm(emptyReserveFundForm()); setReserveFundModal({ mode: "reconcile", receipt }); }}>Conciliar</Btn>}
                           {receipt.status === "reconciled" && <Btn small color="#991b1b" onClick={() => { setReserveFundForm(emptyReserveFundForm()); setReserveFundModal({ mode: "reverse", receipt }); }}>Revertir</Btn>}
+                          {["pending", "received_by_antive_unverified"].includes(receipt.status) && <Btn small color="#991b1b" onClick={() => { setReserveFundForm(emptyAntiveReserveFundForm()); setReserveFundModal({ mode: "void", receipt }); }}>Anular</Btn>}
+                          {receipt.status === "received_by_antive_unverified" && receipt.import_batch_id && <Btn small color="#7c2d12" onClick={() => { setReserveFundForm(emptyAntiveReserveFundForm()); setReserveFundModal({ mode: "void-batch", batchId: receipt.import_batch_id }); }}>Anular lote</Btn>}
                         </div></td>
                       </tr>
                     ))}</tbody>
@@ -2065,6 +2192,70 @@ export default function CondominioDetalle() {
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <button disabled={saving} onClick={() => { setReserveFundModal(null); setReserveFundEvidence(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
             <Btn color="#166534" disabled={saving || !reserveFundEvidence || !(reserveFundForm.allocations || []).length || reserveFundForm.allocations.some(allocation => !allocation.unidadId || !(Number(allocation.amount) > 0)) || new Set(reserveFundForm.allocations.map(allocation => allocation.unidadId)).size !== reserveFundForm.allocations.length || !reserveFundForm.sourceOrganization?.trim() || !reserveFundForm.paymentReference?.trim() || !reserveFundForm.proofDate} onClick={submitReserveFundCreate}>{saving ? "Registrando…" : "Registrar pendiente"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Fondo de Reserva: lote histórico recibido por Antive ── */}
+      {reserveFundModal?.mode === "antive-received" && (
+        <Modal title="Registrar Fondo de Reserva recibido por Antive" onClose={() => setReserveFundModal(null)}>
+          <p style={{ marginTop: 0, background: "#eff6ff", color: "#1e40af", borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 1.5 }}><strong>Recibido por Antive — pendiente de evidencia documental.</strong><br />Estos importes no se mostrarán como adeudo y no modificarán mantenimiento, cartera histórica, recuperaciones, gastos ni KPI.</p>
+          <Field label="Registros del lote *">
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(reserveFundForm.records || []).map((record, index) => (
+                <div key={record.receiptId || index} style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) minmax(100px, .55fr) minmax(110px, .65fr) auto", gap: 8 }}>
+                  <Sel value={record.unidadId || ""} onChange={event => setReserveFundForm(current => ({ ...current, records: current.records.map((item, itemIndex) => itemIndex === index ? { ...item, unidadId: event.target.value } : item) }))}>
+                    <option value="">Unidad</option>
+                    {unidades.map(unit => <option key={unit.id} value={unit.id}>{unit.numero}</option>)}
+                  </Sel>
+                  <Input aria-label={`Importe histórico ${index + 1}`} type="number" min="0.01" step="0.01" placeholder="Importe" value={record.amount || ""} onChange={event => setReserveFundForm(current => ({ ...current, records: current.records.map((item, itemIndex) => itemIndex === index ? { ...item, amount: event.target.value } : item) }))} />
+                  <Input aria-label={`Celda fuente ${index + 1}`} maxLength={160} placeholder="Celda/rango" value={record.sourceRange || ""} onChange={event => setReserveFundForm(current => ({ ...current, records: current.records.map((item, itemIndex) => itemIndex === index ? { ...item, sourceRange: event.target.value } : item) }))} />
+                  <button type="button" disabled={(reserveFundForm.records || []).length === 1} onClick={() => setReserveFundForm(current => ({ ...current, records: current.records.filter((_, itemIndex) => itemIndex !== index) }))} style={{ border: "none", borderRadius: 8, padding: "0 11px", cursor: (reserveFundForm.records || []).length === 1 ? "not-allowed" : "pointer" }}>✕</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setReserveFundForm(current => ({ ...current, records: [...current.records, emptyAntiveReserveFundRecord()] }))} style={{ alignSelf: "flex-start", border: "1px solid #93c5fd", background: "#fff", color: "#1e40af", borderRadius: 8, padding: "7px 10px", cursor: "pointer", fontWeight: 700 }}>+ Agregar registro al lote</button>
+            </div>
+          </Field>
+          <Field label="Hash SHA-256 del Excel fuente *"><Input maxLength={64} value={reserveFundForm.sourceFileSha256 || ""} onChange={event => setReserveFundForm(current => ({ ...current, sourceFileSha256: event.target.value.toLowerCase() }))} placeholder="64 caracteres hexadecimales" /></Field>
+          <Field label="Hoja fuente *"><Input maxLength={160} value={reserveFundForm.sourceSheet || ""} onChange={event => setReserveFundForm(current => ({ ...current, sourceSheet: event.target.value }))} placeholder="Nombre exacto de la hoja" /></Field>
+          <Field label="Recepción confirmada por Antive *"><Input maxLength={160} value={reserveFundForm.receivedConfirmedBy || ""} onChange={event => setReserveFundForm(current => ({ ...current, receivedConfirmedBy: event.target.value }))} placeholder="Persona o control administrativo que confirmó" /></Field>
+          <Field label="Fecha de confirmación administrativa *"><Input type="datetime-local" value={reserveFundForm.receivedConfirmedAt || ""} onChange={event => setReserveFundForm(current => ({ ...current, receivedConfirmedAt: event.target.value }))} /></Field>
+          <Field label="Observación (opcional)"><textarea rows={3} maxLength={1000} value={reserveFundForm.receivedConfirmationNote || ""} onChange={event => setReserveFundForm(current => ({ ...current, receivedConfirmationNote: event.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", resize: "vertical" }} /></Field>
+          <p style={{ color: "#6b7280", fontSize: 11 }}>No se inventará fecha de depósito, referencia ni comprobante. La clave archivo + hoja + celda + unidad impide duplicar la fuente.</p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button disabled={saving} onClick={() => setReserveFundModal(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn color="#1e40af" disabled={saving || !/^[a-f0-9]{64}$/.test(String(reserveFundForm.sourceFileSha256 || "")) || !reserveFundForm.sourceSheet?.trim() || !reserveFundForm.receivedConfirmedBy?.trim() || !reserveFundForm.receivedConfirmedAt || !(reserveFundForm.records || []).length || reserveFundForm.records.some(record => !record.unidadId || !(Number(record.amount) > 0) || !record.sourceRange?.trim()) || new Set(reserveFundForm.records.map(record => record.unidadId)).size !== reserveFundForm.records.length || new Set(reserveFundForm.records.map(record => record.sourceRange.trim().toUpperCase())).size !== reserveFundForm.records.length} onClick={submitReserveFundAntiveReceived}>{saving ? "Registrando…" : "Registrar recibido por Antive"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Fondo de Reserva: enriquecer evidencia histórica ── */}
+      {reserveFundModal?.mode === "enrich-evidence" && (
+        <Modal title="Completar evidencia de Fondo de Reserva" onClose={() => { setReserveFundModal(null); setReserveFundEvidence(null); }}>
+          <p style={{ marginTop: 0, background: "#eff6ff", color: "#1e40af", borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 1.5 }}>El registro original no se duplicará. La fuente Antive permanecerá intacta y el estado sólo podrá conciliarse después de guardar evidencia suficiente.</p>
+          <Field label="Referencia bancaria/documental *"><Input maxLength={160} value={reserveFundForm.paymentReference || ""} onChange={event => setReserveFundForm(current => ({ ...current, paymentReference: event.target.value }))} /></Field>
+          <Field label="Fecha del comprobante *"><Input type="date" value={reserveFundForm.proofDate || ""} onChange={event => setReserveFundForm(current => ({ ...current, proofDate: event.target.value }))} /></Field>
+          <Field label="Evidencia privada *">
+            <div style={{ border: "2px dashed #d1d5db", borderRadius: 8, padding: 14, textAlign: "center", background: "#fafafa" }}>
+              <input type="file" accept="application/pdf,image/jpeg,image/png" id="reserve-fund-antive-evidence" style={{ display: "none" }} onChange={event => setReserveFundEvidence(event.target.files?.[0] || null)} />
+              <label htmlFor="reserve-fund-antive-evidence" style={{ cursor: "pointer" }}>{reserveFundEvidence ? <strong style={{ color: "#065f46", fontSize: 13 }}>✓ {reserveFundEvidence.name}</strong> : <span style={{ color: "#6b7280", fontSize: 13 }}>📎 Adjuntar PDF, JPG o PNG (máximo 5 MB)</span>}</label>
+            </div>
+          </Field>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button disabled={saving} onClick={() => { setReserveFundModal(null); setReserveFundEvidence(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn color="#1e40af" disabled={saving || !reserveFundEvidence || !reserveFundForm.paymentReference?.trim() || !reserveFundForm.proofDate} onClick={submitReserveFundEvidenceEnrichment}>{saving ? "Guardando…" : "Completar evidencia"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Fondo de Reserva: anulación auditada ── */}
+      {["void", "void-batch"].includes(reserveFundModal?.mode) && (
+        <Modal title={reserveFundModal.mode === "void-batch" ? "Anular lote de Fondo de Reserva" : "Anular registro de Fondo de Reserva"} onClose={() => setReserveFundModal(null)}>
+          <p style={{ marginTop: 0, background: "#fff7ed", color: "#9a3412", borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 1.5 }}>La anulación conserva el registro, la fuente y la auditoría. Un lote con registros conciliados o reversados fallará cerrado.</p>
+          <Field label="Motivo obligatorio *"><textarea rows={4} maxLength={1000} value={reserveFundForm.voidReason || ""} onChange={event => setReserveFundForm(current => ({ ...current, voidReason: event.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", resize: "vertical" }} /></Field>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button disabled={saving} onClick={() => setReserveFundModal(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+            <Btn color="#9a3412" disabled={saving || String(reserveFundForm.voidReason || "").trim().length < 5} onClick={submitReserveFundVoid}>{saving ? "Anulando…" : "Anular con motivo"}</Btn>
           </div>
         </Modal>
       )}
