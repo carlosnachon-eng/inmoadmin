@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import { propertiesByName, propertyWasAdministeredInPeriod } from "../lib/administrationService";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -54,6 +55,7 @@ export default function Comisiones() {
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [contracts, setContracts] = useState([]);
+  const [properties, setProperties] = useState([]);
   const [comisiones, setComisiones] = useState([]);
   const [historialCash, setHistorialCash] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -94,14 +96,17 @@ export default function Comisiones() {
       { data: contractsData },
       { data: comisionesData },
       { data: cashData },
+      { data: propertiesData },
     ] = await Promise.all([
       supabase.from("contracts").select("*").eq("status", "activo").order("property_name"),
       supabase.from("comisiones_admin").select("*, contracts(tenant_name, property_name, owner_name, monthly_rent, commission_type, commission_value, rent_receiver)").order("created_at", { ascending: false }),
       supabase.from("cash_movements").select("*").eq("category", "comision_cobrada").order("date", { ascending: false }),
+      supabase.from("properties").select("name, administration_ended_at"),
     ]);
     setContracts(contractsData || []);
     setComisiones(comisionesData || []);
     setHistorialCash(cashData || []);
+    setProperties(propertiesData || []);
     setLoading(false);
   };
 
@@ -113,7 +118,11 @@ export default function Comisiones() {
 
     // Ver cuáles ya tienen registro en este periodo
     const yaExisten = comisiones.filter(c => c.periodo === periodo).map(c => c.contract_id);
-    const sinRegistro = contracts.filter(c => !yaExisten.includes(c.id));
+    const propertyMap = propertiesByName(properties);
+    const contratosAdministrados = contracts.filter(c =>
+      propertyWasAdministeredInPeriod(propertyMap.get(c.property_name), periodo)
+    );
+    const sinRegistro = contratosAdministrados.filter(c => !yaExisten.includes(c.id));
 
     if (sinRegistro.length === 0) {
       showToast("Las comisiones de este periodo ya están generadas", false);

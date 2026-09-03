@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
 import { contextualRecordStyle, useContextualRecord } from "../lib/useContextualRecord";
+import { propertyIsCurrentlyAdministered } from "../lib/administrationService";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -209,9 +210,13 @@ export default function Contratos() {
     } else {
       const { data: newContract, error } = await supabase.from("contracts").insert([{ ...data, status: "activo" }]).select().single();
       if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
-      const pagos = generarPagos(newContract);
-      const { error: ep } = await supabase.from("payments").insert(pagos);
-      if (ep) { setSaving(false); showToast("Contrato creado pero error en pagos: " + ep.message, false); return; }
+      const property = properties.find(p => p.name === newContract.property_name);
+      const administraEmporio = propertyIsCurrentlyAdministered(property);
+      const pagos = administraEmporio ? generarPagos(newContract) : [];
+      if (pagos.length) {
+        const { error: ep } = await supabase.from("payments").insert(pagos);
+        if (ep) { setSaving(false); showToast("Contrato creado pero error en pagos: " + ep.message, false); return; }
+      }
 
       // Una renovación conserva el contrato y los cobros anteriores, pero
       // deja de tratarlos como operación activa. Solo finalizamos contratos
@@ -237,7 +242,10 @@ export default function Contratos() {
       }
 
       setSaving(false);
-      showToast(`Contrato creado con ${pagos.length} cobros${anteriores.length ? " · contrato anterior finalizado" : ""}`);
+      showToast(administraEmporio
+        ? `Contrato creado con ${pagos.length} cobros${anteriores.length ? " · contrato anterior finalizado" : ""}`
+        : `Contrato creado para renovación, sin cobranza de administración${anteriores.length ? " · contrato anterior finalizado" : ""}`
+      );
     }
 
     setShowModal(false);

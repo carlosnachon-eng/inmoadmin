@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import Layout, { brand, Btn } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
 import { contextualRecordStyle, resolveServiceDeepLinkContext } from "../lib/useContextualRecord";
+import { propertyIsCurrentlyAdministered } from "../lib/administrationService";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -606,7 +607,8 @@ export default function Propiedades() {
   if (permisoCargando) return null;
   if (!puedeVer) return <SinAcceso />;
 
-  const propiedadesFiltradas = properties.filter(p => {
+  const propiedadesAdministradas = properties.filter(propertyIsCurrentlyAdministered);
+  const propiedadesFiltradas = propiedadesAdministradas.filter(p => {
     if (busquedaProp) {
       const q = busquedaProp.toLowerCase();
       const enNombre = (p.name || "").toLowerCase().includes(q);
@@ -640,7 +642,7 @@ export default function Propiedades() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
               <h2 style={{ margin: 0, fontSize: isMobile ? 18 : 22, fontWeight: 800, color: brand.gray }}>
-                Propiedades ({propiedadesFiltradas.length}{propiedadesFiltradas.length !== properties.length ? ` de ${properties.length}` : ""})
+                Propiedades ({propiedadesFiltradas.length}{propiedadesFiltradas.length !== propiedadesAdministradas.length ? ` de ${propiedadesAdministradas.length}` : ""})
               </h2>
               {puedeEditar && <Btn onClick={() => { setEditing(null); setShowModal("property"); }}>+ Nueva propiedad</Btn>}
             </div>
