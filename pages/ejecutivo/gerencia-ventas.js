@@ -195,6 +195,7 @@ export default function GerenciaVentasDashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" }).slice(0, 7));
+  const [selectedTeam, setSelectedTeam] = useState("");
   const [data, setData] = useState({
     profiles: [],
     partners: [],
@@ -203,6 +204,7 @@ export default function GerenciaVentasDashboard() {
     clientes: [],
     seguimientos: [],
     cartas: [],
+    teamDirectory: [],
   });
 
   useEffect(() => {
@@ -229,7 +231,7 @@ export default function GerenciaVentasDashboard() {
   useEffect(() => {
     if (!session || !puedeVer) return;
     cargarDatos();
-  }, [session, puedeVer, selectedMonth]);
+  }, [session, puedeVer, selectedMonth, selectedTeam]);
 
   const cargarDatos = async () => {
     setLoading(true);
@@ -241,17 +243,18 @@ export default function GerenciaVentasDashboard() {
     endExclusive.setDate(endExclusive.getDate() + 1);
     const yearStart = `${year}-01-01`;
     try {
-      const [profilesRes, partnersRes, cierresRes, citasRes, clientesRes, seguimientosRes, cartasRes] = await Promise.all([
+      const [profilesRes, partnersRes, cierresRes, citasRes, clientesRes, seguimientosRes, cartasRes, directoryRes] = await Promise.all([
         supabase.from("profiles").select("id, email, full_name, role_id, active, participa_kpis, created_at"),
         supabase.from("partner_users").select("email"),
-        supabase.from("cierres").select("id, anio, mes, propiedad, fecha_cierre, operacion, precio, comision, vendedor, notas").gte("fecha_cierre", yearStart).lte("fecha_cierre", cierreQueryEnd),
+        supabase.from("cierres").select("id, anio, mes, propiedad, fecha_cierre, operacion, precio, comision, vendedor, notas, advisor_profile_id").gte("fecha_cierre", yearStart).lte("fecha_cierre", cierreQueryEnd),
         supabase.from("citas").select("id, cliente_id, propiedad_id, asesor_id, fecha_hora, estado, created_at, updated_at").gte("fecha_hora", startDateTime).lt("fecha_hora", endExclusive.toISOString()),
         supabase.from("clientes").select("id, nombre, etapa_interes, asesor_id, created_at, updated_at"),
         supabase.from("seguimientos_cliente").select("id, cliente_id, asesor_id, tipo, created_at").gte("created_at", `${start}T00:00:00`),
         supabase.from("cartas_oferta").select("id, inmueble, precio_oferta, precio_contraoferta, estatus, created_by, created_at, notas").gte("created_at", `${start}T00:00:00`),
+        supabase.from("v_sales_team_directory").select("team_id, team_name, plaza_id, plaza_name, advisor_profile_id, email, full_name, participa_kpis"),
       ]);
 
-      const firstError = [profilesRes, partnersRes, cierresRes, citasRes, clientesRes, seguimientosRes, cartasRes].find((res) => res.error)?.error;
+      const firstError = [profilesRes, partnersRes, cierresRes, citasRes, clientesRes, seguimientosRes, cartasRes, directoryRes].find((res) => res.error)?.error;
       if (firstError) throw firstError;
 
       setData({
@@ -262,7 +265,10 @@ export default function GerenciaVentasDashboard() {
         clientes: clientesRes.data || [],
         seguimientos: seguimientosRes.data || [],
         cartas: cartasRes.data || [],
+        teamDirectory: directoryRes.data || [],
       });
+      const visibleTeams = [...new Map((directoryRes.data || []).map((row) => [row.team_id, row])).values()];
+      if (!selectedTeam && visibleTeams.length) setSelectedTeam(visibleTeams[0].team_id);
     } catch (err) {
       setError(err?.message || "No se pudo cargar la lectura gerencial.");
     } finally {
@@ -279,8 +285,13 @@ export default function GerenciaVentasDashboard() {
     const diaEvaluado = esMesActual ? corteDay : daysInMonth(year, month);
     const diasEvaluables = countNonSundayDays(year, month, diaEvaluado);
     const partnerEmails = new Set((data.partners || []).map((p) => normalize(p.email)));
+    const usaEquipos = selectedMonth >= "2026-09" && Boolean(selectedTeam);
+    const miembrosEquipo = new Set((data.teamDirectory || [])
+      .filter((row) => row.team_id === selectedTeam && row.participa_kpis !== false)
+      .map((row) => row.advisor_profile_id));
     const asesoresComercialesTotales = (data.profiles || [])
       .filter((p) => p.active !== false && p.participa_kpis !== false && ROLES_ASESORES.has(p.role_id) && !partnerEmails.has(normalize(p.email)))
+      .filter((p) => !usaEquipos || miembrosEquipo.has(p.id))
       .map((p) => ({ ...p, nombre: nombrePerfil(p) }))
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
     const asesoresExcluidos = asesoresComercialesTotales
@@ -298,7 +309,7 @@ export default function GerenciaVentasDashboard() {
 
     const cierresMes = (data.cierres || []).filter((c) => {
       const fecha = dateKey(c.fecha_cierre);
-      return fecha >= start && fecha <= end;
+      return fecha >= start && fecha <= end && (!usaEquipos || miembrosEquipo.has(c.advisor_profile_id));
     });
     const cierresHastaCorte = cierresMes.filter((c) => dateKey(c.fecha_cierre) <= corte);
     const cierresNuevos = cierresHastaCorte.filter((c) => !esRenovacionTemporal(c));
@@ -332,7 +343,11 @@ export default function GerenciaVentasDashboard() {
     });
 
     const corteFinal = new Date(`${corte}T23:59:59-06:00`);
-    const clientesActivos = (data.clientes || []).filter((c) => !["perdido", "cerrado"].includes(normalize(c.etapa_interes)) && !idsExcluidos.has(c.asesor_id));
+    const clientesActivos = (data.clientes || []).filter((c) =>
+      !["perdido", "cerrado"].includes(normalize(c.etapa_interes))
+      && !idsExcluidos.has(c.asesor_id)
+      && (!usaEquipos || miembrosEquipo.has(c.asesor_id))
+    );
     const riesgoCliente = (cliente) => {
       const citasCliente = citasByCliente.get(cliente.id) || [];
       const tieneCitaFutura = citasCliente.some((cita) => cita.estado === "agendada" && new Date(cita.fecha_hora) > corteFinal);
@@ -357,7 +372,9 @@ export default function GerenciaVentasDashboard() {
       const calificadas = citasAsesor.filter((cita) => cita.estado === "calificada").length;
       const requeridas = diasEvaluables * META_CITAS_DIARIAS;
       const nombre = asesor.nombre;
-      const cierresAsesor = cierresNuevos.filter((c) => normVendedor(c.vendedor) === nombre);
+      const cierresAsesor = cierresNuevos.filter((c) => usaEquipos
+        ? c.advisor_profile_id === asesor.id
+        : normVendedor(c.vendedor) === nombre);
       const comision = cierresAsesor.reduce((sum, c) => sum + Number(c.comision || 0), 0);
       const clientesAsesor = clientesActivos.filter((c) => c.asesor_id === asesor.id);
       const riesgo = clientesAsesor.filter(riesgoCliente).length;
@@ -388,7 +405,7 @@ export default function GerenciaVentasDashboard() {
     const salud = estadoSalud({ avanceMeta, avanceCitas, riesgoPct });
 
     const produccionPorVendedor = Object.values(cierresNuevos.reduce((acc, c) => {
-      const vendedor = normVendedor(c.vendedor);
+      const vendedor = usaEquipos ? nameById(c.advisor_profile_id) : normVendedor(c.vendedor);
       acc[vendedor] ||= { vendedor, cierres: 0, comision: 0 };
       acc[vendedor].cierres += 1;
       acc[vendedor].comision += Number(c.comision || 0);
@@ -430,7 +447,7 @@ export default function GerenciaVentasDashboard() {
       produccionPorVendedor,
       historicoValidacion,
     };
-  }, [data, selectedMonth]);
+  }, [data, selectedMonth, selectedTeam]);
 
   if (authLoading || (session && !profile)) {
     return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Cargando...</div>;
@@ -459,6 +476,16 @@ export default function GerenciaVentasDashboard() {
               </p>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              {selectedMonth >= "2026-09" && (
+                <select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)} style={{
+                  padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 10,
+                  background: "#fff", fontWeight: 800, color: "#374151",
+                }}>
+                  {[...new Map((data.teamDirectory || []).map((row) => [row.team_id, row])).values()].map((row) => (
+                    <option key={row.team_id} value={row.team_id}>{row.team_name} · {row.plaza_name}</option>
+                  ))}
+                </select>
+              )}
               <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} style={{
                 padding: "10px 12px",
                 border: "1px solid #e5e7eb",

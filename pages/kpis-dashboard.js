@@ -64,6 +64,9 @@ export default function KPIsDashboard() {
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1)
   const [animado, setAnimado] = useState(false)
   const [filtroAsesor, setFiltroAsesor] = useState('Todos')
+  const [teamDirectory, setTeamDirectory] = useState([])
+  const [selectedTeam, setSelectedTeam] = useState('')
+  const [scopedStats, setScopedStats] = useState([])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); setLoading(false) })
@@ -82,31 +85,40 @@ export default function KPIsDashboard() {
 
   const esAdmin = perfilDb?.active !== false && ROLES_ADMIN_DASHBOARD.includes(perfilDb?.role_id)
 
-  // Lista de asesores (para el ranking) + su mapa nombre->correo,
-  // cargados de profiles en vez de ASESORES/ASESORES_EMAILS hardcodeados.
+  // Fase 2: el ranking se arma desde membresías vigentes, no desde todos
+  // los perfiles con rol asesor. RLS limita los equipos visibles.
   const [ASESORES, setASESORES] = useState([])
   const [ASESORES_EMAILS, setASESORES_EMAILS] = useState({})
+  const [ASESORES_IDS, setASESORES_IDS] = useState({})
   useEffect(() => {
-    Promise.all([
-      supabase.from('profiles').select('email, full_name, role_id, participa_kpis').eq('active', true),
-      supabase.from('partner_users').select('email'),
-    ]).then(([profilesRes, partnersRes]) => {
-        const partnerEmails = new Set((partnersRes.data || []).map(p => String(p.email || '').toLowerCase()))
-        const enRanking = (profilesRes.data || []).filter(p => ROLES_EN_RANKING.includes(p.role_id) && p.participa_kpis !== false && !isPartnerEmail(p.email, partnerEmails))
-        const mapa = {}
-        const nombres = enRanking.map(p => {
-          const n = p.full_name || NOMBRES_CONOCIDOS[p.email] || p.email
-          mapa[n] = p.email
-          return n
-        })
-        setASESORES(nombres)
-        setASESORES_EMAILS(mapa)
+    if (!session || !esAdmin) return
+    supabase.from('v_sales_team_directory').select('*').is('left_at', null).order('team_code').order('full_name')
+      .then(({ data }) => {
+        const rows = data || []
+        setTeamDirectory(rows)
+        setSelectedTeam(current => current || rows[0]?.team_code || '')
       })
-  }, [])
+  }, [session, esAdmin])
 
   useEffect(() => {
-    if (session && esAdmin) cargarDatos()
-  }, [session, esAdmin, mesSeleccionado])
+    const rows = teamDirectory.filter(row => row.team_code === selectedTeam && row.participa_kpis !== false)
+    const emails = {}
+    const ids = {}
+    const nombres = rows.map(row => {
+      const nombre = row.full_name || NOMBRES_CONOCIDOS[row.email] || row.email
+      emails[nombre] = row.email
+      ids[nombre] = row.advisor_profile_id
+      return nombre
+    })
+    setASESORES(nombres)
+    setASESORES_EMAILS(emails)
+    setASESORES_IDS(ids)
+    setFiltroAsesor('Todos')
+  }, [teamDirectory, selectedTeam])
+
+  useEffect(() => {
+    if (session && esAdmin && selectedTeam) cargarDatos()
+  }, [session, esAdmin, mesSeleccionado, selectedTeam, teamDirectory])
 
   useEffect(() => {
     setAnimado(false)
@@ -119,19 +131,14 @@ export default function KPIsDashboard() {
     const mes = mesSeleccionado
     const inicio = `${anio}-${String(mes).padStart(2, '0')}-01`
     const fin = new Date(anio, mes, 0).toISOString().split('T')[0]
-    const inicioCitas = `${inicio}T00:00:00-06:00`
-    const finCitas = new Date(`${fin}T12:00:00-06:00`)
-    finCitas.setDate(finCitas.getDate() + 1)
-
-    const [{ data: kpisData }, { data: cierresData }, { data: checadasData }, { data: citasData }] = await Promise.all([
+    const members = teamDirectory.filter(row => row.team_code === selectedTeam && row.participa_kpis !== false)
+    const memberIds = members.map(row => row.advisor_profile_id)
+    const memberEmails = new Set(members.map(row => row.email))
+    const [{ data: kpisData }, { data: checadasData }, { data: eventData }, { data: scopeData }] = await Promise.all([
       supabase.from('kpis_diarios').select('*').gte('fecha', inicio).lte('fecha', fin).order('fecha', { ascending: false }),
-      supabase.from('cierres').select('*').gte('fecha_cierre', inicio).lte('fecha_cierre', fin),
       supabase.from('checadas').select('*').gte('fecha', inicio).lte('fecha', fin),
-      supabase
-        .from('citas')
-        .select('estado, fecha_hora, profiles:asesor_id(email, full_name)')
-        .gte('fecha_hora', inicioCitas)
-        .lt('fecha_hora', finCitas.toISOString()),
+      supabase.rpc('get_sales_kpi_events_by_scope', { p_start: inicio, p_end: fin, p_team_code: selectedTeam }),
+      supabase.rpc('get_sales_kpis_by_scope', { p_start: inicio, p_end: fin, p_plaza_code: null, p_team_code: selectedTeam }),
     ])
 
     // El dashboard reconcilia en vivo los días que ya tienen citas en el
@@ -139,26 +146,30 @@ export default function KPIsDashboard() {
     // actualizado previamente y también corrige registros históricos
     // que quedaron con estados viejos.
     const citasPorAsesorDia = new Map()
-    ;(citasData || []).forEach(cita => {
-      const email = cita.profiles?.email
-      if (!email || !cita.fecha_hora) return
-      const fecha = fechaMexico(cita.fecha_hora)
+    const memberById = new Map(members.map(row => [row.advisor_profile_id, row]))
+    ;(eventData || []).filter(event => event.event_type === 'CITA').forEach(cita => {
+      const member = memberById.get(cita.advisor_profile_id)
+      const email = member?.email
+      if (!email || !cita.occurred_at) return
+      const fecha = fechaMexico(cita.occurred_at)
       const key = `${email}|${fecha}`
       const actual = citasPorAsesorDia.get(key) || {
         email,
-        asesor: cita.profiles?.full_name || NOMBRES_CONOCIDOS[email] || email,
+        asesor: member.full_name || NOMBRES_CONOCIDOS[email] || email,
         fecha,
         citas_agendadas: 0,
         citas_efectivas: 0,
         citas_calificadas: 0,
       }
-      actual.citas_agendadas += 1
-      if (cita.estado === 'efectiva' || cita.estado === 'calificada') actual.citas_efectivas += 1
-      if (cita.estado === 'calificada') actual.citas_calificadas += 1
+      actual.citas_agendadas += Number(cita.citas_agendadas || 0)
+      actual.citas_efectivas += Number(cita.citas_efectivas || 0)
+      actual.citas_calificadas += Number(cita.citas_calificadas || 0)
       citasPorAsesorDia.set(key, actual)
     })
 
-    const kpisReconciliados = (kpisData || []).map(registro => {
+    const kpisReconciliados = (kpisData || []).filter(registro =>
+      memberIds.includes(registro.advisor_profile_id) || memberEmails.has(registro.email)
+    ).map(registro => {
       const calculado = citasPorAsesorDia.get(`${registro.email}|${registro.fecha}`)
       if (!calculado) return registro
       citasPorAsesorDia.delete(`${registro.email}|${registro.fecha}`)
@@ -170,8 +181,9 @@ export default function KPIsDashboard() {
     kpisReconciliados.sort((a, b) => b.fecha.localeCompare(a.fecha))
 
     setKpis(kpisReconciliados)
-    setCierres(cierresData || [])
-    setChecadas(checadasData || [])
+    setScopedStats(scopeData || [])
+    setCierres([])
+    setChecadas((checadasData || []).filter(row => memberEmails.has(row.email)))
     setAnimado(false)
     setTimeout(() => setAnimado(true), 100)
   }
@@ -189,13 +201,12 @@ export default function KPIsDashboard() {
   const statsAsesor = (nombre) => {
     const registros = kpis.filter(k => k.asesor === nombre)
     const diasCapturados = registros.length
-    const citas_agendadas = registros.reduce((a, k) => a + (k.citas_agendadas || 0), 0)
-    const citas_efectivas = registros.reduce((a, k) => a + (k.citas_efectivas || 0), 0)
-    const citas_calificadas = registros.reduce((a, k) => a + (k.citas_calificadas || 0), 0)
-    const vendedorKey = VENDEDOR_MAP[nombre] || nombre.toLowerCase()
-    const cierresAsesor = cierres.filter(c => (c.vendedor || '').toLowerCase() === vendedorKey)
-    const operaciones = cierresAsesor.length
-    const ingresos = cierresAsesor.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0)
+    const scoped = scopedStats.find(row => row.advisor_profile_id === ASESORES_IDS[nombre]) || {}
+    const citas_agendadas = Number(scoped.citas_agendadas || 0)
+    const citas_efectivas = Number(scoped.citas_efectivas || 0)
+    const citas_calificadas = Number(scoped.citas_calificadas || 0)
+    const operaciones = Number(scoped.cierres || 0)
+    const ingresos = Number(scoped.ingresos || 0)
     const conversion = pct(operaciones, citas_calificadas)
     const citasDiariasPromedio = diasCapturados > 0 ? (citas_efectivas / diasCapturados).toFixed(1) : 0
     const progreso = Math.min((ingresos / META_INGRESOS) * 100, 100)
@@ -215,10 +226,10 @@ export default function KPIsDashboard() {
     .sort((a, b) => b.operaciones - a.operaciones || b.ingresos - a.ingresos)
 
   const totalEquipo = {
-    citas_agendadas: kpis.reduce((a, k) => a + (k.citas_agendadas || 0), 0),
-    citas_efectivas: kpis.reduce((a, k) => a + (k.citas_efectivas || 0), 0),
-    operaciones: cierres.length,
-    ingresos: cierres.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0),
+    citas_agendadas: scopedStats.reduce((a, k) => a + Number(k.citas_agendadas || 0), 0),
+    citas_efectivas: scopedStats.reduce((a, k) => a + Number(k.citas_efectivas || 0), 0),
+    operaciones: scopedStats.reduce((a, k) => a + Number(k.cierres || 0), 0),
+    ingresos: scopedStats.reduce((a, k) => a + Number(k.ingresos || 0), 0),
   }
 
   const BONOS = [5000, 3000, 1500]
@@ -279,6 +290,12 @@ export default function KPIsDashboard() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select value={selectedTeam} onChange={e => setSelectedTeam(e.target.value)}
+                style={{ background: '#f8f8f8', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', color: '#4a4a4a', fontSize: 13, cursor: 'pointer' }}>
+                {[...new Set(teamDirectory.map(row => row.team_code))].map(code => (
+                  <option key={code} value={code}>{teamDirectory.find(row => row.team_code === code)?.team_name || code}</option>
+                ))}
+              </select>
               <select value={mesSeleccionado} onChange={e => setMesSeleccionado(parseInt(e.target.value))}
                 style={{ background: '#f8f8f8', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', color: '#4a4a4a', fontSize: 13, cursor: 'pointer' }}>
                 {meses.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}

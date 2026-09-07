@@ -61,6 +61,9 @@ export default function KPIs() {
   const [checadas, setChecadas] = useState([])
   const [animado, setAnimado] = useState(false)
   const [hoy, setHoy] = useState('')
+  const [currentTeam, setCurrentTeam] = useState(null)
+  const [scopedStats, setScopedStats] = useState([])
+  const [advisorIdsByName, setAdvisorIdsByName] = useState({})
 
   useEffect(() => {
     supabase.rpc('get_fecha_mexico').then(({ data }) => {
@@ -93,19 +96,27 @@ export default function KPIs() {
   const esAdmin = perfilDb?.active !== false && !esPartner && ROLES_ADMIN_KPIS.includes(perfilDb?.role_id)
   const esAsesor = !!nombre
 
-  // Lista de nombres de todos los que registran KPIs (para el ranking),
-  // cargada de profiles en vez de NOMBRES_LISTA hardcodeada.
+  // Fase 2: el ranking se construye desde la membresía vigente del asesor.
   const [listaAsesores, setListaAsesores] = useState([])
   useEffect(() => {
-    Promise.all([
-      supabase.from('profiles').select('email, full_name, role_id, participa_kpis').eq('active', true),
-      supabase.from('partner_users').select('email'),
-    ]).then(([profilesRes, partnersRes]) => {
-        const partnerEmails = new Set((partnersRes.data || []).map(p => String(p.email || '').toLowerCase()))
-        const asesores = (profilesRes.data || []).filter(p => ROLES_QUE_REGISTRAN_KPIS.includes(p.role_id) && p.participa_kpis !== false && !isPartnerEmail(p.email, partnerEmails))
-        setListaAsesores(asesores.map(p => p.full_name || NOMBRES_CONOCIDOS[p.email] || p.email))
+    if (!session || !perfilDb?.id) return
+    supabase.from('v_sales_team_directory').select('*').is('left_at', null)
+      .then(({ data }) => {
+        const rows = data || []
+        const own = rows.find(row => row.advisor_profile_id === perfilDb.id)
+          || (perfilDb.role_id === 'gerente_ventas' ? rows[0] : null)
+        setCurrentTeam(own || null)
+        const teamRows = own ? rows.filter(row => row.team_id === own.team_id && row.participa_kpis !== false) : []
+        const ids = {}
+        const names = teamRows.map(row => {
+          const display = row.full_name || NOMBRES_CONOCIDOS[row.email] || row.email
+          ids[display] = row.advisor_profile_id
+          return display
+        })
+        setAdvisorIdsByName(ids)
+        setListaAsesores(names)
       })
-  }, [])
+  }, [session, perfilDb?.id])
   const NOMBRES_LISTA = listaAsesores
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000) }
@@ -117,8 +128,8 @@ export default function KPIs() {
   }, [])
 
   useEffect(() => {
-    if (session && esAsesor && hoy) { calcularYGuardarKpisDelDia(); cargarRanking() }
-  }, [session, hoy, esAsesor, perfilDb?.id])
+    if (session && esAsesor && hoy && currentTeam?.team_code) { calcularYGuardarKpisDelDia(); cargarRanking() }
+  }, [session, hoy, esAsesor, perfilDb?.id, currentTeam?.team_code])
 
   useEffect(() => {
     if (vistaRanking) { setAnimado(false); setTimeout(() => setAnimado(true), 100) }
@@ -151,10 +162,10 @@ export default function KPIs() {
 
     const { data: existente } = await supabase.from('kpis_diarios').select('id').eq('email', email).eq('fecha', hoy).maybeSingle();
     if (existente) {
-      await supabase.from('kpis_diarios').update(calculado).eq('id', existente.id);
+      await supabase.from('kpis_diarios').update({ ...calculado, advisor_profile_id: perfilDb.id }).eq('id', existente.id);
       setRegistroHoy({ ...existente, ...calculado });
     } else {
-      const { data: nuevo } = await supabase.from('kpis_diarios').insert({ ...calculado, fecha: hoy, asesor: nombre, email }).select().single();
+      const { data: nuevo } = await supabase.from('kpis_diarios').insert({ ...calculado, fecha: hoy, asesor: nombre, email, advisor_profile_id: perfilDb.id }).select().single();
       setRegistroHoy(nuevo);
     }
   };
@@ -164,13 +175,15 @@ export default function KPIs() {
     const mes = new Date().getMonth() + 1
     const inicio = `${anio}-${String(mes).padStart(2, '0')}-01`
     const fin = new Date(anio, mes, 0).toISOString().split('T')[0]
-    const [{ data: kpisData }, { data: cierresData }, { data: checadasData }] = await Promise.all([
+    const memberIds = Object.values(advisorIdsByName)
+    const [{ data: kpisData }, { data: scopeData }, { data: checadasData }] = await Promise.all([
       supabase.from('kpis_diarios').select('*').gte('fecha', inicio).lte('fecha', fin),
-      supabase.from('cierres').select('vendedor, comision').gte('fecha_cierre', inicio).lte('fecha_cierre', fin),
+      supabase.rpc('get_sales_kpis_by_scope', { p_start: inicio, p_end: fin, p_plaza_code: null, p_team_code: currentTeam.team_code }),
       supabase.from('checadas').select('*').eq('email', email).gte('fecha', inicio).lte('fecha', fin),
     ])
-    setKpis(kpisData || [])
-    setCierres(cierresData || [])
+    setKpis((kpisData || []).filter(row => memberIds.includes(row.advisor_profile_id) || Object.keys(advisorIdsByName).includes(row.asesor)))
+    setScopedStats(scopeData || [])
+    setCierres([])
     setChecadas(checadasData || [])
   }
 
@@ -189,13 +202,12 @@ export default function KPIs() {
   const esPuntual = tardanzasInjustificadas === 0
 
   const statsAsesor = (n) => {
-    const registros = kpis.filter(k => k.asesor === n)
-    const cierresAsesor = cierres.filter(c => (c.vendedor || '').toLowerCase() === (VENDEDOR_MAP[n] || n.toLowerCase()))
-    const ingresos = cierresAsesor.reduce((a, c) => a + (parseFloat(c.comision) || 0), 0)
-    const citas_efectivas = registros.reduce((a, k) => a + (k.citas_efectivas || 0), 0)
+    const scoped = scopedStats.find(row => row.advisor_profile_id === advisorIdsByName[n]) || {}
+    const ingresos = Number(scoped.ingresos || 0)
+    const citas_efectivas = Number(scoped.citas_efectivas || 0)
     return {
       citas_efectivas,
-      operaciones: cierresAsesor.length,
+      operaciones: Number(scoped.cierres || 0),
       ingresos,
       cumpleIngresos: ingresos >= META_INGRESOS,
       cumpleCitas: citas_efectivas >= META_CITAS_MES,
