@@ -3,9 +3,67 @@ import assert from "node:assert/strict";
 
 import {
   decideRespondMessageRoute,
+  extractCanonicalEmpPropertyIds,
+  resolveRespondTerritorialRoute,
   resolveRespondChannelRouterConfig,
   routeRespondMessageIsolated,
 } from "../lib/respond/channelRouter.js";
+
+test("extracts one canonical Emporio property id without accepting loose text", () => {
+  assert.deepEqual(extractCanonicalEmpPropertyIds("Hola, me interesa EMP-MTPYQ9RR - casa"), ["EMP-MTPYQ9RR"]);
+  assert.deepEqual(extractCanonicalEmpPropertyIds("Veracruz Boca del Rio"), []);
+  assert.deepEqual(extractCanonicalEmpPropertyIds("EMP-MTPYQ9RR y EMP-MTORC2IH"), ["EMP-MTPYQ9RR", "EMP-MTORC2IH"]);
+});
+
+function fakeAdmin({ properties = [], plaza = null, team = null } = {}) {
+  return {
+    from(table) {
+      const result = table === "propiedades" ? { data: properties, error: null }
+        : table === "commercial_plazas" ? { data: plaza, error: null }
+          : { data: team, error: null };
+      const query = {
+        select: () => query,
+        eq: () => query,
+        limit: async () => result,
+        maybeSingle: async () => result,
+      };
+      return query;
+    },
+  };
+}
+
+test("routes only an exact, unique Veracruz property through the mapped teams", async () => {
+  const route = await resolveRespondTerritorialRoute({
+    messageText: "Hola, me interesa EMP-MTPYQ9RR",
+    eventId: "evt-1", messageId: "msg-1", respondContactId: "contact-1", channelId: "497382",
+  }, {
+    admin: fakeAdmin({
+      properties: [{ id: "property-1", public_id: "EMP-MTPYQ9RR", plaza_id: "plaza-veracruz" }],
+      plaza: { id: "plaza-veracruz", code: "VERACRUZ" },
+      team: { id: "team-veracruz", plaza_id: "plaza-veracruz" },
+    }),
+    targetSalesTeamId: "team-veracruz",
+    targetRespondTeamId: "50622",
+    territorialWorkflowUrl: "https://hooks.respond.io/territorial-test",
+  });
+  assert.equal(route.route, true);
+  assert.equal(route.propertyPublicId, "EMP-MTPYQ9RR");
+  assert.equal(route.respondTeamId, "50622");
+});
+
+test("does not route missing, unknown, ambiguous or Puebla property ids to Veracruz", async () => {
+  const cases = [
+    [{ messageText: "Busco casa" }, fakeAdmin(), "missing_property_id"],
+    [{ messageText: "EMP-AAAAAAAA" }, fakeAdmin(), "unknown_property_id"],
+    [{ messageText: "EMP-AAAAAAAA EMP-BBBBBBBB" }, fakeAdmin(), "ambiguous_property_id"],
+    [{ messageText: "EMP-AAAAAAAA" }, fakeAdmin({ properties: [{ id: "p", public_id: "EMP-AAAAAAAA", plaza_id: "puebla" }], plaza: { id: "puebla", code: "PUEBLA" } }), "non_target_plaza"],
+  ];
+  for (const [event, admin, reason] of cases) {
+    const result = await resolveRespondTerritorialRoute(event, { admin });
+    assert.equal(result.route, false);
+    assert.equal(result.reason, reason);
+  }
+});
 
 const ADMIN = "544519";
 const COMMERCIAL = ["497382", "497385", "498219", "515318"];
@@ -86,7 +144,7 @@ test("I: retry duplicado queda contenido por el insert único antes del router",
     "utf8",
   );
   const duplicateIndex = source.indexOf('if (error?.code === "23505")');
-  const routerIndex = source.indexOf("routeRespondMessageIsolated(event)");
+  const routerIndex = source.indexOf("routeRespondMessageIsolated(event, { admin })");
   assert.ok(duplicateIndex >= 0 && routerIndex > duplicateIndex);
   assert.match(source.slice(duplicateIndex, routerIndex), /return res\.status\(200\)\.json\(\{ ok: true, duplicate: true \}\)/);
 });
@@ -120,7 +178,7 @@ test("L: Shadow permanece como fork independiente y posterior a persistencia", a
     "utf8",
   );
   const insertIndex = source.indexOf('.from("gv_respond_webhook_events").insert');
-  const routerIndex = source.indexOf("routeRespondMessageIsolated(event)");
+  const routerIndex = source.indexOf("routeRespondMessageIsolated(event, { admin })");
   const shadowIndex = source.lastIndexOf("captureRespondAdminShadowIsolated(admin, body)");
   assert.ok(insertIndex >= 0 && routerIndex > insertIndex && shadowIndex > routerIndex);
 });
@@ -175,7 +233,8 @@ test("adapter envía sólo identificadores y decisión sanitizada", async () => 
   assert.equal(result.status, "routed");
   assert.equal(request.url, COMMERCIAL_URL);
   assert.deepEqual(Object.keys(request.body).sort(), [
-    "channelId", "contactId", "eventId", "messageId", "routingDecision",
+    "channelId", "contactId", "eventId", "messageId", "plazaCode",
+    "propertyPublicId", "respondTeamId", "routingDecision", "salesTeamId",
   ]);
   assert.equal(request.body.contactId, "441329817");
   assert.equal(JSON.stringify(request.body).includes("text"), false);

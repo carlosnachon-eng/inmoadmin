@@ -55,7 +55,7 @@ export default async function handler(req, res) {
     }
     if (error) throw error;
 
-    const routing = await routeRespondMessageIsolated(event);
+    const routing = await routeRespondMessageIsolated(event, { admin });
     if (routing.audit && routing.reason !== "disabled") {
       const { error: auditError } = await admin
         .from("gv_respond_webhook_events")
