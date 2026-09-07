@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { authorizeShadowAdministrator } from "../../../lib/shadow/ai/apiAuth.js";
 import { fetchRespondContact } from "../../../lib/ejecutivo/respondSync.js";
-import { assertIdentityLinkReviewWrite, contactPhoneFromRespondPayload, generateIdentityCandidates, identityLinkCapabilities, reviewIdentityLink } from "../../../lib/shadow/identityBridge.js";
+import { assertIdentityLinkReviewWrite, confirmExactPhoneIdentityCandidate, contactPhoneFromRespondPayload, evaluateExactPhoneIdentityCandidate, generateIdentityCandidates, identityLinkCapabilities, reviewIdentityLink } from "../../../lib/shadow/identityBridge.js";
 import { sameOriginAdminRequest } from "../../../lib/shadow/identityBootstrap.js";
 import { buildRespondIdentityReviewModels } from "../../../lib/shadow/respondIdentityReview.js";
 
@@ -31,6 +31,26 @@ export default async function handler(req, res) {
         const normalizedPhone = contactPhoneFromRespondPayload({ contact });
         const result = await generateIdentityCandidates(admin, { respondContactId, normalizedPhone });
         return res.status(200).json({ ok: true, status: result.status, candidates: result.candidates });
+      }
+      if (["dry_run_exact_phone", "confirm_exact_phone"].includes(action)) {
+        const linkId = String(req.body?.linkId || "");
+        const { data: target, error: targetError } = await admin.from("respond_identity_links")
+          .select("respond_contact_id").eq("id", linkId).maybeSingle();
+        if (targetError) throw targetError;
+        if (!target?.respond_contact_id) return res.status(404).json({ ok: false, error: "candidate_not_found" });
+        const currentContact = await fetchRespondContact(target.respond_contact_id);
+        const assessment = await evaluateExactPhoneIdentityCandidate(admin, {
+          linkId, respondContactId: target.respond_contact_id, currentContact, effectiveAt: new Date().toISOString(),
+        });
+        if (action === "dry_run_exact_phone") {
+          const { phoneDigest: _phoneDigest, respondContactId: _respondContactId, ...safe } = assessment;
+          return res.status(200).json({ ok: true, dryRun: true, assessment: safe });
+        }
+        try { assertIdentityLinkReviewWrite(capabilities); }
+        catch (error) { return res.status(409).json({ ok: false, error: error.message }); }
+        if (!assessment.confirmable) return res.status(409).json({ ok: false, error: assessment.reason });
+        const result = await confirmExactPhoneIdentityCandidate(admin, assessment, actor.id);
+        return res.status(200).json({ ok: true, result });
       }
       try { assertIdentityLinkReviewWrite(capabilities); }
       catch (error) { return res.status(409).json({ ok: false, error: error.message }); }

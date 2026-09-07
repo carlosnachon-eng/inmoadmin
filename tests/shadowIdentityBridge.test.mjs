@@ -61,15 +61,18 @@ test("múltiples coincidencias exactas producen conflict", async () => {
 test("sólo vínculo confirmed resuelve contratos vigentes/históricos y propiedades múltiples", async () => {
   const admin = { from(table) {
     if (table === "respond_identity_links") return resultQuery({ data: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", client_identity_id: "11111111-1111-4111-8111-111111111111", link_status: "confirmed", link_source: "human_confirmation", confidence: 1 }], error: null });
-    if (table === "contracts") return resultQuery({ data: [{ id: "c1", property_id: "p1", status: "activo" }, { id: "c2", property_id: "p2", status: "vencido" }], error: null });
-    if (table === "properties") return resultQuery({ data: [{ id: "p3", status: "ocupada" }], error: null });
+    if (table === "client_identities") return resultQuery({ data: { id: "11111111-1111-4111-8111-111111111111", status: "active" }, error: null });
+    if (table === "client_identity_roles") return resultQuery({ data: [{ client_identity_id: "11111111-1111-4111-8111-111111111111", role_kind: "tenant", status: "active" }, { client_identity_id: "11111111-1111-4111-8111-111111111111", role_kind: "owner", status: "active" }], error: null });
+    if (table === "client_source_links") return resultQuery({ data: [{ client_identity_id: "11111111-1111-4111-8111-111111111111", source_type: "active_contract_tenant", source_id: "c1", link_status: "confirmed" }, { client_identity_id: "11111111-1111-4111-8111-111111111111", source_type: "active_contract_tenant", source_id: "c2", link_status: "confirmed" }, { client_identity_id: "11111111-1111-4111-8111-111111111111", source_type: "managed_property_owner", source_id: "p3", link_status: "confirmed" }], error: null });
+    if (table === "contracts") return resultQuery({ data: [{ id: "c1", property_id: "p1", tenant_client_id: "11111111-1111-4111-8111-111111111111", status: "activo", start_date: "2026-01-01", end_date: "2027-01-01" }, { id: "c2", property_id: "p2", tenant_client_id: "11111111-1111-4111-8111-111111111111", status: "activo", start_date: "2025-01-01", end_date: "2025-12-31" }], error: null });
+    if (table === "properties") return resultQuery({ data: [{ id: "p1", name: "Unidad 1", owner_client_id: null, status: "active" }, { id: "p2", name: "Unidad 2", owner_client_id: null, status: "active" }, { id: "p3", name: "Unidad 3", owner_client_id: "11111111-1111-4111-8111-111111111111", status: "active" }], error: null });
     if (table === "respond_identity_audit") return { insert: async () => ({ error: null }) };
     throw new Error(table);
   } };
-  const resolved = await resolveConfirmedContactIdentity(admin, "contact-3");
-  assert.equal(resolved.resolved, true); assert.equal(resolved.contracts.filter((x) => x.active).length, 1);
-  assert.equal(resolved.properties.length, 3); assert.equal(resolved.ambiguousPropertyContext, true);
-  assert.deepEqual(resolved.missingInformation, ["insufficient_property_context"]);
+  const resolved = await resolveConfirmedContactIdentity(admin, "contact-3", { effectiveAt: "2026-06-01" });
+  assert.equal(resolved.resolved, true); assert.equal(resolved.currentContracts.length, 1);
+  assert.equal(resolved.associatedProperties.length, 2); assert.equal(resolved.ambiguousPropertyContext, true);
+  assert.deepEqual(resolved.missingInformation, ["ambiguous_property_context"]);
 });
 
 test("candidate, revoked, conflict o ausencia nunca son utilizables por Auto-Real", async () => {
@@ -154,12 +157,15 @@ test("tool rechaza argumentos de escritura/no allowlisted", async () => {
 test("contrato ambiguo no selecciona inmueble arbitrariamente", async () => {
   const admin = { from(table) {
     if (table === "respond_identity_links") return resultQuery({ data: [{ id: "l", client_identity_id: "11111111-1111-4111-8111-111111111111", link_status: "confirmed", link_source: "human_confirmation", confidence: 1 }], error: null });
-    if (table === "contracts") return resultQuery({ data: [{ id: "c1", property_id: "p1", status: "activo" }, { id: "c2", property_id: "p2", status: "activo" }], error: null });
-    if (table === "properties") return resultQuery({ data: [], error: null });
+    if (table === "client_identities") return resultQuery({ data: { id: "11111111-1111-4111-8111-111111111111", status: "active" }, error: null });
+    if (table === "client_identity_roles") return resultQuery({ data: [{ client_identity_id: "11111111-1111-4111-8111-111111111111", role_kind: "tenant", status: "active" }], error: null });
+    if (table === "client_source_links") return resultQuery({ data: ["c1","c2"].map((source_id) => ({ client_identity_id: "11111111-1111-4111-8111-111111111111", source_type: "active_contract_tenant", source_id, link_status: "confirmed" })), error: null });
+    if (table === "contracts") return resultQuery({ data: [{ id: "c1", property_id: "p1", tenant_client_id: "11111111-1111-4111-8111-111111111111", status: "activo", start_date: "2026-01-01", end_date: "2027-01-01" }, { id: "c2", property_id: "p2", tenant_client_id: "11111111-1111-4111-8111-111111111111", status: "activo", start_date: "2026-01-01", end_date: "2027-01-01" }], error: null });
+    if (table === "properties") return resultQuery({ data: [{ id: "p1", name: "Uno", owner_client_id: null, status: "active" }, { id: "p2", name: "Dos", owner_client_id: null, status: "active" }], error: null });
     return { insert: async () => ({ error: null }) };
   } };
   const rows = await executeShadowReadOnlyTool(admin, "resolve_contact_identity", { respondContactId: "contact-7" });
-  assert.equal(rows.filter((x) => x.entityType === "property").length, 2);
+  assert.equal(rows.filter((x) => x.entityType === "property").length, 0);
   assert.equal(rows[0].ambiguousPropertyContext, true);
 });
 
