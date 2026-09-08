@@ -26,6 +26,8 @@ function fakeAdmin({ properties = [], plaza = null, propertyError = null, plazaE
 
 test("accepts only one exact canonical EMP public id", () => {
   assert.equal(normalizeEmpPublicId(" emp-mtpyq9rr "), "EMP-MTPYQ9RR");
+  assert.equal(normalizeEmpPublicId("dev-ver-001"), "DEV-VER-001");
+  assert.equal(normalizeEmpPublicId("DEV-PUE-001"), "DEV-PUE-001");
   for (const value of ["EMP-MTPYQ9R", "EMP-MTPYQ9RR-extra", "MTPYQ9RR", "", null]) {
     assert.equal(normalizeEmpPublicId(value), null);
   }
