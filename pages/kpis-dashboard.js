@@ -24,14 +24,17 @@ const NOMBRES_CONOCIDOS = {
   'nextelmoto2@gmail.com': 'Andrea',
   'guillermo@emporioinmobiliario.com.mx': 'Guillermo',
   'islas.amanda111@gmail.com': 'Amanda',
+  'andreacasaresme@gmail.com': 'Andrea Casares',
+  'cinhernandezmtz@gmail.com': 'Cinthia',
 }
 
 const VENDEDOR_MAP = {
   'Ariannet': 'ari', 'Angélica': 'angelica', 'Iván': 'ivan',
   'Rosario': 'rosario', 'Andrea': 'andrea', 'Guillermo': 'guillermo', 'Amanda': 'amanda',
+  'Andrea Casares': 'andrea casares', 'Cinthia': 'cinthia', 'Cinthia Hernandez Martinez': 'cinthia',
 }
 
-const MEDALLAS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣']
+const MEDALLAS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
 const META_CITAS_DIARIAS = 2
 const META_CONVERSION = 0.15
 const META_INGRESOS = 90000
