@@ -35,6 +35,18 @@ const sequenceModel=(decisions)=>{let index=0;return async()=>({text:JSON.string
 const advancingClock=(initial=Date.parse("2026-08-20T12:00:00Z"))=>{let current=initial;return{now:()=>current,setTimeout,clearTimeout,advance:(ms)=>{current+=ms;}};};
 const scheduledClock=(initial=Date.parse("2026-08-20T12:00:00Z"))=>{let current=initial;let id=0;const timers=new Map();return{now:()=>current,setTimeout:(callback,ms)=>{const timer=++id;timers.set(timer,{at:current+ms,callback});return timer;},clearTimeout:(timer)=>timers.delete(timer),advance:(ms)=>{current+=ms;for(const [timer,entry] of [...timers])if(entry.at<=current){timers.delete(timer);entry.callback();}}};};
 
+test("runner enruta 3A por el gateway antes de un modelCall inyectado", async () => {
+  let observed;
+  const result = await runShadowAi(fakeAiDb(), {
+    messageId: "gateway-runner-1",
+    envelope: { ...synthetic, sanitizedText: "Hola Carlos Perez, escribe a carlos@example.com." },
+    deterministic: {},
+  }, { env: devEnv, modelCall: async (messages) => { observed = JSON.parse(messages[1].content); return { text: JSON.stringify(validDecision), usage: {} }; } });
+  assert.equal(result.status, "completed");
+  assert.doesNotMatch(JSON.stringify(observed), /Carlos Perez|carlos@example\.com/);
+  assert.match(observed.message, /\[PERSONA\].*\[EMAIL\]/);
+});
+
 test("guard P3 requiere DEV exacto, flag, key y mensaje sintético", () => {
   assert.equal(shadowAiGuard(synthetic, devEnv).allowed,true);
   assert.equal(shadowAiGuard(synthetic,{...devEnv,SHADOW_AI_ENABLED:"false"}).status,"disabled");
@@ -105,12 +117,15 @@ test("Auto-Real conserva metadata segura y falla cerrado ante structured output 
   assert.doesNotMatch(JSON.stringify(failedUpdate.payload),/Fragmento sanitizado|presión de agua|\[IMAGEN\]/);
 });
 
-test("state machine distingue JSON inválido de transporte y conserva metadata provider", async () => {
-  const stored={id:"parse-message",provider:"synthetic",direction:"inbound",sanitized_text:"Entrada sanitizada",attachment_metadata:[],provider_metadata:{syntheticScenario:"p3-01"},external_message_id:"synthetic-parse",occurred_at:"2026-08-24T16:35:47Z"};
+test("state machine distingue JSON inválido, conserva metadata provider y enruta por gateway", async () => {
+  const stored={id:"parse-message",provider:"synthetic",direction:"inbound",sanitized_text:"Hola Carlos Perez, escribe a carlos@example.com.",attachment_metadata:[],provider_metadata:{syntheticScenario:"p3-01"},external_message_id:"synthetic-parse",occurred_at:"2026-08-24T16:35:47Z"};
   const db=fakeAiDb([],{filterIdempotencyKey:true,tableRows:{shadow_messages:[stored]}});
-  const result=await startShadowAiStateMachine(db,{messageId:stored.id,envelope:{...synthetic,sanitizedText:stored.sanitized_text}},{env:devEnv,modelCall:async()=>({id:"req_parse_fixture",text:"not-json",usage:{input_tokens:20,output_tokens:4}})});
+  let observed;
+  const result=await startShadowAiStateMachine(db,{messageId:stored.id,envelope:{...synthetic,sanitizedText:stored.sanitized_text}},{env:devEnv,modelCall:async(messages)=>{observed=JSON.parse(messages[1].content);return{id:"req_parse_fixture",text:"not-json",usage:{input_tokens:20,output_tokens:4}};}});
   assert.equal(result.status,"error");
   assert.equal(result.error,"invalid_structured_output:json_parse_error");
+  assert.doesNotMatch(JSON.stringify(observed),/Carlos Perez|carlos@example\.com/);
+  assert.match(observed.message,/\[PERSONA\].*\[EMAIL\]/);
   const request=result.telemetry.anthropic_requests[0];
   assert.equal(request.attempt_number,1);assert.equal(request.round_number,1);assert.equal(request.request_id,"req_parse_fixture");
   assert.equal(request.status,"failed");assert.equal(request.output_state,"received_invalid_structured_output");
