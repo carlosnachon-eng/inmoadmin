@@ -146,7 +146,7 @@ test("continuation reutiliza snapshot inmutable y no incorpora outbound_human po
 test("state machine usa el snapshot persistido como entrada real de todas las rondas", () => {
   const source=read("lib/shadow/ai/stateMachine.js");
   assert.match(source,/const inputEnvelope = inputEnvelopeForShadowAiRun\(run, message, operationalInput, messageConversation\)/);
-  assert.match(source,/minimalShadowAiContext\(envelope, deterministic, previousTools, round - 1\)/);
+  assert.match(source,/invokeShadowPhase3A\(\{ envelope, deterministic, toolResults: previousTools, round: round - 1/);
   assert.match(source,/round_state_json: \{ resolvedOperationalContext, \.\.\.\(inputSnapshot \? \{ inputSnapshot \} : \{\}\), rounds: \[\] \}/);
   const prior=Array.from({length:10},(_,index)=>({direction:index%2?"outbound_human":"inbound",sanitizedText:"x".repeat(500)}));
   const snapshot=createShadowAiInputSnapshot({provider:"respond_admin",direction:"inbound",sanitizedText:"turn actual intacto",providerMetadata:{channelId:"544519",priorConversation:prior,conversationTurn:{turnKey:"t",messageIds:["a"],messageCount:1}}});

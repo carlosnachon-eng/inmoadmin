@@ -28,7 +28,8 @@ test("continuation endpoint is DEV-only, explicit and one provider call per requ
   const core=fs.readFileSync(new URL("../lib/shadow/ai/stateMachine.js",import.meta.url),"utf8");
   assert.match(endpoint,/DEV_PROJECT_REF/);assert.match(endpoint,/SHADOW_AI_ALLOW_REAL_MESSAGES/);assert.match(endpoint,/SHADOW_OUTBOUND_ENABLED/);assert.match(endpoint,/runId/);
   assert.match(endpoint,/validateQaCampaignId/);assert.match(endpoint,/owned\.campaign_id !== campaignId/);
-  assert.equal((core.match(/createAnthropicShadowResponse\)\(/g)||[]).length,1);
+  assert.equal((core.match(/invokeShadowPhase3A\(/g)||[]).length,1);
+  assert.doesNotMatch(core,/createAnthropicShadowResponse/);
 });
 test("start persists awaiting instead of insufficient-round timeout",()=>{
   const core=fs.readFileSync(new URL("../lib/shadow/ai/stateMachine.js",import.meta.url),"utf8");

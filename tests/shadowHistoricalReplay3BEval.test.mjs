@@ -32,11 +32,12 @@ test("Ventas y QA no entran; una categoría no rellena cupo de otra",()=>{
 });
 
 test("ejecución aislada reutiliza 3A/3B sin tools ni tablas naturales y conserva grounding",async()=>{
-  let modelCalls=0; let toolCalls=0;
-  const result=await executeHistoricalReplayCase({}, {evaluationMode:"historical_replay",sufficientHistoricalContext:true,temporalGrounding:"current_state",identityGrounding:"current_canonical_mapping",humanResponseSnapshot:"Respuesta humana posterior",envelope:{provider:"respond_admin",direction:"inbound",sanitizedText:"Hay humedad, ¿me apoyas?",providerMetadata:{channelId:"544519",respondContactId:"contact-opaque",priorConversation:[]}}}, {
-    env, now:(()=>{let n=1000;return()=>n+=10;})(), modelCall:async()=>{modelCalls+=1;return{id:"request-secret-ref",text:JSON.stringify(validDecision),usage:{input_tokens:100,output_tokens:20}};}, executeTool:async()=>{toolCalls+=1;return[];},
+  let modelCalls=0; let toolCalls=0; let observed;
+  const result=await executeHistoricalReplayCase({}, {evaluationMode:"historical_replay",sufficientHistoricalContext:true,temporalGrounding:"current_state",identityGrounding:"current_canonical_mapping",humanResponseSnapshot:"Respuesta humana posterior",envelope:{provider:"respond_admin",direction:"inbound",sanitizedText:"Hola Carlos Perez, hay humedad; escribe a carlos@example.com.",providerMetadata:{channelId:"544519",respondContactId:"contact-opaque",priorConversation:[]}}}, {
+    env, now:(()=>{let n=1000;return()=>n+=10;})(), modelCall:async(messages)=>{modelCalls+=1;observed=JSON.parse(messages[1].content);return{id:"request-secret-ref",text:JSON.stringify(validDecision),usage:{input_tokens:100,output_tokens:20}};}, executeTool:async()=>{toolCalls+=1;return[];},
   });
   assert.equal(modelCalls,1); assert.equal(toolCalls,0); assert.equal(result.evaluationMode,"historical_replay");
+  assert.doesNotMatch(JSON.stringify(observed),/Carlos Perez|carlos@example\.com/); assert.match(observed.message,/\[PERSONA\].*\[EMAIL\]/);
   assert.equal(result.temporalGrounding,"current_state"); assert.equal(result.identityGrounding,"current_canonical_mapping");
   assert.equal(result.humanResponseSnapshot,"Respuesta humana posterior"); assert.equal(result.conversationAction.status,"proposed");
   assert.equal(result.providerRequestRefs[0].includes("request-secret-ref"),false); assert.ok(result.estimatedCostUsd>0);
