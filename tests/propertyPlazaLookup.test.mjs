@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  authorizePropertyPlazaLookup,
   lookupPropertyPlaza,
   normalizeEmpPublicId,
 } from "../lib/respond/propertyPlazaLookup.js";
@@ -28,6 +29,13 @@ test("accepts only one exact canonical EMP public id", () => {
   for (const value of ["EMP-MTPYQ9R", "EMP-MTPYQ9RR-extra", "MTPYQ9RR", "", null]) {
     assert.equal(normalizeEmpPublicId(value), null);
   }
+});
+
+test("accepts the server token through bearer or the non-reserved preview header", () => {
+  const env = { RESPOND_PROPERTY_LOOKUP_TOKEN: "test-token" };
+  assert.equal(authorizePropertyPlazaLookup({ headers: { authorization: "Bearer test-token" } }, env), true);
+  assert.equal(authorizePropertyPlazaLookup({ headers: { "x-respond-property-token": "test-token" } }, env), true);
+  assert.equal(authorizePropertyPlazaLookup({ headers: { "x-respond-property-token": "wrong" } }, env), false);
 });
 
 test("resolves Veracruz exclusively through propiedades.plaza_id", async () => {

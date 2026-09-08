@@ -1,6 +1,9 @@
-import { timingSafeEqual } from "node:crypto";
 import { assertSupabaseEnvironment, getAdminSupabase } from "../../../lib/ejecutivo/workCenter";
-import { lookupPropertyPlaza, normalizeEmpPublicId } from "../../../lib/respond/propertyPlazaLookup";
+import {
+  authorizePropertyPlazaLookup,
+  lookupPropertyPlaza,
+  normalizeEmpPublicId,
+} from "../../../lib/respond/propertyPlazaLookup";
 
 export const config = {
   api: {
@@ -13,17 +16,6 @@ const unavailable = (propertyPublicId = null) => ({
   propertyPublicId,
   plazaCode: null,
 });
-
-function constantTimeEqual(left, right) {
-  const leftBuffer = Buffer.from(String(left || ""));
-  const rightBuffer = Buffer.from(String(right || ""));
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-export function authorizePropertyPlazaLookup(req, env = process.env) {
-  const expected = env.RESPOND_PROPERTY_LOOKUP_TOKEN;
-  return Boolean(expected) && constantTimeEqual(req.headers.authorization, `Bearer ${expected}`);
-}
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
