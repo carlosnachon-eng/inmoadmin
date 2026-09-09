@@ -1599,7 +1599,7 @@ export default function CondominioDetalle() {
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10, marginBottom: 14 }}>
                 {[
-                  { label: "Recibido por Antive — evidencia pendiente", value: fmt(reserveFundTotals.receivedByAntive) },
+                  { label: "Recibido y confirmado por Antive", value: fmt(reserveFundTotals.receivedByAntive) },
                   { label: "Pendiente de recepción", value: fmt(reserveFundTotals.pending) },
                   { label: "Conciliado", value: fmt(reserveFundTotals.reconciled) },
                   { label: "Reversado / anulado", value: fmt(reserveFundTotals.closed) },
@@ -1629,7 +1629,7 @@ export default function CondominioDetalle() {
                         <td style={{ padding: 10, maxWidth: 220 }}>
                           <strong style={{ color: receipt.status === "received_by_antive_unverified" ? "#1e40af" : "#374151" }}>
                             {{
-                              received_by_antive_unverified: "Recibido por Antive — pendiente de evidencia documental",
+                              received_by_antive_unverified: "Recibido y confirmado por Antive — sin comprobante bancario individual adjunto",
                               pending: "Pendiente de recepción",
                               reconciled: "Conciliado",
                               reversed: "Reversado",
@@ -2199,7 +2199,7 @@ export default function CondominioDetalle() {
       {/* ── Fondo de Reserva: lote histórico recibido por Antive ── */}
       {reserveFundModal?.mode === "antive-received" && (
         <Modal title="Registrar Fondo de Reserva recibido por Antive" onClose={() => setReserveFundModal(null)}>
-          <p style={{ marginTop: 0, background: "#eff6ff", color: "#1e40af", borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 1.5 }}><strong>Recibido por Antive — pendiente de evidencia documental.</strong><br />Estos importes no se mostrarán como adeudo y no modificarán mantenimiento, cartera histórica, recuperaciones, gastos ni KPI.</p>
+          <p style={{ marginTop: 0, background: "#eff6ff", color: "#1e40af", borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 1.5 }}><strong>Recibido y confirmado por Antive.</strong><br />Sin comprobante bancario individual adjunto. Estos importes no se mostrarán como adeudo y no modificarán mantenimiento, cartera histórica, recuperaciones, gastos ni KPI.</p>
           <Field label="Registros del lote *">
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {(reserveFundForm.records || []).map((record, index) => (

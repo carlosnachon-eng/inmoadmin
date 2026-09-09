@@ -116,7 +116,7 @@ test("endpoint soporta lote, enriquecimiento y anulación sin exponer service_ro
 
 test("UI no presenta lo recibido por Antive como adeudo pendiente", () => {
   for (const label of [
-    "Recibido por Antive — pendiente de evidencia documental",
+    "Recibido y confirmado por Antive — sin comprobante bancario individual adjunto",
     "Pendiente de recepción",
     "Conciliado",
     "Reversado / anulado",
