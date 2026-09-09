@@ -77,6 +77,9 @@ const exclusionTemporalFase1 = (perfil, corte) => EXCLUSIONES_TEMPORALES_FASE_1.
 
 const normVendedor = (value) => {
   const s = normalize(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (s.includes("andrea casares")) return "Andrea Casares";
+  if (s.includes("karlabett") || s.includes("karla")) return "Karlabett";
+  if (s.includes("cinthia")) return "Cinthia";
   if (s.includes("guillermo")) return "Guillermo";
   if (s.includes("ari")) return "Ariannet";
   if (s.includes("andrea")) return "Andrea";
@@ -305,6 +308,14 @@ export default function GerenciaVentasDashboard() {
     const miembrosEquipo = new Set((data.teamDirectory || [])
       .filter((row) => row.team_id === selectedTeam && row.participa_kpis !== false)
       .map((row) => row.advisor_profile_id));
+    const vendedoresEquipo = new Set((data.teamDirectory || [])
+      .filter((row) => row.team_id === selectedTeam && row.participa_kpis !== false)
+      .map((row) => normVendedor(row.full_name || row.email)));
+    const cierrePerteneceEquipo = (cierre) => {
+      if (!usaEquipos) return true;
+      if (cierre.advisor_profile_id && miembrosEquipo.has(cierre.advisor_profile_id)) return true;
+      return !cierre.advisor_profile_id && vendedoresEquipo.has(normVendedor(cierre.vendedor));
+    };
     const asesoresComercialesTotales = (data.profiles || [])
       .filter((p) => p.active !== false && p.participa_kpis !== false && ROLES_ASESORES.has(p.role_id) && !partnerEmails.has(normalize(p.email)))
       .filter((p) => !usaEquipos || miembrosEquipo.has(p.id))
@@ -325,7 +336,7 @@ export default function GerenciaVentasDashboard() {
 
     const cierresMes = (data.cierres || []).filter((c) => {
       const fecha = dateKey(c.fecha_cierre);
-      return fecha >= start && fecha <= end && (!usaEquipos || miembrosEquipo.has(c.advisor_profile_id));
+      return fecha >= start && fecha <= end && cierrePerteneceEquipo(c);
     });
     const cierresHastaCorte = cierresMes.filter((c) => dateKey(c.fecha_cierre) <= corte);
     const cierresNuevos = cierresHastaCorte.filter((c) => !esRenovacionTemporal(c));
@@ -388,8 +399,9 @@ export default function GerenciaVentasDashboard() {
       const calificadas = citasAsesor.filter((cita) => cita.estado === "calificada").length;
       const requeridas = diasEvaluables * META_CITAS_DIARIAS;
       const nombre = asesor.nombre;
+      const vendedorAsesor = normVendedor(nombre);
       const cierresAsesor = cierresNuevos.filter((c) => usaEquipos
-        ? c.advisor_profile_id === asesor.id
+        ? c.advisor_profile_id === asesor.id || (!c.advisor_profile_id && normVendedor(c.vendedor) === vendedorAsesor)
         : normVendedor(c.vendedor) === nombre);
       const comision = cierresAsesor.reduce((sum, c) => sum + Number(c.comision || 0), 0);
       const clientesAsesor = clientesActivos.filter((c) => c.asesor_id === asesor.id);
