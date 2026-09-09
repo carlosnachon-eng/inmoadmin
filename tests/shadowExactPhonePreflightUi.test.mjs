@@ -108,3 +108,32 @@ test("endpoint and UI remain read-only and the UI sends exactly the certified re
   assert.match(ui, /references: EXACT_PHONE_VALIDATED_CANDIDATE_REFS/);
   assert.doesNotMatch(ui, /SUPABASE_SERVICE_ROLE_KEY|RESPOND_IO_TOKEN/);
 });
+
+test("UI sigue la rotación de sesión y libera la suscripción al desmontar", () => {
+  const ui = fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
+  assert.match(ui, /supabase\.auth\.onAuthStateChange\(\(_event, value\) => \{/);
+  assert.match(ui, /setSession\(value\)/);
+  assert.match(ui, /return \(\) => \{[\s\S]*mounted = false;[\s\S]*subscription\.unsubscribe\(\);[\s\S]*\};/);
+});
+
+test("preflight obtiene una sesión fresca y nunca reutiliza el token inicial", () => {
+  const ui = fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
+  const start = ui.indexOf("const runExactPhoneIdentityPreflight");
+  const end = ui.indexOf("const reviewIdentity", start);
+  const preflight = ui.slice(start, end);
+  assert.match(preflight, /await supabase\.auth\.getSession\(\)/);
+  assert.match(preflight, /Authorization: `Bearer \$\{currentSession\.access_token\}`/);
+  assert.doesNotMatch(preflight, /session\.access_token/);
+  assert.ok(preflight.indexOf("await supabase.auth.getSession()") < preflight.indexOf('fetch("/api/operaciones/shadow-exact-phone-preflight"'));
+});
+
+test("sesión ausente, inválida o expirada cierra antes de cualquier POST", () => {
+  const ui = fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
+  const start = ui.indexOf("const runExactPhoneIdentityPreflight");
+  const end = ui.indexOf("const reviewIdentity", start);
+  const preflight = ui.slice(start, end);
+  assert.match(preflight, /sessionError \|\| !currentSession\?\.access_token \|\| sessionExpired/);
+  assert.match(preflight, /Number\(currentSession\?\.expires_at \|\| 0\) <= Math\.floor\(Date\.now\(\) \/ 1000\)/);
+  assert.ok(preflight.indexOf("return;") < preflight.indexOf('fetch("/api/operaciones/shadow-exact-phone-preflight"'));
+  assert.match(preflight, /setIdentityPreflightBusy\(false\)/);
+});

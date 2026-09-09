@@ -48,7 +48,21 @@ export default function ShadowCoordinatorPage() {
   const [outputAbResults, setOutputAbResults] = useState({}); const [outputAbBusy, setOutputAbBusy] = useState("");
   const qaDevUiEnabled = isQaDevUiEnabled(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const qaFixtureScope = useMemo(() => qaCampaignFixtureScope(qaCampaignId), [qaCampaignId]);
-  useEffect(() => { supabase.auth.getSession().then(({ data: { session: value } }) => { setSession(value); setReady(true); }); }, []);
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data: { session: value } }) => {
+      if (!mounted) return;
+      setSession(value);
+      setReady(true);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, value) => {
+      if (mounted) setSession(value);
+    });
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
   useEffect(() => { if (!session?.user) return; supabase.from("profiles").select("id,role_id,active,email").eq("id", session.user.id).maybeSingle().then(({ data: value }) => setProfile(value)); }, [session?.user]);
   const authorized = profile?.active && ROLES.has(profile.role_id);
   const identityPreflightAuthorized = profile?.active && profile.role_id === "admin";
@@ -161,12 +175,18 @@ export default function ShadowCoordinatorPage() {
     setIdentityBootstrap((current) => ({ ...current, lastResult: json.results })); setIdentityBootstrapRefs([]); await loadIdentities();
   };
   const runExactPhoneIdentityPreflight = async () => {
-    if (!identityPreflightAuthorized || !session?.access_token || identityPreflightBusy) return;
+    if (!identityPreflightAuthorized || identityPreflightBusy) return;
     setIdentityPreflightBusy(true); setIdentityPreflight(null); setError("");
     try {
+      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+      const sessionExpired = Number(currentSession?.expires_at || 0) <= Math.floor(Date.now() / 1000);
+      if (sessionError || !currentSession?.access_token || sessionExpired) {
+        setError("Sesión inválida o expirada. Vuelve a iniciar sesión.");
+        return;
+      }
       const response = await fetch("/api/operaciones/shadow-exact-phone-preflight", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${currentSession.access_token}` },
         body: JSON.stringify({ references: EXACT_PHONE_VALIDATED_CANDIDATE_REFS }),
       });
       const json = await response.json();
