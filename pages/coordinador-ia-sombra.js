@@ -39,6 +39,7 @@ export default function ShadowCoordinatorPage() {
   const [identityData, setIdentityData] = useState(null); const [identityBusy, setIdentityBusy] = useState(false);
   const [identityBootstrap, setIdentityBootstrap] = useState(null); const [identityBootstrapRefs, setIdentityBootstrapRefs] = useState([]);
   const [identityPreflight, setIdentityPreflight] = useState(null); const [identityPreflightBusy, setIdentityPreflightBusy] = useState(false);
+  const [identityConfirmation, setIdentityConfirmation] = useState(null); const [identityConfirmationBusy, setIdentityConfirmationBusy] = useState(false); const [identityConfirmationAttempted, setIdentityConfirmationAttempted] = useState(false);
   const [clientReconciliation, setClientReconciliation] = useState(null); const [clientReconciliationBusy, setClientReconciliationBusy] = useState(false);
   const [existingClientIdentityIds, setExistingClientIdentityIds] = useState({});
   const [reconciliationTenantIds, setReconciliationTenantIds] = useState(""); const [reconciliationOwnerIds, setReconciliationOwnerIds] = useState("");
@@ -198,6 +199,31 @@ export default function ShadowCoordinatorPage() {
       setIdentityPreflightBusy(false);
     }
   };
+  const runExactPhoneIdentityConfirmation = async () => {
+    if (!identityPreflightAuthorized || identityConfirmationBusy || identityConfirmationAttempted) return;
+    if (!window.confirm("Esta acción revalidará y confirmará exactamente las 7 referencias exact_phone_unique certificadas. No se enviarán mensajes ni se modificará el ERP. ¿Deseas continuar?")) return;
+    setIdentityConfirmationAttempted(true); setIdentityConfirmationBusy(true); setIdentityConfirmation(null); setError("");
+    try {
+      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+      const sessionExpired = Number(currentSession?.expires_at || 0) <= Math.floor(Date.now() / 1000);
+      if (sessionError || !currentSession?.access_token || sessionExpired) {
+        setError("Sesión inválida o expirada. No se ejecutó la confirmación.");
+        return;
+      }
+      const response = await fetch("/api/operaciones/shadow-exact-phone-confirmation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${currentSession.access_token}` },
+        body: JSON.stringify({}),
+      });
+      const json = await response.json();
+      if (!response.ok) return setError(json.error || "No se pudo ejecutar la confirmación 7/7.");
+      setIdentityConfirmation(json);
+    } catch {
+      setError("No se pudo ejecutar la confirmación 7/7.");
+    } finally {
+      setIdentityConfirmationBusy(false);
+    }
+  };
   const reviewIdentity = async (identity, action) => {
     setIdentityBusy(true); setError("");
     const body = identity.status === "no_candidate" ? { action: "generate", conversationId: identity.conversationId } : { action, linkId: identity.id };
@@ -315,6 +341,12 @@ export default function ShadowCoordinatorPage() {
         <p style={{color:brand.grayLight}}>Evaluación read-only de la cohorte certificada 7/7. No confirma vínculos ni persiste resultados.</p>
         <button type="button" disabled={identityPreflightBusy} onClick={runExactPhoneIdentityPreflight}>{identityPreflightBusy ? "Evaluando…" : "Ejecutar preflight identidad 7/7"}</button>
         {identityPreflight && <><p><strong>{identityPreflight.evaluated}</strong> referencias evaluadas.</p>{identityPreflight.results.map((item)=><article key={item.reference} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}><strong>{item.reference} · {item.still_confirmable ? "confirmable" : "no confirmable"}</strong><p>Motivo: {item.reason || "sin bloqueo"} · Conflicto: {item.conflict ? "sí" : "no"}</p><p>Rol vigente: {item.current_role || "no resuelto"} · Relación/propiedad vigente y no ambigua: {item.property_relationship_current_unambiguous ? "sí" : "no"}</p></article>)}</>}
+      </details>}
+      {identityPreflightAuthorized && <details style={{ ...card, marginBottom: 14 }}>
+        <summary><strong>Confirmación exact_phone_unique 7/7</strong></summary>
+        <p style={{color:brand.grayLight}}>Confirma exclusivamente las 7 referencias certificadas. Cada referencia se revalida server-side y falla de forma independiente. Requiere confirmación explícita y el gate temporal autorizado.</p>
+        <button type="button" disabled={identityConfirmationBusy || identityConfirmationAttempted} onClick={runExactPhoneIdentityConfirmation}>{identityConfirmationBusy ? "Confirmando…" : identityConfirmationAttempted ? "Operación ya ejecutada en esta sesión" : "Confirmar identidad 7/7"}</button>
+        {identityConfirmation && <><p><strong>{identityConfirmation.evaluated}</strong> referencias procesadas · modo {identityConfirmation.mode}.</p>{identityConfirmation.results.map((item)=><article key={item.reference} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}><strong>{item.reference} · {item.status === "confirmed" || item.status === "already_confirmed" ? "confirmada" : "rechazada"}</strong><p>Resultado: {item.status || "rejected"} · Motivo: {item.reason || "sin bloqueo"}</p></article>)}</>}
       </details>}
       {error && <div style={{ ...card, background: "#fef2f2", color: "#991b1b", marginBottom: 12 }}>{error}</div>}
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 16 }}>
