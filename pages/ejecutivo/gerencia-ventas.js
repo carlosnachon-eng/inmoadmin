@@ -126,6 +126,22 @@ const getCorte = (selectedMonth) => {
   return getMonthBounds(selectedMonth).end;
 };
 
+const buildMonthOptions = () => {
+  const firstMonth = "2026-04";
+  const currentMonth = new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" }).slice(0, 7);
+  const { year: firstYear, month: firstMonthNumber } = parseYearMonth(firstMonth);
+  const { year: currentYear, month: currentMonthNumber } = parseYearMonth(currentMonth);
+  const options = [];
+  for (let year = firstYear; year <= currentYear; year += 1) {
+    const startMonth = year === firstYear ? firstMonthNumber : 1;
+    const endMonth = year === currentYear ? currentMonthNumber : 12;
+    for (let month = startMonth; month <= endMonth; month += 1) {
+      options.push(`${year}-${String(month).padStart(2, "0")}`);
+    }
+  }
+  return options;
+};
+
 const estadoSalud = ({ avanceMeta, avanceCitas, riesgoPct }) => {
   if (avanceMeta >= 0.9 && avanceCitas >= 0.9 && riesgoPct <= 0.1) {
     return { label: "Verde", tone: "green", text: "Ritmo sano con datos actuales" };
@@ -458,7 +474,7 @@ export default function GerenciaVentasDashboard() {
   }
 
   const saludTone = lectura.salud.tone;
-  const monthOptions = ["2026-04", "2026-05", "2026-06", "2026-07", "2026-08"];
+  const monthOptions = buildMonthOptions();
 
   return (
     <Layout view="gerencia_ventas" profile={profile}>
