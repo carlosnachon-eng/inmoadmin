@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   PROPERTY_EXPORT_SELECT,
   buildEmporioIntelligenceExport,
+  EmporioExportValidationError,
 } from '../../../lib/emporioIntelligenceExport.mjs';
 
 const ADMIN_ROLES = new Set(['admin']);
@@ -58,9 +59,17 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="inmoadmin-emporio-export.json"');
     return res.status(200).send(JSON.stringify(payload));
-  } catch {
-    // Keep row-level details out of HTTP responses and logs.  An invalid
-    // export must fail closed rather than release a partial snapshot.
-    return res.status(422).json({ error: 'El inventario no cumple el contrato de exportación' });
+  } catch (error) {
+    // Keep row values, SQL, stack traces, and PII out of HTTP responses and
+    // logs. The stable internal identifier and field name are safe enough for
+    // an authenticated Admin to correct the mapping or source record.
+    if (error instanceof EmporioExportValidationError) {
+      return res.status(422).json({
+        code: error.code,
+        source_listing_id: error.sourceListingId,
+        field: error.field,
+      });
+    }
+    return res.status(422).json({ code: 'INVALID_EXPORT', field: 'export', source_listing_id: null });
   }
 }

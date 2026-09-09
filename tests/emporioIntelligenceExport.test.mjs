@@ -66,7 +66,28 @@ test('maps every audited property lifecycle value without inferring a transactio
 });
 
 test('fails closed on ambiguous inventory values', () => {
-  assert.throws(() => mapPropertyToEmporioListing({ ...fixture[0], operacion: 'swap' }), /unsupported operacion/);
-  assert.throws(() => mapPropertyToEmporioListing({ ...fixture[0], precio: null }), /missing precio/);
+  assert.throws(
+    () => mapPropertyToEmporioListing({ ...fixture[0], operacion: 'swap' }),
+    (error) => error.code === 'UNSUPPORTED_ENUM' && error.field === 'operacion',
+  );
+  assert.throws(
+    () => mapPropertyToEmporioListing({ ...fixture[0], precio: null }),
+    (error) => error.code === 'MISSING_REQUIRED_FIELD' && error.field === 'precio',
+  );
   assert.throws(() => buildEmporioIntelligenceExport([fixture[0], fixture[0]]), /duplicate source_listing_id/);
+});
+
+test('maps the five audited real types to OTHER with whitespace, case, and accent normalization', () => {
+  for (const type of [' Edificio ', 'BODEGA', 'NAVE   INDUSTRIAL', 'Consultorio', 'Hôtel']) {
+    assert.equal(mapPropertyToEmporioListing({ ...fixture[0], tipo: type }).property_type, 'OTHER', type);
+  }
+});
+
+test('fails closed and exposes only safe diagnostic metadata for an unknown type', () => {
+  assert.throws(
+    () => mapPropertyToEmporioListing({ ...fixture[0], tipo: 'Helipuerto' }),
+    (error) => error.code === 'UNSUPPORTED_ENUM'
+      && error.field === 'tipo'
+      && error.sourceListingId === 'inmoadmin:cb14b6c2-603d-49aa-b671-57f640c543ad',
+  );
 });
