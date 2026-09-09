@@ -4,6 +4,11 @@ import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
 import { usePermiso, SinAcceso } from "../lib/permisos";
 import JSZip from "jszip";
+import {
+  canDownloadEmporioIntelligenceExport,
+  exportErrorMessage,
+  requestEmporioIntelligenceExport,
+} from "../lib/emporioIntelligenceExportDownload.mjs";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -577,6 +582,7 @@ export default function PropiedadesAdmin() {
   const [propiedades, setPropiedades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
+  const [exportandoIntelligence, setExportandoIntelligence] = useState(false);
   const [search, setSearch] = useState("");
   const [filtroOperacion, setFiltroOperacion] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("operativas");
@@ -611,6 +617,33 @@ export default function PropiedadesAdmin() {
   const propiedadAbiertaDesdeUrl = useRef(null);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
+
+  const descargarExportIntelligence = async () => {
+    if (!canDownloadEmporioIntelligenceExport(profile) || exportandoIntelligence) return;
+    setExportandoIntelligence(true);
+    try {
+      const { filename, rawJson } = await requestEmporioIntelligenceExport({
+        getSession: () => supabase.auth.getSession(),
+        fetchImpl: window.fetch.bind(window),
+      });
+      // The response text is kept byte-for-byte for the browser download after
+      // schema validation.  No token or payload is logged or persisted here.
+      const blob = new Blob([rawJson], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showToast("Export listo para descarga.");
+    } catch (error) {
+      showToast(exportErrorMessage(error), false);
+    } finally {
+      setExportandoIntelligence(false);
+    }
+  };
 
   const copiarLiga = async (p) => {
     if (p.status !== STATUS_COMPARTIBLE) { showToast("Solo las propiedades publicadas pueden compartir liga", false); return; }
@@ -1021,9 +1054,16 @@ export default function PropiedadesAdmin() {
         icon="🏠"
         actions={
           puedeEditar ? (
-            <button onClick={abrirNueva} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
-              + Nueva propiedad
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {canDownloadEmporioIntelligenceExport(profile) && (
+                <button onClick={descargarExportIntelligence} disabled={exportandoIntelligence} style={{ background: "#1f2937", color: "#fff", border: "none", borderRadius: 10, padding: "10px 14px", fontWeight: 700, cursor: exportandoIntelligence ? "not-allowed" : "pointer", fontSize: 14, opacity: exportandoIntelligence ? 0.65 : 1 }}>
+                  {exportandoIntelligence ? "Generando export…" : "Exportar para Emporio Intelligence"}
+                </button>
+              )}
+              <button onClick={abrirNueva} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
+                + Nueva propiedad
+              </button>
+            </div>
           ) : (
             <span style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic" }}>Modo solo lectura</span>
           )
