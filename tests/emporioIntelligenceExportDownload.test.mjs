@@ -5,6 +5,7 @@ import { buildEmporioIntelligenceExport } from '../lib/emporioIntelligenceExport
 import {
   ExportDownloadError,
   canDownloadEmporioIntelligenceExport,
+  exportErrorMessage,
   exportFilenameUtc,
   requestEmporioIntelligenceExport,
 } from '../lib/emporioIntelligenceExportDownload.mjs';
@@ -60,6 +61,28 @@ test('fails safely for authorization, network, and invalid response errors', asy
       (error) => error instanceof ExportDownloadError && error.code === code,
     );
   }
+});
+
+test('surfaces only a safe 422 diagnostic for an invalid production listing', async () => {
+  let error;
+  try {
+    await requestEmporioIntelligenceExport({
+      getSession: activeSession,
+      fetchImpl: async () => response(JSON.stringify({
+        code: 'UNSUPPORTED_ENUM', source_listing_id: 'inmoadmin:test-id', field: 'tipo', value: 'never expose this',
+      }), { status: 422 }),
+    });
+  } catch (caught) {
+    error = caught;
+  }
+  assert.ok(error instanceof ExportDownloadError);
+  assert.equal(error.code, 'EXPORT_FAILED');
+  assert.equal(error.status, 422);
+  assert.equal(error.safeCode, 'UNSUPPORTED_ENUM');
+  assert.equal(error.sourceListingId, 'inmoadmin:test-id');
+  assert.equal(error.field, 'tipo');
+  assert.equal(error.message.includes('never expose this'), false);
+  assert.equal(exportErrorMessage(error), 'HTTP 422 · Código: UNSUPPORTED_ENUM · Listing: inmoadmin:test-id · Campo: tipo. No se pudo validar el export. No se descargó ningún archivo.');
 });
 
 test('the helper has no token logging path', async () => {
