@@ -74,6 +74,24 @@ function normalizeReason(value) {
   return normalize(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
 }
 
+function normalizeSellerName(value) {
+  const text = normalize(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (text.includes("andrea casares")) return "Andrea Casares";
+  if (text.includes("karlabett") || text.includes("karla")) return "Karlabett";
+  if (text.includes("cinthia")) return "Cinthia";
+  if (text.includes("guillermo")) return "Guillermo";
+  if (text.includes("ari")) return "Ariannet";
+  if (text.includes("andrea")) return "Andrea";
+  if (text.includes("rosario")) return "Rosario";
+  if (text.includes("angelica")) return "Angélica";
+  if (text.includes("ivan")) return "Iván";
+  if (text.includes("amanda")) return "Amanda";
+  if (text.includes("oficina")) return "Oficina";
+  if (text.includes("direccion")) return "Dirección";
+  if (text.includes("otro")) return "Otro";
+  return value || "Sin vendedor";
+}
+
 function dateRange(startDate, endDate) {
   const dates = [];
   const current = new Date(`${startDate}T12:00:00-06:00`);
@@ -251,6 +269,10 @@ export default async function handler(req, res) {
 
     const scopedAdvisorIds = visibleAdvisorIds.size ? visibleAdvisorIds : new Set([profile.id]);
     const scopedAdvisorIdList = [...scopedAdvisorIds].filter(Boolean);
+    const sellerToAdvisorId = new Map(scopedAdvisorIdList
+      .map((id) => profilesById.get(id))
+      .filter(Boolean)
+      .map((advisor) => [normalizeSellerName(safeName(advisor)), advisor.id]));
     const noData = { data: [], error: null };
     const oppQuery = scopedAdvisorIdList.length
       ? scoped
@@ -271,7 +293,10 @@ export default async function handler(req, res) {
       ? admin.from("seguimientos_cliente").select("id, cliente_id, asesor_id, tipo, created_at").in("asesor_id", scopedAdvisorIdList).gte("created_at", start)
       : Promise.resolve(noData);
     const cierresQuery = scopedAdvisorIdList.length
-      ? admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured").in("advisor_profile_id", scopedAdvisorIdList).gte("fecha_cierre", startDate)
+      ? admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured, vendedor, propiedad").in("advisor_profile_id", scopedAdvisorIdList).gte("fecha_cierre", startDate)
+      : Promise.resolve(noData);
+    const unstructuredCierresQuery = scopedAdvisorIdList.length
+      ? admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured, vendedor, propiedad").is("advisor_profile_id", null).gte("fecha_cierre", startDate)
       : Promise.resolve(noData);
     const mappedSnapshotsQuery = scopedAdvisorIdList.length
       ? fetchAllPages(() => scoped
@@ -302,6 +327,7 @@ export default async function handler(req, res) {
       citasRes,
       seguimientosRes,
       cierresRes,
+      unstructuredCierresRes,
       snapshotsRes,
       unassignedSnapshotsRes,
     ] = await Promise.all([
@@ -309,18 +335,27 @@ export default async function handler(req, res) {
       citasQuery,
       seguimientosQuery,
       cierresQuery,
+      unstructuredCierresQuery,
       mappedSnapshotsQuery,
       unassignedSnapshotsQuery,
     ]);
 
     const snapshotsMissing = [snapshotsRes, unassignedSnapshotsRes].some((r) => r.error?.code === "PGRST205" || /gv_respond_contact_snapshots/i.test(r.error?.message || ""));
-    const dataError = [opportunitiesRes, citasRes, seguimientosRes, cierresRes, snapshotsMissing ? { error: null } : snapshotsRes, snapshotsMissing ? { error: null } : unassignedSnapshotsRes].find((r) => r.error)?.error;
+    const dataError = [opportunitiesRes, citasRes, seguimientosRes, cierresRes, unstructuredCierresRes, snapshotsMissing ? { error: null } : snapshotsRes, snapshotsMissing ? { error: null } : unassignedSnapshotsRes].find((r) => r.error)?.error;
     if (dataError) throw dataError;
 
     const scopedOpportunities = opportunitiesRes.data || [];
     const scopedCitas = citasRes.data || [];
     const scopedSeguimientos = seguimientosRes.data || [];
-    const scopedCierres = cierresRes.data || [];
+    const structuredCierres = cierresRes.data || [];
+    const textMatchedCierres = (unstructuredCierresRes.data || [])
+      .map((cierre) => ({
+        ...cierre,
+        advisor_profile_id: sellerToAdvisorId.get(normalizeSellerName(cierre.vendedor)) || null,
+        attribution_source: "vendedor_texto",
+      }))
+      .filter((cierre) => cierre.advisor_profile_id);
+    const scopedCierres = [...structuredCierres, ...textMatchedCierres];
     const scopedSnapshots = snapshotsMissing ? [] : (snapshotsRes.data || []);
     const unassignedSnapshots = snapshotsMissing ? [] : (unassignedSnapshotsRes.data || []).filter(isSalesUnassignedSnapshot);
     const managementSnapshots = [...scopedSnapshots, ...unassignedSnapshots];
@@ -496,13 +531,15 @@ export default async function handler(req, res) {
       .sort((a, b) => (a.risk === "critico" ? -1 : 0) - (b.risk === "critico" ? -1 : 0) || String(a.nextActionAt || "").localeCompare(String(b.nextActionAt || "")))
       .slice(0, 8);
 
-    const structuredNewCierres = scopedCierres.filter((c) => c.advisor_profile_id && normalize(c.operation_type_structured) === "nueva");
+    const isNewClosure = (cierre) => normalize(cierre.operation_type_structured) === "nueva" || (!cierre.operation_type_structured && !normalize(cierre.propiedad).startsWith("renov"));
+    const structuredNewCierres = scopedCierres.filter(isNewClosure);
     const closureCoverage = {
-      structuredNew: structuredNewCierres.length,
+      structuredNew: scopedCierres.filter((c) => normalize(c.operation_type_structured) === "nueva").length,
       structuredRenewal: scopedCierres.filter((c) => normalize(c.operation_type_structured) === "renovacion").length,
-      withoutStructuredAdvisor: scopedCierres.filter((c) => !c.advisor_profile_id).length,
+      textMatchedAdvisor: textMatchedCierres.length,
+      withoutStructuredAdvisor: (unstructuredCierresRes.data || []).filter((c) => !sellerToAdvisorId.has(normalizeSellerName(c.vendedor))).length,
       withoutStructuredType: scopedCierres.filter((c) => c.advisor_profile_id && !c.operation_type_structured).length,
-      pendingClassification: scopedCierres.filter((c) => !c.advisor_profile_id || !c.operation_type_structured).length,
+      pendingClassification: scopedCierres.filter((c) => !c.operation_type_structured).length,
     };
     const monthClosedNew = structuredNewCierres
       .reduce((sum, c) => sum + Number(c.comision || 0), 0);

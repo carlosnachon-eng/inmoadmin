@@ -789,10 +789,10 @@ export default function WorkCenterView({ type = "advisor" }) {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
                 <Card label="Meta del equipo" value={fmtMoney(management.metaEquipo)} sub="Comisión nueva mensual objetivo." />
                 <Card
-                  label="Cerrado nuevo estructurado"
-                  value={management.closureCoverage?.structuredNew ? fmtMoney(management.cerradoNuevo) : "Sin datos estructurados"}
-                  sub={management.closureCoverage?.pendingClassification ? `${management.closureCoverage.pendingClassification} cierres del periodo pendientes de clasificar.` : "Comisión nueva cerrada con asesor y tipo estructurado."}
-                  strong={!!management.closureCoverage?.structuredNew}
+                  label="Cerrado nuevo"
+                  value={management.closureCoverage?.structuredNew || management.closureCoverage?.textMatchedAdvisor ? fmtMoney(management.cerradoNuevo) : "Sin datos estructurados"}
+                  sub={management.closureCoverage?.pendingClassification ? `${management.closureCoverage.pendingClassification} cierre(s) del periodo atribuido(s) por vendedor textual pendiente(s) de estructurar.` : "Comisión nueva cerrada con asesor estructurado."}
+                  strong={!!(management.closureCoverage?.structuredNew || management.closureCoverage?.textMatchedAdvisor)}
                 />
                 <Card label="Pipeline comisión estimada" value={fmtMoney(management.pipeline)} sub="Comisión estimada en oportunidades abiertas." />
                 <Card label="Citas efectivas acumuladas" value={`${management.citasEquipo || 0} de ${management.citasRequeridasAcumuladas || 0}`} sub="Realizadas vs requeridas acumuladas." />
