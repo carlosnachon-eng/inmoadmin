@@ -89,7 +89,7 @@ test("prompt vigente no vuelve pendientes los turns reales ya completados con un
 });
 
 test("prompt/runtime v10 distingue actor antes de 3B sin reanalizar completed o failed previos", () => {
-  assert.equal(REAL_SHADOW_AUTO_AI_PROMPT_VERSION,"administradora-ia-emporio-real-shadow-v11");
+  assert.equal(REAL_SHADOW_AUTO_AI_PROMPT_VERSION,"administradora-ia-emporio-real-shadow-v12");
   const completed={id:"completed-v2",status:"completed",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
   const failed={id:"failed-v2",status:"timeout",prompt_version:"administradora-ia-emporio-real-shadow-v2"};
   assert.equal(selectAutoRealRun([completed])?.id,"completed-v2");
