@@ -14,7 +14,7 @@ begin
  insert into public.condominium_unit_portal_access(condominio_id,unidad_id,email_normalized,access_kind,active,created_by) values(condo_a,unit_a,'incident.owner.qa@example.invalid','OWNER',true,admin_id);
  insert into public.maintenance_categories(id,condominio_id,code,name,created_by) values(category,condo_a,'plomeria','Plomería',admin_id);
 
- perform set_config('request.jwt.claim.sub',owner_id::text,true); perform set_config('request.jwt.claim.email','incident.owner.qa@example.invalid',true); set local role authenticated;
+ perform set_config('request.jwt.claim.sub',owner_id::text,true); perform set_config('request.jwt.claim.email','incident.owner.qa@example.invalid',true); perform set_config('request.jwt.claims',jsonb_build_object('sub',owner_id,'email','incident.owner.qa@example.invalid','role','authenticated')::text,true); set local role authenticated;
  created:=public.condominium_create_incident_v1(ticket,condo_a,unit_a,category,'Fuga sintética','Descripción sintética sin datos reales','media','resident_portal',ticket,null,null,null,null,null);
  if created.id<>ticket or created.status<>'nuevo' or created.legacy_record then raise exception 'OWNER_CREATE_FAILED'; end if;
  if (select count(*) from public.maintenance_tickets where condominio_id=condo_a)<>1 then raise exception 'OWNER_SCOPE_FAILED'; end if;
@@ -28,7 +28,7 @@ begin
    if found then raise exception 'V1_DELETE_ALLOWED'; end if;
  exception when insufficient_privilege then null; end;
 
- reset role; perform set_config('request.jwt.claim.sub',admin_id::text,true); perform set_config('request.jwt.claim.email','admin.qa@example.invalid',true); set local role authenticated;
+ reset role; perform set_config('request.jwt.claim.sub',admin_id::text,true); perform set_config('request.jwt.claim.email','admin.qa@example.invalid',true); perform set_config('request.jwt.claims',jsonb_build_object('sub',admin_id,'email','admin.qa@example.invalid','role','authenticated')::text,true); set local role authenticated;
  updated:=public.condominium_update_incident_v1(ticket,condo_a,'revisado','alta',admin_id,'Estamos revisando la incidencia.','resident',null);
  if updated.status<>'revisado' or updated.first_attended_at is null then raise exception 'ADMIN_REVIEW_FAILED'; end if;
  updated:=public.condominium_update_incident_v1(ticket,condo_a,'en_proceso',null,null,'Nota sólo interna.','internal',null);
