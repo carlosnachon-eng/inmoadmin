@@ -7,7 +7,9 @@ import {
   reserveFundReceiptPublicShape,
   reserveFundErrorCode,
   reserveFundEvidencePath,
+  validateReserveFundAntiveBatchInput,
   validateReserveFundCreateInput,
+  validateReserveFundEvidenceEnrichmentInput,
 } from "../../../lib/condominios/reserveFund.mjs";
 
 export const config = { api: { bodyParser: { sizeLimit: "8mb" } } };
@@ -166,6 +168,97 @@ async function createContribution({ req, res, operatorDb, serviceDb }) {
   });
 }
 
+async function importAntiveReceivedBatch({ req, res, operatorDb }) {
+  const inputError = validateReserveFundAntiveBatchInput(req.body);
+  if (inputError) return response(res, 400, inputError);
+  const scope = await validateCreateScope(operatorDb, {
+    condominioId: req.body.condominioId,
+    allocations: req.body.records.map(record => ({ unidadId: record.unidadId })),
+  });
+  if (scope.error) return response(res, scope.status, scope.error);
+
+  const { data: batch, error } = await operatorDb.rpc("condominium_import_antive_reserve_fund_batch", {
+    p_batch_id: req.body.batchId,
+    p_condominio_id: req.body.condominioId,
+    p_source_file_sha256: String(req.body.sourceFileSha256).toLowerCase(),
+    p_source_sheet: String(req.body.sourceSheet).trim(),
+    p_records: req.body.records.map(record => ({
+      receipt_id: record.receiptId,
+      unidad_id: record.unidadId,
+      amount: Number(record.amount),
+      source_range: String(record.sourceRange).trim().toUpperCase(),
+      idempotency_key: record.idempotencyKey,
+    })),
+    p_received_confirmed_by: String(req.body.receivedConfirmedBy).trim(),
+    p_received_confirmed_at: req.body.receivedConfirmedAt,
+    p_received_confirmation_note: String(req.body.receivedConfirmationNote || "").trim() || null,
+  });
+  if (error || !batch?.id) {
+    const code = reserveFundErrorCode(error);
+    console.error("reserve_fund_antive_batch_failed", { code });
+    return response(res, code === "OPERATION_NOT_ALLOWED" ? 403 : 409, code);
+  }
+  const { data: receipts, error: receiptsError } = await operatorDb
+    .from("condominium_reserve_fund_receipts")
+    .select("*, contributions:condominium_reserve_fund_contributions(id, unidad_id, amount)")
+    .eq("condominio_id", req.body.condominioId)
+    .eq("import_batch_id", batch.id)
+    .order("source_range");
+  if (receiptsError) return response(res, 503, "RECEIPT_LOOKUP_FAILED");
+  return response(res, 200, "RESERVE_FUND_ANTIVE_RECEIVED", {
+    batch: { id: batch.id, status: batch.status, recordCount: receipts.length },
+    receipts: receipts.map(reserveFundReceiptPublicShape),
+  });
+}
+
+async function enrichAntiveEvidence({ req, res, operatorDb, serviceDb }) {
+  const inputError = validateReserveFundEvidenceEnrichmentInput(req.body);
+  if (inputError) return response(res, 400, inputError);
+  const scope = await loadScopedReceipt(operatorDb, req.body);
+  if (scope.error) return response(res, scope.status, scope.error);
+
+  const evidencePath = reserveFundEvidencePath({
+    condominioId: req.body.condominioId,
+    receiptId: req.body.receiptId,
+    mimeType: req.body.evidence.mimeType,
+  });
+  const bytes = decodeReserveFundEvidenceBase64(req.body.evidence.base64);
+  if (!evidencePath || !bytes) return response(res, 400, "INVALID_EVIDENCE");
+  const evidenceSha256 = createHash("sha256").update(bytes).digest("hex");
+
+  let uploadedNow = false;
+  const upload = await serviceDb.storage
+    .from(RESERVE_FUND_EVIDENCE_BUCKET)
+    .upload(evidencePath, bytes, { contentType: req.body.evidence.mimeType, upsert: false });
+  if (upload.error) {
+    const alreadyExists = String(upload.error.message || "").toLowerCase().includes("already exists");
+    if (!alreadyExists
+        || scope.data.evidence_path !== evidencePath
+        || scope.data.evidence_sha256 !== evidenceSha256) {
+      return response(res, alreadyExists ? 409 : 503, alreadyExists ? "EVIDENCE_CONFLICT" : "EVIDENCE_UPLOAD_FAILED");
+    }
+  } else {
+    uploadedNow = true;
+  }
+
+  const { data, error } = await operatorDb.rpc("condominium_enrich_reserve_fund_receipt_evidence", {
+    p_receipt_id: req.body.receiptId,
+    p_proof_date: req.body.proofDate,
+    p_payment_reference: String(req.body.paymentReference).trim(),
+    p_evidence_path: evidencePath,
+    p_evidence_sha256: evidenceSha256,
+  });
+  if (error || !data?.id) {
+    if (uploadedNow) await serviceDb.storage.from(RESERVE_FUND_EVIDENCE_BUCKET).remove([evidencePath]);
+    const code = reserveFundErrorCode(error);
+    console.error("reserve_fund_evidence_enrichment_failed", { code });
+    return response(res, code === "OPERATION_NOT_ALLOWED" ? 403 : 409, code);
+  }
+  return response(res, 200, "RESERVE_FUND_EVIDENCE_ENRICHED", {
+    receipt: reserveFundReceiptPublicShape({ ...data, contributions: scope.data.contributions }),
+  });
+}
+
 async function reconcileReceipt({ req, res, operatorDb }) {
   const scope = await loadScopedReceipt(operatorDb, req.body || {});
   if (scope.error) return response(res, scope.status, scope.error);
@@ -209,6 +302,53 @@ async function reverseReceipt({ req, res, operatorDb }) {
   });
 }
 
+async function voidReceipt({ req, res, operatorDb }) {
+  const scope = await loadScopedReceipt(operatorDb, req.body || {});
+  if (scope.error) return response(res, scope.status, scope.error);
+  const reason = String(req.body?.reason || "").trim();
+  if (reason.length < 5) return response(res, 400, "VOID_REASON_REQUIRED");
+  const { data, error } = await operatorDb.rpc("condominium_void_reserve_fund_receipt", {
+    p_receipt_id: scope.data.id,
+    p_reason: reason,
+  });
+  if (error || !data?.id || data.status !== "voided") {
+    const code = reserveFundErrorCode(error);
+    console.error("reserve_fund_void_failed", { code });
+    return response(res, code === "OPERATION_NOT_ALLOWED" ? 403 : 409, code);
+  }
+  return response(res, 200, "RESERVE_FUND_VOIDED", {
+    receipt: reserveFundReceiptPublicShape({ ...data, contributions: scope.data.contributions }),
+  });
+}
+
+async function voidBatch({ req, res, operatorDb }) {
+  if (![req.body?.batchId, req.body?.condominioId].every(isReserveFundUuid)) {
+    return response(res, 400, "INVALID_SCOPE");
+  }
+  const reason = String(req.body?.reason || "").trim();
+  if (reason.length < 5) return response(res, 400, "VOID_REASON_REQUIRED");
+  const { data: scopedBatch, error: scopedBatchError } = await operatorDb
+    .from("condominium_reserve_fund_import_batches")
+    .select("id, condominio_id, status")
+    .eq("id", req.body.batchId)
+    .eq("condominio_id", req.body.condominioId)
+    .maybeSingle();
+  if (scopedBatchError) return response(res, 503, "BATCH_LOOKUP_FAILED");
+  if (!scopedBatch) return response(res, 404, "BATCH_NOT_FOUND");
+  const { data, error } = await operatorDb.rpc("condominium_void_reserve_fund_batch", {
+    p_batch_id: scopedBatch.id,
+    p_reason: reason,
+  });
+  if (error || !data?.id || data.status !== "voided") {
+    const code = reserveFundErrorCode(error);
+    console.error("reserve_fund_batch_void_failed", { code });
+    return response(res, code === "OPERATION_NOT_ALLOWED" ? 403 : 409, code);
+  }
+  return response(res, 200, "RESERVE_FUND_BATCH_VOIDED", {
+    batch: { id: data.id, status: data.status },
+  });
+}
+
 async function viewEvidence({ req, res, operatorDb, serviceDb }) {
   const scope = await loadScopedReceipt(operatorDb, req.body || {});
   if (scope.error) return response(res, scope.status, scope.error);
@@ -232,8 +372,12 @@ export default async function handler(req, res) {
 
   try {
     if (req.body?.action === "create") return await createContribution({ req, res, operatorDb, serviceDb });
+    if (req.body?.action === "import-antive-received") return await importAntiveReceivedBatch({ req, res, operatorDb });
+    if (req.body?.action === "enrich-evidence") return await enrichAntiveEvidence({ req, res, operatorDb, serviceDb });
     if (req.body?.action === "reconcile") return await reconcileReceipt({ req, res, operatorDb });
     if (req.body?.action === "reverse") return await reverseReceipt({ req, res, operatorDb });
+    if (req.body?.action === "void") return await voidReceipt({ req, res, operatorDb });
+    if (req.body?.action === "void-batch") return await voidBatch({ req, res, operatorDb });
     if (req.body?.action === "evidence") return await viewEvidence({ req, res, operatorDb, serviceDb });
     return response(res, 400, "INVALID_ACTION");
   } catch (error) {
