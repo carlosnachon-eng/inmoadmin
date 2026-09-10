@@ -22,7 +22,7 @@ begin
  begin
    perform public.condominium_create_incident_v1(gen_random_uuid(),condo_b,unit_b,null,'Intento cruzado','Debe ser rechazado por unidad','media','resident_portal',gen_random_uuid(),null,null,null,null,null);
    raise exception 'CROSS_CONDO_CREATE_ALLOWED';
- exception when insufficient_privilege then null; end;
+ exception when others then if sqlerrm not like '%UNIT_ACCESS_DENIED%' then raise; end if; end;
  begin
    delete from public.maintenance_tickets where id=ticket;
    if found then raise exception 'V1_DELETE_ALLOWED'; end if;
