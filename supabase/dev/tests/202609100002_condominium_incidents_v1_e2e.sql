@@ -15,12 +15,12 @@ begin
  insert into public.maintenance_categories(id,condominio_id,code,name,created_by) values(category,condo_a,'plomeria','Plomería',admin_id);
 
  perform set_config('request.jwt.claim.sub',owner_id::text,true); perform set_config('request.jwt.claim.email','incident.owner.qa@example.invalid',true); set local role authenticated;
- created:=public.condominium_create_incident_v1(ticket,condo_a,unit_a,category,'Fuga sintética','Descripción sintética sin datos reales','media',ticket,null,null,null,null,null);
+ created:=public.condominium_create_incident_v1(ticket,condo_a,unit_a,category,'Fuga sintética','Descripción sintética sin datos reales','media','resident_portal',ticket,null,null,null,null,null);
  if created.id<>ticket or created.status<>'nuevo' or created.legacy_record then raise exception 'OWNER_CREATE_FAILED'; end if;
  if (select count(*) from public.maintenance_tickets where condominio_id=condo_a)<>1 then raise exception 'OWNER_SCOPE_FAILED'; end if;
  if exists(select 1 from public.maintenance_tickets where condominio_id=condo_b) then raise exception 'CROSS_CONDO_VISIBLE'; end if;
  begin
-   perform public.condominium_create_incident_v1(gen_random_uuid(),condo_b,unit_b,null,'Intento cruzado','Debe ser rechazado por unidad','media',gen_random_uuid(),null,null,null,null,null);
+   perform public.condominium_create_incident_v1(gen_random_uuid(),condo_b,unit_b,null,'Intento cruzado','Debe ser rechazado por unidad','media','resident_portal',gen_random_uuid(),null,null,null,null,null);
    raise exception 'CROSS_CONDO_CREATE_ALLOWED';
  exception when insufficient_privilege then null; end;
  begin
