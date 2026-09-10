@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import IncidentPanel from "./IncidentPanel";
 
 const fmt = (value) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0,
@@ -106,7 +107,7 @@ export default function ControlledCondominoPortal() {
   if (loading && !snapshot) return <main style={styles.center}><p style={styles.muted}>Cargando portal…</p></main>;
   if (!units.length) return <main style={styles.center}><section style={styles.loginCard}><h1 style={styles.title}>Portal no disponible</h1><p style={styles.muted}>No hay unidades habilitadas para esta cuenta.</p><button onClick={() => supabase.auth.signOut()} style={styles.secondaryButton}>Cerrar sesión</button></section></main>;
 
-  const tabs = [["current", "Administración Emporio"], ["historical", "Histórico Antive"]];
+  const tabs = [["current", "Administración Emporio"], ["historical", "Histórico Antive"], ["incidents", "Incidencias"]];
 
   return <main style={styles.page}>
     <header style={styles.header}>
@@ -150,6 +151,8 @@ export default function ControlledCondominoPortal() {
       <h3 style={styles.sectionTitle}>Pagos históricos registrados</h3>
       {historicalPayments.length ? historicalPayments.map((payment) => <article key={payment.id} style={styles.card}><div style={styles.row}><div><strong>{payment.period ? periodLabel(payment.period) : "Periodo reportado"}</strong><p style={styles.muted}>Recibido por {payment.receivedBy}</p></div><strong>{fmt(payment.amount)}</strong></div></article>) : <p style={styles.muted}>Sin pagos históricos registrados.</p>}
     </section>}
+
+    {tab === "incidents" && <IncidentPanel unit={units.find((unit) => unit.unidad_id === selectedUnitId)} session={session} />}
 
   </main>;
 }
