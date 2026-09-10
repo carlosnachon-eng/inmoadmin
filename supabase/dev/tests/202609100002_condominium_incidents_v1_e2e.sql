@@ -10,7 +10,7 @@ begin
  insert into public.condominios(id,nombre,activo) values(condo_a,'QA INCIDENTS V1 A',true),(condo_b,'QA INCIDENTS V1 B',true);
  insert into public.unidades_condominio(id,condominio_id,numero,activo,propietario_nombre,propietario_email,residente_es_propietario) values
  (unit_a,condo_a,'QA-01',true,'QA','incident.owner.qa@example.invalid',true),(unit_b,condo_b,'QA-02',true,'QA','other.qa@example.invalid',true);
- insert into public.condominium_operation_controls(condominio_id,lifecycle_status,owner_portal_enabled,communications_enabled,current_billing_enabled,receipts_enabled,real_payments_enabled,money_movements_enabled) values(condo_a,'active',true,false,false,false,false,false),(condo_b,'active',true,false,false,false,false,false);
+ insert into public.condominium_operation_controls(condominio_id,lifecycle_status,owner_portal_enabled,communications_enabled,current_billing_enabled,receipts_enabled,real_payments_enabled,money_movements_enabled) values(condo_a,'active',true,false,true,true,true,false),(condo_b,'active',true,false,true,true,true,false);
  insert into public.condominium_unit_portal_access(condominio_id,unidad_id,email_normalized,access_kind,active,created_by) values(condo_a,unit_a,'incident.owner.qa@example.invalid','OWNER',true,admin_id);
  insert into public.maintenance_categories(id,condominio_id,code,name,created_by) values(category,condo_a,'plomeria','Plomería',admin_id);
 
