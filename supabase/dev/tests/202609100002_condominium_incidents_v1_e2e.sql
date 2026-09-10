@@ -1,10 +1,11 @@
 begin;
 do $$
-declare admin_id uuid; owner_id uuid; condo_a uuid:=gen_random_uuid(); condo_b uuid:=gen_random_uuid(); unit_a uuid:=gen_random_uuid(); unit_b uuid:=gen_random_uuid(); ticket uuid:=gen_random_uuid(); category uuid:=gen_random_uuid(); created public.maintenance_tickets; updated public.maintenance_tickets;
+declare admin_id uuid:=gen_random_uuid(); owner_id uuid:=gen_random_uuid(); condo_a uuid:=gen_random_uuid(); condo_b uuid:=gen_random_uuid(); unit_a uuid:=gen_random_uuid(); unit_b uuid:=gen_random_uuid(); ticket uuid:=gen_random_uuid(); category uuid:=gen_random_uuid(); created public.maintenance_tickets; updated public.maintenance_tickets;
 begin
- select id into admin_id from public.profiles where active=true and role_id='admin' limit 1;
- select p.id into owner_id from public.profiles p join public.roles r on r.id=p.role_id where p.active=true and r.es_externo=true limit 1;
- if admin_id is null or owner_id is null then raise exception 'QA_IDENTITIES_REQUIRED'; end if;
+ insert into auth.users(instance_id,id,aud,role,email,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
+ values('00000000-0000-0000-0000-000000000000',admin_id,'authenticated','authenticated','incident.admin.qa@example.invalid','{}'::jsonb,'{}'::jsonb,now(),now()),
+ ('00000000-0000-0000-0000-000000000000',owner_id,'authenticated','authenticated','incident.owner.qa@example.invalid','{}'::jsonb,'{"rol_pretendido":"propietario"}'::jsonb,now(),now());
+ update public.profiles set role_id='admin',active=true where id=admin_id;
  insert into public.condominios(id,nombre,activo) values(condo_a,'QA INCIDENTS V1 A',true),(condo_b,'QA INCIDENTS V1 B',true);
  insert into public.unidades_condominio(id,condominio_id,numero,activo,propietario_nombre,propietario_email,residente_es_propietario) values
  (unit_a,condo_a,'QA-01',true,'QA','incident.owner.qa@example.invalid',true),(unit_b,condo_b,'QA-02',true,'QA','other.qa@example.invalid',true);
