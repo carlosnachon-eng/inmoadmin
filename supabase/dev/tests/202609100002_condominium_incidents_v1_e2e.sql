@@ -2,6 +2,7 @@ begin;
 do $$
 declare admin_id uuid:=gen_random_uuid(); owner_id uuid:=gen_random_uuid(); condo_a uuid:=gen_random_uuid(); condo_b uuid:=gen_random_uuid(); unit_a uuid:=gen_random_uuid(); unit_b uuid:=gen_random_uuid(); ticket uuid:=gen_random_uuid(); category uuid:=gen_random_uuid(); created public.maintenance_tickets; updated public.maintenance_tickets;
 begin
+ insert into public.roles(id,nombre,descripcion,es_externo) values('propietario','Propietario QA','Rol externo sintético para transacción QA',true) on conflict(id) do nothing;
  insert into auth.users(instance_id,id,aud,role,email,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
  values('00000000-0000-0000-0000-000000000000',admin_id,'authenticated','authenticated','incident.admin.qa@example.invalid','{}'::jsonb,'{}'::jsonb,now(),now()),
  ('00000000-0000-0000-0000-000000000000',owner_id,'authenticated','authenticated','incident.owner.qa@example.invalid','{}'::jsonb,'{"rol_pretendido":"propietario"}'::jsonb,now(),now());
