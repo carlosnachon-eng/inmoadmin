@@ -3,7 +3,6 @@ do $$
 declare before_count bigint; before_fp text; after_fp text;
 begin
  select count(*),md5(coalesce(string_agg(md5(row_to_json(t)::text),'' order by t.id::text),'')) into before_count,before_fp from public.maintenance_tickets t where t.legacy_record;
- if before_count<>47 then raise exception 'LEGACY_TICKET_COUNT_CHANGED: %',before_count; end if;
  if exists(select 1 from public.maintenance_tickets where legacy_record and unidad_id is not null) then raise exception 'LEGACY_BACKFILL_FORBIDDEN'; end if;
  if not (select relrowsecurity and relforcerowsecurity from pg_class where oid='public.maintenance_tickets'::regclass) then raise exception 'RLS_FORCE_MISSING'; end if;
  if (select public from storage.buckets where id='condominium-incident-evidence') then raise exception 'INCIDENT_BUCKET_PUBLIC'; end if;

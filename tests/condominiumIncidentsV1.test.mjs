@@ -8,6 +8,7 @@ const endpoint=read("pages/api/condominios/incidents.js");
 const resident=read("components/condomino/IncidentPanel.js");
 const admin=read("components/condominios/AdminIncidentPanel.js");
 const legacy=read("pages/mantenimiento.js");
+const sqlE2e=read("supabase/dev/tests/202609100002_condominium_incidents_v1_e2e.sql");
 
 test("Incidencias V1 evoluciona maintenance_tickets sin proveedor ni sistema paralelo",()=>{
  assert.match(migration,/alter table public\.maintenance_tickets/);
@@ -52,4 +53,9 @@ test("rollback aborta si existe actividad V1 y legacy permanece sin cambios",()=
  assert.match(rollback,/ROLLBACK_ABORTED_INCIDENT_V1_ACTIVITY_EXISTS/);
  assert.doesNotMatch(rollback,/delete from public\.maintenance_tickets/i);
  assert.match(legacy,/maintenance_tickets/);
+});
+test("DEV cubre residente, administración, timeline, reapertura y aislamiento",()=>{
+ for(const token of ["OWNER_CREATE_FAILED","CROSS_CONDO_CREATE_ALLOWED","V1_DELETE_ALLOWED","ADMIN_REVIEW_FAILED","INTERNAL_TIMELINE_FAILED","REOPEN_AUDIT_FAILED","CONDOMINIUM_INCIDENTS_V1_E2E_OK"]) assert.match(sqlE2e,new RegExp(token));
+ assert.match(sqlE2e,/rollback;/);
+ assert.doesNotMatch(sqlE2e,/G[eé]nova|Tecaxco|@hotmail|@gmail/i);
 });
