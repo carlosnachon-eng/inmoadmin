@@ -13,6 +13,7 @@ const read = path => readFile(new URL(path, import.meta.url), "utf8");
 const migration = await read("../supabase/migrations/202609010003_condominium_reserve_fund_antive_unverified.sql");
 const rollback = await read("../supabase/production/rollback/202609010003_condominium_reserve_fund_antive_unverified_rollback.sql");
 const checks = await read("../supabase/production/tests/202609010003_condominium_reserve_fund_antive_unverified_checks.sql");
+const preflight = await read("../supabase/production/tests/202609010003_condominium_reserve_fund_antive_unverified_preflight.sql");
 const sqlTests = await read("../supabase/dev/tests/202609010003_condominium_reserve_fund_antive_unverified_tests.sql");
 const endpoint = await read("../pages/api/condominios/reserve-fund.js");
 const adminPage = await read("../pages/condominio/[id].js");
@@ -145,4 +146,31 @@ test("rollback de esquema falla cerrado cuando existe actividad y preserva anula
   assert.match(rollback, /utilice anulación auditada/);
   assert.doesNotMatch(rollback, /delete from|truncate/i);
   assert.match(checks, /CONDOMINIUM_RESERVE_FUND_ANTIVE_POSTCHECK_OK/);
+});
+
+test("preflight dinámico captura Génova sin PII y separa Fondo de Reserva", () => {
+  assert.match(preflight, /29ebc26e-b82d-c90c-10a7-1f3761aeca09/);
+  for (const component of [
+    "historical_accounts_fp",
+    "historical_payments_fp",
+    "historical_recoveries_fp",
+    "historical_evidence_fp",
+    "current_fees_fp",
+    "units_fp",
+    "operation_controls_fp",
+  ]) assert.match(preflight, new RegExp(component));
+  for (const reserveCount of ["reserve_contributions", "reserve_receipts", "reserve_evidence"]) {
+    assert.match(preflight, new RegExp(reserveCount));
+  }
+  assert.match(preflight, /operational_fingerprint/);
+  assert.doesNotMatch(preflight, /\b(insert|update|delete|truncate|alter|create|drop)\b/i);
+  assert.doesNotMatch(preflight, /\b(email|correo|telefono|phone|nombre|owner_id)\b/i);
+  assert.doesNotMatch(preflight, /\b1500\b|\b3 recuperaciones\b/i);
+});
+
+test("certificación 202609010003 no reutiliza ni modifica el postcheck histórico obsoleto", () => {
+  assert.doesNotMatch(checks, /202608280004_condominium_historical_recovery_operations_checks/);
+  assert.match(checks, /CONDOMINIUM_RESERVE_FUND_ANTIVE_POSTCHECK_OK/);
+  assert.match(checks, /condominium_reserve_fund_import_batches/);
+  assert.doesNotMatch(checks, /condominium_historical_recoveries[\s\S]*count\(\*\)[\s\S]*<>\s*0/i);
 });
