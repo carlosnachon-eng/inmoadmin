@@ -18,6 +18,18 @@ begin
   end loop;
 end $$;
 
+drop function if exists public.condominium_financial_reverse_receipt(uuid,uuid,uuid,text,uuid);
+drop function if exists public.condominium_financial_confirm_receipt(uuid,uuid,uuid,uuid);
+drop function if exists public.condominium_financial_match_bank_receipt(uuid,uuid,uuid,numeric,uuid);
+drop function if exists public.condominium_financial_apply_receipt(uuid,uuid,jsonb);
+drop function if exists public.condominium_financial_create_receipt(uuid,uuid,uuid,date,numeric,text,text,text,uuid);
+drop function if exists public.condominium_financial_identify_bank_transaction(uuid,uuid,uuid);
+drop function if exists public.condominium_financial_import_bank_transaction(uuid,uuid,uuid,date,date,text,numeric,text,text,text,uuid);
+drop function if exists public.condominium_financial_create_charge(uuid,uuid,uuid,uuid,uuid,numeric,date,text,uuid);
+drop function if exists public.condominium_financial_post_entry(uuid);
+drop function if exists public.condominium_financial_period_assert(uuid,uuid);
+drop function if exists public.condominium_financial_assert(uuid,boolean);
+
 drop view if exists public.condominium_financial_ledger_balances;
 drop view if exists public.condominium_financial_charge_balances;
 drop table if exists public.condominium_financial_events;
@@ -35,17 +47,6 @@ drop table if exists public.condominium_bank_accounts;
 drop table if exists public.condominium_funds;
 drop table if exists public.condominium_financial_controls;
 
-drop function if exists public.condominium_financial_reverse_receipt(uuid,uuid,uuid,text,uuid);
-drop function if exists public.condominium_financial_confirm_receipt(uuid,uuid,uuid,uuid);
-drop function if exists public.condominium_financial_match_bank_receipt(uuid,uuid,uuid,numeric,uuid);
-drop function if exists public.condominium_financial_apply_receipt(uuid,uuid,jsonb);
-drop function if exists public.condominium_financial_create_receipt(uuid,uuid,uuid,date,numeric,text,text,text,uuid);
-drop function if exists public.condominium_financial_identify_bank_transaction(uuid,uuid,uuid);
-drop function if exists public.condominium_financial_import_bank_transaction(uuid,uuid,uuid,date,date,text,numeric,text,text,text,uuid);
-drop function if exists public.condominium_financial_create_charge(uuid,uuid,uuid,uuid,uuid,numeric,date,text,uuid);
-drop function if exists public.condominium_financial_post_entry(uuid);
-drop function if exists public.condominium_financial_period_assert(uuid,uuid);
-drop function if exists public.condominium_financial_assert(uuid,boolean);
 drop function if exists public.condominium_financial_immutable_guard();
 
 commit;
