@@ -407,7 +407,7 @@ end $$;
 
 create function public.condominium_financial_confirm_receipt(p_condominio_id uuid,p_receipt_id uuid,p_period_id uuid,p_idempotency_key uuid)
 returns public.condominium_journal_entries language plpgsql security definer set search_path=public,pg_temp as $$
-declare r public.condominium_receipts; e public.condominium_journal_entries; bank_id uuid; default_fund_id uuid; matched numeric; applied numeric; n integer:=0; a record;
+declare r public.condominium_receipts; e public.condominium_journal_entries; bank_id uuid; default_fund_id uuid; matched numeric; applied numeric; n integer:=0; app_rec record;
 begin
   perform public.condominium_financial_assert(p_condominio_id,true); perform public.condominium_financial_period_assert(p_condominio_id,p_period_id);
   select * into r from public.condominium_receipts where id=p_receipt_id and condominio_id=p_condominio_id for update;
@@ -415,9 +415,9 @@ begin
   select sum(m.amount),min(t.bank_account_id::text)::uuid into matched,bank_id from public.condominium_bank_matches m join public.condominium_bank_transactions t on t.id=m.bank_transaction_id where m.receipt_id=r.id and m.status='active';
   if coalesce(matched,0)<>r.amount or (select count(distinct t.bank_account_id) from public.condominium_bank_matches m join public.condominium_bank_transactions t on t.id=m.bank_transaction_id where m.receipt_id=r.id and m.status='active')<>1 then raise exception 'RECEIPT_NOT_FULLY_BANK_MATCHED'; end if;
   insert into public.condominium_journal_entries(id,condominio_id,period_id,entry_date,event_type,source_type,source_id,idempotency_key) values(gen_random_uuid(),p_condominio_id,p_period_id,r.received_on,'receipt_reconciled','receipt',r.id,p_idempotency_key) returning * into e;
-  for a in select x.*,c.unidad_id from public.condominium_payment_applications x join public.condominium_charges c on c.id=x.charge_id where x.receipt_id=r.id and x.status='active' order by x.id loop
-    n:=n+1; insert into public.condominium_journal_lines(condominio_id,entry_id,line_no,account_code,bank_account_id,fund_id,unidad_id,charge_id,debit,credit) values(p_condominio_id,e.id,n,'BANK',bank_id,a.fund_id,a.unidad_id,a.charge_id,a.amount,0);
-    n:=n+1; insert into public.condominium_journal_lines(condominio_id,entry_id,line_no,account_code,fund_id,unidad_id,charge_id,debit,credit) values(p_condominio_id,e.id,n,'ACCOUNTS_RECEIVABLE',a.fund_id,a.unidad_id,a.charge_id,0,a.amount);
+  for app_rec in select x.*,c.unidad_id from public.condominium_payment_applications x join public.condominium_charges c on c.id=x.charge_id where x.receipt_id=r.id and x.status='active' order by x.id loop
+    n:=n+1; insert into public.condominium_journal_lines(condominio_id,entry_id,line_no,account_code,bank_account_id,fund_id,unidad_id,charge_id,debit,credit) values(p_condominio_id,e.id,n,'BANK',bank_id,app_rec.fund_id,app_rec.unidad_id,app_rec.charge_id,app_rec.amount,0);
+    n:=n+1; insert into public.condominium_journal_lines(condominio_id,entry_id,line_no,account_code,fund_id,unidad_id,charge_id,debit,credit) values(p_condominio_id,e.id,n,'ACCOUNTS_RECEIVABLE',app_rec.fund_id,app_rec.unidad_id,app_rec.charge_id,0,app_rec.amount);
   end loop;
   select coalesce(sum(amount),0) into applied from public.condominium_payment_applications where receipt_id=r.id and status='active';
   if r.amount>applied then
