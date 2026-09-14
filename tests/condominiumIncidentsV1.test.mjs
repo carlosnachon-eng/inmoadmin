@@ -9,6 +9,7 @@ const resident=read("components/condomino/IncidentPanel.js");
 const admin=read("components/condominios/AdminIncidentPanel.js");
 const legacy=read("pages/mantenimiento.js");
 const sqlE2e=read("supabase/dev/tests/202609100002_condominium_incidents_v1_e2e.sql");
+const devFingerprint=read("supabase/dev/tests/202609100003_condominium_incidents_v1_fingerprint.sql");
 
 test("Incidencias V1 evoluciona maintenance_tickets sin proveedor ni sistema paralelo",()=>{
  assert.match(migration,/alter table public\.maintenance_tickets/);
@@ -39,6 +40,12 @@ test("endpoint valida sesión, rol, tenant y usa service role sólo server-side"
  assert.doesNotMatch(resident,/SUPABASE_SERVICE_ROLE_KEY|service_role/);
  assert.doesNotMatch(admin,/SUPABASE_SERVICE_ROLE_KEY|service_role/);
 });
+test("portal residente usa la sesión vigente y conserva errores controlados",()=>{
+ assert.match(resident,/supabase\.auth\.getSession\(\)/);
+ assert.doesNotMatch(resident,/Authorization:`Bearer \$\{session\.access_token\}`/);
+ for(const status of ["status===401","status===403","role=\"alert\""]) assert.match(resident,new RegExp(status));
+ assert.match(resident,/setLoadError\(safeError\(result\)\)/);
+});
 test("Storage es privado, firmado y limitado",()=>{
  assert.match(migration,/values\('condominium-incident-evidence','condominium-incident-evidence',false,5242880,array\['image\/jpeg','image\/png','image\/webp'\]\)/);
  assert.match(endpoint,/createSignedUrl\(row\.storage_path, 60\)/);
@@ -58,4 +65,10 @@ test("DEV cubre residente, administración, timeline, reapertura y aislamiento",
  for(const token of ["OWNER_CREATE_FAILED","CROSS_CONDO_CREATE_ALLOWED","V1_DELETE_ALLOWED","ADMIN_REVIEW_FAILED","INTERNAL_TIMELINE_FAILED","REOPEN_AUDIT_FAILED","CONDOMINIUM_INCIDENTS_V1_E2E_OK"]) assert.match(sqlE2e,new RegExp(token));
  assert.match(sqlE2e,/rollback;/);
  assert.doesNotMatch(sqlE2e,/G[eé]nova|Tecaxco|@hotmail|@gmail/i);
+ assert.match(sqlE2e,/incidents_v1_legacy_baseline/);
+ assert.match(sqlE2e,/DEV_LEGACY_FINGERPRINT_CHANGED/);
+ assert.match(sqlE2e,/CONDOMINIUM_INCIDENTS_V1_DEV_POSTCHECK_OK/);
+ assert.match(devFingerprint,/legacy_ticket_fingerprint/);
+ assert.match(devFingerprint,/order by t\.id::text/);
+ assert.doesNotMatch(devFingerprint,/nombre|email|telefono|description|title/i);
 });

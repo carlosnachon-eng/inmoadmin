@@ -1,3 +1,8 @@
+create temporary table incidents_v1_legacy_baseline on commit preserve rows as
+select count(*)::bigint as row_count,
+  md5(coalesce(string_agg(md5(row_to_json(t)::text),'' order by t.id::text),'')) as fingerprint
+from public.maintenance_tickets t where t.legacy_record;
+
 begin;
 do $$
 declare admin_id uuid:=gen_random_uuid(); owner_id uuid:=gen_random_uuid(); condo_a uuid:=gen_random_uuid(); condo_b uuid:=gen_random_uuid(); unit_a uuid:=gen_random_uuid(); unit_b uuid:=gen_random_uuid(); ticket uuid:=gen_random_uuid(); category uuid:=gen_random_uuid(); created public.maintenance_tickets; updated public.maintenance_tickets;
@@ -41,3 +46,21 @@ begin
 end $$;
 select 'CONDOMINIUM_INCIDENTS_V1_E2E_OK' as result;
 rollback;
+
+do $$ declare current_count bigint; current_fp text; begin
+ select count(*)::bigint,
+   md5(coalesce(string_agg(md5(row_to_json(t)::text),'' order by t.id::text),''))
+ into current_count,current_fp from public.maintenance_tickets t where t.legacy_record;
+ if not exists(
+   select 1 from incidents_v1_legacy_baseline b
+   where b.row_count=current_count and b.fingerprint=current_fp
+ ) then raise exception 'DEV_LEGACY_FINGERPRINT_CHANGED'; end if;
+ if exists(select 1 from auth.users where email in ('incident.admin.qa@example.invalid','incident.owner.qa@example.invalid'))
+   or exists(select 1 from public.condominios where nombre in ('QA INCIDENTS V1 A','QA INCIDENTS V1 B'))
+   or exists(select 1 from public.maintenance_tickets where not legacy_record)
+   or exists(select 1 from public.maintenance_categories where name='Plomería' and code='plomeria')
+   or exists(select 1 from storage.objects where bucket_id='condominium-incident-evidence' and name like '%/incident.owner.qa@example.invalid/%')
+ then raise exception 'DEV_INCIDENT_QA_RESIDUE'; end if;
+end $$;
+select 'CONDOMINIUM_INCIDENTS_V1_DEV_POSTCHECK_OK' as result;
+drop table incidents_v1_legacy_baseline;

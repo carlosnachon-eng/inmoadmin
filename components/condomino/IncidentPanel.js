@@ -4,15 +4,17 @@ import { supabase } from "../../lib/supabase";
 const labels = { nuevo:"Nuevo",revisado:"Revisado",en_proceso:"En proceso",en_espera:"En espera",terminado:"Terminado",cerrado:"Cerrado",cancelado:"Cancelado",cotizado:"Cotizado",aprobado:"Aprobado" };
 const toBase64 = (file) => new Promise((resolve, reject) => { const reader=new FileReader(); reader.onload=()=>resolve(String(reader.result).split(",")[1]); reader.onerror=reject; reader.readAsDataURL(file); });
 
-export default function IncidentPanel({ unit, session }) {
-  const [items,setItems]=useState([]); const [categories,setCategories]=useState([]); const [mode,setMode]=useState("open"); const [busy,setBusy]=useState(false); const [message,setMessage]=useState("");
+export default function IncidentPanel({ unit }) {
+  const [items,setItems]=useState([]); const [categories,setCategories]=useState([]); const [mode,setMode]=useState("open"); const [busy,setBusy]=useState(false); const [message,setMessage]=useState(""); const [loadError,setLoadError]=useState("");
   const [form,setForm]=useState({title:"",description:"",categoryId:"",file:null});
-  const call=async(payload)=>fetch("/api/condominios/incidents",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`},body:JSON.stringify(payload)}).then(r=>r.json());
-  const load=async()=>{const result=await call({action:"list",condominioId:unit.condominio_id,unidadId:unit.unidad_id});setItems(result.ok?result.incidents:[]);setCategories(result.ok?result.categories:[]);};
+  const call=async(payload)=>{const {data:{session:currentSession}}=await supabase.auth.getSession();if(!currentSession?.access_token)return {ok:false,status:401,code:"SESSION_REQUIRED"};try{const response=await fetch("/api/condominios/incidents",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${currentSession.access_token}`},body:JSON.stringify(payload)});const body=await response.json().catch(()=>({}));return {...body,ok:response.ok&&body.ok!==false,status:response.status};}catch{return {ok:false,status:0,code:"NETWORK_ERROR"};}};
+  const safeError=(result)=>result?.status===401?"Tu sesión expiró. Vuelve a ingresar para continuar.":result?.status===403?"No tienes autorización para consultar incidencias de esta unidad.":result?.status>=400&&result?.status<500?"No fue posible completar la solicitud con los datos enviados.":"No fue posible cargar las incidencias. Intenta nuevamente más tarde.";
+  const load=async()=>{setLoadError("");const result=await call({action:"list",condominioId:unit.condominio_id,unidadId:unit.unidad_id});if(!result.ok){setItems([]);setCategories([]);setLoadError(safeError(result));return;}setItems(result.incidents||[]);setCategories(result.categories||[]);};
   useEffect(()=>{load();},[unit.unidad_id]);
   const submit=async()=>{setBusy(true);setMessage("");const evidence=form.file?{mimeType:form.file.type,base64:await toBase64(form.file)}:null;const result=await call({action:"create",condominioId:unit.condominio_id,unidadId:unit.unidad_id,idempotencyKey:crypto.randomUUID(),title:form.title,description:form.description,categoryId:form.categoryId||null,evidence});setBusy(false);setMessage(result.ok?"Incidencia registrada.":"No fue posible registrar la incidencia.");if(result.ok){setForm({title:"",description:"",categoryId:"",file:null});load();}};
   const visible=items.filter(i=>mode==="closed"?["cerrado","cancelado"].includes(i.status):!["cerrado","cancelado"].includes(i.status));
   return <section style={{maxWidth:760,margin:"0 auto"}}>
+    {loadError&&<p role="alert" style={{background:"#fee2e2",color:"#991b1b",padding:12,borderRadius:8}}>{loadError}</p>}
     <div style={{background:"#fff",padding:16,borderRadius:12,marginBottom:14}}><h2 style={{marginTop:0,fontSize:17}}>Reportar incidencia</h2>
       <input aria-label="Asunto" placeholder="Asunto" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} style={field}/>
       <select aria-label="Categoría" value={form.categoryId} onChange={e=>setForm({...form,categoryId:e.target.value})} style={field}><option value="">Sin categoría</option>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
