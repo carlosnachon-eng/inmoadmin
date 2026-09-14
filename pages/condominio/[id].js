@@ -14,6 +14,7 @@ import {
   portalStateForBackendCode,
 } from "../../lib/condominios/portalAccess.mjs";
 import { buildHistoricalPortfolio } from "../../lib/condominios/historicalPortfolio.mjs";
+import AdminIncidentPanel from "../../components/condominios/AdminIncidentPanel";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -217,7 +218,7 @@ export default function CondominioDetalle() {
   const emptyGasto = { concepto: "", categoria: "mantenimiento", monto: "", fecha: new Date().toISOString().split("T")[0], notas: "" };
   const [formGasto, setFormGasto] = useState(emptyGasto);
 
-  const emptyTicket = { title: "", description: "", status: "abierto", payer: "condominio", charged_amount: "" };
+  const emptyTicket = { title: "", description: "", status: "nuevo", unidad_id: "", priority: "media" };
   const [formTicket, setFormTicket] = useState(emptyTicket);
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); };
@@ -1096,10 +1097,10 @@ export default function CondominioDetalle() {
 
   // ── Registrar ticket ──────────────────────────────────────────────────────
   const guardarTicket = async () => {
-    if (!formTicket.title.trim()) { showToast("El título es requerido", false); return; }
+    if (!formTicket.title.trim() || !formTicket.unidad_id) { showToast("Título y unidad son requeridos", false); return; }
     setSaving(true);
     const { data:{ session } } = await supabase.auth.getSession();
-    const response = await fetch("/api/operaciones/maintenance-operational-events", {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${session?.access_token||""}`},body:JSON.stringify({action:"create_ticket",ticket:{maintenanceScope:"external_job",propertyId:null,workReference:`condominio:${id}`,condominiumId:id,propertyName:cond?.nombre||"",title:formTicket.title,description:formTicket.description,priority:"media",payer:formTicket.payer,chargedAmount:parseFloat(formTicket.charged_amount)||0}})});
+    const response = await fetch("/api/condominios/incidents", {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${session?.access_token||""}`},body:JSON.stringify({action:"create",condominioId:id,unidadId:formTicket.unidad_id,idempotencyKey:crypto.randomUUID(),title:formTicket.title,description:formTicket.description,categoryId:null,priority:formTicket.priority})});
     if(!response.ok){showToast("No se pudo crear el ticket",false);setSaving(false);return;}
     setSaving(false);
     setModalTicket(false);
@@ -1967,6 +1968,9 @@ export default function CondominioDetalle() {
         {/* ── TAB: MANTENIMIENTO ── */}
         {tab === "mantenimiento" && (
           <div>
+            <AdminIncidentPanel condominioId={id} units={unidades} />
+            <details style={{ marginTop: 24 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 700 }}>Tickets legacy</summary>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Tickets de mantenimiento</h2>
               <button onClick={() => { setFormTicket(emptyTicket); setModalTicket(true); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>+ Nuevo ticket</button>
@@ -1994,15 +1998,18 @@ export default function CondominioDetalle() {
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       {ticketsFiltrados.map(t => (
-                        <div key={t.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", borderLeft: `4px solid ${t.status === "resuelto" ? "#065f46" : t.status === "en_proceso" ? "#1e40af" : "#b91c3c"}` }}>
+                        <div key={t.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", borderLeft: `4px solid ${["terminado","cerrado"].includes(t.status) ? "#065f46" : t.status === "en_proceso" ? "#1e40af" : "#b91c3c"}` }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
                             <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>{t.title}</h4>
                             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                               <StatusBadge status={t.status} />
                               <select value={t.status} onChange={async e => { await supabase.from("maintenance_tickets").update({ status: e.target.value }).eq("id", t.id); loadData(); }} style={{ fontSize: 11, padding: "3px 6px", borderRadius: 6, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>
-                                <option value="abierto">Abierto</option>
+                                <option value="nuevo">Nuevo</option>
+                                <option value="revisado">Revisado</option>
                                 <option value="en_proceso">En proceso</option>
-                                <option value="resuelto">Resuelto</option>
+                                <option value="en_espera">En espera</option>
+                                <option value="terminado">Terminado</option>
+                                <option value="cerrado">Cerrado</option>
                               </select>
                             </div>
                           </div>
@@ -2019,6 +2026,7 @@ export default function CondominioDetalle() {
                 </>
               );
             })()}
+            </details>
           </div>
         )}
       </div>
@@ -2355,18 +2363,17 @@ export default function CondominioDetalle() {
             <textarea value={formTicket.description} onChange={e => setFormTicket({ ...formTicket, description: e.target.value })} rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box", resize: "vertical" }} />
           </Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Quién paga">
-              <Sel value={formTicket.payer} onChange={e => setFormTicket({ ...formTicket, payer: e.target.value })}>
-                <option value="condominio">Fondo del condominio</option>
-                <option value="propietario">Propietario específico</option>
-                <option value="emporio">Emporio</option>
+            <Field label="Unidad *">
+              <Sel value={formTicket.unidad_id} onChange={e => setFormTicket({ ...formTicket, unidad_id: e.target.value })}>
+                <option value="">Selecciona una unidad</option>
+                {unidades.map(unidad => <option key={unidad.id} value={unidad.id}>{unidad.numero}</option>)}
               </Sel>
             </Field>
-            <Field label="Costo estimado"><Input type="number" value={formTicket.charged_amount} onChange={e => setFormTicket({ ...formTicket, charged_amount: e.target.value })} placeholder="0" /></Field>
+            <Field label="Prioridad"><Sel value={formTicket.priority} onChange={e => setFormTicket({ ...formTicket, priority: e.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option><option value="urgente">Urgente</option></Sel></Field>
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={() => setModalTicket(false)} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={guardarTicket} disabled={saving || !formTicket.title.trim()} color={brand.red}>{saving ? "Guardando…" : "Crear ticket"}</Btn>
+            <Btn onClick={guardarTicket} disabled={saving || !formTicket.title.trim() || !formTicket.unidad_id} color={brand.red}>{saving ? "Guardando…" : "Crear incidencia"}</Btn>
           </div>
         </Modal>
       )}
