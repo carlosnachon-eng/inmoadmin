@@ -5,6 +5,7 @@ import { realShadowDevCloneEligibility, realShadowMessageEligibility } from "../
 import { REAL_SHADOW_AI_PROMPT_VERSION } from "../../../lib/shadow/ai/realPrompt";
 import { assertManualAuthorizationEnvironment, manualAuthorizationState } from "../../../lib/shadow/ai/manualAuthorization";
 import { resolvePersistedShadowMessageOrigin, sanitizedProviderMessageRef } from "../../../lib/shadow/outboundOrigin";
+import { buildShadowRunIdentityObservability } from "../../../lib/shadow/runIdentityObservability";
 
 const client = (key, token) => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, key, {
   global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
@@ -48,13 +49,11 @@ export default async function handler(req, res) {
       admin.from("shadow_context_matches").select("message_id,internal_entity_type,internal_id,display_label,match_method,confidence_rank,ambiguous,reason_code,context_href"),
       admin.from("shadow_human_evaluations").select("id,message_id,classification,expected_correction,notes,actor_profile_id,created_at").order("created_at", { ascending: false }),
       admin.from("shadow_operational_events").select("id,source,kind,event_type,aggregate_type,aggregate_id,ticket_id,quote_id,property_id,maintenance_scope,occurred_at,payload_safe,requires_human,created_at").order("occurred_at", { ascending: false }).limit(250),
-      admin.from("shadow_ai_runs").select("id,message_id,operational_event_id,input_kind,status,execution_state,current_round,max_rounds,evidence_ledger,model,prompt_version,schema_version,campaign_id,started_at,completed_at,state_updated_at,latency_ms,input_tokens,output_tokens,estimated_cost_usd,error_sanitized,attempt_number,retry_of_run_id,telemetry_json").order("created_at", { ascending: false }),
+      admin.from("shadow_ai_runs").select("id,message_id,operational_event_id,input_kind,status,execution_state,current_round,max_rounds,evidence_ledger,model,prompt_version,schema_version,campaign_id,started_at,completed_at,state_updated_at,latency_ms,input_tokens,output_tokens,estimated_cost_usd,error_sanitized,attempt_number,retry_of_run_id,telemetry_json,tool_results_json,created_at").order("created_at", { ascending: false }),
       admin.from("shadow_ai_decisions").select("id,ai_run_id,status,intent,urgency,proposed_action,proposed_response,confidence,requires_human,escalation_reason,decision_json,tool_summary,created_at").order("created_at", { ascending: false }),
       admin.from("shadow_context_query_audit").select("message_id,tool_name,result_count,succeeded,duration_ms,created_at").order("created_at", { ascending: false }),
       admin.from("shadow_ai_manual_authorizations").select("authorization_id,message_id,authorized_at,expires_at,consumed_at,revoked_at,purpose,model,prompt_version,ai_run_id,created_at").order("created_at", { ascending: false }),
-      process.env.SHADOW_CONVERSATION_ACTIONS_ENABLED === "true"
-        ? admin.from("shadow_conversation_actions").select("id,ai_run_id,message_id,turn_key,case_domain,interaction_direction,conversation_action,status,proposed_message,operational_follow_up,evidence_refs,confidence,requires_human,auto_send_eligible,blocked_reason,expires_at,superseded_at,created_at").order("created_at", { ascending: false }).limit(250)
-        : { data: [], error: null },
+      admin.from("shadow_conversation_actions").select("id,ai_run_id,message_id,turn_key,case_domain,interaction_direction,conversation_action,status,proposed_message,operational_follow_up,evidence_refs,confidence,requires_human,auto_send_eligible,blocked_reason,expires_at,superseded_at,created_at").order("created_at", { ascending: false }).limit(250),
       admin.from("shadow_admin_outbound_messages").select("id,canary_id,conversation_action_id,turn_key,channel_id,conversation_action,case_domain,status,provider_message_id,error_code,claimed_at,sent_at,completed_at,created_at").order("created_at", { ascending: false }).limit(50),
       admin.from("shadow_admin_outbound_canaries").select("id,channel_id,not_before,status,max_claims,claimed_count,allowed_action,claimed_conversation_id,claimed_action_id,claimed_outbound_id,claimed_at,closed_at,close_reason,sender_result_status,provider_message_id,result_recorded_at,created_at").order("created_at", { ascending: false }).limit(10),
     ]);
@@ -121,7 +120,9 @@ export default async function handler(req, res) {
       provider_message_ref: sanitizedProviderMessageRef(item.provider_message_id),
       provider_message_id: undefined,
     }));
-    return res.status(200).json({ ok: true, messages: enrichedMessages, operationalEvents: operationalEvents.data || [], conversations: conversations.data || [], matches: matches.data || [], evaluations: evaluations.data || [], aiRuns: aiRuns.data || [], aiDecisions: aiDecisions.data || [], toolAudit: toolAudit.data || [], conversationActions: conversationActions.data || [], adminOutboundMessages: outboundMessages, adminOutboundCanaries: canaries, metrics: counts, realManualEnabled, realManualDevTestEnabled, aiStatus: (aiRuns.data || []).some((x)=>x.status==="completed") ? "executed_qa" : "not_executed" });
+    const runIdentityObservability = buildShadowRunIdentityObservability({ runs: aiRuns.data || [], decisions: aiDecisions.data || [], actions: conversationActions.data || [] });
+    const sanitizedAiRuns = (aiRuns.data || []).map(({ tool_results_json: _toolResults, created_at: _createdAt, ...run }) => run);
+    return res.status(200).json({ ok: true, messages: enrichedMessages, operationalEvents: operationalEvents.data || [], conversations: conversations.data || [], matches: matches.data || [], evaluations: evaluations.data || [], aiRuns: sanitizedAiRuns, aiDecisions: aiDecisions.data || [], toolAudit: toolAudit.data || [], conversationActions: conversationActions.data || [], runIdentityObservability, adminOutboundMessages: outboundMessages, adminOutboundCanaries: canaries, metrics: counts, realManualEnabled, realManualDevTestEnabled, aiStatus: (aiRuns.data || []).some((x)=>x.status==="completed") ? "executed_qa" : "not_executed" });
   } catch (error) {
     console.error("[shadow-coordinator]", error?.message || error);
     return res.status(500).json({ ok: false, error: "No se pudo cargar Coordinador IA — Sombra." });
