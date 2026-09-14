@@ -29,6 +29,11 @@ test("receipt applications are N:M and cannot exceed receipt or charge",()=>{
   assert.match(migration,/jsonb_array_elements\(p_applications\)/);
 });
 
+test("receipt reconciliation uses PostgreSQL-compatible deterministic UUID selection",()=>{
+  assert.match(migration,/min\(t\.bank_account_id::text\)::uuid/);
+  assert.match(migration,/select id into default_fund_id from public\.condominium_funds/);
+});
+
 test("tenant isolation, RLS and private evidence fail closed",()=>{
   assert.match(migration,/force row level security/i);
   assert.match(migration,/CONDOMINIUM_LEDGER_INACTIVE/);

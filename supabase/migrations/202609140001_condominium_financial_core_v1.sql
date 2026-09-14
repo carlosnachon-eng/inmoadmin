@@ -412,7 +412,7 @@ begin
   perform public.condominium_financial_assert(p_condominio_id,true); perform public.condominium_financial_period_assert(p_condominio_id,p_period_id);
   select * into r from public.condominium_receipts where id=p_receipt_id and condominio_id=p_condominio_id for update;
   if not found or r.status not in ('applied','partially_applied','registered') then raise exception 'RECEIPT_NOT_CONFIRMABLE'; end if;
-  select sum(m.amount),min(t.bank_account_id) into matched,bank_id from public.condominium_bank_matches m join public.condominium_bank_transactions t on t.id=m.bank_transaction_id where m.receipt_id=r.id and m.status='active';
+  select sum(m.amount),min(t.bank_account_id::text)::uuid into matched,bank_id from public.condominium_bank_matches m join public.condominium_bank_transactions t on t.id=m.bank_transaction_id where m.receipt_id=r.id and m.status='active';
   if coalesce(matched,0)<>r.amount or (select count(distinct t.bank_account_id) from public.condominium_bank_matches m join public.condominium_bank_transactions t on t.id=m.bank_transaction_id where m.receipt_id=r.id and m.status='active')<>1 then raise exception 'RECEIPT_NOT_FULLY_BANK_MATCHED'; end if;
   insert into public.condominium_journal_entries(id,condominio_id,period_id,entry_date,event_type,source_type,source_id,idempotency_key) values(gen_random_uuid(),p_condominio_id,p_period_id,r.received_on,'receipt_reconciled','receipt',r.id,p_idempotency_key) returning * into e;
   for a in select x.*,c.unidad_id from public.condominium_payment_applications x join public.condominium_charges c on c.id=x.charge_id where x.receipt_id=r.id and x.status='active' order by x.id loop
@@ -421,7 +421,7 @@ begin
   end loop;
   select coalesce(sum(amount),0) into applied from public.condominium_payment_applications where receipt_id=r.id and status='active';
   if r.amount>applied then
-    select fund_id into default_fund_id from public.condominium_funds where condominio_id=p_condominio_id and active order by case when fund_type='operating' then 0 else 1 end,id limit 1;
+    select id into default_fund_id from public.condominium_funds where condominio_id=p_condominio_id and active order by case when fund_type='operating' then 0 else 1 end,id limit 1;
     if default_fund_id is null then raise exception 'DEFAULT_FUND_MISSING'; end if;
     n:=n+1; insert into public.condominium_journal_lines(condominio_id,entry_id,line_no,account_code,bank_account_id,fund_id,debit,credit) values(p_condominio_id,e.id,n,'BANK',bank_id,default_fund_id,r.amount-applied,0);
     n:=n+1; insert into public.condominium_journal_lines(condominio_id,entry_id,line_no,account_code,fund_id,debit,credit) values(p_condominio_id,e.id,n,'UNAPPLIED_CREDITS',default_fund_id,0,r.amount-applied);
