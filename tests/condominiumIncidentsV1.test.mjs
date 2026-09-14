@@ -13,6 +13,7 @@ const devFingerprint=read("supabase/dev/tests/202609100003_condominium_incidents
 const adminControls=read("supabase/migrations/202609100002_condominium_incidents_v1_admin_controls.sql");
 const adminControlsSql=read("supabase/dev/tests/202609100004_condominium_incidents_v1_admin_controls_tests.sql");
 const adminControlsPostcheck=read("supabase/production/tests/202609100002_condominium_incidents_v1_admin_controls_checks.sql");
+const rollbackCertification=read("supabase/dev/tests/202609100005_condominium_incidents_v1_rollback_certification.sql");
 
 test("Incidencias V1 evoluciona maintenance_tickets sin proveedor ni sistema paralelo",()=>{
  assert.match(migration,/alter table public\.maintenance_tickets/);
@@ -77,6 +78,11 @@ test("administración controla prioridad y responsable con validación server-si
 test("rollback aborta si existe actividad V1 y legacy permanece sin cambios",()=>{
  assert.match(rollback,/ROLLBACK_ABORTED_INCIDENT_V1_ACTIVITY_EXISTS/);
  assert.doesNotMatch(rollback,/delete from public\.maintenance_tickets/i);
+ assert.match(rollback,/drop policy if exists maintenance_hardened_select[\s\S]*drop column legacy_record/);
+ assert.match(rollback,/maintenance_tickets_status_check check\(status=any\(array\['nuevo','revisado','cotizado','aprobado','en_proceso','terminado','cerrado','cancelado'\]\)\)/);
+ assert.match(rollback,/no force row level security/);
+ assert.match(rollback,/maintenance_hardened_insert no es reemplazada por V1/);
+ for(const token of ["ROLLBACK_STATUS_CONSTRAINT_MISMATCH","ROLLBACK_RLS_MISMATCH","ROLLBACK_V1_COLUMN_RESIDUE","ROLLBACK_V1_TABLE_RESIDUE","ROLLBACK_V1_RPC_RESIDUE","ROLLBACK_V1_STORAGE_RESIDUE","ROLLBACK_GRANT_MISMATCH","ROLLBACK_POLICY_MISMATCH","CONDOMINIUM_INCIDENTS_V1_ROLLBACK_CERTIFIED"]) assert.match(rollbackCertification,new RegExp(token));
  assert.match(legacy,/maintenance_tickets/);
 });
 test("DEV cubre residente, administración, timeline, reapertura y aislamiento",()=>{
