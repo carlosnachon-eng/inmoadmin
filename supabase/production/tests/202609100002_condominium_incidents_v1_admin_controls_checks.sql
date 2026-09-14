@@ -13,4 +13,3 @@ do $$ begin
   end if;
 end $$;
 select 'CONDOMINIUM_INCIDENTS_V1_ADMIN_CONTROLS_POSTCHECK_OK' as result;
-
