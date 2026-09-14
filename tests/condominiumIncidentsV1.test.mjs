@@ -10,6 +10,9 @@ const admin=read("components/condominios/AdminIncidentPanel.js");
 const legacy=read("pages/mantenimiento.js");
 const sqlE2e=read("supabase/dev/tests/202609100002_condominium_incidents_v1_e2e.sql");
 const devFingerprint=read("supabase/dev/tests/202609100003_condominium_incidents_v1_fingerprint.sql");
+const adminControls=read("supabase/migrations/202609100002_condominium_incidents_v1_admin_controls.sql");
+const adminControlsSql=read("supabase/dev/tests/202609100004_condominium_incidents_v1_admin_controls_tests.sql");
+const adminControlsPostcheck=read("supabase/production/tests/202609100002_condominium_incidents_v1_admin_controls_checks.sql");
 
 test("Incidencias V1 evoluciona maintenance_tickets sin proveedor ni sistema paralelo",()=>{
  assert.match(migration,/alter table public\.maintenance_tickets/);
@@ -55,6 +58,21 @@ test("Storage es privado, firmado y limitado",()=>{
 test("residente y administración exponen sólo V1 previsto",()=>{
  for(const text of ["Reportar incidencia","Abiertas","Cerradas","JPEG, PNG o WebP"]) assert.match(resident,new RegExp(text));
  for(const text of ["Todas las unidades","Todos los estados","Visible al residente","Nota interna","Timeline"]) assert.match(admin,new RegExp(text));
+});
+test("administración controla prioridad y responsable con validación server-side",()=>{
+ for(const text of ["Prioridad","Responsable","Sin responsable"]) assert.match(admin,new RegExp(text));
+ assert.match(admin,/disabled=\{!canEdit\}/);
+ assert.match(endpoint,/action === "assignees"/);
+ assert.match(endpoint,/roles:role_id!inner\(es_externo\)/);
+ assert.match(endpoint,/partner_users/);
+ assert.match(endpoint,/p_responsible_change: responsibleChanged/);
+ for(const token of ["INVALID_PRIORITY","INVALID_RESPONSIBLE","Prioridad actualizada","Responsable actualizado","Responsable retirado"]) assert.match(adminControls,new RegExp(token));
+ assert.match(adminControls,/p\.active=true and r\.es_externo=false/);
+ assert.match(adminControls,/revoke execute on function public\.condominium_update_incident_v1[\s\S]*from authenticated/);
+ for(const token of ["ADMIN_CONTROLS_VALID_UPDATE_FAILED","ADMIN_CONTROLS_AUDIT_FAILED","ADMIN_CONTROLS_UNASSIGN_FAILED","INVALID_PRIORITY_ALLOWED","MISSING_RESPONSIBLE_ALLOWED","INACTIVE_RESPONSIBLE_ALLOWED","EXTERNAL_RESPONSIBLE_ALLOWED","PARTNER_RESPONSIBLE_ALLOWED","EXTERNAL_UPDATE_ALLOWED","CONDOMINIUM_INCIDENTS_V1_ADMIN_CONTROLS_TESTS_OK"]) assert.match(adminControlsSql,new RegExp(token));
+ assert.match(adminControlsSql,/rollback;/);
+ assert.match(adminControlsPostcheck,/CONDOMINIUM_INCIDENTS_V1_ADMIN_CONTROLS_POSTCHECK_OK/);
+ assert.match(adminControlsPostcheck,/INCIDENT_ADMIN_CONTROLS_LEGACY_RPC_EXPOSED/);
 });
 test("rollback aborta si existe actividad V1 y legacy permanece sin cambios",()=>{
  assert.match(rollback,/ROLLBACK_ABORTED_INCIDENT_V1_ACTIVITY_EXISTS/);

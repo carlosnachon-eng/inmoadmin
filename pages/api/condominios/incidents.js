@@ -47,16 +47,36 @@ async function uploadEvidence(serviceDb, scope, evidence) {
   return { evidenceId, path, sha256, mimeType: evidence.mimeType, sizeBytes: bytes.length };
 }
 
-async function list(req, res, userDb) {
+async function list(req, res, userDb, serviceDb, actor) {
   const condominioId = String(req.body?.condominioId || "");
   const unidadId = req.body?.unidadId || null;
   if (!isUuid(condominioId) || (unidadId && !isUuid(unidadId))) return reply(res, 400, "INVALID_SCOPE");
-  let query = userDb.from("maintenance_tickets").select("id,condominio_id,unidad_id,title,description,category,priority,status,incident_origin,resolution_summary,created_at,updated_at,first_attended_at,resolved_at,closed_at,reopened_at,legacy_record,maintenance_ticket_updates(id,visibility,body,from_status,to_status,created_at),maintenance_ticket_evidence(id,mime_type,size_bytes,created_at)").eq("condominio_id", condominioId).eq("legacy_record", false).order("created_at", { ascending: false });
+  let query = userDb.from("maintenance_tickets").select("id,condominio_id,unidad_id,title,description,category,priority,status,responsible_profile_id,incident_origin,resolution_summary,created_at,updated_at,first_attended_at,resolved_at,closed_at,reopened_at,legacy_record,maintenance_ticket_updates(id,visibility,body,from_status,to_status,created_at),maintenance_ticket_evidence(id,mime_type,size_bytes,created_at)").eq("condominio_id", condominioId).eq("legacy_record", false).order("created_at", { ascending: false });
   if (unidadId) query = query.eq("unidad_id", unidadId);
   const { data, error } = await query;
   if (error) return reply(res, 403, "OPERATION_NOT_ALLOWED");
   const { data: categories } = await userDb.from("maintenance_categories").select("id,code,name,sort_order").eq("condominio_id", condominioId).eq("active", true).order("sort_order");
-  return reply(res, 200, "INCIDENTS_LOADED", { incidents: data || [], categories: categories || [] });
+  const canEdit = await internalPermission(serviceDb, actor, true);
+  return reply(res, 200, "INCIDENTS_LOADED", { incidents: data || [], categories: categories || [], capabilities: { canEdit } });
+}
+
+async function assignees(res, serviceDb, actor) {
+  if (!await internalPermission(serviceDb, actor, true)) return reply(res, 403, "OPERATION_NOT_ALLOWED");
+  const { data, error } = await serviceDb
+    .from("profiles")
+    .select("id,full_name,roles:role_id!inner(es_externo)")
+    .eq("active", true)
+    .eq("roles.es_externo", false)
+    .order("full_name");
+  if (error) return reply(res, 503, "ASSIGNEES_UNAVAILABLE");
+  const profileIds = (data || []).map((profile) => profile.id);
+  const { data: partners } = profileIds.length
+    ? await serviceDb.from("partner_users").select("auth_user_id").in("auth_user_id", profileIds).eq("active", true)
+    : { data: [] };
+  const partnerIds = new Set((partners || []).map((partner) => partner.auth_user_id));
+  return reply(res, 200, "ASSIGNEES_LOADED", {
+    assignees: (data || []).filter((profile) => !partnerIds.has(profile.id)).map((profile) => ({ id: profile.id, name: profile.full_name || "Personal interno" })),
+  });
 }
 
 async function create(req, res, userDb, serviceDb, actor) {
@@ -80,9 +100,12 @@ async function create(req, res, userDb, serviceDb, actor) {
 async function update(req, res, userDb, serviceDb, actor) {
   if (!await internalPermission(serviceDb, actor, true)) return reply(res, 403, "OPERATION_NOT_ALLOWED");
   if (![req.body.ticketId, req.body.condominioId].every(isUuid)) return reply(res, 400, "INVALID_SCOPE");
-  const { data, error } = await userDb.rpc("condominium_update_incident_v1", {
+  const responsibleChanged = Object.prototype.hasOwnProperty.call(req.body, "responsibleProfileId");
+  const responsibleProfileId = req.body.responsibleProfileId || null;
+  if (responsibleProfileId && !isUuid(responsibleProfileId)) return reply(res, 400, "INVALID_RESPONSIBLE");
+  const { data, error } = await userDb.rpc("condominium_admin_update_incident_v1", {
     p_ticket_id: req.body.ticketId, p_condominio_id: req.body.condominioId, p_status: req.body.status || null,
-    p_priority: req.body.priority || null, p_responsible_profile_id: req.body.responsibleProfileId || null,
+    p_priority: req.body.priority || null, p_responsible_profile_id: responsibleProfileId, p_responsible_change: responsibleChanged,
     p_message: String(req.body.message || "").trim() || null, p_visibility: req.body.visibility || "internal",
     p_resolution_summary: String(req.body.resolutionSummary || "").trim() || null,
   });
@@ -107,7 +130,8 @@ export default async function handler(req, res) {
   const actor = await identity(req, serviceDb);
   if (actor.code) return reply(res, actor.status, actor.code);
   try {
-    if (req.body?.action === "list") return await list(req, res, userDb);
+    if (req.body?.action === "list") return await list(req, res, userDb, serviceDb, actor);
+    if (req.body?.action === "assignees") return await assignees(res, serviceDb, actor);
     if (req.body?.action === "create") return await create(req, res, userDb, serviceDb, actor);
     if (req.body?.action === "update") return await update(req, res, userDb, serviceDb, actor);
     if (req.body?.action === "evidence") return await evidenceUrl(req, res, userDb, serviceDb);
