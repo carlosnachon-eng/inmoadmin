@@ -2,7 +2,7 @@ begin;
 do $$
 declare
   operator_id uuid:=gen_random_uuid(); editor_id uuid:=gen_random_uuid(); inactive_id uuid:=gen_random_uuid(); external_id uuid:=gen_random_uuid(); partner_id uuid:=gen_random_uuid();
-  condo_id uuid:=gen_random_uuid(); unit_id uuid:=gen_random_uuid(); qa_ticket_id uuid:=gen_random_uuid(); category_id uuid:=gen_random_uuid(); updated public.maintenance_tickets;
+  condo_id uuid:=gen_random_uuid(); unit_id uuid:=gen_random_uuid(); qa_ticket_id uuid:=gen_random_uuid(); category_id uuid:=gen_random_uuid(); partner_agency_id uuid:=gen_random_uuid(); updated public.maintenance_tickets;
 begin
   insert into public.roles(id,nombre,descripcion,es_externo) values('propietario','Propietario QA','Externo QA',true) on conflict(id) do nothing;
   insert into auth.users(instance_id,id,aud,role,email,raw_app_meta_data,raw_user_meta_data,created_at,updated_at) values
@@ -13,7 +13,8 @@ begin
     ('00000000-0000-0000-0000-000000000000',partner_id,'authenticated','authenticated','incident.partner.qa@example.invalid','{}','{}',now(),now());
   update public.profiles set role_id='admin',active=true where id in(operator_id,editor_id,partner_id);
   update public.profiles set role_id='admin',active=false where id=inactive_id;
-  insert into public.partner_users(auth_user_id,active) values(partner_id,true);
+  insert into public.partner_agencies(id,nombre_comercial) values(partner_agency_id,'QA INCIDENT PARTNER');
+  insert into public.partner_users(auth_user_id,partner_agency_id,active) values(partner_id,partner_agency_id,true);
   insert into public.condominios(id,nombre,activo) values(condo_id,'QA INCIDENT ADMIN CONTROLS',true);
   insert into public.unidades_condominio(id,condominio_id,numero,activo,propietario_nombre,residente_es_propietario) values(unit_id,condo_id,'QA-ADMIN',true,'QA',true);
   insert into public.maintenance_categories(id,condominio_id,code,name,created_by) values(category_id,condo_id,'general','General QA',operator_id);

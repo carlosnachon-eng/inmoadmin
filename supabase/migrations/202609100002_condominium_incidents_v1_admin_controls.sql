@@ -47,7 +47,7 @@ begin
     updated_at=now()
   where id=p_ticket_id returning * into t;
 
-  if p_status is distinct from old_status or nullif(btrim(p_message),'') is not null then
+  if (p_status is not null and p_status is distinct from old_status) or nullif(btrim(p_message),'') is not null then
     insert into public.maintenance_ticket_updates(ticket_id,condominio_id,actor_profile_id,visibility,body,from_status,to_status)
     values(t.id,t.condominio_id,auth.uid(),p_visibility,nullif(btrim(p_message),''),old_status,p_status);
   end if;
