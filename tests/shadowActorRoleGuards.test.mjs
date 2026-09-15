@@ -7,6 +7,9 @@ import {
   confirmedIdentityRoles,
   plannableShadowToolCalls,
 } from "../lib/shadow/ai/actorRoleGuards.js";
+import { buildShadowOperationalResolution } from "../lib/shadow/ai/operationalResolution.js";
+import { buildConversationAction } from "../lib/shadow/ai/conversationAction.js";
+import { administrativeWorkR1SourceEligible } from "../lib/shadow/ai/administrativeWorkR1.js";
 
 const decision = (summary, extra = {}) => ({
   intent:"pago_renta", secondaryIntents:[], urgency:"normal", summary,
@@ -33,6 +36,37 @@ test("rol owner confirmed es constraint duro contra reclasificación tenant",()=
   assert.deepEqual(confirmedIdentityRoles(identity(["owner"])),["owner"]);
   assert.equal(result.responseBlocked,true);
   assert.ok(result.safetyFlags.includes("canonical_identity_role_contradiction_blocked"));
+});
+
+test("Jaqueline owner: bloqueo actor/rol detiene 3B sin request_document",()=>{
+  const propertyId="32000000-0000-4000-8000-000000000001";
+  const identityId="32000000-0000-4000-8000-000000000002";
+  const raw=decision("La inquilina está pendiente de recibir la renta.",{
+    proposedAction:"Pedir comprobante a la inquilina.",
+    conversationalResponseParts:{acknowledgement:null,verifiedFactReferences:[],clarificationQuestion:"¿Me comparte el comprobante?",escalationMessage:null},
+    informationNeeded:["payment_document"],
+  });
+  const guarded=applyActorRoleGuards(raw,envelope(),identity(["owner"]));
+  const operationalEnvelope={direction:"inbound",occurredAt:"2026-08-31T16:00:00Z",sanitizedText:"Sí gracias, estoy pendiente",providerMetadata:{channelId:"544519",propertyId,attachmentContext:{present:false,interpreted:false,items:[]}}};
+  const tools=[{name:"resolve_contact_identity",ok:true,result:[
+    {entityType:"contact_identity",internalId:identityId,resolved:true,status:"confirmed",roles:["owner"]},
+    {entityType:"property",internalId:propertyId},
+  ]}];
+  const resolution=buildShadowOperationalResolution({decision:guarded,envelope:operationalEnvelope,tools});
+  const action=buildConversationAction({resolution,decision:guarded,turn:{settled:true}});
+  const gate=administrativeWorkR1SourceEligible({
+    envelope:operationalEnvelope,resolution,conversationAction:action,
+    context:{clientIdentityId:identityId,propertyId},
+    env:{SHADOW_ADMIN_WORK_R1_ENABLED:"true",SHADOW_ADMIN_WORK_R1_NOT_BEFORE:"2026-08-31T15:00:00Z"},
+  });
+  assert.deepEqual(resolution.identity_context.roles,["owner"]);
+  assert.equal(guarded.responseBlocked,true);
+  assert.equal(resolution.human_reason,"canonical_identity_role_contradiction");
+  assert.equal(action.conversation_action,"no_message");
+  assert.equal(action.proposed_message,"");
+  assert.equal(action.auto_send_eligible,false);
+  assert.notEqual(action.conversation_action,"request_document");
+  assert.equal(gate.eligible,false);
 });
 
 test("rol tenant confirmed es constraint duro contra reclasificación owner",()=>{
