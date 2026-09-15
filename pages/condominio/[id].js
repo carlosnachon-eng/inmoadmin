@@ -15,6 +15,7 @@ import {
 } from "../../lib/condominios/portalAccess.mjs";
 import { buildHistoricalPortfolio } from "../../lib/condominios/historicalPortfolio.mjs";
 import AdminIncidentPanel from "../../components/condominios/AdminIncidentPanel";
+import FinancialAdminPanel from "../../components/condominios/FinancialAdminPanel";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -1243,6 +1244,7 @@ export default function CondominioDetalle() {
     ...(hasHistoricalPortfolio ? [{ id: "cartera", label: "🧾 Cartera" }] : operationControls.lifecycleStatus !== "legacy_uncontrolled" ? [{ id: "cartera", label: "🧾 Cartera" }] : []),
     { id: "gastos",         label: "📤 Gastos" },
     { id: "estado_cuenta",  label: "📊 Estado de cuenta" },
+    { id: "finanzas",       label: "🏦 Finanzas" },
     { id: "mantenimiento",  label: "🔧 Mantenimiento" },
   ];
 
@@ -1288,6 +1290,8 @@ export default function CondominioDetalle() {
       </div>
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
+
+        {tab === "finanzas" && <FinancialAdminPanel condominioId={id} />}
 
         {/* ── TAB: UNIDADES ── */}
         {tab === "unidades" && (

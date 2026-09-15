@@ -7,7 +7,7 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const reply = (res,status,code,extra={}) => res.status(status).json({ok:status>=200&&status<300,code,...extra});
 
-async function clients(req) {
+async function clients(req, requireEdit = true) {
   const token=String(req.headers.authorization||"").replace(/^Bearer\s+/i,"").trim();
   if(!token) return {error:"SESSION_REQUIRED",status:401};
   const opts={auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}};
@@ -21,9 +21,54 @@ async function clients(req) {
   if(profile.role_id!=="admin"){
     const {data:permission,error:permissionError}=await serviceDb.from("permisos_modulo").select("puede_ver,puede_editar").eq("role_id",profile.role_id).eq("modulo","condominios").maybeSingle();
     if(permissionError) return {error:"PERMISSION_CHECK_FAILED",status:503};
-    if(permission?.puede_ver!==true||permission?.puede_editar!==true) return {error:"OPERATION_NOT_ALLOWED",status:403};
+    if(permission?.puede_ver!==true||(requireEdit&&permission?.puede_editar!==true)) return {error:"OPERATION_NOT_ALLOWED",status:403};
   }
   return {operatorDb,serviceDb,userId:data.user.id};
+}
+
+const maskReference = value => {
+  const text=String(value||"").trim();
+  if(!text) return null;
+  return `••••${text.slice(-4)}`;
+};
+
+async function financialSnapshot(ctx,condominioId,evidenceReceiptId){
+  if(!/^[0-9a-f-]{36}$/i.test(String(condominioId||""))) return {error:"INVALID_CONDOMINIUM",status:400};
+  const {data:control,error:controlError}=await ctx.serviceDb.from("condominium_financial_controls").select("ledger_enabled").eq("condominio_id",condominioId).maybeSingle();
+  if(controlError) return {error:"FINANCIAL_READ_FAILED",status:503};
+  if(evidenceReceiptId){
+    const {data:receipt,error}=await ctx.serviceDb.from("condominium_receipts").select("id,evidence_path").eq("id",evidenceReceiptId).eq("condominio_id",condominioId).maybeSingle();
+    if(error||!receipt?.evidence_path) return {error:"EVIDENCE_NOT_FOUND",status:404};
+    const {data,error:signError}=await ctx.serviceDb.storage.from(FINANCIAL_EVIDENCE_BUCKET).createSignedUrl(receipt.evidence_path,60);
+    if(signError||!data?.signedUrl) return {error:"EVIDENCE_UNAVAILABLE",status:503};
+    return {evidence:{signedUrl:data.signedUrl,expiresIn:60}};
+  }
+  if(control?.ledger_enabled!==true) return {snapshot:{ledgerEnabled:false}};
+  const specs=[
+    ["funds","condominium_funds","id,code,name,fund_type,currency,active,created_at"],
+    ["bankAccounts","condominium_bank_accounts","id,code,display_name,institution_name,currency,active,opened_at,closed_at"],
+    ["concepts","condominium_charge_concepts","id,fund_id,code,name,concept_type,active"],
+    ["periods","condominium_financial_periods","id,period_code,starts_on,ends_on,status"],
+    ["charges","condominium_charges","id,unidad_id,concept_id,fund_id,period_id,amount,due_date,description,status,created_at"],
+    ["transactions","condominium_bank_transactions","id,bank_account_id,booked_on,value_on,direction,amount,bank_reference,description,status,identified_unidad_id,created_at"],
+    ["receipts","condominium_receipts","id,unidad_id,received_on,amount,currency,payer_reference,evidence_path,status,created_at"],
+    ["applications","condominium_payment_applications","id,receipt_id,charge_id,fund_id,amount,status,created_at"],
+    ["matches","condominium_bank_matches","id,bank_transaction_id,receipt_id,amount,status,matched_at"],
+    ["reconciliations","condominium_reconciliations","id,bank_account_id,period_id,statement_opening_balance,statement_closing_balance,ledger_closing_balance,difference,status,confirmed_at,created_at"],
+    ["ledgerBalances","condominium_financial_ledger_balances","bank_account_id,fund_id,unidad_id,account_code,balance"],
+    ["units","unidades_condominio","id,numero"],
+  ];
+  const results=await Promise.all(specs.map(async([key,table,select])=>{
+    const query=ctx.serviceDb.from(table).select(select).eq("condominio_id",condominioId);
+    const {data,error}=await query;
+    return {key,data,error};
+  }));
+  if(results.some(result=>result.error)) return {error:"FINANCIAL_READ_FAILED",status:503};
+  const snapshot={ledgerEnabled:true};
+  results.forEach(({key,data})=>{snapshot[key]=data||[];});
+  snapshot.transactions=snapshot.transactions.map(row=>({...row,bank_reference:maskReference(row.bank_reference)}));
+  snapshot.receipts=snapshot.receipts.map(row=>({...row,payer_reference:maskReference(row.payer_reference),has_evidence:Boolean(row.evidence_path),evidence_path:undefined}));
+  return {snapshot};
 }
 
 const RPC = Object.freeze({
@@ -37,9 +82,14 @@ const RPC = Object.freeze({
 });
 
 export default async function handler(req,res){
-  if(req.method!=="POST") return reply(res,405,"METHOD_NOT_ALLOWED");
+  if(!["GET","POST"].includes(req.method)) return reply(res,405,"METHOD_NOT_ALLOWED");
   if(!url||!anonKey||!serviceKey) return reply(res,503,"SERVICE_UNAVAILABLE");
-  const ctx=await clients(req); if(ctx.error) return reply(res,ctx.status,ctx.error);
+  const ctx=await clients(req,req.method==="POST"); if(ctx.error) return reply(res,ctx.status,ctx.error);
+  if(req.method==="GET"){
+    const result=await financialSnapshot(ctx,req.query.condominioId,req.query.evidenceReceiptId);
+    if(result.error)return reply(res,result.status,result.error);
+    return reply(res,200,"FINANCIAL_SNAPSHOT",result);
+  }
   const action=String(req.body?.action||""); const invalid=validateFinancialAction(action,req.body); if(invalid) return reply(res,400,invalid);
   try{
     if(action==="create-receipt"){
