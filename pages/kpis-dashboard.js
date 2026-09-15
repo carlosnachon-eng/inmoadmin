@@ -144,10 +144,10 @@ export default function KPIsDashboard() {
       supabase.rpc('get_sales_kpis_by_scope', { p_start: inicio, p_end: fin, p_plaza_code: null, p_team_code: selectedTeam }),
     ])
 
-    // El dashboard reconcilia en vivo los días que ya tienen citas en el
-    // módulo Clientes. Así no depende de que kpis_diarios haya sido
-    // actualizado previamente y también corrige registros históricos
-    // que quedaron con estados viejos.
+    // El dashboard usa los eventos reales como fuente de verdad para citas.
+    // kpis_diarios puede traer filas históricas desfasadas por zona horaria;
+    // esas filas no deben volver a sumar si ya no existe una cita real para
+    // ese asesor/día.
     const citasPorAsesorDia = new Map()
     const memberById = new Map(members.map(row => [row.advisor_profile_id, row]))
     ;(eventData || []).filter(event => event.event_type === 'CITA').forEach(cita => {
@@ -170,13 +170,14 @@ export default function KPIsDashboard() {
       citasPorAsesorDia.set(key, actual)
     })
 
-    const kpisReconciliados = (kpisData || []).filter(registro =>
+    const kpisReconciliados = []
+    ;(kpisData || []).filter(registro =>
       memberIds.includes(registro.advisor_profile_id) || memberEmails.has(registro.email)
-    ).map(registro => {
+    ).forEach(registro => {
       const calculado = citasPorAsesorDia.get(`${registro.email}|${registro.fecha}`)
-      if (!calculado) return registro
+      if (!calculado) return
       citasPorAsesorDia.delete(`${registro.email}|${registro.fecha}`)
-      return { ...registro, ...calculado }
+      kpisReconciliados.push({ ...registro, ...calculado })
     })
     citasPorAsesorDia.forEach((calculado, key) => {
       kpisReconciliados.push({ id: `citas-${key}`, ...calculado })

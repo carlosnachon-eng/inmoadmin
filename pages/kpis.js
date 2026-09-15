@@ -52,6 +52,19 @@ const calcularMetaCitas = (anio, mes) => {
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 0 })
 
+const fechaMexico = fechaHora => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Mexico_City',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date(fechaHora))
+
+const sumarDias = (fecha, dias) => {
+  const d = new Date(`${fecha}T12:00:00-06:00`)
+  d.setDate(d.getDate() + dias)
+  return fechaMexico(d)
+}
+
 export default function KPIs() {
   const [session, setSession] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
@@ -145,16 +158,15 @@ export default function KPIs() {
   // tabla de siempre, sin que haya que tocar esa parte del sistema.
   const calcularYGuardarKpisDelDia = async () => {
     if (!perfilDb?.id) return;
-    const inicioDia = `${hoy}T00:00:00`;
-    const finDia = `${hoy}T23:59:59`;
+    const diaSiguiente = sumarDias(hoy, 1);
     const { data: citasHoy } = await supabase
       .from('citas')
-      .select('estado')
+      .select('estado, fecha_hora')
       .eq('asesor_id', perfilDb.id)
-      .gte('fecha_hora', inicioDia)
-      .lte('fecha_hora', finDia);
+      .gte('fecha_hora', `${hoy}T00:00:00-06:00`)
+      .lt('fecha_hora', `${diaSiguiente}T00:00:00-06:00`);
 
-    const lista = citasHoy || [];
+    const lista = (citasHoy || []).filter(c => fechaMexico(c.fecha_hora) === hoy);
     const calculado = {
       citas_agendadas: lista.length,
       citas_efectivas: lista.filter(c => c.estado === 'efectiva' || c.estado === 'calificada').length,
