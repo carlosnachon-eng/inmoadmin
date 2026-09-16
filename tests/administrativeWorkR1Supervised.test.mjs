@@ -12,7 +12,7 @@ const id = (n) => `10000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const env = { SHADOW_ADMIN_WORK_R1_ENABLED: "true", SHADOW_ADMIN_WORK_R1_NOT_BEFORE: "2026-08-28T20:00:00.000Z" };
 const envelope = { direction: "inbound", occurredAt: "2026-08-28T20:00:01.000Z", providerMetadata: { channelId: "544519", attachmentContext: { items: [] } } };
 const context = { clientIdentityId: id(1), contractId: id(2), propertyId: id(3) };
-const resolution = { case_domain: "maintenance", identity_context: { status: "trusted_link_available" }, interaction_direction: "inbound_customer_action", conflict_detected: false, technical_error: false, requires_human: false };
+const resolution = { case_domain: "maintenance", case_status: "existing_open_case", identity_context: { status: "trusted_link_available" }, interaction_direction: "inbound_customer_action", conflict_detected: false, technical_error: false, requires_human: false, missing_information: [], action_confidence: 0.95, domain_evidence: { maintenance: true }, context_contradiction: false };
 const run = { id: id(4) }; const message = { id: id(5), external_message_id: "opaque-message" };
 const migration = fs.readFileSync(new URL("../supabase/migrations/202608280006_administrative_work_r1_supervised_window.sql", import.meta.url), "utf8");
 const stateMachine = fs.readFileSync(new URL("../lib/shadow/ai/stateMachine.js", import.meta.url), "utf8");

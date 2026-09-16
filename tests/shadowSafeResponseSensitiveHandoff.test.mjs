@@ -4,6 +4,7 @@ import { buildShadowOperationalResolution } from "../lib/shadow/ai/operationalRe
 import { buildConversationAction } from "../lib/shadow/ai/conversationAction.js";
 import { classifyInteractionDirection } from "../lib/shadow/ai/interactionDirection.js";
 import { plannableShadowToolCalls } from "../lib/shadow/ai/actorRoleGuards.js";
+import { administrativeWorkR1SourceEligible } from "../lib/shadow/ai/administrativeWorkR1.js";
 import { validateAndSanitizeMediaInterpretation } from "../lib/shadow/media/interpretation.js";
 
 const unresolvedIdentity = [{
@@ -35,6 +36,7 @@ test("regresión sanitizada Terrania: respuesta segura y handoff sensible coexis
   const resolution = buildShadowOperationalResolution({ decision, envelope, tools: unresolvedIdentity });
   const action = buildConversationAction({ resolution, decision, turn: { settled: true }, now: Date.parse("2026-08-31T20:45:00Z") });
   assert.equal(resolution.requires_human, true);
+  assert.equal(resolution.sensitive_maintenance_case, true);
   assert.equal(resolution.operational_follow_up.type, "sensitive_internal_handoff");
   assert.equal(resolution.operational_follow_up.executable, false);
   assert.equal(action.conversation_action, "acknowledge_received_information");
@@ -44,6 +46,47 @@ test("regresión sanitizada Terrania: respuesta segura y handoff sensible coexis
   assert.match(action.proposed_message, /fuga.*inundación.*pieza hidráulica/i);
   assert.match(action.proposed_message, /¿el flujo de agua ya quedó contenido\?/i);
   assert.doesNotMatch(action.proposed_message, /reembolso|quién paga|responsabilidad|autorizad[oa]|pago registrado/i);
+});
+
+test("Terrania confirmed conserva respuesta segura pero bloquea toda escritura R1", () => {
+  const ids = {
+    identity: "31000000-0000-4000-8000-000000000001",
+    contract: "31000000-0000-4000-8000-000000000002",
+    property: "31000000-0000-4000-8000-000000000003",
+    ticket: "31000000-0000-4000-8000-000000000004",
+  };
+  const envelope = {
+    direction: "inbound", occurredAt: "2026-08-31T20:45:00Z",
+    sanitizedText: "Encontré una fuga y tuve que cambiar la pieza. Adjunto ticket de compra por $909.",
+    providerMetadata: {
+      channelId: "544519", contractId: ids.contract, propertyId: ids.property,
+      attachmentContext: { present: true, interpreted: true, items: [{ interpretation: receipt }] },
+    },
+  };
+  const tools = [
+    { name: "resolve_contact_identity", ok: true, result: [
+      { entityType: "contact_identity", internalId: ids.identity, resolved: true, status: "confirmed", roles: ["tenant"] },
+      { entityType: "contract", internalId: ids.contract, propertyId: ids.property, status: "activo", active: true },
+      { entityType: "property", internalId: ids.property },
+    ] },
+    { name: "get_maintenance_ticket_summary", ok: true, result: [{ entityType: "maintenance_ticket", internalId: ids.ticket, status: "abierto" }] },
+  ];
+  const decision = { intent: "mantenimiento", confidence: 0.96, resolvedEntities: [] };
+  const resolution = buildShadowOperationalResolution({ decision, envelope, tools });
+  const action = buildConversationAction({ resolution, decision, turn: { settled: true } });
+  const gate = administrativeWorkR1SourceEligible({
+    envelope, resolution, conversationAction: action,
+    context: { clientIdentityId: ids.identity, contractId: ids.contract, propertyId: ids.property },
+    env: { SHADOW_ADMIN_WORK_R1_ENABLED: "true", SHADOW_ADMIN_WORK_R1_NOT_BEFORE: "2026-08-31T20:00:00Z" },
+  });
+  assert.equal(resolution.case_domain, "maintenance");
+  assert.equal(resolution.requires_human, true);
+  assert.equal(resolution.human_reason, "sensitive_maintenance_cost_or_responsibility");
+  assert.equal(action.conversation_action, "acknowledge_received_information");
+  assert.equal(action.auto_send_eligible, true);
+  assert.match(action.proposed_message, /aspecto económico.*revisión/i);
+  assert.doesNotMatch(action.proposed_message, /acept|reembols|corresponde pagar|autoriz/i);
+  assert.deepEqual(gate, { eligible: false, reason: "requires_human" });
 });
 
 test("tools sin argumentos válidos se descartan antes de planificar una ronda", () => {
