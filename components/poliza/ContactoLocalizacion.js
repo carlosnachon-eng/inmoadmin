@@ -1,23 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { buildContactLocation, hasAnyValue } from '../../lib/poliza/contactoLocalizacion'
+import { loadContactLocation, hasAnyValue } from '../../lib/poliza/contactoLocalizacion'
 import { C, st } from '../../lib/polizaUtils'
-
-const SOLICITUD_FIELDS = [
-  'id', 'telefono', 'correo', 'domicilio_actual', 'empresa_labora', 'razon_social',
-  'giro_comercial', 'giro_empresa_labora', 'giro_empresa', 'ocupacion',
-  'domicilio_trabajo', 'telefono_trabajo', 'nombre_jefe', 'puesto_jefe',
-  'telefono_email_jefe', 'nombre_conyuge', 'telefono_conyuge',
-  'nombre_arrendador_actual', 'telefono_arrendador_actual',
-  'ref_fam1_nombre', 'ref_fam1_parentesco', 'ref_fam1_telefono',
-  'ref_fam2_nombre', 'ref_fam2_parentesco', 'ref_fam2_telefono',
-  'ref_fam3_nombre', 'ref_fam3_parentesco', 'ref_fam3_telefono',
-  'ref_per1_nombre', 'ref_per1_relacion', 'ref_per1_telefono',
-  'ref_per2_nombre', 'ref_per2_relacion', 'ref_per2_telefono',
-  'ref_per3_nombre', 'ref_per3_relacion', 'ref_per3_telefono',
-  'nombre_aval', 'telefono_aval', 'domicilio_aval', 'ocupacion_aval',
-  'doc_identificacion_aval', 'doc_comprobante_aval',
-].join(', ')
 
 const Value = ({ label, value }) => value ? (
   <div style={{ minWidth: 0 }}>
@@ -47,45 +31,12 @@ export default function ContactoLocalizacion({ expedienteId, solicitudId }) {
 
   const load = async () => {
     if (data || loading) return
-    if (!solicitudId) {
-      setData({ unavailable: true })
-      return
-    }
     setLoading(true)
     setError('')
     try {
-      const { data: solicitud, error: solicitudError } = await supabase
-        .from('solicitudes_inquilino')
-        .select(SOLICITUD_FIELDS)
-        .eq('id', solicitudId)
-        .maybeSingle()
-      if (solicitudError) throw solicitudError
-      if (!solicitud) {
-        setData({ unavailable: true })
-        return
-      }
-
-      const { data: operations, error: operationsError } = await supabase
-        .from('partner_operations')
-        .select('id')
-        .or(`solicitud_inquilino_id.eq.${solicitudId},poliza_expediente_id.eq.${expedienteId}`)
-      if (operationsError) throw operationsError
-
-      let participants = []
-      const operationIds = (operations || []).map(operation => operation.id)
-      if (operationIds.length) {
-        const { data: participantRows, error: participantError } = await supabase
-          .from('partner_participants')
-          .select('id, nombre, email, telefono, data_json, docs_json')
-          .in('partner_operation_id', operationIds)
-          .eq('role', 'obligado_solidario')
-          .neq('status', 'cancelado')
-        if (participantError) throw participantError
-        participants = participantRows || []
-      }
-      setData({ solicitud, location: buildContactLocation(solicitud, participants) })
-    } catch (loadError) {
-      setError(loadError.message || 'No fue posible consultar la información vinculada.')
+      setData(await loadContactLocation(supabase, { expedienteId, solicitudId }))
+    } catch {
+      setError('No fue posible consultar la información vinculada. Las demás funciones del expediente siguen disponibles.')
     } finally {
       setLoading(false)
     }
@@ -113,15 +64,14 @@ export default function ContactoLocalizacion({ expedienteId, solicitudId }) {
         <div style={{ borderTop: '1px solid #fecaca', padding: 16 }}>
           {loading && <p style={{ margin: 0, color: C.muted, fontSize: 13 }}>Consultando vínculos por ID...</p>}
           {error && <p role="alert" style={{ margin: 0, color: C.redText, fontSize: 13 }}>No se pudo cargar: {error}</p>}
-          {data?.unavailable && (
-            <div>
-              <p style={{ margin: 0, color: C.text, fontSize: 13, fontWeight: 700 }}>Información no disponible / vínculo pendiente.</p>
-              <p style={{ margin: '5px 0 0', color: C.muted, fontSize: 11 }}>Este expediente no tiene una solicitud original vinculada por ID. No se realizaron búsquedas por nombre.</p>
+          {data?.pending?.length > 0 && (
+            <div role="status" style={{ marginBottom: 12 }}>
+              {data.pending.map(message => <p key={message} style={{ margin: '5px 0', color: C.muted, fontSize: 12 }}>{message}</p>)}
             </div>
           )}
           {location && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))', gap: 10 }}>
                 {hasAnyValue(location.principal) && (
                   <Group title="Contacto declarado">
                     <div style={{ display: 'grid', gap: 9 }}>
@@ -167,7 +117,7 @@ export default function ContactoLocalizacion({ expedienteId, solicitudId }) {
               {location.referencias.length > 0 && (
                 <div style={{ marginTop: 10 }}>
                   <Group title={`Referencias (${location.referencias.length})`}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))', gap: 8 }}>
                       {location.referencias.map(reference => (
                         <div key={reference.id} style={{ background: '#f9fafb', borderRadius: 7, padding: 9 }}>
                           <p style={{ margin: 0, color: C.text, fontSize: 12, fontWeight: 800 }}>{reference.nombre || 'Nombre no capturado'}</p>
@@ -182,10 +132,11 @@ export default function ContactoLocalizacion({ expedienteId, solicitudId }) {
               )}
 
               <div style={{ marginTop: 10 }}>
-                <Group title="Obligado solidario">
+                <Group title="Aval / participantes vinculados">
                   {location.obligados.length ? location.obligados.map(obligado => (
                     <div key={obligado.id} style={{ padding: '8px 0', borderBottom: `1px solid ${C.border}` }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                      <p style={{ margin: '0 0 8px', color: C.text, fontSize: 12, fontWeight: 700 }}>{obligado.denominacion}</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 8 }}>
                         <Value label="Nombre" value={obligado.nombre} />
                         <Value label="Teléfono" value={obligado.telefono} />
                         <Value label="Correo" value={obligado.correo} />
@@ -194,7 +145,6 @@ export default function ContactoLocalizacion({ expedienteId, solicitudId }) {
                         <Value label="Relación" value={obligado.relacion} />
                       </div>
                       <Source>{obligado.fuente}</Source>
-                      {obligado.tieneDocumentos && <span style={{ marginLeft: 6, color: C.greenText, fontSize: 10, fontWeight: 700 }}>Documentos relacionados disponibles</span>}
                     </div>
                   )) : <p style={{ margin: 0, color: C.muted, fontSize: 12 }}>Información no disponible / vínculo pendiente.</p>}
                 </Group>
@@ -202,9 +152,9 @@ export default function ContactoLocalizacion({ expedienteId, solicitudId }) {
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
                 <p style={{ margin: 0, color: C.muted, fontSize: 11 }}>Sin verificación registrada. Los documentos no se cargaron al abrir este panel.</p>
-                <button type="button" onClick={() => window.open(`/poliza/solicitud/${data.solicitud.id}`, '_blank', 'noopener,noreferrer')} style={{ ...st.btn, background: C.blueBg, color: C.blueText, border: '1px solid #93c5fd', fontSize: 11 }}>
+                {data.solicitud?.id && <button type="button" onClick={() => window.open(`/poliza/solicitud/${data.solicitud.id}`, '_blank', 'noopener,noreferrer')} style={{ ...st.btn, background: C.blueBg, color: C.blueText, border: '1px solid #93c5fd', fontSize: 11 }}>
                   Consultar ficha y documentos
-                </button>
+                </button>}
               </div>
             </>
           )}
