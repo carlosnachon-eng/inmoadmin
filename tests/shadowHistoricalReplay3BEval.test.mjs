@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { assertHistoricalReplayIsolation, executeHistoricalReplayCase, historicalReplayMetrics, HISTORICAL_REPLAY_MAX_CASES, HISTORICAL_REPLAY_RUNTIME, normalizeHistoricalReplayDecision, selectHistoricalReplayCohort } from "../lib/shadow/ai/historicalReplay.js";
+import { memoryAdmin } from "./helpers/condominiumIdentityFixture.mjs";
 
 const env={SHADOW_HISTORICAL_REPLAY_ENABLED:"true",SHADOW_HISTORICAL_REPLAY_ANTHROPIC_ENABLED:"true",SHADOW_ADMIN_OUTBOUND_ENABLED:"false",SHADOW_OUTBOUND_ENABLED:"false",SHADOW_RESPOND_ADMIN_CHANNEL_ID:"544519",SHADOW_IDENTITY_BRIDGE_ENABLED:"true"};
 const conversation={id:"conversation-1",provider:"respond_admin",channel:"544519",respond_contact_id:"contact-opaque"};
@@ -31,12 +32,14 @@ test("Ventas y QA no entran; una categoría no rellena cupo de otra",()=>{
   assert.equal(selected.cases.length,0);
 });
 
-test("ejecución aislada reutiliza 3A/3B sin tools ni tablas naturales y conserva grounding",async()=>{
+test("ejecución aislada relee sólo identidad estructurada y reutiliza 3A/3B sin escrituras",async()=>{
   let modelCalls=0; let toolCalls=0; let observed;
-  const result=await executeHistoricalReplayCase({}, {evaluationMode:"historical_replay",sufficientHistoricalContext:true,temporalGrounding:"current_state",identityGrounding:"current_canonical_mapping",humanResponseSnapshot:"Respuesta humana posterior",envelope:{provider:"respond_admin",direction:"inbound",sanitizedText:"Hola Carlos Perez, hay humedad; escribe a carlos@example.com.",providerMetadata:{channelId:"544519",respondContactId:"contact-opaque",priorConversation:[]}}}, {
+  const admin = memoryAdmin();
+  const result=await executeHistoricalReplayCase(admin, {evaluationMode:"historical_replay",sufficientHistoricalContext:true,temporalGrounding:"current_state",identityGrounding:"current_canonical_mapping",humanResponseSnapshot:"Respuesta humana posterior",envelope:{provider:"respond_admin",direction:"inbound",sanitizedText:"Hola Carlos Perez, hay humedad; escribe a carlos@example.com.",providerMetadata:{channelId:"544519",respondContactId:"contact-opaque",priorConversation:[]}}}, {
     env, now:(()=>{let n=1000;return()=>n+=10;})(), modelCall:async(messages)=>{modelCalls+=1;observed=JSON.parse(messages[1].content);return{id:"request-secret-ref",text:JSON.stringify(validDecision),usage:{input_tokens:100,output_tokens:20}};}, executeTool:async()=>{toolCalls+=1;return[];},
   });
   assert.equal(modelCalls,1); assert.equal(toolCalls,0); assert.equal(result.evaluationMode,"historical_replay");
+  assert.deepEqual(admin.reads,["respond_identity_links"]);
   assert.doesNotMatch(JSON.stringify(observed),/Carlos Perez|carlos@example\.com/); assert.match(observed.message,/\[PERSONA\].*\[EMAIL\]/);
   assert.equal(result.temporalGrounding,"current_state"); assert.equal(result.identityGrounding,"current_canonical_mapping");
   assert.equal(result.humanResponseSnapshot,"Respuesta humana posterior"); assert.equal(result.conversationAction.status,"proposed");

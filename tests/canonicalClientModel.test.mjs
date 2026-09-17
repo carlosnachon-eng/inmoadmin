@@ -88,10 +88,12 @@ test("Identity Bridge converge sólo a client_identity_id confirmed", () => {
   assert.doesNotMatch(bridge, /fuzzy|similarity|ilike|tenant_phone|owner_phone/);
 });
 
-test("superficie administrativa no es una tool de Auto-Real y no contiene vías externas", () => {
+test("reconciliación no es tool de Auto-Real; sólo revisión condominal relee Respond sin envío", () => {
   assert.match(api, /authorizeShadowAdministrator/); assert.match(api, /sameOriginAdminRequest/);
   assert.match(api, /clientReconciliationCapabilities/); assert.match(api, /confirm_client_reconciliation_candidate/);
-  assert.doesNotMatch(api, /RESPOND_IO_TOKEN|ANTHROPIC_API_KEY|sendMessage|fetchRespond|payments.*update/i);
+  assert.doesNotMatch(api, /RESPOND_IO_TOKEN|ANTHROPIC_API_KEY|sendMessage|payments.*update/i);
+  assert.match(api, /startsWith\("condominium_"\)[\s\S]*createCondominiumIdentityReviewHandler/);
+  assert.match(api, /fetchContact: fetchRespondContact/);
 });
 
 test("prepare y write son capabilities independientes y fail-closed", () => {
