@@ -96,13 +96,15 @@ test("resolución real de consulta de recibo conserva objeto y falla cerrada sin
   assert.equal(resolution.requires_human, true);
 });
 
-test("get_service_period_status reporta gap cuando identidad/propiedad no producen serviceId", () => {
+test("get_service_period_status usa fallback estructurado cuando identidad/propiedad no producen serviceId", () => {
   const policy = deriveRequiredTools({
     intent: "servicio", message: "¿Ya llegó mi recibo de luz?",
     metadata: { respondContactId: "respond:opaque", propertyId: ID.property },
   });
-  assert.ok(policy.expectedAfterClarificationTools.includes("get_service_period_status"));
-  assert.equal(policy.requiredNowTools.some((call) => call.name === "get_service_period_status"), false);
+  assert.equal(policy.expectedAfterClarificationTools.includes("get_service_period_status"), false);
+  assert.deepEqual(policy.requiredNowTools.find((call) => call.name === "get_service_period_status")?.args, {
+    propertyId: ID.property, serviceType: "luz",
+  });
   assert.equal(policy.availableIdentifiers.serviceId, undefined);
 });
 
