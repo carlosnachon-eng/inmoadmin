@@ -40,6 +40,7 @@ export default function ShadowCoordinatorPage() {
   const [identityData, setIdentityData] = useState(null); const [identityBusy, setIdentityBusy] = useState(false);
   const [identityBootstrap, setIdentityBootstrap] = useState(null); const [identityBootstrapRefs, setIdentityBootstrapRefs] = useState([]);
   const [identityPreflight, setIdentityPreflight] = useState(null); const [identityPreflightBusy, setIdentityPreflightBusy] = useState(false);
+  const [runIdentityPreflight, setRunIdentityPreflight] = useState(null); const [runIdentityPreflightBusy, setRunIdentityPreflightBusy] = useState(false); const [runIdentityPreflightAttempted, setRunIdentityPreflightAttempted] = useState(false);
   const [identityConfirmation, setIdentityConfirmation] = useState(null); const [identityConfirmationBusy, setIdentityConfirmationBusy] = useState(false); const [identityConfirmationAttempted, setIdentityConfirmationAttempted] = useState(false);
   const [clientReconciliation, setClientReconciliation] = useState(null); const [clientReconciliationBusy, setClientReconciliationBusy] = useState(false);
   const [existingClientIdentityIds, setExistingClientIdentityIds] = useState({});
@@ -225,6 +226,30 @@ export default function ShadowCoordinatorPage() {
       setIdentityConfirmationBusy(false);
     }
   };
+  const runExactPhoneRunPreflight = async () => {
+    if (!identityPreflightAuthorized || runIdentityPreflightBusy || runIdentityPreflightAttempted) return;
+    setRunIdentityPreflightAttempted(true); setRunIdentityPreflightBusy(true); setRunIdentityPreflight(null); setError("");
+    try {
+      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+      const sessionExpired = Number(currentSession?.expires_at || 0) <= Math.floor(Date.now() / 1000);
+      if (sessionError || !currentSession?.access_token || sessionExpired) {
+        setError("Sesión inválida o expirada. No se ejecutó el preflight 4/4.");
+        return;
+      }
+      const response = await fetch("/api/operaciones/shadow-run-exact-phone-preflight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${currentSession.access_token}` },
+        body: JSON.stringify({}),
+      });
+      const json = await response.json();
+      if (!response.ok) return setError(json.error || "No se pudo ejecutar el preflight read-only 4/4.");
+      setRunIdentityPreflight(json);
+    } catch {
+      setError("No se pudo ejecutar el preflight read-only 4/4.");
+    } finally {
+      setRunIdentityPreflightBusy(false);
+    }
+  };
   const reviewIdentity = async (identity, action) => {
     setIdentityBusy(true); setError("");
     const body = identity.status === "no_candidate" ? { action: "generate", conversationId: identity.conversationId } : { action, linkId: identity.id };
@@ -355,6 +380,12 @@ export default function ShadowCoordinatorPage() {
         <p style={{color:brand.grayLight}}>Confirma exclusivamente las 7 referencias certificadas. Cada referencia se revalida server-side y falla de forma independiente. Requiere confirmación explícita y el gate temporal autorizado.</p>
         <button type="button" disabled={identityConfirmationBusy || identityConfirmationAttempted} onClick={runExactPhoneIdentityConfirmation}>{identityConfirmationBusy ? "Confirmando…" : identityConfirmationAttempted ? "Operación ya ejecutada en esta sesión" : "Confirmar identidad 7/7"}</button>
         {identityConfirmation && <><p><strong>{identityConfirmation.evaluated}</strong> referencias procesadas · modo {identityConfirmation.mode}.</p>{identityConfirmation.results.map((item)=><article key={item.reference} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}><strong>{item.reference} · {item.status === "confirmed" || item.status === "already_confirmed" ? "confirmada" : "rechazada"}</strong><p>Resultado: {item.status || "rejected"} · Motivo: {item.reason || "sin bloqueo"}</p></article>)}</>}
+      </details>}
+      {identityPreflightAuthorized && <details style={{ ...card, marginBottom: 14 }}>
+        <summary><strong>Preflight read-only de runs 4/4</strong></summary>
+        <p style={{color:brand.grayLight}}>Evalúa exclusivamente los cuatro runs certificados mediante evidencia estructurada y contacto actual de Respond. No crea candidatos, vínculos, auditoría ni confirmaciones.</p>
+        <button type="button" disabled={runIdentityPreflightBusy || runIdentityPreflightAttempted} onClick={runExactPhoneRunPreflight}>{runIdentityPreflightBusy ? "Evaluando…" : runIdentityPreflightAttempted ? "Preflight ya ejecutado en esta sesión" : "Ejecutar preflight read-only 4/4"}</button>
+        {runIdentityPreflight && <><p><strong>{runIdentityPreflight.evaluated}</strong> runs evaluados.</p>{runIdentityPreflight.results.map((item)=><article key={item.run} style={{borderTop:`1px solid ${brand.border}`,padding:"10px 0"}}><strong>{item.run} · {item.confirmable ? "confirmable" : "no confirmable"}</strong><p>exact_phone_unique: {item.exact_phone_unique ? "sí" : "no"} · Blocker: {item.blocker || "sin bloqueo"}</p><p>Rol: {item.role || "no resuelto"} · Relación/propiedad resuelta: {item.property_relationship_resolved ? "sí" : "no"} · Contrato vigente: {item.contract_current ? "sí" : "no/no aplica"}</p></article>)}</>}
       </details>}
       {error && <div style={{ ...card, background: "#fef2f2", color: "#991b1b", marginBottom: 12 }}>{error}</div>}
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 16 }}>
