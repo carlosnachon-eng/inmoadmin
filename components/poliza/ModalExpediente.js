@@ -8,6 +8,9 @@ import { generarContratoPromocion } from '../../lib/generarContratoPromocion'
 import { generarContratoAdministracion } from '../../lib/generarContratoAdministracion'
 import { C, st, fmt, fmtDate, calcularPagares, calcularFechaVigencia, numeroALetra } from '../../lib/polizaUtils'
 import { calcCommission, COMMISSION_RATE } from '../../lib/partners'
+import ContactoLocalizacion from './ContactoLocalizacion'
+
+const contactoLocalizacionEnabled = process.env.NEXT_PUBLIC_BLINDAJE_CONTACTO_LOCALIZACION_ENABLED === 'true'
 
 export default function ModalExpediente({ expediente, propietarios, solicitudes, onClose, onSaved }) {
   const [form, setForm] = useState({ ...expediente })
@@ -207,6 +210,10 @@ export default function ModalExpediente({ expediente, propietarios, solicitudes,
           <div style={{ marginBottom: 14 }}><label style={st.label}>Ocupación</label><input type="text" defaultValue={form.ocupacion_arrendatario || ''} data-field='ocupacion_arrendatario' style={st.input} /></div>
         </div>
         <div style={{ marginBottom: 14 }}><label style={st.label}>Comprobante de ingresos</label><input type="text" defaultValue={form.comprobante_ingresos || ''} data-field='comprobante_ingresos' style={st.input} /></div>
+
+        {contactoLocalizacionEnabled && (
+          <ContactoLocalizacion expedienteId={expediente.id} solicitudId={form.inquilino_id} />
+        )}
 
         <div style={st.divider} />
         <p style={{ fontSize: 12, fontWeight: 700, color: C.goldText, margin: '0 0 12px', textTransform: 'uppercase' }}>Inmueble y condiciones</p>
