@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { loadContactLocation, hasAnyValue } from '../../lib/poliza/contactoLocalizacion'
+import { hasAnyValue } from '../../lib/poliza/contactoLocalizacion'
 import { C, st } from '../../lib/polizaUtils'
 
 const Value = ({ label, value }) => value ? (
@@ -23,7 +23,7 @@ const Group = ({ title, children }) => (
   </div>
 )
 
-export default function ContactoLocalizacion({ expedienteId, solicitudId }) {
+export default function ContactoLocalizacion({ expedienteId }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -34,7 +34,14 @@ export default function ContactoLocalizacion({ expedienteId, solicitudId }) {
     setLoading(true)
     setError('')
     try {
-      setData(await loadContactLocation(supabase, { expedienteId, solicitudId }))
+      const { data: sessionData } = await supabase.auth.getSession()
+      if (!sessionData?.session?.access_token || !expedienteId) throw new Error('Acceso no disponible')
+      const response = await fetch(`/api/poliza/contacto-localizacion?expedienteId=${encodeURIComponent(expedienteId)}`, {
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+        cache: 'no-store',
+      })
+      if (!response.ok) throw new Error('Fuente no disponible')
+      setData(await response.json())
     } catch {
       setError('No fue posible consultar la información vinculada. Las demás funciones del expediente siguen disponibles.')
     } finally {
