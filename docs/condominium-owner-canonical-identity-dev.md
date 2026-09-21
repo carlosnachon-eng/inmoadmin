@@ -1,8 +1,23 @@
 # Propietarios condominales: entrega DEV/local
 
 Rama: `codex/condominium-owner-canonical-identity`. Base: `58bc401` (main, PR #130).
-Sólo implementación y fixtures sintéticos locales. Sin datos ni credenciales productivas,
-sin confirmaciones reales, backfill, publicación, merge o deployment.
+Informe original de implementación y fixtures sintéticos locales. Sin datos ni credenciales productivas,
+sin confirmaciones reales, backfill, merge o deployment. La rama está publicada como Draft PR #133.
+
+## Estado de certificación actualizado — 2026-09-21
+
+La certificación SQL en Supabase DEV quedó cerrada con `DATABASE_CERTIFICATION_PASS`:
+8/8 archivos, 72 assertions PASS, dos carreras con bloqueo efectivo observado, idempotencia
+y limpieza sin residuos. No se volvió a ejecutar durante esta actualización documental.
+El rechazo no-admin en DEV se probó con `asesor`, no con `coord_operaciones`.
+
+Evidencia sanitizada, paquete ejecutado y manifiesto verificable conservados en
+[docs/evidence/pr133](evidence/pr133/README.md). Allí se separan la instalación/checks
+manuales, SQL ejecutado en Supabase DEV, pruebas locales/simuladas e integración pendiente.
+El recorrido UI local → endpoint real → DEV → gateway → observabilidad **no está certificado
+contra DEV**: faltan credenciales API DEV para ejecutar la aplicación con autenticación real.
+La comprobación directa de deployments Vercel permanece pendiente por acceso soportado.
+Draft para revisión; no es autorización ni GO de rollout.
 
 ## A. Capacidad y límites de confianza
 
@@ -85,7 +100,7 @@ compara literalmente las definiciones históricas wrapper/core 7/7 antes/despué
 Las referencias siguientes son **etiquetas de fixtures**: UUID, contactos y teléfonos del
 harness son sintéticos. No son una lectura/replay/confirmación de los runs reales.
 
-| Caso | Fuente de fixture | Recorrido DEV |
+| Caso | Fuente de fixture | Recorrido local (no Supabase DEV) |
 | --- | --- | --- |
 | `85ced7b69096` | unidad `a0faedc4233c` | candidato → aprobación sintética → identidad/owner/unidad/condominio antes de 3A → observabilidad |
 | `2b7e03328a31` | unidad `772c16cb082e` | mismo recorrido completo |

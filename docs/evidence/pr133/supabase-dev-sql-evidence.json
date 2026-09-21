@@ -1,0 +1,571 @@
+{
+  "result": "DATABASE_CERTIFICATION_PASS",
+  "project": "hjfwjnejbcpmknvfpdcq",
+  "head": "e0cdda009dc1d9fbb92ccd67b1977bc18ab7d8bf",
+  "environment": "Supabase DEV — execution only if target/TLS checks pass",
+  "started_at": "2026-09-21T05:59:58.645Z",
+  "finished_at": "2026-09-21T06:08:15.290Z",
+  "prior_installation": "user-reported Success. No rows returned; not rerun",
+  "prior_checks": "user-reported Success. No rows returned; not rerun",
+  "server_version_num": "170006",
+  "target": {
+    "host": "aws-0-us-east-2.pooler.supabase.com",
+    "port": 5432,
+    "mode": "session_pooler",
+    "project_route_verified": true,
+    "tls": "explicit official CA; rejectUnauthorized=true; default hostname verification"
+  },
+  "effective_tls": {
+    "explicit_ca": true,
+    "rejectUnauthorized": true,
+    "hostname_validation": "Node default",
+    "servername": "aws-0-us-east-2.pooler.supabase.com",
+    "connectionString_forwarded": false
+  },
+  "connections": [
+    {
+      "stage": "database_session_verified",
+      "tls_authorized": true,
+      "hostname_verified": true,
+      "authenticated": true,
+      "backend_pid": 198552
+    },
+    {
+      "stage": "database_session_verified",
+      "tls_authorized": true,
+      "hostname_verified": true,
+      "authenticated": true,
+      "backend_pid": 199212
+    },
+    {
+      "stage": "database_session_verified",
+      "tls_authorized": true,
+      "hostname_verified": true,
+      "authenticated": true,
+      "backend_pid": 199214
+    },
+    {
+      "stage": "database_session_verified",
+      "tls_authorized": true,
+      "hostname_verified": true,
+      "authenticated": true,
+      "backend_pid": 199215
+    },
+    {
+      "stage": "database_session_verified",
+      "tls_authorized": true,
+      "hostname_verified": true,
+      "authenticated": true,
+      "backend_pid": 199216
+    }
+  ],
+  "actor_roles": {
+    "active_admin": "admin",
+    "active_nonadmin": "asesor",
+    "inactive_admin": "admin",
+    "coord_operaciones_tested": false
+  },
+  "database_tests": "PASS",
+  "tests": [
+    {
+      "file": "01_behavioral_rollback.sql",
+      "result": "PASS",
+      "duration_ms": 312,
+      "evidence": [
+        {
+          "check": "actor denied 2",
+          "result": "PASS"
+        },
+        {
+          "check": "actor denied 3",
+          "result": "PASS"
+        },
+        {
+          "check": "actor denied 999",
+          "result": "PASS"
+        },
+        {
+          "check": "additional unit explicit confirmation",
+          "result": "PASS"
+        },
+        {
+          "check": "additional unit explicit reviewed candidate",
+          "result": "PASS"
+        },
+        {
+          "check": "anon RPC denied",
+          "result": "PASS"
+        },
+        {
+          "check": "Auth trigger created exactly three synthetic profiles",
+          "result": "PASS"
+        },
+        {
+          "check": "authenticated RPC denied",
+          "result": "PASS"
+        },
+        {
+          "check": "candidate creates no Respond link 101",
+          "result": "PASS"
+        },
+        {
+          "check": "candidate creates no Respond link 102",
+          "result": "PASS"
+        },
+        {
+          "check": "candidate creates no Respond link 103",
+          "result": "PASS"
+        },
+        {
+          "check": "candidate requires human review 101",
+          "result": "PASS"
+        },
+        {
+          "check": "candidate requires human review 102",
+          "result": "PASS"
+        },
+        {
+          "check": "candidate requires human review 103",
+          "result": "PASS"
+        },
+        {
+          "check": "canonical audit no synthetic raw phone or name",
+          "result": "PASS"
+        },
+        {
+          "check": "changed current phone rejected",
+          "result": "PASS"
+        },
+        {
+          "check": "changed owner same phone invalidates relationship",
+          "result": "PASS"
+        },
+        {
+          "check": "confirm idempotent 101",
+          "result": "PASS"
+        },
+        {
+          "check": "confirm idempotent 102",
+          "result": "PASS"
+        },
+        {
+          "check": "confirm idempotent 103",
+          "result": "PASS"
+        },
+        {
+          "check": "durable source identity Respond relation 101",
+          "result": "PASS"
+        },
+        {
+          "check": "durable source identity Respond relation 102",
+          "result": "PASS"
+        },
+        {
+          "check": "durable source identity Respond relation 103",
+          "result": "PASS"
+        },
+        {
+          "check": "historical seventh cohort unchanged eighth rejected",
+          "result": "PASS"
+        },
+        {
+          "check": "historical wrapper core definitions unmodified",
+          "result": "PASS"
+        },
+        {
+          "check": "inactive condominium rejected",
+          "result": "PASS"
+        },
+        {
+          "check": "inactive unit rejected",
+          "result": "PASS"
+        },
+        {
+          "check": "last unit revocation blocks Respond link",
+          "result": "PASS"
+        },
+        {
+          "check": "legacy core denied",
+          "result": "PASS"
+        },
+        {
+          "check": "legacy wrapper blocks condominium",
+          "result": "PASS"
+        },
+        {
+          "check": "no duplicate person for two units",
+          "result": "PASS"
+        },
+        {
+          "check": "one confirmation audit 101",
+          "result": "PASS"
+        },
+        {
+          "check": "one confirmation audit 102",
+          "result": "PASS"
+        },
+        {
+          "check": "one confirmation audit 103",
+          "result": "PASS"
+        },
+        {
+          "check": "one identity two approved units",
+          "result": "PASS"
+        },
+        {
+          "check": "prepare idempotent 101",
+          "result": "PASS"
+        },
+        {
+          "check": "prepare idempotent 102",
+          "result": "PASS"
+        },
+        {
+          "check": "prepare idempotent 103",
+          "result": "PASS"
+        },
+        {
+          "check": "Respond audit no synthetic raw phone or name",
+          "result": "PASS"
+        },
+        {
+          "check": "revocation preserves other approved unit",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke additional unit",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke idempotent",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke last unit",
+          "result": "PASS"
+        },
+        {
+          "check": "revoked relation not silently reconfirmed",
+          "result": "PASS"
+        },
+        {
+          "check": "second unit not inferred by phone",
+          "result": "PASS"
+        },
+        {
+          "check": "shared phone not identity",
+          "result": "PASS"
+        },
+        {
+          "check": "stale evidence rejected",
+          "result": "PASS"
+        },
+        {
+          "check": "synthetic admin confirmation 101",
+          "result": "PASS"
+        },
+        {
+          "check": "synthetic admin confirmation 102",
+          "result": "PASS"
+        },
+        {
+          "check": "synthetic admin confirmation 103",
+          "result": "PASS"
+        },
+        {
+          "check": "synthetic Auth actors have no credentials or communications",
+          "result": "PASS"
+        },
+        {
+          "check": "unmatched fourth fixture rejected",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "file": "02_concurrency_setup.sql",
+      "result": "PASS",
+      "evidence": [
+        {
+          "check": "Auth trigger created exactly three synthetic profiles",
+          "result": "PASS"
+        },
+        {
+          "check": "concurrency candidate prepared 401",
+          "result": "PASS"
+        },
+        {
+          "check": "concurrency candidate prepared 501",
+          "result": "PASS"
+        },
+        {
+          "check": "concurrency candidate prepared 502",
+          "result": "PASS"
+        },
+        {
+          "check": "synthetic Auth actors have no credentials or communications",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "file": "03_same_contact_A.sql",
+      "result": "PASS",
+      "duration_ms": 433,
+      "evidence": [
+        {
+          "race": "contact",
+          "worker": "A",
+          "backend_pid": 199214,
+          "status": "confirmed",
+          "reason": null,
+          "duration_ms": 17.091
+        },
+        {
+          "check": "pr133-contact-A expected confirmed",
+          "result": "PASS"
+        },
+        {
+          "check": "pr133-contact-A independent B connection observed blocked by A",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "file": "04_same_contact_B.sql",
+      "result": "PASS",
+      "duration_ms": 162,
+      "evidence": [
+        {
+          "race": "contact",
+          "worker": "B",
+          "backend_pid": 199215,
+          "status": "already_confirmed",
+          "reason": null,
+          "duration_ms": 55.868
+        },
+        {
+          "check": "pr133-contact-B expected already_confirmed",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "file": "05_same_identity_A.sql",
+      "result": "PASS",
+      "duration_ms": 415,
+      "evidence": [
+        {
+          "race": "identity",
+          "worker": "A",
+          "backend_pid": 199214,
+          "status": "confirmed",
+          "reason": null,
+          "duration_ms": 6.603
+        },
+        {
+          "check": "pr133-identity-A expected confirmed",
+          "result": "PASS"
+        },
+        {
+          "check": "pr133-identity-A independent B connection observed blocked by A",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "file": "06_same_identity_B.sql",
+      "result": "PASS",
+      "duration_ms": 140,
+      "evidence": [
+        {
+          "race": "identity",
+          "worker": "B",
+          "backend_pid": 199215,
+          "status": "rejected",
+          "reason": "respond_identity_conflict",
+          "duration_ms": 38.031
+        },
+        {
+          "check": "identity loser fail closed",
+          "result": "PASS"
+        },
+        {
+          "check": "pr133-identity-B expected rejected",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "file": "07_concurrency_verify.sql",
+      "result": "PASS",
+      "duration_ms": 101,
+      "evidence": [
+        {
+          "check": "fixture audit contains no raw phone or name",
+          "result": "PASS"
+        },
+        {
+          "check": "loser no confirmed link",
+          "result": "PASS"
+        },
+        {
+          "check": "loser rejection audit present",
+          "result": "PASS"
+        },
+        {
+          "check": "one candidate confirmed in identity race",
+          "result": "PASS"
+        },
+        {
+          "check": "same contact exactly one confirmation audit",
+          "result": "PASS"
+        },
+        {
+          "check": "same contact exactly one link",
+          "result": "PASS"
+        },
+        {
+          "check": "two contacts exactly one identity winner",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "file": "08_cleanup.sql",
+      "result": "PASS",
+      "duration_ms": 272,
+      "evidence": [
+        {
+          "check": "own synthetic fixtures and audit removed",
+          "result": "PASS"
+        }
+      ]
+    }
+  ],
+  "races": [
+    {
+      "kind": "contact",
+      "independent_connections": true,
+      "blocking_observed": true,
+      "A": "confirmed",
+      "B": "already_confirmed",
+      "reason": null
+    },
+    {
+      "kind": "identity",
+      "independent_connections": true,
+      "blocking_observed": true,
+      "A": "confirmed",
+      "B": "rejected",
+      "reason": "respond_identity_conflict"
+    }
+  ],
+  "created_fixture_manifest": [
+    {
+      "kind": "auth.users",
+      "id": "133c2026-0918-4000-8000-000000000001"
+    },
+    {
+      "kind": "auth.users",
+      "id": "133c2026-0918-4000-8000-000000000002"
+    },
+    {
+      "kind": "auth.users",
+      "id": "133c2026-0918-4000-8000-000000000003"
+    },
+    {
+      "kind": "client_identities",
+      "id": "133c2026-0918-4000-8000-000000000500"
+    },
+    {
+      "kind": "client_identity_audit",
+      "id": "1c09770e-f069-418e-834c-74d4b11a4e50"
+    },
+    {
+      "kind": "client_identity_audit",
+      "id": "20a10776-a673-4519-b92c-69e70e989f4a"
+    },
+    {
+      "kind": "client_identity_audit",
+      "id": "7db147fb-d23d-4e95-a342-5de5ce5a7b71"
+    },
+    {
+      "kind": "client_identity_roles",
+      "id": "133c2026-0918-4000-8000-000000000500:owner"
+    },
+    {
+      "kind": "client_reconciliation_candidate_sources",
+      "id": "488a2edb-1d27-4024-919c-59e780ae6533:133c2026-0918-4000-8000-000000000401"
+    },
+    {
+      "kind": "client_reconciliation_candidate_sources",
+      "id": "514898fa-1edb-4673-bc86-6ffc674200b2:133c2026-0918-4000-8000-000000000502"
+    },
+    {
+      "kind": "client_reconciliation_candidate_sources",
+      "id": "7b36cfcd-f226-4153-b692-d8f1984ebfe5:133c2026-0918-4000-8000-000000000501"
+    },
+    {
+      "kind": "client_reconciliation_candidates",
+      "id": "488a2edb-1d27-4024-919c-59e780ae6533"
+    },
+    {
+      "kind": "client_reconciliation_candidates",
+      "id": "514898fa-1edb-4673-bc86-6ffc674200b2"
+    },
+    {
+      "kind": "client_reconciliation_candidates",
+      "id": "7b36cfcd-f226-4153-b692-d8f1984ebfe5"
+    },
+    {
+      "kind": "client_source_links",
+      "id": "15c50be5-0481-45d3-b9d5-3720460f5d59"
+    },
+    {
+      "kind": "client_source_links",
+      "id": "d8288b4f-4288-42d0-bcc0-485a95205b63"
+    },
+    {
+      "kind": "condominios",
+      "id": "133c2026-0918-4000-8000-000000000020"
+    },
+    {
+      "kind": "condominios",
+      "id": "133c2026-0918-4000-8000-000000000021"
+    },
+    {
+      "kind": "profiles",
+      "id": "133c2026-0918-4000-8000-000000000001"
+    },
+    {
+      "kind": "profiles",
+      "id": "133c2026-0918-4000-8000-000000000002"
+    },
+    {
+      "kind": "profiles",
+      "id": "133c2026-0918-4000-8000-000000000003"
+    },
+    {
+      "kind": "unidades_condominio",
+      "id": "133c2026-0918-4000-8000-000000000401"
+    },
+    {
+      "kind": "unidades_condominio",
+      "id": "133c2026-0918-4000-8000-000000000501"
+    },
+    {
+      "kind": "unidades_condominio",
+      "id": "133c2026-0918-4000-8000-000000000502"
+    }
+  ],
+  "cleanup": {
+    "result": "PASS",
+    "remaining": []
+  },
+  "ui_server_gateway": "LOCAL/SIMULATED tests only; not certified by SQL",
+  "vercel_deployments": "PENDING supported metadata access",
+  "evidence_scope": "Previously completed Supabase DEV SQL certification; not rerun for this documentation update. No UI/server/gateway certification is inferred.",
+  "original_report_sha256": "5b45c736b5d3c56f042c698d3a526f209ddf346f889db1baff2d1398a074904c",
+  "assertions": 72
+}
