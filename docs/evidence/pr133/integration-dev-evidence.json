@@ -1,0 +1,389 @@
+{
+  "evidence_version": 1,
+  "result": "INTEGRATION_DEV_PASS",
+  "candidate": "41b74c9abf919968791f6944d75c295261f0f2a0",
+  "project": "hjfwjnejbcpmknvfpdcq",
+  "started_at": "2026-09-21T14:47:18.696Z",
+  "finished_at": "2026-09-21T14:49:04.349Z",
+  "original_report_sha256": "bd8061f551ffaa6cf0cfe6a8ada472811f7401f9a643c5c2365b6593b3a983c3",
+  "sql_certification": "CLOSED_NOT_REPEATED",
+  "local_diagnostic_tests": {
+    "passed": 31,
+    "failed": 0,
+    "synthetic_only": true
+  },
+  "real_components": [
+    "application UI",
+    "Supabase Auth",
+    "server authorization",
+    "Supabase DEV REST/RPC",
+    "before-3A resolver",
+    "observability"
+  ],
+  "simulated_components": [
+    "Respond GET synthetic contact",
+    "3A model deterministic callback"
+  ],
+  "steps": [
+    {
+      "stage": "preparation",
+      "result": "PASS"
+    },
+    {
+      "stage": "postgres_connected",
+      "result": "PASS"
+    },
+    {
+      "stage": "fixture_preconditions",
+      "result": "PASS"
+    },
+    {
+      "stage": "dev_api_access",
+      "result": "PASS"
+    },
+    {
+      "stage": "synthetic_fixtures_ready",
+      "result": "PASS"
+    },
+    {
+      "stage": "local_application_ready",
+      "result": "PASS"
+    },
+    {
+      "stage": "real_ui_auth_admin",
+      "result": "PASS",
+      "http": 200
+    },
+    {
+      "stage": "ui_prepare_candidate",
+      "result": "PASS",
+      "http": 200,
+      "status": "requires_review",
+      "before_approval": "unresolved"
+    },
+    {
+      "stage": "ui_server_dev_confirmation",
+      "result": "PASS",
+      "http": 200,
+      "status": "confirmed",
+      "explicit_synthetic_review": true
+    },
+    {
+      "stage": "real_dev_resolution_before_3a",
+      "result": "PASS",
+      "role": "owner",
+      "identity": "confirmed",
+      "domain": "condominium",
+      "unit_resolved": true,
+      "model": "SIMULATED",
+      "model_calls": 1
+    },
+    {
+      "stage": "real_observability_ui",
+      "result": "PASS",
+      "http": 200,
+      "unit_resolved": true,
+      "confirmed": true,
+      "rental_property": false,
+      "historical_7of7": false,
+      "run": "7dbf7f46c43c"
+    },
+    {
+      "stage": "real_ui_auth_asesor",
+      "result": "PASS",
+      "http": 200
+    },
+    {
+      "stage": "real_nonadmin_rejected",
+      "result": "PASS",
+      "http": 403,
+      "role": "asesor",
+      "error": "admin_required",
+      "side_effects": 0
+    },
+    {
+      "stage": "administrative_key_not_in_client_artifacts",
+      "result": "PASS",
+      "files_scanned": 13
+    },
+    {
+      "stage": "cleanup",
+      "result": "PASS"
+    }
+  ],
+  "target_checks": [
+    {
+      "code": "pooler_project_mismatch",
+      "object": "project",
+      "expected": "hjfwjnejbcpmknvfpdcq",
+      "observed": "hjfwjnejbcpmknvfpdcq",
+      "result": "PASS",
+      "source": "exclusive authorized DEV project"
+    },
+    {
+      "code": "pooler_host_mismatch",
+      "object": "host",
+      "expected": "aws-0-us-east-2.pooler.supabase.com",
+      "observed": "aws-0-us-east-2.pooler.supabase.com",
+      "result": "PASS",
+      "source": "previously validated official DEV Session pooler"
+    },
+    {
+      "code": "pooler_port_mismatch",
+      "object": "port",
+      "expected": 5432,
+      "observed": 5432,
+      "result": "PASS",
+      "source": "authorized Session pooler port"
+    },
+    {
+      "code": "pooler_project_user_mismatch",
+      "object": "pooler user",
+      "expected": "postgres.hjfwjnejbcpmknvfpdcq",
+      "observed": "postgres.hjfwjnejbcpmknvfpdcq",
+      "result": "PASS",
+      "source": "exclusive authorized project routing"
+    },
+    {
+      "code": "pooler_database_mismatch",
+      "object": "database",
+      "expected": "postgres",
+      "observed": "postgres",
+      "result": "PASS",
+      "source": "previously validated official database"
+    },
+    {
+      "code": "pooler_mode_mismatch",
+      "object": "connection mode",
+      "expected": "session_pooler",
+      "observed": "session_pooler",
+      "result": "PASS",
+      "source": "authorized official connection method"
+    }
+  ],
+  "database_context": {
+    "previous_attempt": "no disponible del intento anterior",
+    "original_conditions": [
+      {
+        "code": "postgres_role_mismatch",
+        "object": "current_user",
+        "expected": "postgres",
+        "observed": "postgres",
+        "result": "PASS",
+        "source": "previously validated DEV launcher; official pooler user postgres.<project>"
+      },
+      {
+        "code": "postgres_database_mismatch",
+        "object": "current_database()",
+        "expected": "postgres",
+        "observed": "postgres",
+        "result": "PASS",
+        "source": "official DEV connection path /postgres"
+      },
+      {
+        "code": "backend_ssl_not_true",
+        "object": "pg_stat_ssl.ssl",
+        "expected": true,
+        "observed": false,
+        "result": "FAIL",
+        "source": "integration launcher assumption, not applicable to client-to-pooler TLS",
+        "required_for_client_tls": false,
+        "applicable_to": "PostgreSQL backend connection only"
+      }
+    ],
+    "checks": [
+      {
+        "code": "postgres_role_mismatch",
+        "object": "current_user",
+        "expected": "postgres",
+        "observed": "postgres",
+        "result": "PASS",
+        "source": "previously validated DEV launcher; official pooler user postgres.<project>"
+      },
+      {
+        "code": "postgres_database_mismatch",
+        "object": "current_database()",
+        "expected": "postgres",
+        "observed": "postgres",
+        "result": "PASS",
+        "source": "official DEV connection path /postgres"
+      },
+      {
+        "code": "client_tls_verification_failed",
+        "object": "verified client TLS socket",
+        "expected": {
+          "encrypted": true,
+          "authorized": true,
+          "hostname_verified": true
+        },
+        "observed": {
+          "encrypted": true,
+          "authorized": true,
+          "hostname_verified": true
+        },
+        "result": "PASS",
+        "source": "unchanged strict official CA config, default hostname verification, actual pg TLS socket"
+      }
+    ],
+    "failed_codes": [],
+    "passed": true
+  },
+  "ui_requests": [
+    {
+      "action": "condominium_list",
+      "http": 200,
+      "ok": true
+    },
+    {
+      "action": "condominium_prepare",
+      "http": 200,
+      "ok": true,
+      "status": "requires_review",
+      "reason": null
+    },
+    {
+      "action": "condominium_list",
+      "http": 200,
+      "ok": true
+    },
+    {
+      "action": "condominium_confirm",
+      "http": 200,
+      "ok": true,
+      "status": "confirmed",
+      "reason": null
+    },
+    {
+      "action": "condominium_list",
+      "http": 403,
+      "ok": false,
+      "error": "admin_required"
+    }
+  ],
+  "observation": {
+    "runRef": "7dbf7f46c43c",
+    "attribution": "attributed",
+    "identityState": "confirmed",
+    "canonicalIdentityRef": "f6401fb5d2fe",
+    "resolutionSource": "condominium_owner_admin_review",
+    "identityDomain": "condominium",
+    "inExactPhone7of7": false,
+    "propertyResolved": false,
+    "unitResolved": true,
+    "relationshipResolved": true,
+    "unitRef": "82a793c4d60c",
+    "condominiumRef": "1e139bb07e73",
+    "unitCount": 1,
+    "action3B": null,
+    "requiresHuman": null,
+    "autoSendEligible": null
+  },
+  "cleanup": {
+    "result": "PASS",
+    "remaining": [],
+    "actors_removed": 2,
+    "sessions_removed": 2,
+    "inventory": [
+      {
+        "table": "auth.users",
+        "count": 0
+      },
+      {
+        "table": "auth.sessions",
+        "count": 0
+      },
+      {
+        "table": "auth.refresh_tokens",
+        "count": 0
+      },
+      {
+        "table": "auth.identities",
+        "count": 0
+      },
+      {
+        "table": "public.profiles",
+        "count": 0
+      },
+      {
+        "table": "public.condominios",
+        "count": 0
+      },
+      {
+        "table": "public.unidades_condominio",
+        "count": 0
+      },
+      {
+        "table": "public.client_reconciliation_candidates",
+        "count": 0
+      },
+      {
+        "table": "public.client_reconciliation_candidate_sources",
+        "count": 0
+      },
+      {
+        "table": "public.client_source_links",
+        "count": 0
+      },
+      {
+        "table": "public.client_identities",
+        "count": 0
+      },
+      {
+        "table": "public.client_identity_roles",
+        "count": 0
+      },
+      {
+        "table": "public.respond_identity_links",
+        "count": 0
+      },
+      {
+        "table": "public.client_identity_audit",
+        "count": 0
+      },
+      {
+        "table": "public.respond_identity_audit",
+        "count": 0
+      },
+      {
+        "table": "public.shadow_conversations",
+        "count": 0
+      },
+      {
+        "table": "public.shadow_messages",
+        "count": 0
+      },
+      {
+        "table": "public.shadow_ai_runs",
+        "count": 0
+      },
+      {
+        "table": "auth.audit_log_entries",
+        "count": 0
+      },
+      {
+        "table": "auth.mfa_amr_claims",
+        "count": 0
+      },
+      {
+        "table": "auth.flow_state",
+        "count": 0
+      },
+      {
+        "table": "auth.one_time_tokens",
+        "count": 0
+      }
+    ]
+  },
+  "external_trace_summary": {
+    "real_auth_get_200": 19,
+    "real_rpc_post_200": 2,
+    "respond_mock_get": 2
+  },
+  "limits": [
+    "synthetic fixtures only",
+    "no natural traffic or AI decision-quality certification",
+    "no production, schema, permissions or productive flags changed",
+    "all test actors and sessions removed",
+    "no credentials, tokens, cookies or session objects retained"
+  ]
+}

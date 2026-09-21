@@ -2,11 +2,16 @@ import { createClient } from "@supabase/supabase-js";
 import { authorizeShadowAdministrator } from "../../../lib/shadow/ai/apiAuth.js";
 import { assertClientReconciliationAction, buildActiveClientReconciliationCohort, buildClientReconciliationReviewModels, clientReconciliationCapabilities, persistClientReconciliationCohort, selectExplicitReconciliationCohort, validateExplicitReconciliationSelection } from "../../../lib/shadow/clientIdentity.js";
 import { sameOriginAdminRequest } from "../../../lib/shadow/identityBootstrap.js";
+import { createCondominiumIdentityReviewHandler } from "../../../lib/shadow/condominiumIdentityApi.js";
+import { fetchRespondContact } from "../../../lib/ejecutivo/respondSync.js";
 
 const adminClient = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export default async function handler(req, res) {
+  if (String(req.body?.action || "").startsWith("condominium_")) return createCondominiumIdentityReviewHandler({
+    authorize: authorizeShadowAdministrator, isSameOrigin: sameOriginAdminRequest, createAdminClient: adminClient, fetchContact: fetchRespondContact,
+  })(req, res);
   res.setHeader("Cache-Control", "private, no-store, max-age=0");
   if (!["GET", "POST"].includes(req.method)) return res.status(405).json({ ok: false, error: "method_not_allowed" });
   const actor = await authorizeShadowAdministrator(req);
@@ -18,7 +23,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
       const { data, error } = await admin.from("client_reconciliation_candidates")
-        .select("id,role_kind,phone_digest,candidate_status,reason_code,source_count,client_identity_id,created_at")
+        .select("id,role_kind,phone_digest,candidate_status,reason_code,source_count,client_identity_id,created_at,evidence_version")
         .order("created_at", { ascending: false }).limit(200);
       if (error) throw error;
       const candidateIds = (data || []).map((item) => item.id);
@@ -28,7 +33,7 @@ export default async function handler(req, res) {
         admin.from("properties").select("id,name,owner_phone"),
       ]);
       if (sourceError || contractError || propertyError) throw sourceError || contractError || propertyError;
-      const candidates = buildClientReconciliationReviewModels({ candidates: data || [], sources: sources || [], contracts: contracts || [], properties: properties || [] })
+      const candidates = buildClientReconciliationReviewModels({ candidates: (data || []).filter((c) => c.evidence_version !== "condominium_owner_review_v1"), sources: sources || [], contracts: contracts || [], properties: properties || [] })
         .map(({ phone_digest, ...candidate }) => {
           if (capabilities.writeEnabled) return candidate;
           const { id, ...reviewOnlyCandidate } = candidate;
