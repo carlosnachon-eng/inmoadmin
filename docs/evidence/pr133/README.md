@@ -85,3 +85,13 @@ Comparación remota del código funcional contra `main` vigente: base y merge-ba
 La ausencia previa de registros de deployment/checks en GitHub no demuestra por sí sola ausencia de deployments en Vercel. La consulta directa de metadatos Vercel sigue pendiente; este pendiente es independiente del bloqueo de integración y no justifica repetir SQL.
 
 PR #133 permanece Draft. Sin merge, deployment, SQL productivo, migraciones nuevas, backfill, personas reales ni cambios de flags productivos. El cierre permite revisar la evidencia SQL/documental; **no declara completada la prueba integrada necesaria para rollout**.
+
+### Descripción del PR: permiso de edición pendiente
+
+La evidencia sí fue publicada mediante push a la rama autorizada. El intento de actualizar
+la descripción mediante la integración soportada de GitHub devolvió **HTTP 403,
+`Resource not accessible by integration`**. No se repitió ni se usó otro mecanismo para
+sortearlo. El cuerpo anterior del PR no refleja aún este cierre; requiere permiso de edición
+de pull requests en la integración GitHub o una actualización manual autorizada.
+[Descripción preparada para aplicar](pr-description-proposed.md). Este pendiente documental
+es distinto de la certificación SQL aprobada, del acceso de integración DEV y de Vercel.
