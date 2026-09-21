@@ -6,8 +6,8 @@ Los cambios posteriores de esta entrega son exclusivamente documentación/eviden
 
 ## Dictamen consolidado
 
-**SQL Supabase DEV: cerrado, `DATABASE_CERTIFICATION_PASS`; no repetir.**
-**NO-GO para declarar completa la integración o ejecutar rollout:** el recorrido autenticado de aplicación contra DEV no se ejecutó por falta de acceso API local. No hay un fallo funcional demostrado ni se modificó lógica para obtener PASS.
+**SQL Supabase DEV e integración: cerrados, `DATABASE_CERTIFICATION_PASS` e `INTEGRATION_DEV_PASS`; no repetir.**
+**NO-GO para instalar el soporte productivo ahora:** faltan verificación del catálogo productivo y acceso soportado para verificar despliegue/gates/reversión. La integración está aprobada con el alcance real documentado; no hay fallo funcional demostrado ni se exige crear Preview. Ver [dictamen y procedimiento](rollout-review.md).
 
 | Evidencia | Estado | Alcance real |
 | --- | --- | --- |
@@ -16,7 +16,7 @@ Los cambios posteriores de esta entrega son exclusivamente documentación/eviden
 | Seguridad del lanzador local | **14/14 PASS previo** | Destino/TLS, hashes, sanitización de errores y orquestación simulada. No equivale a pruebas de aplicación conectada a DEV. |
 | Paquete SQL en PostgreSQL local | **72 assertions PASS previo** | Validación local previa a DEV; evidencia distinta de la ejecución remota. |
 | UI, endpoint, gateway y observabilidad locales/simulados | PASS previamente documentado | UI real con hooks/transporte/sesión sintéticos; integración de módulos con PostgreSQL local. No autentica contra Supabase DEV. |
-| UI local → endpoint real → Supabase DEV → contexto previo a 3A → observabilidad | **NO EJECUTADO: acceso local faltante** | No se sustituyó Auth, autorización server-side ni Supabase DEV con mocks para declarar PASS. |
+| UI local → endpoint real → Supabase DEV → contexto previo a 3A → observabilidad | **INTEGRATION_DEV_PASS, cerrado** | UI/Auth/autorización/endpoint/DEV reales; Respond/modelo simulados; positivo aprobado, asesor 403 admin_required, limpieza sin residuos. |
 | Listado directo de deployments Vercel | **PENDIENTE: acceso soportado no disponible** | No hay conector/CLI Vercel disponible. No se reintentó la automatización del navegador bloqueada ni se consultaron Secrets. |
 
 La evidencia local previa de suite completa (986/986) y build PASS corresponde al mismo árbol funcional; no se volvió a ejecutar SQL para actualizar documentación. Ver [informe de implementación](../../condominium-owner-canonical-identity-dev.md).
@@ -27,6 +27,8 @@ La evidencia local previa de suite completa (986/986) y build PASS corresponde a
 - [Paquete SQL ejecutado, archivado](sql-dev-certified-package.tar.gz): los ocho SQL, lanzador temporal, pruebas locales del lanzador, validador PostgreSQL local, diff de la corrección de fixtures y manifiesto. Son **bytes originales de la certificación cerrada**, no nuevos tests de aplicación ni instrucciones para volver a ejecutarlos.
 - [Manifiesto del paquete](sql-package-integrity.sha256): doce artefactos certificados, rutas relativas; coincide con el manifiesto dentro del archivo.
 - [Integridad de evidencias publicadas](evidence-integrity.sha256): hashes del informe sanitizado, archivo y manifiesto.
+- [Informe integrado real](integration-dev-report.md), [JSON sanitizado](integration-dev-evidence.json), [paquete utilizado](integration-dev-certified-package.tar.gz) y [manifiesto](integration-package-integrity.sha256): evidencia histórica cerrada, sin secretos/sesiones/tokens. No ejecutar de nuevo.
+- [Revisión de rollout](rollout-review.md) y [consulta de catálogo preparada](production-catalog-readonly.sql): documentación de precondiciones; consulta productiva **no ejecutada** por falta de acceso soportado.
 
 Para revisar la integridad, extraer el archivo en un directorio temporal vacío y ejecutar allí únicamente `shasum -a 256 -c package-integrity.sha256`. Esta operación no ejecuta SQL ni abre conexiones. No ejecutar los scripts archivados: contienen rutas históricas de la estación local y corresponden a una certificación ya cerrada. El archivo conserva incluso el formato original para no alterar hashes.
 
@@ -62,29 +64,25 @@ La corrección no cambió el esquema: respetó `profiles.id → auth.users.id`, 
 
 01 finalizó en ROLLBACK; 02 registró los IDs propios antes de COMMIT; 08 eliminó exclusivamente las dependencias, auditoría y registros de esos fixtures, perfiles y Auth incluidos. No hubo cascadas, desactivación de RLS/triggers/restricciones ni borrados generales. **Inventario final: `remaining: []`.**
 
-## Integración corta solicitada: bloqueo exacto
+## Integración corta: aprobada y cerrada
 
-Se inspeccionó el wiring real, no se ejecutó con autorización simulada:
+Se ejecutó entre `2026-09-21T14:47:18.696Z` y `2026-09-21T14:49:04.349Z` sobre candidato `41b74c9abf919968791f6944d75c295261f0f2a0`. Acceso local exclusivo a DEV, claves modernas compatibles, PostgreSQL Session pooler con CA/TLS/hostname verificados. Las credenciales se capturaron sólo en memoria y se descartaron al terminar.
 
-- `lib/supabase.js` requiere `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-- `authorizeShadowAdministrator` verifica el token con `auth.getUser` y consulta el perfil real en Supabase.
-- El endpoint real `pages/api/operaciones/client-reconciliation.js` requiere `SUPABASE_SERVICE_ROLE_KEY` para sus lecturas/RPC; el handler condominal vuelve a exigir admin activo.
-- La estación no tiene esas claves API configuradas en el entorno del proceso ni archivo local de configuración en este worktree (sólo `.env.example`). No se extrajeron de Vercel, navegador, repositorios ajenos ni Producción.
-- La URL DEV es conocida y no secreta. Faltan una **anon key DEV válida** y una **service-role DEV válida**, capturadas por un mecanismo seguro, para ejecutar la aplicación sin sustituir su autenticación. La credencial PostgreSQL anterior dejó de existir en memoria al cerrar el proceso; tampoco se conserva una sesión sintética reutilizable. Para preparar/limpiar fixtures mediante ese acceso se requiere una conexión DEV autorizada vigente.
+Un recorrido positivo real: UI/login Auth de admin → preparación de candidato → revisión explícita → RPC DEV → vínculo aprobado → resolver/gateway real antes de 3A → observabilidad real en API/UI. Antes de aprobar, el candidato siguió sin resolver. Una sesión real de `asesor` fue rechazada con HTTP 403 `admin_required`, sin efectos secundarios. La clave administrativa no apareció en los 13 artefactos cliente inspeccionados.
 
-Resultado integrado de este cierre: **0 recorridos positivos, 0 rechazos autenticados ejecutados; NO EJECUTADO**, no FAIL funcional y no PASS. No se arrancó una aplicación con claves ficticias ni se generaron nuevos actores/sesiones/fixtures. Limpieza de esta fase: no hubo nuevos registros que retirar.
+Respond y el modelo sí fueron simulados con respuestas sintéticas determinísticas; Auth, autorización y Supabase DEV no. Se invocó la función real del gateway localmente y se usó un run sintético de observabilidad, no ingestión natural ni replay. No es una prueba de calidad de 3A/3B ni de auto-send. Ver [alcance exacto](integration-dev-report.md).
 
-Respond y el modelo están permitidos como simulados con respuestas sintéticas determinísticas, pero **no se ejecutaron en esta fase**. Los resultados anteriores de módulos/locales siguen identificados como simulados y no sustituyen el acceso real a DEV. No se transmitió contenido a proveedores externos.
+Limpieza PASS: 2 actores y 2 sesiones retirados; cero filas propias en las 22 tablas verificadas, incluida auditoría de prueba. Aplicación/navegador apagados. No migraciones/checks/72 assertions repetidos ni cambios de producto para obtener PASS.
 
 ## Compatibilidad y Vercel
 
-Comparación remota del código funcional contra `main` vigente: base y merge-base `58bc401c79749bc5140104f304c639b789256c69`, `ahead_by=2`, `behind_by=0`; PR Draft/open/mergeable. No hubo que traer cambios ajenos, rebase ni alterar funciones para compatibilidad. La actualización documental es descendiente directa de ese candidato; el árbol funcional permanece idéntico.
+Comparación remota antes de esta publicación documental contra `main` vigente: base y merge-base `58bc401c79749bc5140104f304c639b789256c69`, `ahead_by=4`, `behind_by=0`; PR Draft/open/mergeable. `git ls-remote` confirmó los mismos refs. No hubo que traer cambios ajenos, rebase ni alterar funciones. Esta revisión añade sólo documentación/evidencia; árbol funcional idéntico al candidato integrado.
 
 `vercel.json` mantiene la exclusión específica `git.deploymentEnabled["codex/condominium-owner-canonical-identity"]=false`. No hay workflows versionados de GitHub ni un hook Git local configurado en este worktree. No se invocó deployment manual, CLI ni hook. Preview: **no ejecutado deliberadamente; no PASS**.
 
-La ausencia previa de registros de deployment/checks en GitHub no demuestra por sí sola ausencia de deployments en Vercel. La consulta directa de metadatos Vercel sigue pendiente; este pendiente es independiente del bloqueo de integración y no justifica repetir SQL.
+La ausencia previa de registros de deployment/checks en GitHub no demuestra por sí sola ausencia de deployments en Vercel. La consulta directa de metadatos Vercel sigue pendiente; no hay conector/recurso/CLI disponible y no se repitió automatización bloqueada. Es independiente de las dos certificaciones aprobadas y no justifica repetirlas.
 
-PR #133 permanece Draft. Sin merge, deployment, SQL productivo, migraciones nuevas, backfill, personas reales ni cambios de flags productivos. El cierre permite revisar la evidencia SQL/documental; **no declara completada la prueba integrada necesaria para rollout**.
+PR #133 permanece Draft. Sin merge, deployment, SQL productivo, migraciones nuevas, backfill, personas reales ni cambios de flags productivos. El cierre conserva ambas certificaciones; **no permite saltar el preflight de catálogo ni la verificación de acceso productivo**.
 
 ### Descripción del PR: permiso de edición pendiente
 
@@ -92,6 +90,6 @@ La evidencia sí fue publicada mediante push a la rama autorizada. El intento de
 la descripción mediante la integración soportada de GitHub devolvió **HTTP 403,
 `Resource not accessible by integration`**. No se repitió ni se usó otro mecanismo para
 sortearlo. El cuerpo anterior del PR no refleja aún este cierre; requiere permiso de edición
-de pull requests en la integración GitHub o una actualización manual autorizada.
+de la vía soportada o una actualización manual autorizada; no se solicita ni amplía ningún permiso.
 [Descripción preparada para aplicar](pr-description-proposed.md). Este pendiente documental
-es distinto de la certificación SQL aprobada, del acceso de integración DEV y de Vercel.
+es distinto de las certificaciones SQL/integración aprobadas y de los accesos productivos pendientes.

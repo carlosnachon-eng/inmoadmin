@@ -13,11 +13,15 @@ El rechazo no-admin en DEV se probó con `asesor`, no con `coord_operaciones`.
 
 Evidencia sanitizada, paquete ejecutado y manifiesto verificable conservados en
 [docs/evidence/pr133](evidence/pr133/README.md). Allí se separan la instalación/checks
-manuales, SQL ejecutado en Supabase DEV, pruebas locales/simuladas e integración pendiente.
-El recorrido UI local → endpoint real → DEV → gateway → observabilidad **no está certificado
-contra DEV**: faltan credenciales API DEV para ejecutar la aplicación con autenticación real.
+manuales, SQL ejecutado en Supabase DEV, pruebas locales/simuladas e integración real.
+El recorrido UI local → endpoint real → DEV → gateway → observabilidad quedó cerrado
+con **INTEGRATION_DEV_PASS**: UI/Auth/autorización/endpoint/Supabase DEV reales, Respond y
+modelo simulados, caso positivo aprobado, asesor rechazado con 403 admin_required y
+limpieza sin residuos. No repetir ninguna de las dos certificaciones cerradas.
 La comprobación directa de deployments Vercel permanece pendiente por acceso soportado.
-Draft para revisión; no es autorización ni GO de rollout.
+El catálogo productivo y la vía operativa de instalación/despliegue también siguen sin
+verificar. Ver [revisión final](evidence/pr133/rollout-review.md): NO-GO para instalar
+por esas precondiciones, no por un fallo funcional ni por ausencia deliberada de Preview.
 
 ## A. Capacidad y límites de confianza
 
