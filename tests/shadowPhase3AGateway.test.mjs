@@ -32,7 +32,8 @@ test("gateway entrega al modelCall sólo texto conversacional sanitizado y conte
   const context = parsedUserContext(received);
   assert.doesNotMatch(JSON.stringify(context), /Carlos Perez|carlos@example\.com|Reforma 123|2221234567|Ana Lopez|must-not-cross|sourceMessageId/);
   assert.match(context.message, /\[PERSONA\].*\[EMAIL\].*\[DOMICILIO\]/);
-  assert.equal(context.metadata.propertyId, "f2a30000-0000-4000-8400-000000000001");
+  assert.match(context.metadata.propertyId, /^ref_[a-z]+_\d+$/);
+  assert.doesNotMatch(JSON.stringify(received), /f2a30000/);
   assert.deepEqual(context.metadata.attachmentContext.items[0].interpretation.extractedFields, { amount: 1250, currency: "MXN" });
   assert.deepEqual(Object.keys(context.metadata).sort(), ["attachmentContext", "contactRole", "priorConversation", "propertyId"]);
 });
@@ -58,7 +59,10 @@ test("primera y segunda ronda reciben la misma sanitización y conservan tools/e
   });
   assert.equal(contexts[0].message, contexts[1].message);
   assert.equal(contexts[1].round, 2);
-  assert.deepEqual(contexts[1].tools[0].args, { contractId: "f2a30000-0000-4000-8400-000000000002" });
+  assert.deepEqual(Object.keys(contexts[1].tools[0].args), ["contractId"]);
+  assert.match(contexts[1].tools[0].args.contractId, /^ref_[a-z]+_\d+$/);
+  assert.notEqual(contexts[0].tools[0].args.contractId, contexts[1].tools[0].args.contractId);
+  assert.equal(contexts[1].evidenceLedger[0].subjectId, contexts[1].tools[0].result[0].internalId);
   assert.equal(contexts[1].tools[0].result[0].amount, 1200);
   assert.equal(contexts[1].evidenceLedger[0].facts.amount, 1200);
   assert.doesNotMatch(JSON.stringify(contexts[1]), /internal\.invalid|arbitrary|injected/);
