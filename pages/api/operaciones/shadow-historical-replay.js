@@ -4,6 +4,7 @@ import { sameOriginAdminRequest } from "../../../lib/shadow/identityBootstrap.js
 import { executeHistoricalReplayCase, historicalReplayMetrics, HISTORICAL_REPLAY_MAX_CASES, HISTORICAL_REPLAY_RATINGS, HISTORICAL_REPLAY_REASONS, HISTORICAL_REPLAY_RUNTIME } from "../../../lib/shadow/ai/historicalReplay.js";
 import { prepareHistoricalReplaySelection, previewHistoricalReplaySource } from "../../../lib/shadow/ai/historicalReplaySource.js";
 import { historicalReplayConversationResult, storedHistoricalReplayConversationResult } from "../../../lib/shadow/ai/historicalReplayResult.js";
+import { sanitizedModelPrivacyChecks } from "../../../lib/shadow/ai/modelPrivacyTelemetry.js";
 
 const adminClient = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 export function createHistoricalReplayHandler({ createAdmin = adminClient, authorize = authorizeShadowAdministrator, sameOrigin = sameOriginAdminRequest, executeCase = executeHistoricalReplayCase, env = process.env, now = Date.now } = {}) {
@@ -22,7 +23,12 @@ return async function handler(req, res) {
       ]);
       if (cohortError || caseError || reviewError) throw cohortError || caseError || reviewError;
       const latestReview = new Map((reviews || []).map((row) => [row.replay_case_id, row]));
-      const enriched = (cases || []).map((row) => ({ ...row, ...storedHistoricalReplayConversationResult(row), review: latestReview.get(row.id) || null }));
+      const enriched = (cases || []).map((row) => {
+        const privacyChecks = sanitizedModelPrivacyChecks(row.result_safe?.privacy_checks);
+        return { ...row, ...storedHistoricalReplayConversationResult(row),
+          result_safe: { ...row.result_safe, privacy_checks: privacyChecks }, privacy_checks: privacyChecks,
+          review: latestReview.get(row.id) || null };
+      });
       return res.status(200).json({ ok: true, runtime: HISTORICAL_REPLAY_RUNTIME, cohorts: cohorts || [], cases: enriched, metrics: historicalReplayMetrics(enriched.map((row) => ({ ...row, human_rating: row.review?.rating }))) });
     }
     const action = String(req.body?.action || "");
@@ -47,17 +53,21 @@ return async function handler(req, res) {
       if (!claimed) return res.status(409).json({ ok: false, error: "replay_case_claim_conflict" });
       const snapshot = row.turn_snapshot || {};
       const replayCase = { evaluationMode: "historical_replay", sufficientHistoricalContext: true, temporalGrounding: row.temporal_grounding, identityGrounding: row.identity_grounding, humanResponseSnapshot: row.human_response_snapshot, envelope: snapshot.envelope };
+      let privacyChecks = [];
       try {
         const result = await executeCase(admin, replayCase, { env });
         const resolution = result.operationalResolution; const conversation = result.conversationAction;
         const conversationResult = historicalReplayConversationResult(conversation);
-        const { data: saved, error: saveError } = await admin.from("shadow_historical_replay_cases").update({ status: "completed", operational_resolution: resolution, conversation_action: conversation.conversation_action, proposed_message: conversation.proposed_message, result_safe: { conversationAction: conversationResult, tools: result.tools, evidence: result.evidence, providerRequestRefs: result.providerRequestRefs, providerModels: result.providerModels, outputDiagnostics: result.outputDiagnostics }, message_safe: result.messageSafe, would_resolve_without_human: resolution.would_resolve_without_human, input_tokens: result.inputTokens, output_tokens: result.outputTokens, estimated_cost_usd: result.estimatedCostUsd, latency_ms: result.latencyMs, completed_at: new Date().toISOString() }).eq("id", id).eq("status", "running").select("id").maybeSingle();
+        privacyChecks = sanitizedModelPrivacyChecks(result.privacyChecks);
+        const { data: saved, error: saveError } = await admin.from("shadow_historical_replay_cases").update({ status: "completed", operational_resolution: resolution, conversation_action: conversation.conversation_action, proposed_message: conversation.proposed_message, result_safe: { conversationAction: conversationResult, tools: result.tools, evidence: result.evidence, providerRequestRefs: result.providerRequestRefs, providerModels: result.providerModels, outputDiagnostics: result.outputDiagnostics, privacy_checks: privacyChecks }, message_safe: result.messageSafe, would_resolve_without_human: resolution.would_resolve_without_human, input_tokens: result.inputTokens, output_tokens: result.outputTokens, estimated_cost_usd: result.estimatedCostUsd, latency_ms: result.latencyMs, completed_at: new Date().toISOString() }).eq("id", id).eq("status", "running").select("id").maybeSingle();
         if (saveError || !saved) throw new Error("historical_replay_result_not_saved");
-        return res.status(200).json({ ok: true, caseId: id, status: "completed", ...conversationResult });
+        return res.status(200).json({ ok: true, caseId: id, status: "completed", ...conversationResult, privacy_checks: privacyChecks });
       } catch (executionError) {
         const telemetry = executionError.historicalReplayTelemetry || {};
-        await admin.from("shadow_historical_replay_cases").update({ status: "error", error_code: String(executionError.message || "replay_error").replace(/[^a-z0-9_]/gi, "_").toLowerCase().slice(0, 80), result_safe: { providerRequestRefs: telemetry.providerRequestRefs || [], providerModels: telemetry.providerModels || [], outputDiagnostics: { outputStage: telemetry.outputStage || "unknown", diagnosticCode: telemetry.diagnosticCode || "historical_replay_error", truncatedFields: telemetry.truncatedFields || [] } }, input_tokens: Number(telemetry.inputTokens || 0), output_tokens: Number(telemetry.outputTokens || 0), estimated_cost_usd: Number(telemetry.estimatedCostUsd || 0), latency_ms: Number(telemetry.latencyMs || 0), completed_at: new Date().toISOString() }).eq("id", id).eq("status", "running");
-        return res.status(422).json({ ok: false, error: "historical_replay_execution_error" });
+        privacyChecks = sanitizedModelPrivacyChecks(telemetry.privacyChecks || privacyChecks);
+        const privacyFailure = privacyChecks.at(-1)?.privacy_failure_code;
+        await admin.from("shadow_historical_replay_cases").update({ status: "error", error_code: privacyFailure || String(executionError.message || "replay_error").replace(/[^a-z0-9_]/gi, "_").toLowerCase().slice(0, 80), result_safe: { providerRequestRefs: telemetry.providerRequestRefs || [], providerModels: telemetry.providerModels || [], outputDiagnostics: { outputStage: privacyFailure ? "final_model_privacy" : telemetry.outputStage || "unknown", diagnosticCode: privacyFailure || telemetry.diagnosticCode || "historical_replay_error", truncatedFields: telemetry.truncatedFields || [] }, privacy_checks: privacyChecks }, input_tokens: Number(telemetry.inputTokens || 0), output_tokens: Number(telemetry.outputTokens || 0), estimated_cost_usd: Number(telemetry.estimatedCostUsd || 0), latency_ms: Number(telemetry.latencyMs || 0), completed_at: new Date().toISOString() }).eq("id", id).eq("status", "running");
+        return res.status(422).json({ ok: false, error: "historical_replay_execution_error", privacy_checks: privacyChecks });
       }
     }
     if (action === "review") {
