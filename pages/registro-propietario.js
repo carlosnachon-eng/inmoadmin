@@ -414,7 +414,7 @@ export default function RegistroPropietario() {
               <FileBox field="doc_escritura" label="Acta constitutiva, poder y constancia fiscal" hint="Sube un solo PDF con los documentos de la empresa" fileRef={fileRef4} />
             )}
             <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.6, marginTop: 20, padding: '14px', background: '#f8f8f8', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-              🔒 Al enviar este formulario, acepta nuestro{' '}<a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: '#b91c3c' }}>Aviso de Privacidad</a>. Su información es confidencial.
+              🔒 Al enviar este formulario, acepta nuestro{' '}<a href="https://www.emporioinmobiliario.com.mx/aviso-privacidad" target="_blank" rel="noreferrer" style={{ color: '#b91c3c' }}>Aviso de Privacidad</a>. Su información es confidencial.
             </div>
           </>)}
           {step === 4 && (

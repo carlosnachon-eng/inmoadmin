@@ -845,13 +845,13 @@ export default function SolicitudInquilino() {
                 <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#0369a1" }}>📄 Aviso de Privacidad</p>
                 <p style={{ margin: "0 0 16px", fontSize: 13, color: "#0369a1", lineHeight: 1.6 }}>
                   Tus datos personales serán tratados conforme a nuestro{" "}
-                  <a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: "#b91c3c", fontWeight: 700 }}>Aviso de Privacidad</a>
+                  <a href="https://www.emporioinmobiliario.com.mx/aviso-privacidad" target="_blank" rel="noreferrer" style={{ color: "#b91c3c", fontWeight: 700 }}>Aviso de Privacidad</a>
                   {" "}de Emporio Inmobiliario, en cumplimiento con la LFPDPPP.
                 </p>
                 <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}>
                   <input type="checkbox" checked={aceptaPrivacidad} onChange={e => setAceptaPrivacidad(e.target.checked)} style={{ width: 18, height: 18, marginTop: 2, accentColor: "#b91c3c", flexShrink: 0 }} />
                   <span style={{ fontSize: 14, color: colors.text, lineHeight: 1.5 }}>
-                    He leído y acepto el <a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: "#b91c3c", fontWeight: 700 }}>Aviso de Privacidad</a> y autorizo el tratamiento de mis datos personales. <span style={{ color: colors.red }}>*</span>
+                    He leído y acepto el <a href="https://www.emporioinmobiliario.com.mx/aviso-privacidad" target="_blank" rel="noreferrer" style={{ color: "#b91c3c", fontWeight: 700 }}>Aviso de Privacidad</a> y autorizo el tratamiento de mis datos personales. <span style={{ color: colors.red }}>*</span>
                   </span>
                 </label>
               </div>

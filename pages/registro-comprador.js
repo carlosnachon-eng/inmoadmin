@@ -314,7 +314,7 @@ export default function RegistroComprador() {
               <FileBox label="Identificación oficial (INE/Pasaporte)" hint="Toca para subir identificación" required file={docIdentificacion} error={errors.doc_identificacion} onFile={setDocIdentificacion} />
               <div style={S.privacy}>
                 🔒 Al enviar este formulario, acepta nuestro{' '}
-                <a href="https://emporio-inmobiliario.easybroker.com/AVISO" target="_blank" rel="noreferrer" style={{ color: '#b91c3c' }}>Aviso de Privacidad</a>. Su información es confidencial.
+                <a href="https://www.emporioinmobiliario.com.mx/aviso-privacidad" target="_blank" rel="noreferrer" style={{ color: '#b91c3c' }}>Aviso de Privacidad</a>. Su información es confidencial.
               </div>
             </>
           )}
