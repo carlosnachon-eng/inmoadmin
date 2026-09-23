@@ -71,8 +71,11 @@ test("las siete referencias históricas conservan exactamente su resolución de 
     await invokeShadowPhase3A({ admin, envelope:{sanitizedText:"Hola",providerMetadata:{respondContactId:`synthetic-legacy-${ref}`}},
       deterministic:{requiresHuman:true}, toolResults:[{name:"resolve_contact_identity",args:{},ok:true,result:[legacyIdentity]}],
       systemPrompt:"fixture",toolGuide:"fixture",modelCall:async(messages)=>{context=JSON.parse(messages[1].content);return {text:"{}"};} });
-    const { entityType, ...expectedLegacyPayload } = legacyIdentity;
-    assert.deepEqual(context.tools[0].result[0],expectedLegacyPayload);
+    const { entityType, internalId, ...expectedLegacyPayload } = legacyIdentity;
+    const { internalId: alias, ...actual } = context.tools[0].result[0];
+    assert.deepEqual(actual,expectedLegacyPayload);
+    assert.match(alias,/^ref_[a-z]+_\d+$/);
+    assert.equal(JSON.stringify(context).includes(internalId),false);
   }
 });
 
@@ -120,7 +123,9 @@ test("identidad aprobada presente en primera y segunda llamada 3A, sin teléfono
   for (const context of contexts) {
     const identity = context.tools[0].result[0]; const unit = context.tools[0].result[1];
     assert.equal(identity.resolved, true); assert.equal(identity.identityDomain, "condominium");
-    assert.equal(unit.unitId, condominiumCases[0].unitId); assert.equal(unit.entityType, "condominium_unit");
+    assert.match(unit.unitId, /^ref_[a-z]+_\d+$/); assert.equal(unit.entityType, "condominium_unit");
+    assert.equal(JSON.stringify(context).includes(condominiumCases[0].unitId), false);
+    assert.equal(tools[0].result[1].unitId, condominiumCases[0].unitId);
     assert.equal(unit.propertyId, undefined); assert.doesNotMatch(JSON.stringify(context), /525550100001|phone_digest|propietario_telefono/);
     assert.equal(context.deterministic.requiresHuman, true);
   }
