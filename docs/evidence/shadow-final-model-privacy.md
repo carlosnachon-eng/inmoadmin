@@ -141,3 +141,70 @@ financieras, legales, humanas y de elegibilidad de 3B de la suite existente.
 - Interpretación visual y otros transportes ajenos a 3A no se modifican ni se
   certifican aquí. El cierre manual de Anthropic en Producción comunicado por
   el usuario se mantiene; no se consultaron ni modificaron gates.
+
+## Corrección local P1/P2 del PR #137 — 2026-09-23
+
+Base de esta corrección: `2a2e357603a17570c4bfc44982f6315a4f2ef3b9`.
+El estado «No publicado» anterior corresponde a la certificación inicial;
+el PR #137 ya existe. Esta corrección queda comprometida sólo localmente,
+sin push, merge, deployment ni pruebas productivas.
+
+### P1: compatibilidad de referencias
+
+`areModelReferenceTypesCompatible` centraliza la equivalencia exclusiva
+`contact_identity` ↔ `client_identity`; los demás tipos exigen igualdad exacta.
+No une identidades ni cambia el resolver. Las filas `contact_identity` con
+`resolved=false` conservan tipo `respond_contact`, porque su `internalId`
+representa el contacto Respond y no una identidad canónica.
+
+Evidencia sintética: la salida de `resolve_contact_identity` pasa por el gateway,
+el modelo simulado devuelve su alias en `clientIdentityId`, y la tool real
+`find_administrative_work_by_context` consulta `client_identity_id` con el UUID
+correcto, únicamente server-side, contra un doble local de base de datos.
+Se prueban ambos sentidos de equivalencia, rechazo Respond → identidad,
+identidad → Respond, otros tipos y contacto no resuelto → identidad.
+
+### P2: salida fail-closed, sin expansión de referencias en prosa
+
+Política única: después de desaliasar los campos estructurados permitidos,
+`decodeModelDecisionReferences` inspecciona recursivamente todas las claves y
+valores restantes. Cualquier alias en texto libre rechaza la decisión completa
+con `pre_model_sanitization_blocked` / `model_alias_in_free_text`.
+No se reemplaza prosa por UUIDs, no se reintenta ni se devuelve una decisión
+parcial. El chequeo incluye aliases concatenados y campos futuros.
+
+Se cubren `summary`, `entitiesMentioned`, labels, `informationNeeded`, razón de
+tool, `contextAssessment`, `proposedAction`, valores textuales de facts,
+acknowledgement, clarificationQuestion, escalationMessage, escalationReason
+y safetyFlags. Runner/state machine demuestran cero tools tras el rechazo,
+cero decisión/acción persistida, cero decisión contaminada en `round_state_json`
+y cero alias en escrituras simuladas o respuesta que consumiría la UI.
+El Replay sintético demuestra rechazo antes de construir `proposed_message`;
+su recorrido positivo conserva el mensaje final sin aliases. Los campos futuros,
+incluido `proposed_message`, se prueban directamente en la frontera sin ampliar
+el schema de decisión vigente.
+
+Los tres fixtures anteriores que reutilizaban aliases en `entitiesMentioned`
+ahora emplean la etiqueta neutra `Inmueble`. Conservan sus comprobaciones de
+grounding, tres rondas de tools, ambigüedad y ausencia de resultados; la antigua
+expectativa de persistir un alias se sustituye por ausencia de aliases, además
+de las nuevas pruebas negativas de rechazo.
+
+### Validación de esta corrección
+
+| Verificación local | Resultado |
+| --- | --- |
+| Dirigidas (mismo conjunto de comandos documentado arriba) | 396/396 PASS |
+| Suite completa | 1,095/1,095 PASS, cero omitidas |
+| Build Next.js | PASS, 75/75 páginas |
+| `git diff --check` | PASS |
+
+El build ejecutó `node node_modules/next/dist/bin/next build`, equivalente al
+script `build` existente (`next build`), porque `npm` no está disponible en PATH.
+Se reutilizaron dependencias instaladas mediante un symlink local temporal,
+retirado al terminar; ningún manifiesto/lockfile de dependencias cambió.
+URL y claves de build ficticias, capacidades deshabilitadas sólo en ese proceso.
+Las 35 pruebas adicionales son locales y usan modelos/DB/fetch simulados.
+No se llamó a proveedores reales, no se ejecutaron cohortes productivas ni SQL,
+y no se modificaron prompts, schema, 3A/3B de negocio, identidad, políticas,
+gates ni outbound/R1/canary. GO para revisión de P1/P2, no despliegue ejecutado.

@@ -67,8 +67,60 @@ test("state machine resuelve aliases antes de tools y no persiste el mapa efíme
   assert.equal(result.status,"awaiting_model_round");assert.equal(calls,1);
   assert.equal(JSON.stringify(modelContext).includes(propertyId),false);
   assert.equal(result.tools[0].args.propertyId,propertyId);
-  assert.doesNotMatch(JSON.stringify(db.writes),/internalValues|textAliases|reverse|forward/);
+  assert.doesNotMatch(JSON.stringify(db.writes),/internalValues|textAliases|reverse|forward|ref_[A-Za-z]+_\d+/);
+  assert.doesNotMatch(JSON.stringify(result),/ref_[A-Za-z]+_\d+/);
 });
+
+const freeTextAliasMutations = {
+  summary: (d, alias) => { d.summary = alias; },
+  entitiesMentioned: (d, alias) => { d.entitiesMentioned = [alias]; },
+  label: (d, alias) => { d.resolvedEntities = [{ entityType: "property", internalId: alias, label: alias }]; },
+  informationNeeded: (d, alias) => { d.informationNeeded = [alias]; },
+  toolReason: (d, alias) => { d.proposedToolCalls = [toolCall("get_maintenance_ticket_summary", { propertyId: alias }, alias)]; },
+  contextAssessment: (d, alias) => { d.contextAssessment = alias; },
+  proposedAction: (d, alias) => { d.proposedAction = alias; },
+  factValue: (d, alias) => { d.factualClaims = [{ factType: "payment.status", value: alias, evidenceIds: [] }]; },
+  acknowledgement: (d, alias) => { d.conversationalResponseParts.acknowledgement = alias; },
+  clarificationQuestion: (d, alias) => { d.conversationalResponseParts.clarificationQuestion = alias; },
+  escalationMessage: (d, alias) => { d.conversationalResponseParts.escalationMessage = alias; },
+  escalationReason: (d, alias) => { d.escalationReason = alias; },
+  safetyFlags: (d, alias) => { d.safetyFlags = [alias]; },
+};
+for (const [field, mutate] of Object.entries(freeTextAliasMutations)) {
+  test(`P2: ${field} con alias nunca se persiste ni retorna en runner/state machine`, async () => {
+    for (const stateMachine of [false, true]) {
+      const propertyId = "f2a30000-0000-4000-8100-000000000001";
+      const stored = { id: `free-text-${field}-${stateMachine}`, provider: "synthetic", direction: "inbound", sanitized_text: "¿Cómo va el mantenimiento?", attachment_metadata: [], provider_metadata: { ...synthetic.providerMetadata, propertyId }, external_message_id: "synthetic-only", occurred_at: "2026-09-23T12:00:00Z" };
+      const db = fakeAiDb([], { filterIdempotencyKey: true, tableRows: { shadow_messages: [stored] } });
+      let modelCalls = 0, toolCalls = 0, alias;
+      const run = stateMachine ? startShadowAiStateMachine : runShadowAi;
+      const result = await run(db, { messageId: stored.id, envelope: { ...synthetic, sanitizedText: stored.sanitized_text, providerMetadata: stored.provider_metadata }, deterministic: {} }, {
+        env: devEnv,
+        modelCall: async (messages) => {
+          modelCalls++; alias = JSON.parse(messages[1].content).metadata.propertyId;
+          assert.match(alias, /^ref_[a-z]+_\d+$/);
+          const d = structuredClone(validDecision); mutate(d, alias);
+          validateShadowAiDecision(d);
+          return { text: JSON.stringify(d), usage: { input_tokens: 10, output_tokens: 3 } };
+        },
+        executeTool: async () => { toolCalls++; return []; },
+      });
+      assert.equal(result.status, "error"); assert.match(result.error, /pre_model_sanitization_blocked/);
+      assert.equal(modelCalls, 1); assert.equal(toolCalls, 0);
+      // No unsafe decision_json, round decision or proposed_message can reach persistence/UI.
+      assert.equal(db.writes.some(({ table }) => ["shadow_ai_decisions", "shadow_conversation_actions"].includes(table)), false);
+      assert.equal(db.writes.some(({ payload }) => payload?.round_state_json?.rounds?.length), false);
+      assert.equal(JSON.stringify([db.writes, result]).includes(alias), false);
+      assert.doesNotMatch(JSON.stringify([db.writes, result]), /ref_[A-Za-z]+_\d+/);
+      assert.equal(result.decision, undefined); assert.equal(result.conversationAction, undefined);
+      assert.equal(JSON.stringify(result).includes(propertyId), false);
+      for (const { payload } of db.writes) {
+        for (const key of ["decision_json", "proposed_message", "proposed_response", "summary", "error_message"])
+          assert.equal(JSON.stringify(payload?.[key] ?? null).includes(propertyId), false);
+      }
+    }
+  });
+}
 
 test("runner y state machine rechazan UUID modelado antes de toda tool y no reintentan", async () => {
   for(const stateMachine of [false,true]){
@@ -563,7 +615,7 @@ test("taxonomía v8 corrige condiciones contractuales, liquidación, llaves y mu
 });
 
 test("p3-11 se reconcilia como servicio y no inventa reporte sin evidencia",async()=>{
-  const claimed=(ctx)=>({...validDecision,intent:"mantenimiento",entitiesMentioned:[ctx.metadata.propertyReference,"agua"],entityResolutionStatus:"unresolved",proposedResponse:"Con eso podré ubicar tu reporte de agua.",requiresHuman:true});
+  const claimed={...validDecision,intent:"mantenimiento",entitiesMentioned:["Inmueble","agua"],entityResolutionStatus:"unresolved",proposedResponse:"Con eso podré ubicar tu reporte de agua.",requiresHuman:true};
   const result=await runShadowAi(fakeAiDb(),{messageId:"service-water",envelope:{...synthetic,sanitizedText:"Ya te mandé lo del agua",providerMetadata:{...synthetic.providerMetadata,propertyReference:"Montpellier"}},deterministic:{}},{env:devEnv,modelCall:sequenceModel([claimed])});
   assert.equal(result.decision.intent,"servicio");
   assert.equal(result.decision.requiresHuman,false);
@@ -688,14 +740,16 @@ test("runner persiste decisión estructurada e idempotencia evita segunda llamad
 test("A/C: loop ejecuta argumentos válidos y espera IDs de la ronda anterior",async()=>{
   const propertyId="f1000000-0000-4000-8100-000000000001";
   const db=fakeAiDb([], {tableRows:{properties:[{id:propertyId,name:"Montpellier"}],maintenance_tickets:[{id:"f1000000-0000-4000-8200-000000000001",property_id:propertyId,property_name:"Montpellier",status:"abierto",priority:"alta",created_at:"2026-08-20"}]}});
-  const round1=(ctx)=>({...validDecision,entitiesMentioned:[ctx.metadata.propertyReference],entityResolutionStatus:"unresolved",proposedToolCalls:[toolCall("find_properties",{propertyReference:ctx.metadata.propertyReference})]});
-  const round2=(ctx)=>({...validDecision,entitiesMentioned:[ctx.metadata.propertyReference],proposedToolCalls:[toolCall("get_maintenance_ticket_summary",{propertyId:ctx.tools[0].result[0].internalId})]});
-  const round3=(ctx)=>({...validDecision,entitiesMentioned:[ctx.metadata.propertyReference],resolvedEntities:[{entityType:"property",internalId:ctx.tools[0].result[0].internalId,label:"Inmueble"}],entityResolutionStatus:"resolved",proposedToolCalls:[],contextAssessment:"Propiedad y mantenimiento confirmados"});
+  // Aliases are legal in structured references, never in entitiesMentioned prose.
+  const round1=(ctx)=>({...validDecision,entitiesMentioned:["Inmueble"],entityResolutionStatus:"unresolved",proposedToolCalls:[toolCall("find_properties",{propertyReference:ctx.metadata.propertyReference})]});
+  const round2=(ctx)=>({...validDecision,entitiesMentioned:["Inmueble"],proposedToolCalls:[toolCall("get_maintenance_ticket_summary",{propertyId:ctx.tools[0].result[0].internalId})]});
+  const round3=(ctx)=>({...validDecision,entitiesMentioned:["Inmueble"],resolvedEntities:[{entityType:"property",internalId:ctx.tools[0].result[0].internalId,label:"Inmueble"}],entityResolutionStatus:"resolved",proposedToolCalls:[],contextAssessment:"Propiedad y mantenimiento confirmados"});
   const result=await runShadowAi(db,{messageId:"tool-loop",envelope:{...synthetic,sanitizedText:"Sigue la fuga",providerMetadata:{...synthetic.providerMetadata,propertyReference:"Montpellier"}},deterministic:{}},{env:devEnv,modelCall:sequenceModel([round1,round2,round3])});
   assert.equal(result.status,"completed"); assert.equal(result.rounds,3);
   assert.equal(result.tools.filter(x=>x.ok).map(x=>x.name).join(","),"find_properties,get_maintenance_ticket_summary");
   assert.equal(result.tools.some(x=>x.error),false); // Raw/unissued IDs now fail before any tool (separate negative tests).
   assert.equal(result.decision.entityResolutionStatus,"resolved"); assert.equal(result.decision.resolvedEntities.some(x=>x.internalId===propertyId),true);
+  assert.doesNotMatch(JSON.stringify([db.writes,result]),/ref_[A-Za-z]+_\d+/);
 });
 
 test("B: tool sin required se elimina antes de ejecutar y no consume otra ronda",async()=>{
@@ -707,17 +761,18 @@ test("B: tool sin required se elimina antes de ejecutar y no consume otra ronda"
 });
 
 test("D/E/F: entidades mencionadas sólo se resuelven con evidencia y distinguen ambiguous/unresolved",async()=>{
-  const propertyCall=(ctx)=>({...validDecision,entitiesMentioned:[ctx.metadata.propertyReference],entityResolutionStatus:"unresolved",proposedToolCalls:[toolCall("find_properties",{propertyReference:ctx.metadata.propertyReference})]});
-  const final=(ctx)=>({...validDecision,entitiesMentioned:[ctx.metadata.propertyReference],proposedToolCalls:[]});
+  const propertyCall=(ctx)=>({...validDecision,entitiesMentioned:["Inmueble"],entityResolutionStatus:"unresolved",proposedToolCalls:[toolCall("find_properties",{propertyReference:ctx.metadata.propertyReference})]});
+  const final={...validDecision,entitiesMentioned:["Inmueble"],proposedToolCalls:[]};
   const multiple=fakeAiDb([],{tableRows:{properties:[{id:"f1000000-0000-4000-8100-000000000001",name:"Montpellier 1"},{id:"f1000000-0000-4000-8100-000000000002",name:"Montpellier 2"}]}});
-  const dependent=(ctx)=>({...validDecision,entitiesMentioned:[ctx.metadata.propertyReference],proposedToolCalls:[toolCall("get_maintenance_ticket_summary",{propertyId:ctx.tools[0].result[0].internalId})]});
+  const dependent=(ctx)=>({...validDecision,entitiesMentioned:["Inmueble"],proposedToolCalls:[toolCall("get_maintenance_ticket_summary",{propertyId:ctx.tools[0].result[0].internalId})]});
   const scopedEnvelope={...synthetic,sanitizedText:"Montpellier",providerMetadata:{...synthetic.providerMetadata,propertyReference:"Montpellier"}};
   const ambiguous=await runShadowAi(multiple,{messageId:"ambiguous",envelope:scopedEnvelope,deterministic:{}},{env:devEnv,modelCall:sequenceModel([propertyCall,dependent,final])});
   assert.equal(ambiguous.decision.entityResolutionStatus,"ambiguous"); assert.equal(ambiguous.decision.resolvedEntities.length,2);
   assert.equal(ambiguous.tools.some((tool)=>tool.error==="ambiguous_dependency:propertyId"),true);
   assert.equal(multiple.reads.filter((table)=>table==="maintenance_tickets").length,0);
   const absent=await runShadowAi(fakeAiDb([],{tableRows:{properties:[]}}),{messageId:"absent",envelope:scopedEnvelope,deterministic:{}},{env:devEnv,modelCall:sequenceModel([propertyCall,final])});
-  assert.equal(absent.decision.entityResolutionStatus,"unresolved"); assert.deepEqual(absent.decision.resolvedEntities,[]); assert.match(absent.decision.entitiesMentioned[0],/^ref_/);
+  assert.equal(absent.decision.entityResolutionStatus,"unresolved"); assert.deepEqual(absent.decision.resolvedEntities,[]); assert.equal(absent.decision.entitiesMentioned[0],"Inmueble");
+  assert.doesNotMatch(JSON.stringify([ambiguous,absent,multiple.writes]),/ref_[A-Za-z]+_\d+/);
 });
 
 test("G/J: afirmación ERP sin evidencia cuenta como unsupported/hallucination y se neutraliza",async()=>{

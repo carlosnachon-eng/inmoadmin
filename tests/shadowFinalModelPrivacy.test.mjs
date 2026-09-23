@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
-import { createModelPrivacyScope, verifyFinalModelPayload, bindVerifiedModelMessages, serializeVerifiedAnthropicBody } from "../lib/shadow/ai/finalModelPrivacy.js";
+import { createModelPrivacyScope, verifyFinalModelPayload, bindVerifiedModelMessages, serializeVerifiedAnthropicBody, areModelReferenceTypesCompatible, modelReferenceType } from "../lib/shadow/ai/finalModelPrivacy.js";
 import { invokeShadowPhase3A, invokeShadowPhase3ARepair, decodeModelDecisionReferences } from "../lib/shadow/ai/phase3AGateway.js";
 import { createAnthropicShadowResponse } from "../lib/shadow/ai/anthropic.js";
 import { executeShadowReadOnlyTool } from "../lib/shadow/context.js";
@@ -9,6 +9,7 @@ import { groundAndRenderDecision } from "../lib/shadow/ai/grounding.js";
 import { executeHistoricalReplayCase } from "../lib/shadow/ai/historicalReplay.js";
 import { executeAnthropicAttemptPolicy } from "../lib/shadow/ai/stateMachine.js";
 import { REAL_SHADOW_AI_SYSTEM_PROMPT, REAL_SHADOW_AI_TOOL_GUIDE } from "../lib/shadow/ai/realPrompt.js";
+import { validateShadowAiDecision } from "../lib/shadow/ai/schema.js";
 
 const property = "a1100000-0000-4000-8000-000000000001";
 const contract = "a1100000-0000-4000-8000-000000000002";
@@ -136,6 +137,121 @@ test("aliases inventados, de otro tipo/contexto y UUID directo bloquean toda la 
   }
 });
 
+test("P1: compatibilidad central sólo une los dos tipos de identidad canónica", () => {
+  const identities = ["contact_identity", "client_identity"];
+  const otherTypes = ["respond_contact", "property", "contract", "payment", "service", "maintenance_ticket", "user", "evidence", "condominium_unit", "condominium", "identity_link", "unknown_record"];
+  const scope = createModelPrivacyScope();
+  for (const actual of [...identities, ...otherTypes]) {
+    const alias = scope.reference(property, actual);
+    for (const expected of [...identities, ...otherTypes]) {
+      const compatible = actual === expected || (identities.includes(actual) && identities.includes(expected));
+      assert.equal(areModelReferenceTypesCompatible(actual, expected), compatible, `${actual} -> ${expected}`);
+      if (compatible) assert.equal(scope.resolve(alias, expected), property);
+      else assert.throws(() => scope.resolve(alias, expected), (error) => error.reasons.includes("model_reference_type_mismatch"));
+    }
+  }
+  for (const invalid of [undefined, null, "", {}, 1]) assert.equal(areModelReferenceTypesCompatible(invalid, invalid), false);
+});
+
+test("P1: resolve_contact_identity -> clientIdentityId -> tool read-only recibe la identidad real", async () => {
+  let sent;
+  const result = await invokeShadowPhase3A(invocation({ modelCall: async (messages) => {
+    sent = contextOf(messages);
+    const d = decision();
+    const alias = sent.tools[1].result[0].internalId;
+    d.resolvedEntities = [{ entityType: "client_identity", internalId: alias, label: "Identidad" }];
+    d.proposedToolCalls = [{ tool: "find_administrative_work_by_context", arguments: { clientIdentityId: alias }, reason: "Consultar contexto" }];
+    return { text: JSON.stringify(d) };
+  } }));
+  const decoded = decodeModelDecisionReferences(validateShadowAiDecision(JSON.parse(result.text)), result);
+  const canonicalId = contactTool.result[0].internalId;
+  assert.equal(decoded.resolvedEntities[0].internalId, canonicalId);
+  assert.equal(decoded.proposedToolCalls[0].arguments.clientIdentityId, canonicalId);
+  let queryId; let calls = 0;
+  const admin = { from(table) {
+    calls++; assert.equal(table, "administrative_work_items");
+    const q = { select() { return q; }, order() { return q; }, eq(field, value) { assert.equal(field, "client_identity_id"); queryId = value; return q; }, limit: async () => ({ data: [], error: null }) };
+    return q;
+  } };
+  await executeShadowReadOnlyTool(admin, decoded.proposedToolCalls[0].tool, decoded.proposedToolCalls[0].arguments);
+  assert.equal(calls, 1); assert.equal(queryId, canonicalId);
+  assert.doesNotMatch(JSON.stringify(sent), /a1100000|987654321/);
+  assert.doesNotMatch(JSON.stringify(decoded), /ref_[A-Za-z]+_\d+/);
+});
+
+for (const mismatch of ["respond_as_identity", "identity_as_respond", "property_as_identity", "unresolved_contact_as_identity"]) {
+  test(`P1: ${mismatch} continúa bloqueado`, async () => {
+    const unresolved = mismatch === "unresolved_contact_as_identity";
+    const result = await invokeShadowPhase3A(invocation({
+      toolResults: unresolved ? [{ ...contactTool, result: [{ entityType: "contact_identity", internalId: contact, resolved: false, status: "unresolved" }] }] : [contactTool],
+      modelCall: async (messages) => {
+        const context = contextOf(messages); const d = decision();
+        const alias = mismatch === "respond_as_identity" ? context.tools[0].args.respondContactId
+          : mismatch === "property_as_identity" ? context.metadata.propertyId : context.tools[0].result[0].internalId;
+        d.proposedToolCalls = [mismatch === "identity_as_respond"
+          ? { tool: "resolve_contact_identity", arguments: { respondContactId: alias }, reason: "Contexto" }
+          : { tool: "find_administrative_work_by_context", arguments: { clientIdentityId: alias }, reason: "Contexto" }];
+        return { text: JSON.stringify(d) };
+      },
+    }));
+    assert.throws(() => decodeModelDecisionReferences(validateShadowAiDecision(JSON.parse(result.text)), result), (error) => error.reasons.includes("model_reference_type_mismatch"));
+    if (unresolved) assert.equal(modelReferenceType("internalId", { entityType: "contact_identity", resolved: false }), "respond_contact");
+  });
+}
+
+const aliasTextMutations = {
+  summary: (d, alias) => { d.summary = `Consulta ${alias}`; },
+  entitiesMentioned: (d, alias) => { d.entitiesMentioned = [alias]; },
+  label: (d, alias) => { d.resolvedEntities = [{ entityType: "property", internalId: alias, label: `Unidad ${alias}` }]; },
+  informationNeeded: (d, alias) => { d.informationNeeded = [alias]; },
+  toolReason: (d, alias) => { d.proposedToolCalls = [{ tool: "get_maintenance_ticket_summary", arguments: { propertyId: alias }, reason: `Consultar ${alias}` }]; },
+  contextAssessment: (d, alias) => { d.contextAssessment = alias; },
+  proposedAction: (d, alias) => { d.proposedAction = alias; },
+  factValue: (d, alias, context) => { d.factualClaims = [{ factType: "payment.status", value: alias, evidenceIds: [context.evidenceLedger[0].evidenceId] }]; },
+  acknowledgement: (d, alias) => { d.conversationalResponseParts.acknowledgement = `Recibido ${alias}`; },
+  clarificationQuestion: (d, alias) => { d.conversationalResponseParts.clarificationQuestion = `¿Confirmas ${alias}?`; },
+  escalationMessage: (d, alias) => { d.conversationalResponseParts.escalationMessage = `Revisar ${alias}`; },
+  escalationReason: (d, alias) => { d.escalationReason = alias; },
+  safetyFlags: (d, alias) => { d.safetyFlags = [alias]; },
+  embeddedAlias: (d, alias) => { d.summary = `prefijo_${alias}_sufijo`; },
+};
+for (const [field, mutate] of Object.entries(aliasTextMutations)) {
+  test(`P2: alias emitido en ${field} rechaza decisión completa sin expandirlo en texto`, async () => {
+    let emitted;
+    const result = await invokeShadowPhase3A(invocation({ modelCall: async (messages) => {
+      const context = contextOf(messages); emitted = context.metadata.propertyId;
+      const d = decision(); mutate(d, emitted, context);
+      return { text: JSON.stringify(d), usage: { input_tokens: 10, output_tokens: 3 } };
+    } }));
+    const input = validateShadowAiDecision(JSON.parse(result.text));
+    const before = JSON.stringify(input);
+    assert.throws(() => decodeModelDecisionReferences(input, result), (error) => {
+      assert.equal(error.code, "pre_model_sanitization_blocked");
+      assert.deepEqual(error.reasons, ["model_alias_in_free_text"]);
+      assert.equal(JSON.stringify(error).includes(emitted), false);
+      assert.equal(JSON.stringify(error).includes(property), false);
+      return true;
+    });
+    assert.equal(JSON.stringify(input), before);
+    assert.equal(before.includes(property), false);
+  });
+}
+
+test("P2: la frontera recursiva también cubre campos textuales futuros, JSON anidado y claves", async () => {
+  for (const position of ["proposed_message", "nested", "json", "key"]) {
+    const result = await invokeShadowPhase3A(invocation({ modelCall: async (messages) => {
+      const alias = contextOf(messages).metadata.propertyId; const d = decision();
+      if (position === "key") d.future = { [alias]: "Consulta" };
+      else if (position === "json") d.future = JSON.stringify({ text: alias });
+      else if (position === "nested") d.future = [{ nested: { text: alias } }];
+      else d.proposed_message = alias;
+      return { text: JSON.stringify(d) };
+    } }));
+    // Campos futuros se prueban directamente en la frontera, sin ampliar el schema actual.
+    assert.throws(() => decodeModelDecisionReferences(JSON.parse(result.text), result), (error) => error.reasons.includes("model_alias_in_free_text"));
+  }
+});
+
 test("repair conserva el mismo mapa sin reenviar inbound original ni UUID; residual bloquea repair", async () => {
   let context; let fetched;
   const first = await invokeShadowPhase3A(invocation({ modelCall: async (messages) => { context = contextOf(messages); return { text: "{" }; } }));
@@ -165,6 +281,30 @@ test("Replay usa la misma frontera en dos rondas; tool sólo recibe ID interno, 
   assert.doesNotMatch(JSON.stringify(payloads), /a1100000/);
   assert.equal(typeof result.conversationAction.requires_human, "boolean");
   assert.equal(typeof result.conversationAction.auto_send_eligible, "boolean");
+  assert.doesNotMatch(JSON.stringify(result), /ref_[A-Za-z]+_\d+/);
+  assert.doesNotMatch(result.conversationAction.proposed_message, /a1100000/);
+});
+
+test("P2: Replay simulado bloquea alias conversacional antes de tools o proposed_message final", async () => {
+  for (const field of ["summary", "acknowledgement", "clarificationQuestion", "escalationMessage"]) {
+    let calls = 0; let toolCalls = 0; let emitted;
+    await assert.rejects(() => executeHistoricalReplayCase({ from() { throw Error("unexpected_persistence"); } }, replayCase, {
+      env: replayEnv,
+      modelCall: async (messages) => {
+        calls++; emitted = contextOf(messages).metadata.propertyId;
+        const d = decision(); aliasTextMutations[field](d, emitted);
+        return { text: JSON.stringify(d), usage: { input_tokens: 10, output_tokens: 3 } };
+      },
+      executeTool: async () => { toolCalls++; return []; },
+    }), (error) => {
+      assert.equal(error.code, "pre_model_sanitization_blocked");
+      assert.deepEqual(error.reasons, ["model_alias_in_free_text"]);
+      assert.equal(JSON.stringify(error).includes(emitted), false);
+      assert.equal(JSON.stringify(error).includes(property), false);
+      return true;
+    });
+    assert.equal(calls, 1); assert.equal(toolCalls, 0);
+  }
 });
 
 test("final verifier FAIL: cero provider calls y cero tools, tampoco retry de privacidad", async () => {
