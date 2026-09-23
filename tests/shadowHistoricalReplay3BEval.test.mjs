@@ -90,13 +90,13 @@ test("identidad histórica sin respondContactId permanece unresolved y fail-clos
   assert.equal(selected.cases[0].envelope.providerMetadata.respondContactId,"");
 });
 
-test("métricas replay permanecen separadas y destacan primeras capabilities",()=>{
+test("métricas legacy no infieren elegibilidad a partir de ask/request",()=>{
   const metrics=historicalReplayMetrics([
     {status:"completed",human_rating:"correct",message_safe:true,would_resolve_without_human:true,conversation_action:"ask_missing_information"},
     {status:"completed",human_rating:"acceptable_with_changes",message_safe:true,would_resolve_without_human:false,conversation_action:"request_document"},
     {status:"not_evaluable",human_rating:"not_evaluable",message_safe:false,would_resolve_without_human:false,conversation_action:"no_message"},
   ]);
-  assert.equal(metrics.total,3); assert.equal(metrics.completed,2); assert.equal(metrics.firstOutboundCandidates,2); assert.equal(metrics.safeMessageRate,1);
+  assert.equal(metrics.total,3); assert.equal(metrics.completed,2); assert.equal(metrics.firstOutboundCandidates,0); assert.equal(metrics.eligibilityNotRecorded,2); assert.equal(metrics.safeMessageRate,1);
 });
 
 test("schema v2 exige elegibilidad humana y motivo fuera de correcta",()=>{
