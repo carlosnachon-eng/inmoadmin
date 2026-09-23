@@ -7,6 +7,7 @@ import { executeHistoricalReplayCase, historicalReplayMetrics, selectHistoricalR
 import { HISTORICAL_REPLAY_SOURCE_LIMITS as LIMITS, loadHistoricalReplaySource, prepareHistoricalReplaySelection, previewHistoricalReplaySource } from "../lib/shadow/ai/historicalReplaySource.js";
 import { historicalReplayConversationResult, storedHistoricalReplayConversationResult } from "../lib/shadow/ai/historicalReplayResult.js";
 import { buildConversationAction } from "../lib/shadow/ai/conversationAction.js";
+import { createAnthropicShadowResponse } from "../lib/shadow/ai/anthropic.js";
 
 const NOW = Date.parse("2026-09-22T18:00:00Z");
 const env = { SHADOW_HISTORICAL_REPLAY_ENABLED: "true", SHADOW_HISTORICAL_REPLAY_ANTHROPIC_ENABLED: "true", SHADOW_IDENTITY_BRIDGE_ENABLED: "true",
@@ -288,8 +289,8 @@ test("actual replay JSX renders true/false/legacy distinctly and prepare forward
   const props = { card: {}, brand: {}, historicalReplayBusy: false, historicalReplayTurnKeys: ["turn1"], historicalReviewDrafts: {}, REPLAY_RATINGS: [], REPLAY_REASONS: [],
     historicalReplayPreview: { cases: [], selected: 1, sourceSnapshot: snapshot, sourceInfo: {} },
     historicalReplay: { metrics: { autoSendEligible: 1, eligibilityNotRecorded: 1 }, cases: [
-      { id: "one", status: "completed", requires_human: false, auto_send_eligible: true, blocked_reason: null, conversation_action: "provide_verified_status", review: { rating: "correct", human_auto_send_eligible: false } },
-      { id: "two", status: "completed", requires_human: true, auto_send_eligible: false, blocked_reason: "financial_sensitive", conversation_action: "human_handoff", review: { rating: "correct", human_auto_send_eligible: true } },
+      { id: "one", status: "completed", requires_human: false, auto_send_eligible: true, blocked_reason: null, conversation_action: "provide_verified_status", review: { rating: "correct", human_auto_send_eligible: false }, privacy_checks: [{ final_payload_verified: true, serialized_body_verified: true, output_mode: "anthropic_json_schema", privacy_stage: "final_model_privacy", provider_invoked: true }] },
+      { id: "two", status: "completed", requires_human: true, auto_send_eligible: false, blocked_reason: "financial_sensitive", conversation_action: "human_handoff", review: { rating: "correct", human_auto_send_eligible: true }, privacy_checks: [{ privacy_stage: "final_model_privacy", privacy_failure_code: "serialized_body_rejected", provider_invoked: false }] },
       { id: "legacy", status: "completed", review: { rating: "correct", human_auto_send_eligible: true } },
     ] }, operateHistoricalReplay: (...args) => calls.push(args) };
   const tree = mod.exports.default(props);
@@ -300,4 +301,124 @@ test("actual replay JSX renders true/false/legacy distinctly and prepare forward
   assert.match(html, /requires_human: false.*auto_send_eligible: true/);
   assert.match(html, /requires_human: true.*auto_send_eligible: false.*financial_sensitive/);
   assert.match(html, /requires_human: no registrado.*auto_send_eligible: no registrado/);
+  assert.match(html, /final_payload_verified: true.*serialized_body_verified: true.*output_mode: anthropic_json_schema.*provider_invoked: true/);
+  assert.match(html, /FAIL: serialized_body_rejected.*provider_invoked: false/);
+  assert.match(html, /Sin comprobante registrado; no equivale a PASS/);
+});
+
+const privacyPass = { final_payload_verified: true, serialized_body_verified: true, output_mode: "anthropic_json_schema", privacy_stage: "final_model_privacy", provider_invoked: true };
+const privacyFail = (privacy_failure_code) => ({ privacy_stage: "final_model_privacy", privacy_failure_code, provider_invoked: false });
+const syntheticId = "a1100000-0000-4000-8000-000000000001";
+function privacyReplayApi({ modelCall, executeTool, failCompletedSave = false, metadata = {} } = {}) {
+  const db = database(tableSeed(), { failCompletedSave });
+  db.tables.shadow_historical_replay_cases.push({ id: "privacy-case", status: "pending", turn_snapshot: { envelope: { provider: "respond_admin", sanitizedText: "¿Cómo va el mantenimiento?", providerMetadata: { propertyId: syntheticId, ...metadata } } } });
+  const api = endpoint(db, { executeCase: (admin, replayCase, options) => executeHistoricalReplayCase(admin, replayCase, { ...options, modelCall, executeTool, now: () => NOW }) });
+  return { db, api, row: db.tables.shadow_historical_replay_cases[0] };
+}
+function syntheticTransport(fetchImpl) {
+  return (messages, options) => createAnthropicShadowResponse(messages, { ...options, fetchImpl });
+}
+const syntheticModelResponse = (value = decision) => ({ ok: true, json: async () => ({ id: "synthetic-provider", content: [{ type: "text", text: JSON.stringify(value) }], usage: { input_tokens: 5, output_tokens: 2 } }) });
+
+test("native transport PASS → Replay → result_safe → POST/GET, with only sanitized metadata", async () => {
+  let fetches = 0;
+  const { db, api, row } = privacyReplayApi({ modelCall: syntheticTransport(async (_url, options) => {
+    fetches++; assert.doesNotMatch(options.body, /a1100000/); return syntheticModelResponse();
+  }) });
+  const result = await api({ action: "execute_one", caseId: row.id });
+  assert.equal(result.statusCode, 200); assert.equal(fetches, 1);
+  for (const checks of [result.body.privacy_checks, row.result_safe.privacy_checks, (await api({}, "GET")).body.cases[0].privacy_checks]) {
+    assert.deepEqual(checks, [privacyPass]);
+    assert.doesNotMatch(JSON.stringify(checks), /a1100000|ref_|"body"|"message"|hash|count|synthetic-provider/);
+  }
+  assert.ok(db.writes.every((write) => write.table === "shadow_historical_replay_cases"));
+});
+
+test("pre-provider final-object and serialization failures persist fixed FAIL, zero provider/tools and no sensitive error text", async () => {
+  for (const stage of ["final_payload_rejected", "serialized_body_rejected", "body_serialization_failed"]) {
+    const stringify = JSON.stringify; let fetches = 0, toolCalls = 0;
+    const { api, row } = privacyReplayApi({ executeTool: async () => { toolCalls++; return []; },
+      modelCall: async (messages, options) => createAnthropicShadowResponse(messages, {
+        ...options, env: stage === "final_payload_rejected" ? { ...env, SHADOW_AI_MODEL: syntheticId } : env,
+        fetchImpl: async () => { fetches++; return syntheticModelResponse(); },
+      }),
+    });
+    let result;
+    try {
+      if (stage !== "final_payload_rejected") JSON.stringify = (value, ...args) => {
+        if (value?.max_tokens === 1400) {
+          if (stage === "body_serialization_failed") throw new Error(`synthetic serialization fault ${syntheticId}`);
+          return stringify({ ...value, unexpected: syntheticId }, ...args);
+        }
+        return stringify(value, ...args);
+      };
+      result = await api({ action: "execute_one", caseId: row.id });
+    } finally { JSON.stringify = stringify; }
+    assert.equal(result.statusCode, 422, stage); assert.equal(row.status, "error");
+    assert.equal(fetches, 0); assert.equal(toolCalls, 0);
+    assert.equal(row.error_code, stage);
+    assert.deepEqual(row.result_safe.privacy_checks, [privacyFail(stage)]);
+    assert.deepEqual(result.body.privacy_checks, [privacyFail(stage)]);
+    assert.deepEqual((await api({}, "GET")).body.cases[0].privacy_checks, [privacyFail(stage)]);
+    assert.equal(row.result_safe.outputDiagnostics.outputStage, "final_model_privacy");
+    assert.doesNotMatch(JSON.stringify(row.result_safe), /a1100000|ref_|synthetic serialization/);
+  }
+});
+
+test("gateway rejection before transport gets no invented verification PASS or provider invocation", async () => {
+  let calls = 0;
+  const { api, row } = privacyReplayApi({ metadata: { subject: "019aaaaa-aaaa-7aaa-aaaa-123456789abc" }, modelCall: async () => { calls++; assert.fail("no provider"); } });
+  const result = await api({ action: "execute_one", caseId: row.id });
+  assert.equal(result.statusCode, 422); assert.equal(calls, 0);
+  assert.deepEqual(row.result_safe.privacy_checks, [privacyFail("pre_transport_privacy_blocked")]);
+});
+
+test("multiple real transport rounds retain each receipt: a later failure cannot be hidden by an earlier PASS", async () => {
+  for (const secondFails of [false, true]) {
+    let rounds = 0, fetches = 0, toolCalls = 0;
+    const { api, row } = privacyReplayApi({
+      modelCall: (messages, options) => {
+        rounds++;
+        return createAnthropicShadowResponse(messages, { ...options, env: secondFails && rounds === 2 ? { ...env, SHADOW_AI_MODEL: syntheticId } : env,
+          fetchImpl: async (_url, options) => {
+            fetches++; const next = structuredClone(decision);
+            const context = JSON.parse(JSON.parse(options.body).messages[0].content);
+            if (rounds === 1) next.proposedToolCalls = [{ tool: "get_maintenance_ticket_summary", arguments: { propertyId: context.metadata.propertyId }, reason: "Consultar estado" }];
+            return syntheticModelResponse(next);
+          },
+        });
+      },
+      executeTool: async (_db, name, args) => { toolCalls++; assert.equal(name, "get_maintenance_ticket_summary"); assert.equal(args.propertyId, syntheticId); return [{ entityType: "maintenance_ticket", internalId: "a1100000-0000-4000-8000-000000000002", status: "abierto", priority: "normal" }]; },
+    });
+    const result = await api({ action: "execute_one", caseId: row.id });
+    assert.equal(result.statusCode, secondFails ? 422 : 200);
+    assert.equal(rounds, 2); assert.equal(fetches, secondFails ? 1 : 2); assert.equal(toolCalls, 1);
+    assert.deepEqual(row.result_safe.privacy_checks, [privacyPass, secondFails ? privacyFail("final_payload_rejected") : privacyPass]);
+  }
+});
+
+test("provider response properties and simulated model output cannot forge native transport receipts", async () => {
+  const { api, row } = privacyReplayApi({ modelCall: async () => ({ text: JSON.stringify(decision), privacyChecks: [privacyPass], privacyReceipt: privacyPass, outputMode: "anthropic_json_schema" }) });
+  assert.equal((await api({ action: "execute_one", caseId: row.id })).statusCode, 200);
+  assert.deepEqual(row.result_safe.privacy_checks, []);
+});
+
+test("GET projects stored receipts again, removes accidental extra fields, leaves legacy unmeasured", async () => {
+  const { api, row } = privacyReplayApi();
+  row.status = "completed";
+  assert.deepEqual((await api({}, "GET")).body.cases[0].privacy_checks, []);
+  row.result_safe = { privacy_checks: [{ ...privacyPass, body: syntheticId, alias: "ref_private_1", hash: "a".repeat(64) }, { ...privacyPass, output_mode: syntheticId }] };
+  const listed = (await api({}, "GET")).body.cases[0];
+  assert.deepEqual(listed.privacy_checks, [privacyPass]);
+  assert.deepEqual(listed.result_safe.privacy_checks, [privacyPass]);
+});
+
+test("post-provider failure keeps native PASS receipts without claiming execution completion", async () => {
+  for (const failCompletedSave of [false, true]) {
+    const { api, row } = privacyReplayApi({ failCompletedSave, modelCall: syntheticTransport(async () => failCompletedSave ? syntheticModelResponse() : { ok: true, json: async () => ({ content: [{ type: "text", text: "invalid JSON" }] }) }) });
+    const result = await api({ action: "execute_one", caseId: row.id });
+    assert.equal(result.statusCode, 422); assert.equal(row.status, "error");
+    assert.deepEqual(row.result_safe.privacy_checks, [privacyPass]);
+    assert.equal(row.error_code, failCompletedSave ? "historical_replay_result_not_saved" : "invalid_structured_output_json_parse_error");
+  }
 });
