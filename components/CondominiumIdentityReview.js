@@ -6,7 +6,18 @@ export default function CondominiumIdentityReview({ supabase, profile }) {
   const [reviewed, setReviewed] = useState({}); const [busy, setBusy] = useState(false); const pending = useRef(false);
   const [attachConfirmedIdentity, setAttachConfirmedIdentity] = useState(false);
   const [result, setResult] = useState(null); const [error, setError] = useState("");
+  const [checkRef, setCheckRef] = useState(""); const [checkResult, setCheckResult] = useState(null);
   if (profile?.active !== true || profile.role_id !== "admin") return null;
+  const checkResolver = async () => {
+    if (pending.current || !/^[a-f0-9]{12}$/.test(checkRef)) return;
+    pending.current = true; setBusy(true); setError(""); setCheckResult(null);
+    try {
+      const response = await requestCondominiumIdentityReview({ supabase, profile,
+        body: { action: "condominium_resolver_check", candidateRef: checkRef } });
+      setCheckResult(response.result);
+    } catch (e) { setError(e.message || "condominium_resolver_read_failed"); }
+    finally { pending.current = false; setBusy(false); }
+  };
   const operate = async (action, candidate = null) => {
     if (pending.current) return;
     if (action === "confirm" && !reviewed[candidate?.candidateId]) return;
@@ -25,6 +36,13 @@ export default function CondominiumIdentityReview({ supabase, profile }) {
   return <details style={{ padding: 16, border: "1px solid #ddd", marginBottom: 14 }}>
     <summary><strong>Identidad canónica — propietarios de Condominios</strong></summary>
     <p>La coincidencia telefónica sólo prepara un candidato. Requiere revisión administrativa explícita; no crea contratos ni acceso al portal. Teléfonos compartidos sin vínculo estructural se bloquean.</p>
+    <fieldset disabled={busy}>
+      <legend>Healthcheck del resolver pre-3A — sólo lectura</legend>
+      <p>Funciona con los gates OFF. No prepara ni confirma candidatos; no invoca el modelo ni crea runs.</p>
+      <label>Referencia opaca del candidato confirmado <input aria-label="Referencia opaca del candidato confirmado" value={checkRef} maxLength={12} autoComplete="off" onChange={(e) => { setCheckRef(e.target.value); setCheckResult(null); }} /></label>
+      <button disabled={busy || !/^[a-f0-9]{12}$/.test(checkRef)} onClick={checkResolver}>Comprobar resolver pre-3A</button>
+    </fieldset>
+    {checkResult && <pre role="status" aria-label="Resultado healthcheck pre-3A" style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(checkResult, null, 2)}</pre>}
     <button disabled={busy} onClick={() => operate("list")}>Consultar unidades y candidatos</button>
     {error && <p role="alert">{error}</p>}
     {result && <p role="status">Resultado: {result.status} · {result.reason || "sin bloqueo"} · unidad {result.unitRef} · candidato {result.candidateRef || "no creado"}. Sin reintento automático.</p>}

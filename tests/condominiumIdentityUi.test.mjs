@@ -69,3 +69,37 @@ test("UI real: no-admin no ve acción; sesión expirada cero POST y sin retry", 
   await button(ui.render(), "Consultar unidades y candidatos").props.onClick();
   assert.equal(calls, 0); assert.ok(JSON.stringify(ui.render()).includes("fresh_session_required"));
 });
+
+test("healthcheck UI: opaque ref, fresh token, one read-only POST without listing/confirming or retry", async () => {
+  const calls = []; let release;
+  const ui = componentHarness(async (url, options) => {
+    calls.push({ url, options, body: JSON.parse(options.body) });
+    await new Promise((resolve) => { release = resolve; });
+    return response({ ok: true, result: { candidateRef: "aabbccddeeff", resolved: true, identityDomain: "condominium", roles: ["owner"],
+      linkSource: "condominium_owner_admin_review", unitRef: "112233445566", condominiumRef: "665544332211", ambiguousUnitContext: false } });
+  });
+  assert.equal(button(ui.render(), "Comprobar resolver pre-3A").props.disabled, true);
+  const input = nodes(ui.render()).find((n) => n.props?.["aria-label"] === "Referencia opaca del candidato confirmado");
+  input.props.onChange({ target: { value: "aabbccddeeff" } }); ui.rotate();
+  const submit = button(ui.render(), "Comprobar resolver pre-3A").props.onClick;
+  const first = submit(); const duplicate = submit();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 1); assert.equal(calls[0].options.headers.Authorization, "Bearer synthetic-rotated");
+  assert.deepEqual(calls[0].body, { action: "condominium_resolver_check", candidateRef: "aabbccddeeff" });
+  release(); await Promise.all([first, duplicate]);
+  const status = nodes(ui.render()).find((n) => n.props?.["aria-label"] === "Resultado healthcheck pre-3A");
+  assert.equal(JSON.parse(status.props.children).resolved, true); assert.equal(calls.length, 1);
+  assert.equal(button(ui.render(), "Aprobar relación e identidad"), undefined);
+});
+
+test("healthcheck UI: expired session -> zero POST, request error -> no retry", async () => {
+  let calls = 0;
+  const ui = componentHarness(async () => { calls++; return { ok: false, json: async () => ({ ok: false, error: "candidate_not_confirmed" }) }; });
+  const setRef = () => nodes(ui.render()).find((n) => n.props?.["aria-label"] === "Referencia opaca del candidato confirmado").props.onChange({ target: { value: "aabbccddeeff" } });
+  setRef();
+  await button(ui.render(), "Comprobar resolver pre-3A").props.onClick();
+  assert.equal(calls, 1); assert.ok(JSON.stringify(ui.render()).includes("candidate_not_confirmed"));
+  ui.expire(); setRef();
+  await button(ui.render(), "Comprobar resolver pre-3A").props.onClick();
+  assert.equal(calls, 1); assert.ok(JSON.stringify(ui.render()).includes("fresh_session_required"));
+});
