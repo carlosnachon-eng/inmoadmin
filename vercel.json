@@ -2,7 +2,8 @@
   "git": {
     "deploymentEnabled": {
       "codex/condominium-owner-canonical-identity": false,
-      "codex/condominium-resolver-healthcheck": false
+      "codex/condominium-resolver-healthcheck": false,
+      "codex/shadow-final-model-privacy": false
     }
   },
   "crons": [
