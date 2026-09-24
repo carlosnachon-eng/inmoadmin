@@ -8,6 +8,7 @@ import { HISTORICAL_REPLAY_SOURCE_LIMITS as LIMITS, loadHistoricalReplaySource, 
 import { historicalReplayConversationResult, storedHistoricalReplayConversationResult } from "../lib/shadow/ai/historicalReplayResult.js";
 import { buildConversationAction } from "../lib/shadow/ai/conversationAction.js";
 import { createAnthropicShadowResponse } from "../lib/shadow/ai/anthropic.js";
+import { opaqueProviderRequestRef } from "../lib/shadow/ai/providerHttpDiagnostics.js";
 
 const NOW = Date.parse("2026-09-22T18:00:00Z");
 const env = { SHADOW_HISTORICAL_REPLAY_ENABLED: "true", SHADOW_HISTORICAL_REPLAY_ANTHROPIC_ENABLED: "true", SHADOW_IDENTITY_BRIDGE_ENABLED: "true",
@@ -292,6 +293,7 @@ test("actual replay JSX renders true/false/legacy distinctly and prepare forward
       { id: "one", status: "completed", requires_human: false, auto_send_eligible: true, blocked_reason: null, conversation_action: "provide_verified_status", review: { rating: "correct", human_auto_send_eligible: false }, privacy_checks: [{ final_payload_verified: true, serialized_body_verified: true, output_mode: "anthropic_json_schema", privacy_stage: "final_model_privacy", provider_invoked: true }] },
       { id: "two", status: "completed", requires_human: true, auto_send_eligible: false, blocked_reason: "financial_sensitive", conversation_action: "human_handoff", review: { rating: "correct", human_auto_send_eligible: true }, privacy_checks: [{ privacy_stage: "final_model_privacy", privacy_failure_code: "serialized_body_rejected", provider_invoked: false }] },
       { id: "legacy", status: "completed", review: { rating: "correct", human_auto_send_eligible: true } },
+      { id: "http-error", status: "error", input_tokens: null, output_tokens: null, estimated_cost_usd: null, provider_model_status: "unaccredited", provider_http: { provider_http_status: 400, provider_error_type: "invalid_request_error", provider_error_code: "invalid_json_schema", provider_error_param: "output_config.format.schema", provider_error_message_safe: "invalid_json_schema", provider_request_ref: "a".repeat(64) }, result_safe: { outputDiagnostics: { outputStage: "provider_http" } } },
     ] }, operateHistoricalReplay: (...args) => calls.push(args) };
   const tree = mod.exports.default(props);
   const nodes = (node) => !node || typeof node !== "object" ? [] : Array.isArray(node) ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
@@ -304,6 +306,10 @@ test("actual replay JSX renders true/false/legacy distinctly and prepare forward
   assert.match(html, /final_payload_verified: true.*serialized_body_verified: true.*output_mode: anthropic_json_schema.*provider_invoked: true/);
   assert.match(html, /FAIL: serialized_body_rejected.*provider_invoked: false/);
   assert.match(html, /Sin comprobante registrado; no equivale a PASS/);
+  assert.match(html, /Tokens:<\/strong> desconocido\/desconocido · USD desconocido/);
+  assert.match(html, /Modelo acreditado:<\/strong> no acreditado/);
+  assert.match(html, /Etapa: provider_http · HTTP 400 · tipo: invalid_request_error/);
+  assert.match(html, /Categoría: invalid_json_schema · referencia opaca: a{64}/);
 });
 
 const privacyPass = { final_payload_verified: true, serialized_body_verified: true, output_mode: "anthropic_json_schema", privacy_stage: "final_model_privacy", provider_invoked: true };
@@ -421,4 +427,101 @@ test("post-provider failure keeps native PASS receipts without claiming executio
     assert.deepEqual(row.result_safe.privacy_checks, [privacyPass]);
     assert.equal(row.error_code, failCompletedSave ? "historical_replay_result_not_saved" : "invalid_structured_output_json_parse_error");
   }
+});
+
+test("400 native HTTP → Replay → persistence → POST/GET: only sanitized diagnostics, unknown usage/model, no retry/tools", async () => {
+  const requestId = "req_011CSHoEeqs5C35K2UUqR7Fy";
+  const dangerous = `${syntheticId} ref_private_1 Ana Perez ana@example.com +52 222 123 4567 CLABE 012345678901234567 sk-ant-private123 Calle Privada 15`;
+  let fetches = 0, tools = 0;
+  const { db, api, row } = privacyReplayApi({
+    modelCall: syntheticTransport(async (_url, options) => {
+      fetches++; assert.doesNotMatch(options.body, /a1100000|ana@example/);
+      return { ok: false, status: 400, headers: { get: () => requestId }, json: async () => ({ type: "error", request_id: requestId,
+        error: { type: "invalid_request_error", code: "invalid_json_schema", param: "output_config.format.schema", message: `Invalid JSON schema: ${dangerous}` },
+        body: dangerous, headers: { authorization: dangerous }, usage: { input_tokens: 999 }, model: "untrusted-model",
+      }) };
+    }), executeTool: async () => { tools++; assert.fail("no tools after HTTP error"); },
+  });
+  const response = await api({ action: "execute_one", caseId: row.id });
+  assert.equal(response.statusCode, 422); assert.equal(fetches, 1); assert.equal(tools, 0);
+  assert.equal(row.status, "error"); assert.equal(row.error_code, "model_http_400");
+  assert.deepEqual(row.result_safe.outputDiagnostics, { outputStage: "provider_http", diagnosticCode: "model_http_400", truncatedFields: [] });
+  assert.deepEqual(row.result_safe.privacy_checks, [privacyPass]);
+  const expected = { provider_http_status: 400, provider_error_type: "invalid_request_error", provider_error_code: "invalid_json_schema", provider_error_param: "output_config.format.schema", provider_request_ref: opaqueProviderRequestRef(requestId), provider_error_message_safe: "invalid_json_schema" };
+  assert.deepEqual(row.result_safe.providerHttp, expected);
+  assert.deepEqual(response.body.provider_http, expected);
+  assert.deepEqual(row.result_safe.providerRequestRefs, [expected.provider_request_ref]);
+  assert.deepEqual(row.result_safe.providerModels, []);
+  assert.equal(row.result_safe.providerModelStatus, "unaccredited");
+  assert.deepEqual(row.result_safe.providerUsage, { input_tokens: null, output_tokens: null, usage_status: "unknown", estimated_cost_usd: null });
+  assert.equal(Object.hasOwn(db.writes.at(-1).payload, "input_tokens"), false); // no false zero, no NOT NULL violation
+  row.input_tokens = 0; row.output_tokens = 0; row.estimated_cost_usd = 0; // existing DB column defaults
+  const listed = (await api({}, "GET")).body.cases[0];
+  assert.equal(listed.input_tokens, null); assert.equal(listed.output_tokens, null); assert.equal(listed.estimated_cost_usd, null);
+  assert.equal(listed.provider_model_status, "unaccredited"); assert.deepEqual(listed.provider_http, expected);
+  for (const value of [row.result_safe, response.body, listed.result_safe]) {
+    assert.doesNotMatch(JSON.stringify(value), /a1100000|ref_private|Ana Perez|ana@example|222 123|0123456789|sk-ant|Calle|req_011CS|untrusted-model|authorization|"body"/);
+  }
+  assert.ok(db.writes.every((write) => write.table === "shadow_historical_replay_cases"));
+});
+
+test("HTTP errors without parsed body preserve safe header request ref; all 4xx/5xx classify provider_http", async () => {
+  for (const status of [401, 403, 429, 500, 503, 529]) {
+    const requestId = "req_011CSHoEeqs5C35K2UUqR7Fy";
+    let fetches = 0;
+    const { api, row } = privacyReplayApi({ modelCall: syntheticTransport(async () => {
+      fetches++; return { ok: false, status, headers: { get: (key) => key === "request-id" ? requestId : assert.fail("no other headers" ) }, json: async () => { throw new Error("unparsed private provider body"); } };
+    }) });
+    assert.equal((await api({ action: "execute_one", caseId: row.id })).statusCode, 422);
+    assert.equal(fetches, 1);
+    assert.equal(row.result_safe.outputDiagnostics.outputStage, "provider_http");
+    assert.equal(row.result_safe.providerHttp.provider_http_status, status);
+    assert.deepEqual(row.result_safe.providerRequestRefs, [opaqueProviderRequestRef(requestId)]);
+    assert.equal(row.result_safe.providerUsage.input_tokens, null);
+    assert.doesNotMatch(JSON.stringify(row.result_safe), /unparsed|private|req_011CS/);
+  }
+});
+
+test("HTTP failure in second round does not claim earlier round usage/model as the complete total", async () => {
+  let fetches = 0, tools = 0;
+  const { api, row } = privacyReplayApi({
+    modelCall: syntheticTransport(async (_url, options) => {
+      fetches++;
+      if (fetches === 2) return { ok: false, status: 400, json: async () => ({ request_id: "req_011CSHoEeqs5C35K2UUqR7Fy", error: { type: "invalid_request_error" } }) };
+      const next = structuredClone(decision), context = JSON.parse(JSON.parse(options.body).messages[0].content);
+      next.proposedToolCalls = [{ tool: "get_maintenance_ticket_summary", arguments: { propertyId: context.metadata.propertyId }, reason: "Consultar estado" }];
+      return { ok: true, json: async () => ({ id: "synthetic-round-one", model: "claude-haiku-4-5-20251001", usage: { input_tokens: 25, output_tokens: 8 }, content: [{ type: "text", text: JSON.stringify(next) }] }) };
+    }), executeTool: async () => { tools++; return []; },
+  });
+  assert.equal((await api({ action: "execute_one", caseId: row.id })).statusCode, 422);
+  assert.equal(fetches, 2); assert.equal(tools, 1);
+  assert.deepEqual(row.result_safe.privacy_checks, [privacyPass, privacyPass]);
+  assert.equal(row.result_safe.providerRequestRefs.length, 2);
+  assert.equal(row.result_safe.providerUsage.input_tokens, null);
+  assert.equal(row.result_safe.providerUsage.output_tokens, null);
+  assert.equal(row.result_safe.providerModelStatus, "partial");
+  assert.deepEqual(row.result_safe.providerModels, ["claude-haiku-4-5-20251001"]);
+});
+
+test("successful response without usage/model stays unaccredited; explicitly reported zero is retained", async () => {
+  for (const hasUsage of [false, true]) {
+    const { api, row } = privacyReplayApi({ modelCall: syntheticTransport(async () => ({ ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(decision) }], ...(hasUsage ? { usage: { input_tokens: 0, output_tokens: 0 } } : {}) }) })) });
+    assert.equal((await api({ action: "execute_one", caseId: row.id })).statusCode, 200);
+    assert.deepEqual(row.result_safe.providerModels, []);
+    assert.equal(row.result_safe.providerModelStatus, "unaccredited");
+    assert.equal(row.result_safe.providerUsage.input_tokens, hasUsage ? 0 : null);
+    assert.equal(row.result_safe.providerUsage.usage_status, hasUsage ? "reported" : "unknown");
+  }
+});
+
+test("GET reprojects diagnostics and legacy HTTP-error zeros are unknown without rewriting old rows", async () => {
+  const { db, api, row } = privacyReplayApi();
+  row.status = "error"; row.error_code = "model_http_400"; row.input_tokens = 0; row.output_tokens = 0;
+  row.result_safe = { providerHttp: { provider_http_status: 400, provider_error_type: "ana@example.com", provider_error_param: syntheticId, provider_error_message_safe: "sk-ant-private", provider_request_ref: "ref_private_1", body: syntheticId } };
+  const listed = (await api({}, "GET")).body.cases[0];
+  assert.deepEqual(listed.provider_http, { provider_http_status: 400, provider_error_type: null, provider_error_code: null, provider_error_param: null, provider_request_ref: null });
+  assert.deepEqual(listed.result_safe.providerHttp, listed.provider_http);
+  assert.equal(listed.input_tokens, null); assert.equal(listed.output_tokens, null);
+  assert.equal(listed.provider_model_status, "unaccredited");
+  assert.equal(db.writes.length, 0);
 });
