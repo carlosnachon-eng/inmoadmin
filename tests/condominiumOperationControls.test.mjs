@@ -84,7 +84,7 @@ test("cron excluye Génova sin alterar filas de Tecaxco u otro condominio operat
   assert.equal(rows.length, 3);
 });
 
-test("UI muestra y aplica bloqueos de cuotas, pagos, recibos, comunicaciones y dinero", async () => {
+test("UI aplica controles operativos y separa el gate ledger para gastos legacy", async () => {
   const [detail, list, portal, controlledPortal] = await Promise.all([
     readSource("../pages/condominio/[id].js"),
     readSource("../pages/condominios.js"),
@@ -95,7 +95,8 @@ test("UI muestra y aplica bloqueos de cuotas, pagos, recibos, comunicaciones y d
   assert.match(detail, /operationControls\.realPaymentsEnabled/);
   assert.match(detail, /operationControls\.receiptsEnabled/);
   assert.match(detail, /operationControls\.communicationsEnabled/);
-  assert.match(detail, /operationControls\.moneyMovementsEnabled/);
+  assert.match(detail, /legacyExpenseGate\.enabled/);
+  assert.match(detail, /condominium_financial_controls/);
   assert.match(detail, /unavailableCondominiumOperationControls/);
   assert.match(list, /disabled=\{!cond\.operationControls\?\.currentBillingEnabled\}/);
   assert.match(portal, /condominium_owner_portal_units/);

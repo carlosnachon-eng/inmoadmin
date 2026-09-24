@@ -16,6 +16,10 @@ import {
 import { buildHistoricalPortfolio } from "../../lib/condominios/historicalPortfolio.mjs";
 import AdminIncidentPanel from "../../components/condominios/AdminIncidentPanel";
 import FinancialAdminPanel from "../../components/condominios/FinancialAdminPanel";
+import {
+  resolveLegacyExpenseGate,
+  unavailableLegacyExpenseGate,
+} from "../../lib/condominios/legacyExpenseGate.mjs";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(n || 0);
 
@@ -133,6 +137,7 @@ export default function CondominioDetalle() {
   const [gastos, setGastos] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [operationControls, setOperationControls] = useState(unavailableCondominiumOperationControls());
+  const [legacyExpenseGate, setLegacyExpenseGate] = useState(unavailableLegacyExpenseGate());
   const [portalAccesses, setPortalAccesses] = useState([]);
   const [historicalAccounts, setHistoricalAccounts] = useState([]);
   const [historicalPayments, setHistoricalPayments] = useState([]);
@@ -242,6 +247,7 @@ export default function CondominioDetalle() {
       { data: gastosData },
       { data: ticketsData },
       { data: operationControlData, error: operationControlError },
+      { data: financialControlData, error: financialControlError },
       { data: portalAccessData, error: portalAccessError },
       { data: historicalAccountData, error: historicalAccountError },
       { data: historicalPaymentData, error: historicalPaymentError },
@@ -254,6 +260,7 @@ export default function CondominioDetalle() {
       supabase.from("gastos_condominio").select("*").eq("condominio_id", id).order("fecha", { ascending: false }),
       supabase.from("maintenance_tickets").select("*").eq("condominio_id", id).order("created_at", { ascending: false }),
       supabase.from("condominium_operation_controls").select("lifecycle_status, owner_portal_enabled, communications_enabled, current_billing_enabled, receipts_enabled, real_payments_enabled, money_movements_enabled").eq("condominio_id", id).maybeSingle(),
+      supabase.from("condominium_financial_controls").select("ledger_enabled").eq("condominio_id", id).maybeSingle(),
       supabase.from("condominium_unit_portal_access").select("id, condominio_id, unidad_id, email_normalized, access_kind, active, created_at, revoked_at").eq("condominio_id", id).order("created_at", { ascending: false }),
       supabase.from("condominium_historical_accounts").select("id, condominio_id, unidad_id, source_organization, source_label, cutoff_date, reported_charges, reported_payments, reported_balance, review_status, created_at").eq("condominio_id", id).order("cutoff_date", { ascending: false }),
       supabase.from("condominium_historical_payments").select("id, condominio_id, historical_account_id, unidad_id, reported_period, reported_amount, received_by, source_label, review_status").eq("condominio_id", id).order("reported_period", { ascending: false }),
@@ -268,6 +275,7 @@ export default function CondominioDetalle() {
     setOperationControls(operationControlError
       ? unavailableCondominiumOperationControls()
       : resolveCondominiumOperationControls(operationControlData));
+    setLegacyExpenseGate(resolveLegacyExpenseGate(financialControlData, financialControlError));
     setPortalAccesses(portalAccessError ? [] : portalAccessData || []);
     setHistoricalAccounts(historicalAccountError ? [] : historicalAccountData || []);
     setHistoricalPayments(historicalPaymentError ? [] : historicalPaymentData || []);
@@ -1051,8 +1059,8 @@ export default function CondominioDetalle() {
   // ── Registrar gasto ───────────────────────────────────────────────────────
   const guardarGasto = async () => {
     if (!formGasto.concepto.trim() || !formGasto.monto) { showToast("Concepto y monto son requeridos", false); return; }
-    if (!operationControls.moneyMovementsEnabled) {
-      showToast("Los gastos y movimientos están bloqueados para este condominio", false);
+    if (!legacyExpenseGate.enabled) {
+      showToast(legacyExpenseGate.reason || "El registro legacy de gastos no está disponible", false);
       return;
     }
     setSaving(true);
@@ -1066,7 +1074,7 @@ export default function CondominioDetalle() {
         comprobante_url = urlData?.publicUrl || null;
       }
     }
-    await supabase.from("gastos_condominio").insert([{
+    const { error: expenseError } = await supabase.from("gastos_condominio").insert([{
       condominio_id: id,
       concepto: formGasto.concepto,
       categoria: formGasto.categoria,
@@ -1074,6 +1082,13 @@ export default function CondominioDetalle() {
       fecha: formGasto.fecha,
       comprobante_url,
     }]);
+    if (expenseError) {
+      setSaving(false);
+      showToast(expenseError.code === "55000"
+        ? "Financial Core está activo; el gasto legacy fue rechazado."
+        : "No fue posible registrar el gasto. Verifica tus permisos e intenta nuevamente.", false);
+      return;
+    }
 
     // Si son honorarios de Emporio → registrar automáticamente en caja Klar
     if (formGasto.categoria === "honorarios_emporio") {
@@ -1779,7 +1794,7 @@ export default function CondominioDetalle() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a1a2e" }}>Gastos comunes</h2>
-              <button disabled={!operationControls.moneyMovementsEnabled} onClick={() => { setFormGasto(emptyGasto); setArchivoComprobante(null); setModalGasto(true); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: operationControls.moneyMovementsEnabled ? "pointer" : "not-allowed", opacity: operationControls.moneyMovementsEnabled ? 1 : 0.5, fontWeight: 700, fontSize: 13 }}>+ Registrar gasto</button>
+              <button title={legacyExpenseGate.reason || "Registrar gasto legacy"} disabled={!legacyExpenseGate.enabled} onClick={() => { setFormGasto(emptyGasto); setArchivoComprobante(null); setModalGasto(true); }} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: legacyExpenseGate.enabled ? "pointer" : "not-allowed", opacity: legacyExpenseGate.enabled ? 1 : 0.5, fontWeight: 700, fontSize: 13 }}>+ Registrar gasto</button>
             </div>
 
             {/* Saldo inicial separado */}
@@ -1849,7 +1864,7 @@ export default function CondominioDetalle() {
                             }
                           </td>
                           <td style={{ padding: "10px 12px" }}>
-                            <button disabled={!operationControls.moneyMovementsEnabled} onClick={async () => { if (confirm("¿Eliminar este gasto?")) { await supabase.from("gastos_condominio").delete().eq("id", g.id); showToast("Gasto eliminado"); loadData(); } }} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "3px 8px", cursor: operationControls.moneyMovementsEnabled ? "pointer" : "not-allowed", opacity: operationControls.moneyMovementsEnabled ? 1 : 0.5, fontSize: 11, fontWeight: 700 }}>✕</button>
+                            <button disabled={!legacyExpenseGate.enabled} onClick={async () => { if (confirm("¿Eliminar este gasto?")) { const { error } = await supabase.from("gastos_condominio").delete().eq("id", g.id); if (error) showToast("No fue posible eliminar el gasto", false); else { showToast("Gasto eliminado"); loadData(); } } }} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "3px 8px", cursor: legacyExpenseGate.enabled ? "pointer" : "not-allowed", opacity: legacyExpenseGate.enabled ? 1 : 0.5, fontSize: 11, fontWeight: 700 }}>✕</button>
                           </td>
                         </tr>
                       ))}
@@ -2354,7 +2369,7 @@ export default function CondominioDetalle() {
           <Field label="Notas"><Input value={formGasto.notas} onChange={e => setFormGasto({ ...formGasto, notas: e.target.value })} /></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={() => { setModalGasto(false); setArchivoComprobante(null); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 10, padding: "11px 20px", cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
-            <Btn onClick={guardarGasto} disabled={saving || !operationControls.moneyMovementsEnabled || !formGasto.concepto.trim() || !formGasto.monto} color={brand.red}>{saving ? "Guardando…" : "Registrar gasto"}</Btn>
+            <Btn onClick={guardarGasto} disabled={saving || !legacyExpenseGate.enabled || !formGasto.concepto.trim() || !formGasto.monto} color={brand.red}>{saving ? "Guardando…" : "Registrar gasto"}</Btn>
           </div>
         </Modal>
       )}
