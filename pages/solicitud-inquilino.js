@@ -1,3 +1,5 @@
+import PasoOrigen from '../components/poliza/PasoOrigen'
+import { needsOrigenStep, origenMetadata, partnerCandidateKey, partnerContextStatus, validatedPartnerResponse, shouldLinkPartner } from '../lib/blindajeOrigen.mjs'
 import { supabase } from "../lib/supabase";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
@@ -95,6 +97,12 @@ const PartnerBanner = ({ branding }) => {
 
 export default function SolicitudInquilino() {
   const router = useRouter();
+  const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true'
+  const [origenSelection, setOrigenSelection] = useState(null)
+  const [partnerValidation, setPartnerValidation] = useState(null)
+  const partnerStatus = partnerContextStatus(router.query, partnerValidation)
+  const [origenHydrated, setOrigenHydrated] = useState(false)
+  useEffect(() => { setOrigenHydrated(true) }, [])
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -152,9 +160,17 @@ export default function SolicitudInquilino() {
     if (!router.isReady) return;
     const { partner, operacion } = router.query;
     if (!partner || !operacion) return;
+    let cancelled = false
+    const key = partnerCandidateKey({ partner, operacion })
     fetch(`/api/partners/public-branding?partner=${encodeURIComponent(partner)}&operacion=${encodeURIComponent(operacion)}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
+        if (origenEnabled) {
+          if (cancelled) return
+          const valid = validatedPartnerResponse({ partner, operacion }, data)
+          setPartnerValidation({ key, status: valid ? 'valid' : 'invalid' })
+          if (!valid) { setPartnerBranding(null); return }
+        }
         if (!data) return;
         setPartnerBranding(data);
         setForm(f => ({
@@ -164,8 +180,14 @@ export default function SolicitudInquilino() {
           nombre_completo: f.nombre_completo || data.operation?.nombre_inquilino || "",
         }));
       })
-      .catch(() => {});
-  }, [router.isReady, router.query]);
+      .catch(() => {
+        if (origenEnabled && !cancelled) {
+          setPartnerValidation({ key, status: 'invalid' })
+          setPartnerBranding(null)
+        }
+      })
+    return () => { cancelled = true }
+  }, [router.isReady, router.query, origenEnabled])
 
   const handleFile = (key, e) => {
     const file = e.target.files[0];
@@ -271,6 +293,7 @@ export default function SolicitudInquilino() {
 
     try {
       const payload = {
+        ...origenMetadata(origenEnabled, partnerStatus, origenSelection),
         inmueble_interes: form.direccion_inmueble,
         monto_renta_solicitada: parseFloat(form.monto_renta) || null,
         tipo_solicitante: form.tipo_solicitante,
@@ -352,7 +375,7 @@ export default function SolicitudInquilino() {
 
       setSubmitId(data.id);
 
-      if (router.query.partner && router.query.operacion) {
+      if (shouldLinkPartner(origenEnabled, router.query, partnerStatus)) {
         fetch('/api/partners/link-submission', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -405,6 +428,12 @@ export default function SolicitudInquilino() {
       setSubmitting(false);
     }
   };
+
+  if (origenEnabled && (!origenHydrated || !router.isReady)) return <p role="status">Cargando formulario…</p>
+  if (origenEnabled && partnerStatus === 'pending') return <p role="status">Validando operación Partner…</p>
+  if (needsOrigenStep(origenEnabled, router.isReady, partnerStatus, origenSelection)) {
+    return <PasoOrigen tipo="inquilino" onContinue={setOrigenSelection} />
+  }
 
   // ── PANTALLA DE ÉXITO ─────────────────────────────────────────────────────
   if (submitted) return (
