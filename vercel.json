@@ -6,7 +6,8 @@
       "codex/shadow-final-model-privacy": false,
       "codex/historical-replay-privacy-telemetry": false,
       "codex/historical-replay-provider-http-diagnostics": false,
-      "codex/historical-replay-schema-error-diagnostics": false
+      "codex/historical-replay-schema-error-diagnostics": false,
+      "codex/shadow-reduced-output-schema-local": false
     }
   },
   "crons": [
