@@ -1,3 +1,5 @@
+import PasoOrigen from '../components/poliza/PasoOrigen'
+import { needsOrigenStep, origenMetadata } from '../lib/blindajeOrigen.mjs'
 import { useEffect, useState, useRef } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
@@ -67,6 +69,10 @@ const uploadDoc = async (file, folder, fileName) => {
 
 export default function RegistroPropietario() {
   const router = useRouter()
+  const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true'
+  const [origenSelection, setOrigenSelection] = useState(null)
+  const [origenHydrated, setOrigenHydrated] = useState(false)
+  useEffect(() => { setOrigenHydrated(true) }, [])
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState({})
@@ -218,6 +224,7 @@ export default function RegistroPropietario() {
     try {
       const v = getValues()
       const payload = {
+        ...origenMetadata(origenEnabled, router.query, origenSelection),
         tipo_persona_propietario: tipoPersonaPropietario,
         razon_social_propietario: tipoPersonaPropietario === 'moral' ? v.razon_social_propietario : null,
         nombre_propietario: v.nombre_propietario, telefono_propietario: v.telefono_propietario,
@@ -274,6 +281,11 @@ export default function RegistroPropietario() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (origenEnabled && (!origenHydrated || !router.isReady)) return <p role="status">Cargando formulario…</p>
+  if (needsOrigenStep(origenEnabled, router.isReady, router.query, origenSelection)) {
+    return <PasoOrigen tipo="propietario" onContinue={setOrigenSelection} />
   }
 
   const totalSteps = 3
@@ -383,7 +395,7 @@ export default function RegistroPropietario() {
           </>)}
           {step === 2 && (<>
             <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: '#4a4a4a' }}>Datos del inmueble</h2>
-            <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>Con esta información promocionaremos su propiedad.</p>
+            <p style={{ margin: '0 0 24px', fontSize: 13, color: '#9ca3af' }}>{origenEnabled && origenSelection?.origen_operacion === 'b2c' ? 'Esta información se utilizará para integrar el expediente y preparar los documentos jurídicos del arrendamiento.' : 'Con esta información promocionaremos su propiedad.'}</p>
             <Field label="Dirección del inmueble" required error={errors.direccion_inmueble}>
               <textarea name="direccion_inmueble" placeholder="Calle, número, colonia, municipio, estado" rows={3} style={{ width: '100%', background: '#fff', border: `1px solid ${errors.direccion_inmueble ? '#b91c3c' : '#e5e7eb'}`, borderRadius: 8, padding: '11px 14px', color: '#374151', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
               {errors.direccion_inmueble && <p style={{ color: '#b91c3c', fontSize: 12, margin: '6px 0 0', fontWeight: 600 }}>{errors.direccion_inmueble}</p>}
@@ -421,7 +433,7 @@ export default function RegistroPropietario() {
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
               <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fff0f3', color: '#b91c3c', fontSize: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>✓</div>
               <h2 style={{ fontSize: 24, fontWeight: 800, color: '#4a4a4a', margin: '0 0 12px' }}>¡Registro enviado!</h2>
-              <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.6, margin: '0 0 20px' }}>Recibimos los datos de su inmueble. En breve nos pondremos en contacto para confirmar los detalles y comenzar la promoción.</p>
+              <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.6, margin: '0 0 20px' }}>{origenEnabled && origenSelection?.origen_operacion === 'b2c' ? 'Recibimos los datos de su inmueble. En breve nos pondremos en contacto para confirmar los detalles del arrendamiento y preparar los documentos jurídicos.' : 'Recibimos los datos de su inmueble. En breve nos pondremos en contacto para confirmar los detalles y comenzar la promoción.'}</p>
               {submitId && <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 20 }}>Folio: <strong style={{ color: '#b91c3c' }}>{submitId.slice(0, 8).toUpperCase()}</strong></p>}
               <div style={{ padding: '16px 20px', background: '#f8f8f8', border: '1px solid #e5e7eb', borderRadius: 10, textAlign: 'left' }}>
                 <p style={{ margin: 0, fontWeight: 700, color: '#374151', fontSize: 14 }}>¿Tiene alguna duda?</p>

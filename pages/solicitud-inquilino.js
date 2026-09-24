@@ -1,3 +1,5 @@
+import PasoOrigen from '../components/poliza/PasoOrigen'
+import { needsOrigenStep, origenMetadata } from '../lib/blindajeOrigen.mjs'
 import { supabase } from "../lib/supabase";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
@@ -95,6 +97,10 @@ const PartnerBanner = ({ branding }) => {
 
 export default function SolicitudInquilino() {
   const router = useRouter();
+  const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true'
+  const [origenSelection, setOrigenSelection] = useState(null)
+  const [origenHydrated, setOrigenHydrated] = useState(false)
+  useEffect(() => { setOrigenHydrated(true) }, [])
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -271,6 +277,7 @@ export default function SolicitudInquilino() {
 
     try {
       const payload = {
+        ...origenMetadata(origenEnabled, router.query, origenSelection),
         inmueble_interes: form.direccion_inmueble,
         monto_renta_solicitada: parseFloat(form.monto_renta) || null,
         tipo_solicitante: form.tipo_solicitante,
@@ -405,6 +412,11 @@ export default function SolicitudInquilino() {
       setSubmitting(false);
     }
   };
+
+  if (origenEnabled && (!origenHydrated || !router.isReady)) return <p role="status">Cargando formulario…</p>
+  if (needsOrigenStep(origenEnabled, router.isReady, router.query, origenSelection)) {
+    return <PasoOrigen tipo="inquilino" onContinue={setOrigenSelection} />
+  }
 
   // ── PANTALLA DE ÉXITO ─────────────────────────────────────────────────────
   if (submitted) return (
