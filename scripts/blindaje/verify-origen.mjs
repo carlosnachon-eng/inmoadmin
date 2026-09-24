@@ -9,9 +9,11 @@ const question = 'Antes de comenzar, cuéntanos sobre esta operación'
 const syntheticId = '11111111-1111-4111-8111-111111111111'
 let passed = 0
 try {
-  for (const tipo of ['inquilino', 'propietario']) {
+  for (const width of (process.env.TEST_WIDTH ? [Number(process.env.TEST_WIDTH)] : [390, 1440])) {
+  for (const tipo of ['inquilino', 'propietario'].filter(tipo => !process.env.TEST_TIPO || tipo === process.env.TEST_TIPO)) {
     for (const mode of enabled ? ['emporio', 'no-recuerdo', 'b2c', 'partner', 'invalid-emporio', 'invalid-b2c', 'network-b2c', 'malformed-b2c', 'only-partner', 'only-operation'] : ['generic', 'partner', 'invalid-b2c', 'only-partner', 'only-operation']) {
-      const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
+      if (process.env.TEST_MODE && mode !== process.env.TEST_MODE) continue
+      const page = await browser.newPage({ viewport: { width, height: 844 } })
       const errors = []
       page.on('pageerror', error => errors.push(error.message))
       let payload, linked, releaseBranding
@@ -27,7 +29,7 @@ try {
           if (mode === 'malformed-b2c') return route.fulfill({ json: { agency: { id: 'agency' } } })
           return route.fulfill({ json: {
             agency: { id: 'agency', status: 'activo', nombre_comercial: 'Partner sintético', brand_color: '#123456' },
-            operation: { id: 'operation', direccion_inmueble: 'Inmueble sintético Partner', monto_renta: 15000 },
+            operation: { id: 'operation', nombre_propietario: 'Propietario sintético Partner', direccion_inmueble: 'Inmueble sintético Partner', monto_renta: 15000 },
           } })
         }
         if (url.pathname === '/api/partners/link-submission') {
@@ -51,6 +53,7 @@ try {
         await page.getByText('Validando operación Partner…', { exact: true }).waitFor()
         assert.equal(await page.getByText(question).count(), 0)
         assert.equal(await page.getByRole('button', { name: /Siguiente/ }).count(), 0)
+        if (tipo === 'propietario') assert.equal(await page.locator('[name=nombre_propietario]').count(), 0)
         releaseBranding()
       }
       if (enabled && mode !== 'partner') {
@@ -69,6 +72,14 @@ try {
       assert.equal(await page.getByText(question).count(), 0)
       if (mode === 'partner') {
         await page.getByText(/enviad[oa] por Partner sintético/).waitFor()
+        if (tipo === 'propietario') {
+          await page.waitForFunction(() => document.querySelector('[name=nombre_propietario]')?.value === 'Propietario sintético Partner', null, { timeout: 3000 })
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false)
+          if (process.env.TEST_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.TEST_SCREENSHOT_DIR}/partner-propietario-${enabled}-${width}.png` })
+          await page.locator('[name=nombre_propietario]').fill('Nombre editado por usuario')
+          await page.getByRole('button', { name: 'Efectivo', exact: true }).click()
+          assert.equal(await page.locator('[name=nombre_propietario]').inputValue(), 'Nombre editado por usuario')
+        }
         if (tipo === 'inquilino') {
           assert.equal(await page.getByPlaceholder('Calle, número, colonia, ciudad', { exact: true }).inputValue(), 'Inmueble sintético Partner')
           assert.equal(await page.getByPlaceholder('15000', { exact: true }).inputValue(), '15000')
@@ -84,6 +95,10 @@ try {
             await page.waitForFunction(() => document.querySelector('[name="direccion_inmueble"]')?.value === 'Inmueble sintético Partner')
             assert.equal(await page.locator('[name="direccion_inmueble"]').inputValue(), 'Inmueble sintético Partner')
             assert.equal(await page.locator('[name="monto_renta"]').inputValue(), '15000')
+            await page.getByRole('button', { name: /Anterior/ }).click()
+            await page.waitForFunction(() => document.querySelector('[name=nombre_propietario]')?.value === 'Nombre editado por usuario')
+            await page.getByRole('button', { name: /Siguiente/ }).click()
+            await page.waitForFunction(() => document.querySelector('[name=direccion_inmueble]')?.value === 'Inmueble sintético Partner')
           }
         }
         for (const input of await page.locator('input:not([type=file]):not([type=checkbox]):not([type=radio]), textarea').all()) {
@@ -105,10 +120,13 @@ try {
       } else assert.equal(linked, undefined)
       if (enabled && choice === 'b2c' && tipo === 'propietario') assert.equal((await page.locator('body').innerText()).includes('promoción'), false)
       assert.deepEqual(errors, [])
-      console.log(`PASS ${tipo} ${mode} flag=${enabled}`)
+      if (tipo === 'propietario' && mode === 'partner') assert.equal(payload.nombre_propietario, 'Nombre editado por usuario')
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false)
+      console.log(`PASS ${tipo} ${mode} flag=${enabled} width=${width}`)
       passed++
       await page.close()
     }
+  }
   }
 } finally {
   await browser.close()

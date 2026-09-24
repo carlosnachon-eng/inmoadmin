@@ -149,6 +149,12 @@ export default function RegistroPropietario() {
   }, [router.isReady, router.query, origenEnabled])
 
   useEffect(() => {
+    // Partner validation mounts the form after its prefill was saved without a DOM.
+    // Apply it immediately on that transition, not on subsequent user edits.
+    if (origenEnabled && partnerStatus === 'valid') setFormValues(savedValues.current)
+  }, [origenEnabled, partnerStatus])
+
+  useEffect(() => {
     const timeout = setTimeout(() => setFormValues(savedValues.current), 0)
     return () => clearTimeout(timeout)
   }, [step, tipoPersonaPropietario])
