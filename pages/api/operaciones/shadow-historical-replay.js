@@ -60,7 +60,8 @@ return async function handler(req, res) {
       const replayCase = { evaluationMode: "historical_replay", sufficientHistoricalContext: true, temporalGrounding: row.temporal_grounding, identityGrounding: row.identity_grounding, humanResponseSnapshot: row.human_response_snapshot, envelope: snapshot.envelope };
       let privacyChecks = [];
       try {
-        const result = await executeCase(admin, replayCase, { env });
+        // Server-owned option. Never accept schema selection from the client.
+        const result = await executeCase(admin, replayCase, { env, useReducedOutputSchema: true });
         const resolution = result.operationalResolution; const conversation = result.conversationAction;
         const conversationResult = historicalReplayConversationResult(conversation);
         privacyChecks = sanitizedModelPrivacyChecks(result.privacyChecks);

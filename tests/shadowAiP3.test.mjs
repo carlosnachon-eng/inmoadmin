@@ -47,6 +47,35 @@ test("runner enruta 3A por el gateway antes de un modelCall inyectado", async ()
   assert.match(observed.message, /\[PERSONA\].*\[EMAIL\]/);
 });
 
+for (const stateMachine of [false, true]) {
+  test(`general ${stateMachine ? "state machine" : "runner"} uses original native schema/decoder, not reduced Replay`, async () => {
+    const originalFetch = globalThis.fetch; const bodies = []; let toolCalls = 0;
+    const propertyId = "a1100000-0000-4000-8000-000000000001";
+    const stored = { id: `normal-schema-${stateMachine}`, provider: "synthetic", direction: "inbound", sanitized_text: "¿Cómo va el mantenimiento?",
+      attachment_metadata: [], provider_metadata: { ...synthetic.providerMetadata, propertyId }, occurred_at: "2026-09-23T12:00:00Z" };
+    const db = fakeAiDb([], { filterIdempotencyKey: true, tableRows: { shadow_messages: [stored] } });
+    try {
+      globalThis.fetch = async (_url, init) => {
+        bodies.push(JSON.parse(init.body));
+        assert.deepEqual(bodies.at(-1).output_config.format.schema, anthropicShadowAiDecisionJsonSchema);
+        const d = structuredClone(validDecision);
+        if (bodies.length === 1) d.proposedToolCalls = [toolCall("get_maintenance_ticket_summary", {
+          propertyId: JSON.parse(bodies.at(-1).messages[0].content).metadata.propertyId,
+        })]; // Original argument OBJECT must remain accepted by normal 3A.
+        return { ok: true, json: async () => ({ id: "synthetic-normal-request", model: "claude-haiku-4-5-20251001",
+          content: [{ type: "text", text: JSON.stringify(d) }], usage: { input_tokens: 10, output_tokens: 3 } }) };
+      };
+      const result = await (stateMachine ? startShadowAiStateMachine : runShadowAi)(db, {
+        messageId: stored.id, envelope: { ...synthetic, sanitizedText: stored.sanitized_text, providerMetadata: stored.provider_metadata }, deterministic: {},
+      }, { env: { ...devEnv, SHADOW_AI_OUTPUT_MODE: "anthropic_json_schema" }, useReducedOutputSchema: true,
+        executeTool: async (_admin, name, args) => { toolCalls++; assert.equal(name, "get_maintenance_ticket_summary"); assert.deepEqual(args, { propertyId }); return []; },
+      });
+      assert.equal(result.status, stateMachine ? "awaiting_model_round" : "completed");
+      assert.equal(bodies.length, stateMachine ? 1 : 2); assert.equal(toolCalls, 1);
+    } finally { globalThis.fetch = originalFetch; }
+  });
+}
+
 test("guard P3 requiere DEV exacto, flag, key y mensaje sintético", () => {
   assert.equal(shadowAiGuard(synthetic, devEnv).allowed,true);
   assert.equal(shadowAiGuard(synthetic,{...devEnv,SHADOW_AI_ENABLED:"false"}).status,"disabled");

@@ -318,13 +318,51 @@ const syntheticId = "a1100000-0000-4000-8000-000000000001";
 function privacyReplayApi({ modelCall, executeTool, failCompletedSave = false, metadata = {} } = {}) {
   const db = database(tableSeed(), { failCompletedSave });
   db.tables.shadow_historical_replay_cases.push({ id: "privacy-case", status: "pending", turn_snapshot: { envelope: { provider: "respond_admin", sanitizedText: "¿Cómo va el mantenimiento?", providerMetadata: { propertyId: syntheticId, ...metadata } } } });
-  const api = endpoint(db, { executeCase: (admin, replayCase, options) => executeHistoricalReplayCase(admin, replayCase, { ...options, modelCall, executeTool, now: () => NOW }) });
+  // Retain the original-contract telemetry regressions. The reduced native
+  // endpoint path is separately covered below and in shadowHistoricalReplayReducedSchema.
+  const api = endpoint(db, { executeCase: (admin, replayCase, options) => executeHistoricalReplayCase(admin, replayCase, { ...options, useReducedOutputSchema: false, modelCall, executeTool, now: () => NOW }) });
   return { db, api, row: db.tables.shadow_historical_replay_cases[0] };
 }
 function syntheticTransport(fetchImpl) {
   return (messages, options) => createAnthropicShadowResponse(messages, { ...options, fetchImpl });
 }
 const syntheticModelResponse = (value = decision) => ({ ok: true, json: async () => ({ id: "synthetic-provider", content: [{ type: "text", text: JSON.stringify(value) }], usage: { input_tokens: 5, output_tokens: 2 } }) });
+
+for (const legacy of [false, true]) {
+  test(`execute_one owns reduced selection; native fetch/decoder/GET ${legacy ? "reject legacy arguments" : "complete reduced arguments"}`, async () => {
+    const db = database(tableSeed()); let fetches = 0, tools = 0;
+    db.tables.shadow_historical_replay_cases.push({ id: "reduced-case", status: "pending", turn_snapshot: { envelope: {
+      provider: "respond_admin", sanitizedText: "¿Cómo va el mantenimiento?", providerMetadata: { propertyId: syntheticId },
+    } } });
+    const api = endpoint(db, { executeCase: (admin, replayCase, options) => {
+      assert.equal(options.useReducedOutputSchema, true); // Never taken from request body.
+      return executeHistoricalReplayCase(admin, replayCase, { ...options, now: () => NOW,
+        fetchImpl: async (_url, { body }) => {
+          fetches++; const parsed = JSON.parse(body), context = JSON.parse(parsed.messages[0].content);
+          assert.equal(parsed.output_config.format.schema.properties.proposedToolCalls.items.properties.arguments.type, "array");
+          assert.doesNotMatch(body, /a1100000/);
+          const d = structuredClone(decision);
+          if (fetches === 1) d.proposedToolCalls = [{ tool: "get_maintenance_ticket_summary", reason: "Consultar estado",
+            arguments: legacy ? { propertyId: context.metadata.propertyId } : [{ key: "propertyId", value: context.metadata.propertyId }],
+          }];
+          return syntheticModelResponse(d);
+        }, executeTool: async (_admin, name, args) => {
+          tools++; assert.equal(name, "get_maintenance_ticket_summary"); assert.deepEqual(args, { propertyId: syntheticId }); return [];
+        },
+      });
+    } });
+    const result = await api({ action: "execute_one", caseId: "reduced-case", useReducedOutputSchema: false });
+    assert.equal(result.statusCode, legacy ? 422 : 200);
+    assert.equal(fetches, legacy ? 1 : 2); assert.equal(tools, legacy ? 0 : 1);
+    const row = db.tables.shadow_historical_replay_cases[0];
+    assert.equal(row.status, legacy ? "error" : "completed");
+    if (legacy) assert.match(row.error_code, /reduced_arguments_shape/);
+    assert.deepEqual(row.result_safe.privacy_checks, legacy ? [privacyPass] : [privacyPass, privacyPass]);
+    assert.deepEqual((await api({}, "GET")).body.cases[0].privacy_checks, row.result_safe.privacy_checks);
+    assert.doesNotMatch(JSON.stringify([result.body, row.result_safe]), /ref_[a-z]+_\d+|a1100000/);
+    assert.ok(db.writes.every((w) => w.table === "shadow_historical_replay_cases"));
+  });
+}
 
 test("native transport PASS → Replay → result_safe → POST/GET, with only sanitized metadata", async () => {
   let fetches = 0;
