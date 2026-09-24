@@ -1,5 +1,5 @@
 import PasoOrigen from '../components/poliza/PasoOrigen'
-import { needsOrigenStep, origenMetadata } from '../lib/blindajeOrigen.mjs'
+import { needsOrigenStep, origenMetadata, partnerCandidateKey, partnerContextStatus, validatedPartnerResponse, shouldLinkPartner } from '../lib/blindajeOrigen.mjs'
 import { useEffect, useState, useRef } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
@@ -71,6 +71,8 @@ export default function RegistroPropietario() {
   const router = useRouter()
   const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true'
   const [origenSelection, setOrigenSelection] = useState(null)
+  const [partnerValidation, setPartnerValidation] = useState(null)
+  const partnerStatus = partnerContextStatus(router.query, partnerValidation)
   const [origenHydrated, setOrigenHydrated] = useState(false)
   useEffect(() => { setOrigenHydrated(true) }, [])
   const [step, setStep] = useState(1)
@@ -118,9 +120,17 @@ export default function RegistroPropietario() {
     if (!router.isReady) return
     const { partner, operacion } = router.query
     if (!partner || !operacion) return
+    let cancelled = false
+    const key = partnerCandidateKey({ partner, operacion })
     fetch(`/api/partners/public-branding?partner=${encodeURIComponent(partner)}&operacion=${encodeURIComponent(operacion)}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
+        if (origenEnabled) {
+          if (cancelled) return
+          const valid = validatedPartnerResponse({ partner, operacion }, data)
+          setPartnerValidation({ key, status: valid ? 'valid' : 'invalid' })
+          if (!valid) { setPartnerBranding(null); return }
+        }
         if (!data) return
         setPartnerBranding(data)
         setFormValues({
@@ -129,8 +139,14 @@ export default function RegistroPropietario() {
           monto_renta: savedValues.current.monto_renta || (data.operation?.monto_renta ? String(data.operation.monto_renta) : ''),
         })
       })
-      .catch(() => {})
-  }, [router.isReady, router.query])
+      .catch(() => {
+        if (origenEnabled && !cancelled) {
+          setPartnerValidation({ key, status: 'invalid' })
+          setPartnerBranding(null)
+        }
+      })
+    return () => { cancelled = true }
+  }, [router.isReady, router.query, origenEnabled])
 
   useEffect(() => {
     const timeout = setTimeout(() => setFormValues(savedValues.current), 0)
@@ -224,7 +240,7 @@ export default function RegistroPropietario() {
     try {
       const v = getValues()
       const payload = {
-        ...origenMetadata(origenEnabled, router.query, origenSelection),
+        ...origenMetadata(origenEnabled, partnerStatus, origenSelection),
         tipo_persona_propietario: tipoPersonaPropietario,
         razon_social_propietario: tipoPersonaPropietario === 'moral' ? v.razon_social_propietario : null,
         nombre_propietario: v.nombre_propietario, telefono_propietario: v.telefono_propietario,
@@ -260,7 +276,7 @@ export default function RegistroPropietario() {
         await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', id)
       }
 
-      if (router.query.partner && router.query.operacion) {
+      if (shouldLinkPartner(origenEnabled, router.query, partnerStatus)) {
         fetch('/api/partners/link-submission', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -284,7 +300,8 @@ export default function RegistroPropietario() {
   }
 
   if (origenEnabled && (!origenHydrated || !router.isReady)) return <p role="status">Cargando formulario…</p>
-  if (needsOrigenStep(origenEnabled, router.isReady, router.query, origenSelection)) {
+  if (origenEnabled && partnerStatus === 'pending') return <p role="status">Validando operación Partner…</p>
+  if (needsOrigenStep(origenEnabled, router.isReady, partnerStatus, origenSelection)) {
     return <PasoOrigen tipo="propietario" onContinue={setOrigenSelection} />
   }
 

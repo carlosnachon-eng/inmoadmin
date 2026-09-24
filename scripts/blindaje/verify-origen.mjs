@@ -10,17 +10,26 @@ const syntheticId = '11111111-1111-4111-8111-111111111111'
 let passed = 0
 try {
   for (const tipo of ['inquilino', 'propietario']) {
-    for (const mode of enabled ? ['emporio', 'no-recuerdo', 'b2c', 'partner'] : ['generic', 'partner']) {
+    for (const mode of enabled ? ['emporio', 'no-recuerdo', 'b2c', 'partner', 'invalid-emporio', 'invalid-b2c', 'network-b2c', 'malformed-b2c', 'only-partner', 'only-operation'] : ['generic', 'partner', 'invalid-b2c', 'only-partner', 'only-operation']) {
       const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
       const errors = []
       page.on('pageerror', error => errors.push(error.message))
-      let payload, linked
+      let payload, linked, releaseBranding
+      const candidate = ['partner', 'invalid-emporio', 'invalid-b2c', 'network-b2c', 'malformed-b2c'].includes(mode)
+      const choice = mode === 'invalid-emporio' ? 'emporio' : ['invalid-b2c', 'network-b2c', 'malformed-b2c', 'only-partner', 'only-operation'].includes(mode) ? 'b2c' : mode
+      const brandingReady = new Promise(resolve => { releaseBranding = resolve })
       await page.route('**/*', async route => {
         const request = route.request(), url = new URL(request.url())
-        if (url.pathname === '/api/partners/public-branding') return route.fulfill({ json: {
-          agency: { nombre_comercial: 'Partner sintético', brand_color: '#123456' },
-          operation: { direccion_inmueble: 'Inmueble sintético Partner', monto_renta: 15000 },
-        } })
+        if (url.pathname === '/api/partners/public-branding') {
+          if (enabled) await brandingReady
+          if (mode === 'network-b2c') return route.abort()
+          if (mode === 'invalid-emporio' || mode === 'invalid-b2c') return route.fulfill({ status: mode === 'invalid-emporio' ? 404 : 500, json: { error: 'Operación no disponible' } })
+          if (mode === 'malformed-b2c') return route.fulfill({ json: { agency: { id: 'agency' } } })
+          return route.fulfill({ json: {
+            agency: { id: 'agency', status: 'activo', nombre_comercial: 'Partner sintético', brand_color: '#123456' },
+            operation: { id: 'operation', direccion_inmueble: 'Inmueble sintético Partner', monto_renta: 15000 },
+          } })
+        }
         if (url.pathname === '/api/partners/link-submission') {
           linked = request.postDataJSON()
           return route.fulfill({ json: { ok: true } })
@@ -36,13 +45,19 @@ try {
         if (url.origin !== base) return route.abort()
         return route.continue()
       })
-      const suffix = mode === 'partner' ? '?partner=agency&operacion=operation&participante=participant' : ''
+      const suffix = candidate ? '?partner=agency&operacion=operation&participante=participant' : mode === 'only-partner' ? '?partner=agency' : mode === 'only-operation' ? '?operacion=operation' : ''
       await page.goto(`${base}/${tipo === 'inquilino' ? 'solicitud-inquilino' : 'registro-propietario'}${suffix}`)
+      if (enabled && candidate) {
+        await page.getByText('Validando operación Partner…', { exact: true }).waitFor()
+        assert.equal(await page.getByText(question).count(), 0)
+        assert.equal(await page.getByRole('button', { name: /Siguiente/ }).count(), 0)
+        releaseBranding()
+      }
       if (enabled && mode !== 'partner') {
         await page.getByText(question).waitFor()
         assert.equal(await page.getByRole('button', { name: 'Continuar', exact: true }).isDisabled(), true)
-        await page.locator(`input[value="${mode === 'b2c' ? 'b2c' : 'emporio'}"]`).check()
-        if (mode === 'b2c') assert.equal(await page.locator('#asesor-referencia').count(), 0)
+        await page.locator(`input[value="${choice === 'b2c' ? 'b2c' : 'emporio'}"]`).check()
+        if (choice === 'b2c') assert.equal(await page.locator('#asesor-referencia').count(), 0)
         else {
           await page.locator('#asesor-referencia').waitFor()
           if (mode === 'no-recuerdo') await page.getByLabel('No recuerdo').check()
@@ -63,8 +78,8 @@ try {
       for (let step = 1; step <= total; step++) {
         if (tipo === 'propietario' && step === 2) {
           const text = await page.locator('body').innerText()
-          assert.equal(text.includes('promocionaremos'), mode !== 'b2c')
-          if (mode === 'b2c') assert.ok(text.includes('integrar el expediente'))
+          assert.equal(text.includes('promocionaremos'), !(enabled && choice === 'b2c'))
+          if (enabled && choice === 'b2c') assert.ok(text.includes('integrar el expediente'))
           if (mode === 'partner') {
             await page.waitForFunction(() => document.querySelector('[name="direccion_inmueble"]')?.value === 'Inmueble sintético Partner')
             assert.equal(await page.locator('[name="direccion_inmueble"]').inputValue(), 'Inmueble sintético Partner')
@@ -82,13 +97,13 @@ try {
         await page.getByRole('button', { name: step === total ? /Enviar/ : /Siguiente/ }).click()
       }
       await page.getByText(tipo === 'inquilino' ? '¡Solicitud enviada!' : '¡Registro enviado!', { exact: true }).waitFor()
-      const expected = mode === 'no-recuerdo' ? 'emporio' : mode
+      const expected = mode === 'no-recuerdo' ? 'emporio' : choice
       assert.equal(payload.origen_operacion, enabled ? expected : undefined)
-      assert.equal(payload.asesor_referencia, enabled ? mode === 'emporio' ? 'Asesor sintético' : null : undefined)
-      if (mode === 'partner') {
+      assert.equal(payload.asesor_referencia, enabled ? choice === 'emporio' ? 'Asesor sintético' : null : undefined)
+      if (mode === 'partner' || (!enabled && candidate)) {
         assert.deepEqual(linked, { partner_agency_id: 'agency', partner_operation_id: 'operation', participant_id: 'participant', tipo, record_id: syntheticId })
       } else assert.equal(linked, undefined)
-      if (mode === 'b2c' && tipo === 'propietario') assert.equal((await page.locator('body').innerText()).includes('promoción'), false)
+      if (enabled && choice === 'b2c' && tipo === 'propietario') assert.equal((await page.locator('body').innerText()).includes('promoción'), false)
       assert.deepEqual(errors, [])
       console.log(`PASS ${tipo} ${mode} flag=${enabled}`)
       passed++

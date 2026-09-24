@@ -1,16 +1,16 @@
 # Blindaje: identificación de origen — incremento 1
 
-Base remota verificada mediante clone, fetch y ls-remote: `2c84d4f4379202bc3f504e2cf91777873621ab87`.
-Checkout inicial limpio; rama `codex/blindaje-origen-operacion-i1`.
+Base remota verificada mediante clone, fetch y ls-remote: `9876bae968c4af5bb83ab5b9e1debbd5750bc75b`.
+Rebase sobre main remoto actual sin conflictos; rama `codex/blindaje-origen-operacion-i1`.
 Los PR #131 y #132 estaban abiertos, draft y sin merge al verificar. No se incorporaron ni modificaron.
 
 ## Alcance
 
 Paso 0 compartido en solicitud-inquilino y registro-propietario. Emporio captura una referencia libre de asesor o NULL al elegir «No recuerdo»; B2C guarda referencia NULL. Es información declarada, nunca una identidad verificada ni autorización. No resuelve propiedades, asesores, expedientes o cierres.
 
-El criterio Partner conserva exactamente el existente: presencia de `partner` y `operacion`. Se omite Paso 0 y se guarda clasificación `partner` con el flag ON. La validación y el enlace de la operación siguen en los endpoints existentes. No se endurece ni redefine ese protocolo en este incremento. `participante`, branding y precarga permanecen iguales.
+Con el flag ON, `partner` + `operacion` sólo forman un candidato. Mientras responde `/api/partners/public-branding`, se muestra carga sin Paso 0. Sólo una respuesta exitosa con operación/agencia coincidentes y agencia activa omite Paso 0, persiste `partner` y permite link-submission. Una respuesta inválida, 404, 500 o error de red exige elegir Emporio/B2C y no enlaza Partner. Los parámetros incompletos siguen el flujo genérico. La validación se asocia al candidato exacto para descartar respuestas obsoletas. `participante`, branding y precarga se conservan para contextos válidos. Ambas APIs permanecen intactas.
 
-`NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED` se activa únicamente con el literal `true` durante build. Ausente o false conserva los formularios y omite las nuevas claves del payload. No se cambiaron variables remotas. Para revisar ON, usar Preview conectado exclusivamente a DEV con la migración aplicada y reconstruir. No activar Producción.
+`NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED` se activa únicamente con el literal `true` durante build. Ausente o false conserva los formularios y omite las nuevas claves del payload. El Preview ON se prepara con `vercel deploy --target preview` y overrides `--env`/`--build-env` exclusivos del deployment para el flag y la URL DEV. No se modifican variables de proyecto, compartidas ni productivas. La URL final y el HEAD certificado se documentan en el reporte del PR. El flag OFF conserva el criterio legado de enlace por presencia de parámetros y omite los metadatos nuevos.
 
 ## Esquema real y migración
 
@@ -22,7 +22,7 @@ Rollback explícito: `supabase/dev/rollback/blindaje_origen_operacion_i1.sql`. P
 
 ## Verificación
 
-Resultado final: dirigidas 7/7 PASS; suite completa 1,146/1,146 PASS; navegador ON 8/8 y OFF 4/4 PASS; build ON y OFF PASS; git diff --check PASS. Revisión visual móvil 390×844 PASS. Sin errores de página en los 12 envíos finales.
+Resultado final: dirigidas 9/9 PASS; suite completa 1,216/1,216 PASS; navegador ON 20/20 y OFF 10/10 PASS; build ON y OFF PASS; git diff --check PASS. Revisión visual móvil 390×844 PASS. Sin errores de página en los 30 envíos finales.
 
 - Pruebas dirigidas: `node --test tests/blindajeOrigen.test.mjs`.
 - Suite: `node --test tests/*.test.mjs`.
@@ -31,13 +31,13 @@ Resultado final: dirigidas 7/7 PASS; suite completa 1,146/1,146 PASS; navegador 
 - `PLAYWRIGHT_MODULE` admite una ruta a Playwright instalado; `TEST_CHROME_PATH` permite Chrome local; `TEST_BASE_URL` predetermina http://127.0.0.1:3181.
 - SQL DEV reproducible en `supabase/dev/tests/blindaje_origen_operacion_i1.sql`: INSERT RETURNING con rol anon para los tres orígenes y NULL en ambas tablas dentro de BEGIN/ROLLBACK. Los datos sintéticos no permanecen. Una primera ejecución incompleta omitió campos obligatorios del propietario y abortó; la prueba corregida incluye nombre y dirección.
 - Render real del modal jurídico: registro histórico con NULL produce el mismo HTML y conserva el control interno de investigación.
-- `ModalSolicitud.js`, `pages/poliza/index.js` y `api/partners/link-submission.js` idénticos byte a byte al SHA base.
+- `ModalSolicitud.js`, `pages/poliza/index.js` y `api/partners/link-submission.js` y `api/partners/public-branding.js` idénticos byte a byte al SHA base.
 
 ## Riesgos y límites
 
 Persisten los riesgos de lectura preexistentes de #132. DEV mantiene RLS deshabilitado y grants de INSERT/SELECT para anon en las capturas. Guardar los metadatos no necesitó ampliar permisos. Este incremento no resuelve esos riesgos, no crea endpoints ni lecturas públicas y no incorpora SQL candidato de #132.
 
-La clasificación Partner sigue siendo informativa y depende del contexto URL existente; no debe usarse como prueba de pertenencia a una agencia. El flag ON requiere la migración previamente aplicada al entorno destino. Los metadatos nuevos quedan bajo el mismo modelo de acceso de las capturas existentes.
+La clasificación Partner es informativa: valida la existencia de la operación mediante el endpoint público existente, pero no autentica a quien utiliza la liga ni acredita pertenencia a la agencia. El flag ON requiere la migración previamente aplicada al entorno destino. Los metadatos nuevos quedan bajo el mismo modelo de acceso de las capturas existentes.
 
 Build emitió avisos de optimización de fuentes externas por falta de descarga. agent-browser no pudo instalarse por timeout; se utilizó Playwright/Chrome para la verificación visual e interactiva. No se actualizaron dependencias del producto.
 
