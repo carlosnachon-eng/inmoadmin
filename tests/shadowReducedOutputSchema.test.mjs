@@ -279,17 +279,19 @@ test("a previously eligible synthetic 3B response remains exactly eligible, with
   }
 });
 
-test("local adapter has no production imports or I/O; schema and transport remain disconnected", () => {
+test("adapter imports stay confined to Replay decoding and its transport schema, without I/O", () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   function walk(dir) {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? walk(path.join(dir, entry.name)) : [path.join(dir, entry.name)]);
   }
   for (const file of [...walk(path.join(root, "lib")), ...walk(path.join(root, "pages"))]) {
     if (!file.endsWith(".js") || file.endsWith("/reducedOutputSchema.js")) continue;
+    if (["lib/shadow/ai/anthropic.js", "lib/shadow/ai/historicalReplay.js"].includes(path.relative(root, file))) continue;
     assert.doesNotMatch(fs.readFileSync(file, "utf8"), /(?:from|import\s*\()[^\n]*reducedOutputSchema/, file);
   }
   const adapter = fs.readFileSync(new URL("../lib/shadow/ai/reducedOutputSchema.js", import.meta.url), "utf8");
   assert.doesNotMatch(adapter, /\b(?:fetch|process\.env|executeShadowReadOnlyTool|console\.|writeFile|createClient)\s*\(/);
   const transport = fs.readFileSync(new URL("../lib/shadow/ai/anthropic.js", import.meta.url), "utf8");
-  assert.match(transport, /schema: anthropicShadowAiDecisionJsonSchema/);
+  assert.match(transport, /function createAnthropicShadowResponse\(messages, options = \{\}\) \{\s*return createAnthropicResponse\(messages, options, false\)/);
+  assert.doesNotMatch(transport, /decodeReducedShadowAiDecision/);
 });
