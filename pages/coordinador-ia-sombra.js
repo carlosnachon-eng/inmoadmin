@@ -6,6 +6,7 @@ import { isQaDevUiEnabled, qaCampaignFixtureScope, SHADOW_QA_FINAL_CAMPAIGN_ID, 
 import { EXACT_PHONE_VALIDATED_CANDIDATE_REFS } from "../lib/shadow/exactPhoneValidatedRefs";
 import CondominiumIdentityReview from "../components/CondominiumIdentityReview";
 import RunIdentityScope from "../components/RunIdentityScope";
+import { sanitizedOutputPrivacyDiagnostics } from "../lib/shadow/ai/outputPrivacyDiagnostics";
 
 const ROLES = new Set(["admin", "coord_operaciones"]);
 const EVALUATIONS = [
@@ -450,6 +451,12 @@ export default function ShadowCoordinatorPage() {
             <p>Etapa: {item.result_safe?.outputDiagnostics?.outputStage} · HTTP {item.provider_http.provider_http_status} · tipo: {item.provider_http.provider_error_type??"no registrado"} · código: {item.provider_http.provider_error_code??"no registrado"} · parámetro: {item.provider_http.provider_error_param??"no registrado"}</p>
             <p>Categoría: {item.provider_http.provider_error_message_safe??"sin categoría segura"} · referencia opaca: {item.provider_http.provider_request_ref??"no disponible"}</p>
           </div>}
+          {(() => {
+            const diagnostic = sanitizedOutputPrivacyDiagnostics(item.result_safe?.outputDiagnostics);
+            return <div aria-label="Diagnóstico sanitizado de privacidad de salida">{diagnostic
+              ? <p>Etapa de salida: {diagnostic.outputStage} · razón: {diagnostic.outputPrivacy?.reason ?? "no registrada"} · ubicación: {diagnostic.outputPrivacy?.location ?? "no registrada"}</p>
+              : <p>Sin diagnóstico específico de salida registrado; no se infiere la causa.</p>}</div>;
+          })()}
           <div aria-label="Comprobantes de privacidad del transporte"><strong>Privacidad final:</strong>{!(item.privacy_checks||[]).length?<p>Sin comprobante registrado; no equivale a PASS.</p>:(item.privacy_checks||[]).map((check,index)=><p key={index}>
             Intento {index+1} · {check.privacy_stage} · {check.privacy_failure_code?<>FAIL: {check.privacy_failure_code}</>:<>final_payload_verified: {String(check.final_payload_verified)} · serialized_body_verified: {String(check.serialized_body_verified)} · output_mode: {check.output_mode}</>} · provider_invoked: {String(check.provider_invoked)}
           </p>)}</div>
