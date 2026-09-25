@@ -9,6 +9,8 @@ import { historicalReplayConversationResult, storedHistoricalReplayConversationR
 import { buildConversationAction } from "../lib/shadow/ai/conversationAction.js";
 import { createAnthropicShadowResponse } from "../lib/shadow/ai/anthropic.js";
 import { opaqueProviderRequestRef } from "../lib/shadow/ai/providerHttpDiagnostics.js";
+import { sanitizedOutputPrivacyDiagnostics } from "../lib/shadow/ai/outputPrivacyDiagnostics.js";
+import { createModelPrivacyScope, bindVerifiedModelMessages, bindModelResult, decodeModelDecisionReferences } from "../lib/shadow/ai/finalModelPrivacy.js";
 
 const NOW = Date.parse("2026-09-22T18:00:00Z");
 const env = { SHADOW_HISTORICAL_REPLAY_ENABLED: "true", SHADOW_HISTORICAL_REPLAY_ANTHROPIC_ENABLED: "true", SHADOW_IDENTITY_BRIDGE_ENABLED: "true",
@@ -283,17 +285,20 @@ test("UI sends preview snapshot and exposes actual 3B booleans/blocker separatel
 test("actual replay JSX renders true/false/legacy distinctly and prepare forwards the preview fingerprint", () => {
   const require = createRequire(import.meta.url), ui = fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
   const heading = ui.indexOf("Evaluación histórica 3B"), start = ui.lastIndexOf("<details", heading), end = ui.indexOf("</details>", heading) + "</details>".length;
-  const names = ["card", "brand", "historicalReplay", "historicalReplayBusy", "historicalReplayPreview", "historicalReplayTurnKeys", "historicalReviewDrafts", "operateHistoricalReplay", "setHistoricalReplayTurnKeys", "setHistoricalReviewDrafts", "reviewHistoricalReplay", "REPLAY_RATINGS", "REPLAY_REASONS"];
+  const names = ["card", "brand", "historicalReplay", "historicalReplayBusy", "historicalReplayPreview", "historicalReplayTurnKeys", "historicalReviewDrafts", "operateHistoricalReplay", "setHistoricalReplayTurnKeys", "setHistoricalReviewDrafts", "reviewHistoricalReplay", "REPLAY_RATINGS", "REPLAY_REASONS", "sanitizedOutputPrivacyDiagnostics"];
   const compiled = require("next/dist/build/swc").transformSync(`export default function Section({${names.join(",")}}) { return (${ui.slice(start, end)}); }`, { jsc: { parser: { syntax: "ecmascript", jsx: true }, transform: { react: { runtime: "automatic" } } }, module: { type: "commonjs" } }).code;
   const mod = { exports: {} }; new Function("require", "module", "exports", compiled)(require, mod, mod.exports);
   const snapshot = { asOf: new Date(NOW).toISOString(), fingerprint: "a".repeat(64) }; const calls = [];
-  const props = { card: {}, brand: {}, historicalReplayBusy: false, historicalReplayTurnKeys: ["turn1"], historicalReviewDrafts: {}, REPLAY_RATINGS: [], REPLAY_REASONS: [],
+  const props = { sanitizedOutputPrivacyDiagnostics, card: {}, brand: {}, historicalReplayBusy: false, historicalReplayTurnKeys: ["turn1"], historicalReviewDrafts: {}, REPLAY_RATINGS: [], REPLAY_REASONS: [],
     historicalReplayPreview: { cases: [], selected: 1, sourceSnapshot: snapshot, sourceInfo: {} },
     historicalReplay: { metrics: { autoSendEligible: 1, eligibilityNotRecorded: 1 }, cases: [
       { id: "one", status: "completed", requires_human: false, auto_send_eligible: true, blocked_reason: null, conversation_action: "provide_verified_status", review: { rating: "correct", human_auto_send_eligible: false }, privacy_checks: [{ final_payload_verified: true, serialized_body_verified: true, output_mode: "anthropic_json_schema", privacy_stage: "final_model_privacy", provider_invoked: true }] },
       { id: "two", status: "completed", requires_human: true, auto_send_eligible: false, blocked_reason: "financial_sensitive", conversation_action: "human_handoff", review: { rating: "correct", human_auto_send_eligible: true }, privacy_checks: [{ privacy_stage: "final_model_privacy", privacy_failure_code: "serialized_body_rejected", provider_invoked: false }] },
       { id: "legacy", status: "completed", review: { rating: "correct", human_auto_send_eligible: true } },
       { id: "http-error", status: "error", input_tokens: null, output_tokens: null, estimated_cost_usd: null, provider_model_status: "unaccredited", provider_http: { provider_http_status: 400, provider_error_type: "invalid_request_error", provider_error_code: "invalid_json_schema", provider_error_param: "output_config.format.schema", provider_error_message_safe: "invalid_json_schema", provider_request_ref: "a".repeat(64) }, result_safe: { outputDiagnostics: { outputStage: "provider_http" } } },
+      { id: "output-error", status: "error", result_safe: { outputDiagnostics: { outputStage: "output_privacy_validation", outputPrivacy: { reason: "model_alias_in_free_text", location: "summary", value: "ref_private_1", path: "ana@example.com" }, body: "sk-ant-private" } } },
+      { id: "tampered-output", status: "error", result_safe: { outputDiagnostics: { outputStage: "output_reference_decode", outputPrivacy: { reason: "ana@example.com", location: "ref_private_1" } } } },
+      { id: "legacy-output", status: "error", result_safe: { outputDiagnostics: { outputStage: "final_model_privacy", diagnosticCode: "pre_model_sanitization_blocked" } } },
     ] }, operateHistoricalReplay: (...args) => calls.push(args) };
   const tree = mod.exports.default(props);
   const nodes = (node) => !node || typeof node !== "object" ? [] : Array.isArray(node) ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
@@ -310,6 +315,10 @@ test("actual replay JSX renders true/false/legacy distinctly and prepare forward
   assert.match(html, /Modelo acreditado:<\/strong> no acreditado/);
   assert.match(html, /Etapa: provider_http · HTTP 400 · tipo: invalid_request_error/);
   assert.match(html, /Categoría: invalid_json_schema · referencia opaca: a{64}/);
+  assert.match(html, /Etapa de salida: output_privacy_validation · razón: model_alias_in_free_text · ubicación: summary/);
+  assert.match(html, /Etapa de salida: output_reference_decode · razón: no registrada · ubicación: no registrada/);
+  assert.match(html, /Sin diagnóstico específico de salida registrado; no se infiere la causa/);
+  assert.doesNotMatch(html, /ref_private_1|ana@example.com|sk-ant-private/);
 });
 
 const privacyPass = { final_payload_verified: true, serialized_body_verified: true, output_mode: "anthropic_json_schema", privacy_stage: "final_model_privacy", provider_invoked: true };
@@ -327,6 +336,89 @@ function syntheticTransport(fetchImpl) {
   return (messages, options) => createAnthropicShadowResponse(messages, { ...options, fetchImpl });
 }
 const syntheticModelResponse = (value = decision) => ({ ok: true, json: async () => ({ id: "synthetic-provider", content: [{ type: "text", text: JSON.stringify(value) }], usage: { input_tokens: 5, output_tokens: 2 } }) });
+
+for (const variant of ["free_text", "wrong_position", "type_mismatch", "raw_id"]) {
+  test(`reduced native synthetic response → output failure ${variant} → safe persistence/GET, no tools or 3B`, async () => {
+    const db = database(tableSeed()); let fetches = 0, tools = 0;
+    const row = { id: "output-case", status: "pending", turn_snapshot: { envelope: {
+      provider: "respond_admin", sanitizedText: "¿Cómo va el mantenimiento?", providerMetadata: { propertyId: syntheticId },
+    } } };
+    db.tables.shadow_historical_replay_cases.push(row);
+    const expected = {
+      free_text: { outputStage: "output_privacy_validation", outputPrivacy: { reason: "model_alias_in_free_text", location: "summary" } },
+      wrong_position: { outputStage: "output_reference_decode", outputPrivacy: { reason: "model_reference_wrong_position", location: "tool_argument" } },
+      type_mismatch: { outputStage: "output_reference_decode", outputPrivacy: { reason: "model_reference_type_mismatch", location: "tool_argument" } },
+      // Existing verifier selects the first sorted reason; this UUID also has
+      // a 12-digit suffix, so digest/token precedes UUID/internal-reference.
+      raw_id: { outputStage: "output_privacy_validation", outputPrivacy: { reason: "residual_digest_or_token", location: "summary" } },
+    }[variant];
+    const api = endpoint(db, { executeCase: (admin, replayCase, options) => executeHistoricalReplayCase(admin, replayCase, { ...options, now: () => NOW,
+      fetchImpl: async (_url, { body }) => {
+        fetches++; const context = JSON.parse(JSON.parse(body).messages[0].content);
+        const d = structuredClone(decision), alias = context.metadata.propertyId;
+        d.proposedToolCalls = [{ tool: "get_maintenance_ticket_summary", arguments: [{ key: "propertyId", value: alias }], reason: "Consultar estado" }];
+        if (variant === "free_text") d.summary = alias;
+        if (variant === "raw_id") d.summary = syntheticId;
+        if (variant === "wrong_position") d.proposedToolCalls = [{ tool: "get_service_period_status", arguments: [{ key: "serviceType", value: alias }], reason: "Consultar estado" }];
+        if (variant === "type_mismatch") d.proposedToolCalls = [{ tool: "resolve_contact_identity", arguments: [{ key: "respondContactId", value: alias }], reason: "Consultar estado" }];
+        return { ok: true, json: async () => ({ model: "claude-haiku-4-5-20251001", content: [{ type: "text", text: JSON.stringify(d) }], usage: { input_tokens: 5, output_tokens: 2 } }) };
+      }, executeTool: async () => { tools++; assert.fail("output rejection must precede proposed tools"); },
+    }) });
+    const response = await api({ action: "execute_one", caseId: row.id });
+    assert.equal(response.statusCode, 422); assert.equal(row.status, "error");
+    assert.equal(fetches, 1); assert.equal(tools, 0);
+    assert.equal(row.error_code, "pre_model_sanitization_blocked");
+    assert.equal(row.conversation_action, undefined); assert.equal(row.operational_resolution, undefined);
+    const expectedDiagnostics = { ...expected, diagnosticCode: "pre_model_sanitization_blocked", truncatedFields: [] };
+    for (const value of [response.body.outputDiagnostics, row.result_safe.outputDiagnostics, (await api({}, "GET")).body.cases[0].result_safe.outputDiagnostics]) assert.deepEqual(value, expectedDiagnostics);
+    assert.deepEqual(row.result_safe.privacy_checks, [privacyPass]);
+    assert.deepEqual(row.result_safe.providerModels, ["claude-haiku-4-5-20251001"]);
+    assert.equal(row.input_tokens, 5); assert.equal(row.output_tokens, 2);
+    assert.doesNotMatch(JSON.stringify([response.body, row.result_safe, db.writes]), /ref_[a-z]+_\d+|a1100000|proposedToolCalls/);
+    assert.ok(db.writes.every((write) => write.table === "shadow_historical_replay_cases"));
+  });
+}
+
+test("GET reprojects stored output diagnostics; legacy output failures never acquire a reason", async () => {
+  const db = database(tableSeed()), api = endpoint(db);
+  const secret = `${syntheticId} ref_private_1 ana@example.com sk-ant-private`;
+  const row = { id: "read-case", status: "error", result_safe: { outputDiagnostics: {
+    outputStage: "output_reference_decode", outputPrivacy: { reason: "model_reference_type_mismatch", location: "tool_argument", value: secret, path: secret },
+    diagnosticCode: secret, truncatedFields: [secret], body: secret, reasons: [secret],
+  } } };
+  db.tables.shadow_historical_replay_cases.push(row);
+  let listed = (await api({}, "GET")).body.cases[0];
+  assert.deepEqual(listed.result_safe.outputDiagnostics, { outputStage: "output_reference_decode", outputPrivacy: { reason: "model_reference_type_mismatch", location: "tool_argument" }, diagnosticCode: "pre_model_sanitization_blocked", truncatedFields: [] });
+  assert.doesNotMatch(JSON.stringify(listed), /a1100000|ref_private|ana@example|sk-ant/);
+  row.result_safe.outputDiagnostics.outputPrivacy.reason = secret;
+  listed = (await api({}, "GET")).body.cases[0];
+  assert.equal(listed.result_safe.outputDiagnostics.outputPrivacy, undefined);
+  row.result_safe.outputDiagnostics = { outputStage: "final_model_privacy", diagnosticCode: "pre_model_sanitization_blocked", outputPrivacy: { reason: "model_alias_in_free_text", location: "summary" } };
+  listed = (await api({}, "GET")).body.cases[0];
+  assert.equal(listed.result_safe.outputDiagnostics.outputPrivacy, undefined);
+  assert.equal(db.writes.length, 0);
+});
+
+test("output error message/reasons/path contamination never reaches persistence or POST/GET", async () => {
+  const scope = createModelPrivacyScope(), alias = scope.reference(syntheticId, "property");
+  const messages = bindVerifiedModelMessages([{ role: "user", content: "Consulta" }], scope);
+  const modelResult = bindModelResult({ usage: {} }, messages);
+  let failure;
+  try { decodeModelDecisionReferences({ summary: alias }, modelResult); } catch (error) { failure = error; }
+  const sensitive = `${alias} ${syntheticId} ana@example.com sk-ant-private +52 222 123 4567`;
+  Object.assign(failure, { message: sensitive, reasons: [sensitive], value: sensitive, path: sensitive,
+    historicalReplayTelemetry: { outputStage: "output_privacy_validation", diagnosticCode: sensitive, truncatedFields: [sensitive], reasons: [sensitive], raw: sensitive } });
+  const db = database(tableSeed()); db.tables.shadow_historical_replay_cases.push({ id: "contaminated-error", status: "pending" });
+  const api = endpoint(db, { executeCase: async () => { throw failure; } });
+  const response = await api({ action: "execute_one", caseId: "contaminated-error" });
+  assert.equal(response.statusCode, 422);
+  const row = db.tables.shadow_historical_replay_cases[0];
+  assert.equal(row.error_code, "pre_model_sanitization_blocked");
+  assert.deepEqual(row.result_safe.outputDiagnostics.outputPrivacy, { reason: "model_alias_in_free_text", location: "summary" });
+  for (const data of [response.body, db.writes, (await api({}, "GET")).body]) {
+    assert.doesNotMatch(JSON.stringify(data), /ref_[a-z]+_\d+|a1100000|ana@example|sk-ant|222 123/);
+  }
+});
 
 for (const legacy of [false, true]) {
   test(`execute_one owns reduced selection; native fetch/decoder/GET ${legacy ? "reject legacy arguments" : "complete reduced arguments"}`, async () => {

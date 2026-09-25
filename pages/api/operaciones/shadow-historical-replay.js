@@ -5,6 +5,7 @@ import { executeHistoricalReplayCase, historicalReplayMetrics, HISTORICAL_REPLAY
 import { prepareHistoricalReplaySelection, previewHistoricalReplaySource } from "../../../lib/shadow/ai/historicalReplaySource.js";
 import { historicalReplayConversationResult, storedHistoricalReplayConversationResult } from "../../../lib/shadow/ai/historicalReplayResult.js";
 import { sanitizedModelPrivacyChecks } from "../../../lib/shadow/ai/modelPrivacyTelemetry.js";
+import { projectOutputPrivacyFailure, reprojectOutputPrivacyDiagnostics, sanitizedOutputPrivacyDiagnostics } from "../../../lib/shadow/ai/outputPrivacyDiagnostics.js";
 import { projectProviderHttpError, sanitizedProviderHttpDiagnostics, replayProviderUsage, replayUsageColumns, storedReplayProviderAccounting } from "../../../lib/shadow/ai/providerHttpDiagnostics.js";
 
 const adminClient = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -30,6 +31,7 @@ return async function handler(req, res) {
         const accounting = storedReplayProviderAccounting(row);
         return { ...row, ...storedHistoricalReplayConversationResult(row), ...accounting,
           result_safe: { ...row.result_safe, providerHttp,
+            outputDiagnostics: reprojectOutputPrivacyDiagnostics(row.result_safe?.outputDiagnostics),
             ...(row.result_safe?.providerUsage ? { providerUsage: replayProviderUsage(accounting.input_tokens, accounting.output_tokens) } : {}),
             privacy_checks: privacyChecks }, provider_http: providerHttp, privacy_checks: privacyChecks,
           review: latestReview.get(row.id) || null };
@@ -71,14 +73,15 @@ return async function handler(req, res) {
         return res.status(200).json({ ok: true, caseId: id, status: "completed", ...conversationResult, privacy_checks: privacyChecks });
       } catch (executionError) {
         const telemetry = executionError.historicalReplayTelemetry || {};
+        const outputPrivacy = projectOutputPrivacyFailure(executionError) || sanitizedOutputPrivacyDiagnostics(telemetry);
         privacyChecks = sanitizedModelPrivacyChecks(telemetry.privacyChecks || privacyChecks);
         const privacyFailure = privacyChecks.at(-1)?.privacy_failure_code;
         const providerHttp = sanitizedProviderHttpDiagnostics(telemetry.providerHttp) || projectProviderHttpError(executionError.providerError);
         const providerUsage = replayProviderUsage(telemetry.inputTokens, telemetry.outputTokens);
         const providerRequestRefs = [...new Set([...(telemetry.providerRequestRefs || []), providerHttp?.provider_request_ref])].filter((ref) => typeof ref === "string" && /^[a-f0-9]{64}$/.test(ref));
-        const outputDiagnostics = { outputStage: privacyFailure ? "final_model_privacy" : providerHttp ? "provider_http" : telemetry.outputStage || "unknown",
-          diagnosticCode: privacyFailure || (providerHttp ? `model_http_${providerHttp.provider_http_status}` : telemetry.diagnosticCode || "historical_replay_error"), truncatedFields: telemetry.truncatedFields || [] };
-        await admin.from("shadow_historical_replay_cases").update({ status: "error", error_code: privacyFailure || (providerHttp ? outputDiagnostics.diagnosticCode : String(executionError.message || "replay_error").replace(/[^a-z0-9_]/gi, "_").toLowerCase().slice(0, 80)), result_safe: { providerRequestRefs, providerModels: telemetry.providerModels || [], providerModelStatus: telemetry.providerModelStatus || "unaccredited", providerUsage, providerHttp, outputDiagnostics, privacy_checks: privacyChecks }, ...replayUsageColumns(providerUsage), latency_ms: Number(telemetry.latencyMs || 0), completed_at: new Date().toISOString() }).eq("id", id).eq("status", "running");
+        const outputDiagnostics = reprojectOutputPrivacyDiagnostics(outputPrivacy || { outputStage: privacyFailure ? "final_model_privacy" : providerHttp ? "provider_http" : telemetry.outputStage || "unknown",
+          diagnosticCode: privacyFailure || (providerHttp ? `model_http_${providerHttp.provider_http_status}` : telemetry.diagnosticCode || "historical_replay_error"), truncatedFields: telemetry.truncatedFields || [] });
+        await admin.from("shadow_historical_replay_cases").update({ status: "error", error_code: outputPrivacy ? "pre_model_sanitization_blocked" : privacyFailure || (providerHttp ? outputDiagnostics.diagnosticCode : String(executionError.message || "replay_error").replace(/[^a-z0-9_]/gi, "_").toLowerCase().slice(0, 80)), result_safe: { providerRequestRefs, providerModels: telemetry.providerModels || [], providerModelStatus: telemetry.providerModelStatus || "unaccredited", providerUsage, providerHttp, outputDiagnostics, privacy_checks: privacyChecks }, ...replayUsageColumns(providerUsage), latency_ms: Number(telemetry.latencyMs || 0), completed_at: new Date().toISOString() }).eq("id", id).eq("status", "running");
         return res.status(422).json({ ok: false, error: "historical_replay_execution_error", outputDiagnostics, provider_http: providerHttp, providerUsage, providerRequestRefs, provider_model_status: telemetry.providerModelStatus || "unaccredited", privacy_checks: privacyChecks });
       }
     }
