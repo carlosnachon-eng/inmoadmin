@@ -2,7 +2,7 @@
 Fixture JSON and Vercel cookie jar must be private local files, never committed.
 Run after SQL fixture setup. Logouts and explicit DB cleanup are separate steps.
 """
-import base64, datetime, hashlib, http.cookiejar, json, os, pathlib, sys, urllib.error, urllib.request
+import base64, datetime, hashlib, http.cookiejar, json, os, pathlib, subprocess, sys, urllib.error, urllib.request
 
 root = pathlib.Path(sys.argv[1])
 preview = sys.argv[2].rstrip('/')
@@ -36,13 +36,26 @@ for role, fixture in fixtures.items():
     print('PASS real DEV password login Partner', role)
 
 def api(path, body, actor=None, method='POST'):
-    return call(preview + '/api/partners/' + path, body, method,
-        {'Authorization': 'Bearer ' + sessions.get(actor, actor)} if actor else {})
+    # Vercel interprets a custom Authorization header before its bypass cookie.
+    # Its authenticated CLI adds the platform bypass independently of Partner JWT.
+    private('request.json', body)
+    header_path = root / 'request-header.txt'
+    header_path.write_text('Authorization: Bearer ' + sessions.get(actor, actor) if actor else '')
+    os.chmod(header_path, 0o600)
+    command = [os.environ.get('PNPM_BIN', 'pnpm'), 'dlx', 'vercel', 'curl',
+        '/api/partners/' + path, '--deployment', preview, '--', '--request', method,
+        '--header', 'Content-Type: application/json', '--data-binary', '@' + str(root / 'request.json'),
+        '--silent', '--write-out', '\n%{http_code}']
+    if actor: command += ['--header', '@' + str(header_path)]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, 'Authenticated Preview transport failed'
+    payload, status = result.stdout.strip().rsplit('\n', 1)
+    return int(status), json.loads(payload)
 
 body = {'operation_id': fixtures['A']['operation'], 'role': 'inquilino'}
 for actor in [None, 'invalid-bearer']:
     status, _ = api('invitations', body, actor)
-    assert status == 401
+    assert status == 401 and _ == {'error': 'No autorizado'}
     print('PASS missing/invalid session denied', status)
 issued = {}
 for role in ['inquilino', 'propietario']:

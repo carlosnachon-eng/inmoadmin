@@ -55,10 +55,23 @@ Sin fragmento se conserva el flujo actual, incluidos participantes adicionales. 
 - `supabase/dev/blindaje_partner_invitations_i2a0_test.sql`: PASS en DEV; fixtures dentro de BEGIN/ROLLBACK, verifica privilegios y transacción real.
 - `git diff --check`: PASS.
 
-Los tests de Auth/cross-agency de endpoints usan dobles de datos; las restricciones de enlace/RLS también se ejecutaron contra Postgres DEV real. Los envíos completos en navegador son sintéticos, sin carga documental real en Storage.
+Los tests unitarios de Auth/cross-agency usan dobles. La recertificación adicional ejecutó login real GoTrue y generación/revocación reales desde sesiones de dos Partners DEV contra Preview protegido; las restricciones de enlace/RLS también se ejecutaron contra Postgres DEV real. Los envíos completos en navegador son sintéticos, sin carga documental real en Storage.
 
 Migración aplicada exclusivamente a `hjfwjnejbcpmknvfpdcq`. Rollback explícito en `supabase/rollback/blindaje_partner_invitations_i2a0.sql`; desactivar flag antes de ejecutar. No ejecutar en Producción.
 
 ## Recertificación final
 
 La respuesta de operación se minimiza por rol: dirección y renta más exclusivamente el nombre del rol invitado. Ambos formularios ya consumen sólo su nombre respectivo; el navegador sintético ahora recibe estas respuestas minimizadas. Se agrega `scripts/blindaje/verify-invitations-auth-dev.py` para certificar sesiones reales de dos Partners DEV, generación propia/cross-agency, revocación y allowlists. El script no usa dobles ni service role para iniciar sesión. Credenciales, cookies y tokens sólo en archivos privados temporales; requiere limpieza explícita Auth/DB al finalizar. Evidencia de ejecución y limpieza se adjunta al PR.
+
+
+Gate Auth real: dos identidades `I2A0-QA` creadas sólo en DEV y autenticadas por contraseña contra GoTrue. Generación propia 201 para ambos roles, cross-agency generación/revocación 404, ausencia de sesión/Bearer inválido 401, revocación propia 200 y token revocado 404 idéntico a token inventado. Vercel requiere su acceso autenticado de plataforma separado del Bearer de la aplicación; el verificador usa `vercel curl`, manteniendo Deployment Protection. No se modifica ningún endpoint para pruebas. La preparación Auth se confirmó antes de las llamadas HTTP, por lo que la limpieza requiere eliminación explícita; no se presenta como rollback transaccional.
+
+Respuesta pública exacta por rol para los fixtures QA:
+
+```json
+{"valid":true,"role":"inquilino","agency":{"nombre_comercial":"I2A0-QA Agencia A","logo_url":null,"brand_color":"#b91c3c"},"operation":{"direccion_inmueble":"I2A0-QA Inmueble A","monto_renta":15000,"nombre_inquilino":"I2A0-QA Inquilino A"}}
+```
+
+```json
+{"valid":true,"role":"propietario","agency":{"nombre_comercial":"I2A0-QA Agencia A","logo_url":null,"brand_color":"#b91c3c"},"operation":{"direccion_inmueble":"I2A0-QA Inmueble A","monto_renta":15000,"nombre_propietario":"I2A0-QA Propietario A"}}
+```
