@@ -18,14 +18,14 @@ La tabla `blindaje_partner_invitations` contiene los campos pedidos y `linked_re
 
 Todos: `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, body máximo 4 KB, errores sanitizados. Flag OFF responde 404 antes de acceder a datos. Falta de service key falla cerrado; nunca usa anon como fallback.
 
-Respuesta pública exacta (valores ilustrativos):
+Respuesta pública de inquilino (valores ilustrativos; propietario devuelve únicamente `nombre_propietario` en lugar de `nombre_inquilino`):
 
 ```json
 {
   "valid": true,
   "role": "inquilino",
   "agency": {"nombre_comercial": "I2A Agencia", "logo_url": null, "brand_color": "#123456"},
-  "operation": {"direccion_inmueble": "I2A Inmueble", "monto_renta": 15000, "nombre_propietario": "I2A Propietario", "nombre_inquilino": "I2A Inquilino"}
+  "operation": {"direccion_inmueble": "I2A Inmueble", "monto_renta": 15000, "nombre_inquilino": "I2A Inquilino"}
 }
 ```
 
@@ -47,8 +47,8 @@ Sin fragmento se conserva el flujo actual, incluidos participantes adicionales. 
 
 ## Verificación
 
-- `node --test tests/partnerInvitations.test.mjs`: 22 PASS (auth/cross-agency/revocación/hash/allowlist/errores/flag).
-- `node --test tests/*.test.mjs`: 1263 PASS.
+- `node --test tests/partnerInvitations.test.mjs`: 23 PASS (auth/cross-agency/revocación/hash/allowlist/errores/flag).
+- `node --test tests/*.test.mjs`: 1264 PASS.
 - Builds ON/OFF con I1 ON: PASS. Advertencias de descarga de Google Fonts en entorno local restringido, sin fallo de compilación.
 - `scripts/blindaje/verify-invitations.mjs`: 32 ON + 4 OFF, anchos 390/1440, red interceptada y datos sintéticos. Verifica prefills, edición/back, submit invitado, token fuera de URL/Referer, errores uniformes y fallo de enlace sin repetir insert.
 - `scripts/blindaje/verify-origen.mjs`: 40 ON + 40 OFF del flag de invitaciones; legacy Partner/participantes, Emporio y B2C.
@@ -58,3 +58,7 @@ Sin fragmento se conserva el flujo actual, incluidos participantes adicionales. 
 Los tests de Auth/cross-agency de endpoints usan dobles de datos; las restricciones de enlace/RLS también se ejecutaron contra Postgres DEV real. Los envíos completos en navegador son sintéticos, sin carga documental real en Storage.
 
 Migración aplicada exclusivamente a `hjfwjnejbcpmknvfpdcq`. Rollback explícito en `supabase/rollback/blindaje_partner_invitations_i2a0.sql`; desactivar flag antes de ejecutar. No ejecutar en Producción.
+
+## Recertificación final
+
+La respuesta de operación se minimiza por rol: dirección y renta más exclusivamente el nombre del rol invitado. Ambos formularios ya consumen sólo su nombre respectivo; el navegador sintético ahora recibe estas respuestas minimizadas. Se agrega `scripts/blindaje/verify-invitations-auth-dev.py` para certificar sesiones reales de dos Partners DEV, generación propia/cross-agency, revocación y allowlists. El script no usa dobles ni service role para iniciar sesión. Credenciales, cookies y tokens sólo en archivos privados temporales; requiere limpieza explícita Auth/DB al finalizar. Evidencia de ejecución y limpieza se adjunta al PR.

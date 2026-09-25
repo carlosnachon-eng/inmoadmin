@@ -23,7 +23,7 @@ try {
         if(['invalid','expired','revoked'].includes(mode))return route.fulfill({status:404,json:{error:'No disponible'}})
         return route.fulfill({json:{valid:true,role:mode==='wrong-role'?(role==='inquilino'?'propietario':'inquilino'):role,
           agency:{nombre_comercial:'I2A Agencia',logo_url:null,brand_color:'#123456'},
-          operation:{nombre_propietario:'I2A Propietario',nombre_inquilino:'I2A Inquilino',direccion_inmueble:'I2A Inmueble',monto_renta:15000}}})
+          operation:{...(role==='inquilino'?{nombre_inquilino:'I2A Inquilino'}:{nombre_propietario:'I2A Propietario'}),direccion_inmueble:'I2A Inmueble',monto_renta:15000}}})
       }
       if(url.pathname==='/api/partners/public-branding'||url.pathname==='/api/partners/link-submission') {legacy++;return route.fulfill({json:{}})}
       if(url.pathname==='/api/partners/link-submission-invited') {linked=req.postDataJSON();return route.fulfill({status:mode==='link-failure'?404:200,json:{ok:mode!=='link-failure'}})}

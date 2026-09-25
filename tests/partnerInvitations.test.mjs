@@ -45,9 +45,16 @@ test('authenticated A creates random 256-bit invitation; only SHA256 stored; exp
 for (const [name, overrides, code] of [['no session',{},401],['invalid session',{ user:null },401],['inactive member',{member:{ active:false }},403],['no member',{member:null},403],['inactive agency',{agency:{status:'inactivo'}},403],['other agency',{operation:{id:operationId,partner_agency_id:'agency-b'}},404]]) {
   test(name,async()=>{const r=await request('manage',{db:database(overrides),body:{operation_id:operationId,role:'inquilino'},...(name==='no session'?{auth:''}:{})});assert.equal(r.code,code);assert.equal(r.db.calls.some(c=>c.insert),false)})
 }
-test('public context exact allowlist without UUIDs',async()=>{
-  const r=await request('public',{body:{token}});assert.equal(r.code,200)
-  assert.deepEqual(r.body,{valid:true,role:'inquilino',agency:{nombre_comercial:'I2A Agencia',logo_url:null,brand_color:'#123456'},operation:{direccion_inmueble:'I2A Dirección',monto_renta:12345,nombre_propietario:'I2A Propietario',nombre_inquilino:'I2A Inquilino'}})
+for (const role of ['inquilino', 'propietario']) test(`public ${role}: exact allowlist excludes the other party name`, async () => {
+  const db = database(); db.state.invitation.role = role
+  const r = await request('public', { db, body: { token } }); assert.equal(r.code, 200)
+  assert.deepEqual(r.body, { valid: true, role,
+    agency: { nombre_comercial: 'I2A Agencia', logo_url: null, brand_color: '#123456' },
+    operation: { direccion_inmueble: 'I2A Dirección', monto_renta: 12345,
+      ...(role === 'inquilino' ? { nombre_inquilino: 'I2A Inquilino' } : { nombre_propietario: 'I2A Propietario' }) } })
+  const forbidden = role === 'inquilino' ? 'nombre_propietario' : 'nombre_inquilino'
+  assert.equal(Object.hasOwn(r.body.operation, forbidden), false)
+  assert.equal(JSON.stringify(r.body).includes(forbidden), false)
 })
 for(const mode of ['invented','malformed','expired','revoked','missing operation','inactive agency']) test(`public ${mode} uniform failure`,async()=>{
   const db=database();if(mode==='expired')db.state.invitation.expires_at='2000-01-01';if(mode==='revoked')db.state.invitation.revoked_at='2026-01-01';if(mode==='missing operation')db.state.operation=null;if(mode==='inactive agency')db.state.agency.status='inactivo'
