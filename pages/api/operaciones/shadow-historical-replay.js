@@ -7,6 +7,7 @@ import { historicalReplayConversationResult, storedHistoricalReplayConversationR
 import { sanitizedModelPrivacyChecks } from "../../../lib/shadow/ai/modelPrivacyTelemetry.js";
 import { projectOutputPrivacyFailure, reprojectOutputPrivacyDiagnostics, sanitizedOutputPrivacyDiagnostics } from "../../../lib/shadow/ai/outputPrivacyDiagnostics.js";
 import { projectProviderHttpError, sanitizedProviderHttpDiagnostics, replayProviderUsage, replayUsageColumns, storedReplayProviderAccounting } from "../../../lib/shadow/ai/providerHttpDiagnostics.js";
+import { REPLAY_ATTEMPTS_TABLE, isReplayRetryAdmin, validReplayRetryRequest, prepareHistoricalReplayRetry, loadReplayExecutionTarget } from "../../../lib/shadow/ai/historicalReplayAttempts.js";
 
 const adminClient = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 export function createHistoricalReplayHandler({ createAdmin = adminClient, authorize = authorizeShadowAdministrator, sameOrigin = sameOriginAdminRequest, executeCase = executeHistoricalReplayCase, env = process.env, now = Date.now } = {}) {
@@ -15,6 +16,7 @@ return async function handler(req, res) {
   if (!["GET", "POST"].includes(req.method)) return res.status(405).json({ ok: false, error: "method_not_allowed" });
   const actor = await authorize(req); if (!actor) return res.status(403).json({ ok: false, error: "not_authorized" });
   if (req.method === "POST" && !sameOrigin(req)) return res.status(403).json({ ok: false, error: "invalid_origin" });
+  if ((req.body?.action === "prepare_retry" || req.body?.attemptId != null) && !isReplayRetryAdmin(actor)) return res.status(403).json({ ok: false, error: "admin_required" });
   const admin = createAdmin();
   try {
     if (req.method === "GET") {
@@ -25,7 +27,15 @@ return async function handler(req, res) {
       ]);
       if (cohortError || caseError || reviewError) throw cohortError || caseError || reviewError;
       const latestReview = new Map((reviews || []).map((row) => [row.replay_case_id, row]));
-      const enriched = (cases || []).map((row) => {
+      let attempts = [];
+      if (isReplayRetryAdmin(actor) && cases?.length) {
+        const result = await admin.from(REPLAY_ATTEMPTS_TABLE).select("id,case_id,parent_attempt_id,attempt_number,attempt_ref,status,created_at,completed_at,operational_resolution,conversation_action,proposed_message,result_safe,message_safe,would_resolve_without_human,input_tokens,output_tokens,estimated_cost_usd,latency_ms,error_code")
+          .in("case_id", cases.map((row) => row.id)).order("attempt_number", { ascending: true }).limit(501);
+        if (result.error) throw result.error;
+        if (result.data?.length > 500) return res.status(409).json({ ok: false, error: "replay_attempt_history_limit" });
+        attempts = result.data || [];
+      }
+      const projectResult = (row) => {
         const privacyChecks = sanitizedModelPrivacyChecks(row.result_safe?.privacy_checks);
         const providerHttp = sanitizedProviderHttpDiagnostics(row.result_safe?.providerHttp);
         const accounting = storedReplayProviderAccounting(row);
@@ -35,10 +45,26 @@ return async function handler(req, res) {
             ...(row.result_safe?.providerUsage ? { providerUsage: replayProviderUsage(accounting.input_tokens, accounting.output_tokens) } : {}),
             privacy_checks: privacyChecks }, provider_http: providerHttp, privacy_checks: privacyChecks,
           review: latestReview.get(row.id) || null };
+      };
+      const enriched = (cases || []).map((row) => {
+        const children = attempts.filter((a) => a.case_id === row.id);
+        const projected = children.map((attempt) => ({ ...projectResult(attempt), review: null,
+          case_ref: row.case_ref, case_domain: row.case_domain, occurred_at: row.occurred_at,
+          turn_snapshot: row.turn_snapshot, human_response_snapshot: row.human_response_snapshot,
+          temporal_grounding: row.temporal_grounding, identity_grounding: row.identity_grounding,
+          parent_ref: children.find((a) => a.id === attempt.parent_attempt_id)?.attempt_ref || row.case_ref,
+          can_retry: attempt.status === "error" && !children.some((a) => a.parent_attempt_id === attempt.id) }));
+        return { ...projectResult(row), attempt_number: 1, attempts: projected,
+          can_retry: isReplayRetryAdmin(actor) && row.status === "error" && !children.length };
       });
       return res.status(200).json({ ok: true, runtime: HISTORICAL_REPLAY_RUNTIME, cohorts: cohorts || [], cases: enriched, metrics: historicalReplayMetrics(enriched.map((row) => ({ ...row, human_rating: row.review?.rating }))) });
     }
     const action = String(req.body?.action || "");
+    if (action === "prepare_retry") {
+      if (!validReplayRetryRequest(req.body)) return res.status(400).json({ ok: false, error: "invalid_explicit_retry" });
+      const result = await prepareHistoricalReplayRetry(admin, actor, req.body);
+      return res.status(result.status).json(result.body);
+    }
     if (action === "preview") {
       const preview = await previewHistoricalReplaySource(admin, { env, now: now() });
       return res.status(200).json({ ok: true, preview: { ...preview, cases: preview.cases.map(({ envelope, humanResponseSnapshot, ...row }) => ({ ...row, humanResponseAvailable: Boolean(humanResponseSnapshot), envelope: undefined })) } });
@@ -53,10 +79,10 @@ return async function handler(req, res) {
       return res.status(201).json({ ok: true, cohortId: cohort.id, selected: rows.length });
     }
     if (action === "execute_one") {
-      const id = String(req.body?.caseId || "");
-      const { data: row, error } = await admin.from("shadow_historical_replay_cases").select("*").eq("id", id).eq("status", "pending").maybeSingle(); if (error) throw error;
-      if (!row) return res.status(409).json({ ok: false, error: "replay_case_not_pending" });
-      const { data: claimed, error: claimError } = await admin.from("shadow_historical_replay_cases").update({ status: "running" }).eq("id", id).eq("status", "pending").select("id").maybeSingle(); if (claimError) throw claimError;
+      const target = await loadReplayExecutionTarget(admin, req.body || {});
+      if (!target) return res.status(409).json({ ok: false, error: "replay_case_not_pending" });
+      const { row, table, id } = target;
+      const { data: claimed, error: claimError } = await admin.from(table).update({ status: "running" }).eq("id", id).eq("status", "pending").select("id").maybeSingle(); if (claimError) throw claimError;
       if (!claimed) return res.status(409).json({ ok: false, error: "replay_case_claim_conflict" });
       const snapshot = row.turn_snapshot || {};
       const replayCase = { evaluationMode: "historical_replay", sufficientHistoricalContext: true, temporalGrounding: row.temporal_grounding, identityGrounding: row.identity_grounding, humanResponseSnapshot: row.human_response_snapshot, envelope: snapshot.envelope };
@@ -68,9 +94,9 @@ return async function handler(req, res) {
         const conversationResult = historicalReplayConversationResult(conversation);
         privacyChecks = sanitizedModelPrivacyChecks(result.privacyChecks);
         const providerUsage = replayProviderUsage(result.inputTokens, result.outputTokens);
-        const { data: saved, error: saveError } = await admin.from("shadow_historical_replay_cases").update({ status: "completed", operational_resolution: resolution, conversation_action: conversation.conversation_action, proposed_message: conversation.proposed_message, result_safe: { conversationAction: conversationResult, tools: result.tools, evidence: result.evidence, providerRequestRefs: result.providerRequestRefs, providerModels: result.providerModels, providerModelStatus: result.providerModelStatus, providerUsage, outputDiagnostics: result.outputDiagnostics, privacy_checks: privacyChecks }, message_safe: result.messageSafe, would_resolve_without_human: resolution.would_resolve_without_human, ...replayUsageColumns(providerUsage), latency_ms: result.latencyMs, completed_at: new Date().toISOString() }).eq("id", id).eq("status", "running").select("id").maybeSingle();
+        const { data: saved, error: saveError } = await admin.from(table).update({ status: "completed", operational_resolution: resolution, conversation_action: conversation.conversation_action, proposed_message: conversation.proposed_message, result_safe: { conversationAction: conversationResult, tools: result.tools, evidence: result.evidence, providerRequestRefs: result.providerRequestRefs, providerModels: result.providerModels, providerModelStatus: result.providerModelStatus, providerUsage, outputDiagnostics: result.outputDiagnostics, privacy_checks: privacyChecks }, message_safe: result.messageSafe, would_resolve_without_human: resolution.would_resolve_without_human, ...replayUsageColumns(providerUsage), latency_ms: result.latencyMs, completed_at: new Date().toISOString() }).eq("id", id).eq("status", "running").select("id").maybeSingle();
         if (saveError || !saved) throw new Error("historical_replay_result_not_saved");
-        return res.status(200).json({ ok: true, caseId: id, status: "completed", ...conversationResult, privacy_checks: privacyChecks });
+        return res.status(200).json({ ok: true, caseId: row.id, ...(req.body.attemptId ? { attemptId: id } : {}), status: "completed", ...conversationResult, privacy_checks: privacyChecks });
       } catch (executionError) {
         const telemetry = executionError.historicalReplayTelemetry || {};
         const outputPrivacy = projectOutputPrivacyFailure(executionError) || sanitizedOutputPrivacyDiagnostics(telemetry);
@@ -81,7 +107,11 @@ return async function handler(req, res) {
         const providerRequestRefs = [...new Set([...(telemetry.providerRequestRefs || []), providerHttp?.provider_request_ref])].filter((ref) => typeof ref === "string" && /^[a-f0-9]{64}$/.test(ref));
         const outputDiagnostics = reprojectOutputPrivacyDiagnostics(outputPrivacy || { outputStage: privacyFailure ? "final_model_privacy" : providerHttp ? "provider_http" : telemetry.outputStage || "unknown",
           diagnosticCode: privacyFailure || (providerHttp ? `model_http_${providerHttp.provider_http_status}` : telemetry.diagnosticCode || "historical_replay_error"), truncatedFields: telemetry.truncatedFields || [] });
-        await admin.from("shadow_historical_replay_cases").update({ status: "error", error_code: outputPrivacy ? "pre_model_sanitization_blocked" : privacyFailure || (providerHttp ? outputDiagnostics.diagnosticCode : String(executionError.message || "replay_error").replace(/[^a-z0-9_]/gi, "_").toLowerCase().slice(0, 80)), result_safe: { providerRequestRefs, providerModels: telemetry.providerModels || [], providerModelStatus: telemetry.providerModelStatus || "unaccredited", providerUsage, providerHttp, outputDiagnostics, privacy_checks: privacyChecks }, ...replayUsageColumns(providerUsage), latency_ms: Number(telemetry.latencyMs || 0), completed_at: new Date().toISOString() }).eq("id", id).eq("status", "running");
+        const failureSave = admin.from(table).update({ status: "error", error_code: outputPrivacy ? "pre_model_sanitization_blocked" : privacyFailure || (providerHttp ? outputDiagnostics.diagnosticCode : String(executionError.message || "replay_error").replace(/[^a-z0-9_]/gi, "_").toLowerCase().slice(0, 80)), result_safe: { providerRequestRefs, providerModels: telemetry.providerModels || [], providerModelStatus: telemetry.providerModelStatus || "unaccredited", providerUsage, providerHttp, outputDiagnostics, privacy_checks: privacyChecks }, ...replayUsageColumns(providerUsage), latency_ms: Number(telemetry.latencyMs || 0), completed_at: new Date().toISOString() }).eq("id", id).eq("status", "running");
+        if (table === REPLAY_ATTEMPTS_TABLE) {
+          const { data: failed, error: failureSaveError } = await failureSave.select("id").maybeSingle();
+          if (failureSaveError || !failed) return res.status(500).json({ ok: false, error: "historical_replay_result_not_saved" });
+        } else await failureSave;
         return res.status(422).json({ ok: false, error: "historical_replay_execution_error", outputDiagnostics, provider_http: providerHttp, providerUsage, providerRequestRefs, provider_model_status: telemetry.providerModelStatus || "unaccredited", privacy_checks: privacyChecks });
       }
     }
