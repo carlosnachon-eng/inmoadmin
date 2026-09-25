@@ -1,3 +1,5 @@
+import Head from 'next/head'
+import { usePartnerInvitation, invitationsEnabled, invitationUnavailable, linkInvitedSubmission } from '../lib/usePartnerInvitation'
 import PasoOrigen from '../components/poliza/PasoOrigen'
 import { needsOrigenStep, origenMetadata, partnerCandidateKey, partnerContextStatus, validatedPartnerResponse, shouldLinkPartner } from '../lib/blindajeOrigen.mjs'
 import { supabase } from "../lib/supabase";
@@ -100,7 +102,10 @@ export default function SolicitudInquilino() {
   const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true'
   const [origenSelection, setOrigenSelection] = useState(null)
   const [partnerValidation, setPartnerValidation] = useState(null)
-  const partnerStatus = partnerContextStatus(router.query, partnerValidation)
+  const invitation = usePartnerInvitation('inquilino')
+  const secureInvitation = invitation.status === 'valid'
+  const partnerStatus = secureInvitation ? 'valid' : partnerContextStatus(router.query, partnerValidation)
+  const [invitationLinkWarning, setInvitationLinkWarning] = useState(false)
   const [origenHydrated, setOrigenHydrated] = useState(false)
   useEffect(() => { setOrigenHydrated(true) }, [])
   const [step, setStep] = useState(1);
@@ -157,6 +162,7 @@ export default function SolicitudInquilino() {
   const totalSteps = 6;
 
   useEffect(() => {
+    if (invitation.status !== 'none') return
     if (!router.isReady) return;
     const { partner, operacion } = router.query;
     if (!partner || !operacion) return;
@@ -187,7 +193,18 @@ export default function SolicitudInquilino() {
         }
       })
     return () => { cancelled = true }
-  }, [router.isReady, router.query, origenEnabled])
+  }, [router.isReady, router.query, origenEnabled, invitation.status])
+
+  useEffect(() => {
+    if (!secureInvitation) return
+    const data = invitation.data
+    setPartnerBranding(data)
+    setForm(f => ({ ...f,
+      direccion_inmueble: f.direccion_inmueble || data.operation.direccion_inmueble || '',
+      monto_renta: f.monto_renta || String(data.operation.monto_renta || ''),
+      nombre_completo: f.nombre_completo || data.operation.nombre_inquilino || '',
+    }))
+  }, [secureInvitation, invitation.data])
 
   const handleFile = (key, e) => {
     const file = e.target.files[0];
@@ -293,7 +310,7 @@ export default function SolicitudInquilino() {
 
     try {
       const payload = {
-        ...origenMetadata(origenEnabled, partnerStatus, origenSelection),
+        ...origenMetadata(origenEnabled || secureInvitation, partnerStatus, origenSelection),
         inmueble_interes: form.direccion_inmueble,
         monto_renta_solicitada: parseFloat(form.monto_renta) || null,
         tipo_solicitante: form.tipo_solicitante,
@@ -375,7 +392,10 @@ export default function SolicitudInquilino() {
 
       setSubmitId(data.id);
 
-      if (shouldLinkPartner(origenEnabled, router.query, partnerStatus)) {
+      if (secureInvitation) {
+        const linked = await linkInvitedSubmission(invitation, 'inquilino', data.id)
+        setInvitationLinkWarning(!linked)
+      } else if (shouldLinkPartner(origenEnabled, router.query, partnerStatus)) {
         fetch('/api/partners/link-submission', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -429,6 +449,8 @@ export default function SolicitudInquilino() {
     }
   };
 
+  if (['checking', 'pending'].includes(invitation.status)) return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="status">Validando invitación…</p></>
+  if (invitation.status === 'invalid') return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="alert">{invitationUnavailable}</p></>
   if (origenEnabled && (!origenHydrated || !router.isReady)) return <p role="status">Cargando formulario…</p>
   if (origenEnabled && partnerStatus === 'pending') return <p role="status">Validando operación Partner…</p>
   if (needsOrigenStep(origenEnabled, router.isReady, partnerStatus, origenSelection)) {
@@ -438,6 +460,8 @@ export default function SolicitudInquilino() {
   // ── PANTALLA DE ÉXITO ─────────────────────────────────────────────────────
   if (submitted) return (
     <div style={{ minHeight: "100vh", background: "#f8f8f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 20 }}>
+      {invitationsEnabled && <Head><meta name="referrer" content="no-referrer" /></Head>}
+      {invitationLinkWarning && <p role="alert">Tu solicitud fue recibida. No pudimos vincularla a la invitación. Comunícate con tu inmobiliaria; no la envíes nuevamente.</p>}
       <div style={{ background: "#fff", borderRadius: 24, padding: 48, maxWidth: 500, width: "100%", textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ fontSize: 64, marginBottom: 20 }}>✅</div>
         <h2 style={{ margin: "0 0 12px", fontSize: 24, fontWeight: 800, color: "#4a4a4a" }}>¡Solicitud enviada!</h2>
@@ -479,6 +503,7 @@ export default function SolicitudInquilino() {
   // ── FORMULARIO ────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: "#f8f8f8", fontFamily: "system-ui, sans-serif" }}>
+      {invitationsEnabled && <Head><meta name="referrer" content="no-referrer" /></Head>}
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "14px 20px" }}>
         <div style={{ maxWidth: 780, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>

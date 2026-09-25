@@ -1,3 +1,4 @@
+import { usePartnerInvitation, invitationsEnabled, invitationUnavailable, linkInvitedSubmission } from '../lib/usePartnerInvitation'
 import PasoOrigen from '../components/poliza/PasoOrigen'
 import { needsOrigenStep, origenMetadata, partnerCandidateKey, partnerContextStatus, validatedPartnerResponse, shouldLinkPartner } from '../lib/blindajeOrigen.mjs'
 import { useEffect, useState, useRef } from 'react'
@@ -72,7 +73,10 @@ export default function RegistroPropietario() {
   const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true'
   const [origenSelection, setOrigenSelection] = useState(null)
   const [partnerValidation, setPartnerValidation] = useState(null)
-  const partnerStatus = partnerContextStatus(router.query, partnerValidation)
+  const invitation = usePartnerInvitation('propietario')
+  const secureInvitation = invitation.status === 'valid'
+  const partnerStatus = secureInvitation ? 'valid' : partnerContextStatus(router.query, partnerValidation)
+  const [invitationLinkWarning, setInvitationLinkWarning] = useState(false)
   const [origenHydrated, setOrigenHydrated] = useState(false)
   useEffect(() => { setOrigenHydrated(true) }, [])
   const [step, setStep] = useState(1)
@@ -117,6 +121,7 @@ export default function RegistroPropietario() {
   const handleFile = (field, file) => { setFiles(f => ({ ...f, [field]: file })); setErrors(e => ({ ...e, [field]: undefined })) }
 
   useEffect(() => {
+    if (invitation.status !== 'none') return
     if (!router.isReady) return
     const { partner, operacion } = router.query
     if (!partner || !operacion) return
@@ -146,7 +151,7 @@ export default function RegistroPropietario() {
         }
       })
     return () => { cancelled = true }
-  }, [router.isReady, router.query, origenEnabled])
+  }, [router.isReady, router.query, origenEnabled, invitation.status])
 
   useEffect(() => {
     // Partner validation mounts the form after its prefill was saved without a DOM.
@@ -158,6 +163,17 @@ export default function RegistroPropietario() {
     const timeout = setTimeout(() => setFormValues(savedValues.current), 0)
     return () => clearTimeout(timeout)
   }, [step, tipoPersonaPropietario])
+
+  useEffect(() => {
+    if (!secureInvitation) return
+    const data = invitation.data
+    setPartnerBranding(data)
+    setFormValues({
+      nombre_propietario: savedValues.current.nombre_propietario || data.operation.nombre_propietario || '',
+      direccion_inmueble: savedValues.current.direccion_inmueble || data.operation.direccion_inmueble || '',
+      monto_renta: savedValues.current.monto_renta || String(data.operation.monto_renta || ''),
+    })
+  }, [secureInvitation, invitation.data])
 
   const buscarPropietarioRecurrente = async () => {
     saveCurrentStep()
@@ -246,7 +262,7 @@ export default function RegistroPropietario() {
     try {
       const v = getValues()
       const payload = {
-        ...origenMetadata(origenEnabled, partnerStatus, origenSelection),
+        ...origenMetadata(origenEnabled || secureInvitation, partnerStatus, origenSelection),
         tipo_persona_propietario: tipoPersonaPropietario,
         razon_social_propietario: tipoPersonaPropietario === 'moral' ? v.razon_social_propietario : null,
         nombre_propietario: v.nombre_propietario, telefono_propietario: v.telefono_propietario,
@@ -282,7 +298,10 @@ export default function RegistroPropietario() {
         await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', id)
       }
 
-      if (shouldLinkPartner(origenEnabled, router.query, partnerStatus)) {
+      if (secureInvitation) {
+        const linked = await linkInvitedSubmission(invitation, 'propietario', id)
+        setInvitationLinkWarning(!linked)
+      } else if (shouldLinkPartner(origenEnabled, router.query, partnerStatus)) {
         fetch('/api/partners/link-submission', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -305,6 +324,8 @@ export default function RegistroPropietario() {
     }
   }
 
+  if (['checking', 'pending'].includes(invitation.status)) return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="status">Validando invitación…</p></>
+  if (invitation.status === 'invalid') return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="alert">{invitationUnavailable}</p></>
   if (origenEnabled && (!origenHydrated || !router.isReady)) return <p role="status">Cargando formulario…</p>
   if (origenEnabled && partnerStatus === 'pending') return <p role="status">Validando operación Partner…</p>
   if (needsOrigenStep(origenEnabled, router.isReady, partnerStatus, origenSelection)) {
@@ -329,6 +350,7 @@ export default function RegistroPropietario() {
   return (
     <>
       <Head>
+        {invitationsEnabled && <meta name="referrer" content="no-referrer" />}
         <title>Registra tu inmueble — Emporio Inmobiliario</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
@@ -452,6 +474,7 @@ export default function RegistroPropietario() {
               🔒 Al enviar este formulario, acepta nuestro{' '}<a href="https://www.emporioinmobiliario.com.mx/aviso-privacidad" target="_blank" rel="noreferrer" style={{ color: '#b91c3c' }}>Aviso de Privacidad</a>. Su información es confidencial.
             </div>
           </>)}
+          {step === 4 && invitationLinkWarning && <p role="alert">Tu registro fue recibido. No pudimos vincularlo a la invitación. Comunícate con tu inmobiliaria; no lo envíes nuevamente.</p>}
           {step === 4 && (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
               <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fff0f3', color: '#b91c3c', fontSize: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>✓</div>
