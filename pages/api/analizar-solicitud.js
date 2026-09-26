@@ -1,3 +1,4 @@
+import { externalInvestigationGate } from '../../lib/server/polizaInternalAuth.mjs';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -471,11 +472,15 @@ export default async function handler(req, res) {
 
   const { data: sol, error: solError } = await supabase
     .from('solicitudes_inquilino')
-    .select('nombre_completo, razon_social, tipo_ingresos, ingresos_mensuales, ingresos_empresa, monto_renta_solicitada, doc_comprobante_ingresos_b64, doc_ingresos_b64_2, doc_ingresos_b64_3, doc_identificacion_b64, doc_carta_laboral_b64, doc_constancia_fiscal_b64, curp, pre_viabilidad')
+    .select('origen_operacion, nombre_completo, razon_social, tipo_ingresos, ingresos_mensuales, ingresos_empresa, monto_renta_solicitada, doc_comprobante_ingresos_b64, doc_ingresos_b64_2, doc_ingresos_b64_3, doc_identificacion_b64, doc_carta_laboral_b64, doc_constancia_fiscal_b64, curp, pre_viabilidad')
     .eq('id', solicitud_id)
     .single();
 
   if (solError || !sol) return res.status(404).json({ error: 'Solicitud no encontrada' });
+  if (tipo_ejecucion === 'inicial' && ['b2c', 'partner'].includes(sol.origen_operacion)) {
+    const gate = await externalInvestigationGate(supabase, req, solicitud_id);
+    if (gate.error) return res.status(gate.status).json({ error: gate.error });
+  }
   if (tipo_ejecucion === 'inicial' && sol.pre_viabilidad) {
     return res.status(409).json({ error: 'El análisis inicial ya fue ejecutado; usa el reanálisis interno' });
   }

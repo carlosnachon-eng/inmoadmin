@@ -1,3 +1,4 @@
+import TabAnticiposExternos from '../../components/poliza/TabAnticiposExternos'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
@@ -63,7 +64,7 @@ const SOLICITUDES_LIST_SELECT = [
   'inmueble_interes', 'ingresos_mensuales', 'ingresos_empresa', 'tipo_ingresos',
   'rfc', 'rfc_empresa', 'domicilio_actual', 'domicilio_fiscal',
   'clave_elector', 'empresa_labora', 'giro_empresa', 'giro_comercial',
-  'notas_juridico', 'cobro_investigacion',
+  'notas_juridico', 'cobro_investigacion', 'origen_operacion',
   'pre_viabilidad', 'pre_viabilidad_detalle_interno', 'ingreso_detectado_ia',
 ].join(', ')
 
@@ -208,6 +209,7 @@ export default function PolizaPanel() {
     { id: 'expedientes', label: `Expedientes (${expedientes.length})` },
     { id: 'propietarios', label: `Propietarios (${propietariosFiltrados.length})` },
     { id: 'solicitudes', label: `Solicitudes (${solicitudes.length})` },
+    ...(process.env.NEXT_PUBLIC_BLINDAJE_EXTERNAL_REVIEW_I2B_ENABLED === 'true' ? [{ id: 'anticipos', label: '💳 Anticipos externos' }] : []),
     { id: 'caja', label: '💰 Caja Póliza' },
     { id: 'partners', label: `🤝 Partners (${partnerAgencies.length})` },
     { id: 'compraventa', label: '🔑 Compraventa' },
@@ -308,13 +310,13 @@ export default function PolizaPanel() {
 
   return (
     <div style={st.page}>
-      <header style={st.header}>
+      <header style={{ ...st.header, ...(tab === 'anticipos' ? { flexWrap: 'wrap', height: 'auto' } : {}) }}>
         <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style={st.logo} />
         <div>
           <p style={st.headerTitle}>Panel Jurídico</p>
           <p style={st.headerSub}>Pólizas · Contratos · Expedientes</p>
         </div>
-        <nav style={st.nav}>
+        <nav style={{ ...st.nav, ...(tab === 'anticipos' ? { flexWrap: 'wrap', marginLeft: 0 } : {}) }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => cambiarTab(t.id)}
               style={{ ...st.navBtn, ...(tab === t.id ? st.navBtnActive : {}) }}>
@@ -364,6 +366,7 @@ export default function PolizaPanel() {
             {tab === 'expedientes' && <TabExpedientes expedientes={expedientes} propietarios={propietarios} solicitudes={solicitudes} onSelect={seleccionarExpediente} onReload={loadAll} onRenovar={renovarExpediente} />}
             {tab === 'propietarios' && <TabPropietarios propietarios={propietariosFiltrados} onSelect={p => { setSelected(p); setModal('propietario') }} />}
             {tab === 'solicitudes' && <TabSolicitudes solicitudes={solicitudes} onSelect={seleccionarSolicitud} onNuevoExp={nuevoDesdeSolicitud} onDelete={eliminarSolicitud} />}
+            {tab === 'anticipos' && process.env.NEXT_PUBLIC_BLINDAJE_EXTERNAL_REVIEW_I2B_ENABLED === 'true' && <TabAnticiposExternos puedeEditar={puedeEditar} />}
             {tab === 'caja' && <TabCajaPoliza movimientos={caja} onReload={loadAll} esAdmin={esAdmin} />}
             {tab === 'partners' && <TabPartners operaciones={partnerOps} agencias={partnerAgencies} onReload={loadAll} />}
             {tab === 'compraventa' && (

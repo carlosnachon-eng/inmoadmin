@@ -131,3 +131,13 @@ test('oversized Content-Length drains without retaining the request body', async
   assert.equal((await proofHandler(() => db)(req)).status, 400)
   assert.equal(db.objects.size, 0); assert.equal(req.bodyUsed, true)
 })
+
+test('I2B rejected proof can be replaced; validated payment never uploads', async () => {
+  for (const [paymentStatus,caseStatus,expected] of [['rejected','payment_rejected',200],['validated','payment_validated',404]]) {
+    const db=dbFixture({blindaje_external_cases:[{id:'case',status:caseStatus}],blindaje_investigation_payments:[{id:'payment',status:paymentStatus,proof_storage_path:'previous'}]})
+    db.setRpc({data:true});db.objects.set('previous',new Uint8Array())
+    assert.equal((await proofHandler(()=>db)(request())).status,expected)
+    if(expected===200) assert.deepEqual(db.removed,['previous'])
+    else {assert.equal(db.calls.length,0);assert.deepEqual(db.removed,[])}
+  }
+})
