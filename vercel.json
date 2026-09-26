@@ -11,7 +11,8 @@
       "codex/historical-replay-reduced-schema": false,
       "codex/historical-replay-output-privacy-diagnostics": false,
       "codex/historical-replay-explicit-attempts": false,
-      "codex/historical-replay-reference-contract": false
+      "codex/historical-replay-reference-contract": false,
+      "codex/shadow-labeled-identifier-precision": false
     }
   },
   "crons": [
