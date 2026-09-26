@@ -21,7 +21,7 @@ export default function Anticipo() {
   }, [])
   async function upload(event) {
     event.preventDefault()
-    if (uploadLock.current) return
+    if (uploadLock.current || context?.status === 'validated') return
     if (!file || file.size > 5 * 1024 * 1024 || !['application/pdf','image/jpeg','image/png'].includes(file.type)) { setError('El comprobante debe ser PDF, JPG o PNG, de máximo 5 MB.'); return }
     if (role === 'tercero' && !name.trim()) { setError('Indica el nombre de quien realiza el pago.'); return }
     uploadLock.current = true; setBusy(true); setError('')
@@ -52,8 +52,8 @@ export default function Anticipo() {
           {context && <>
             <p>Folio: <strong>{context.folio}</strong></p>
             <p style={{ fontSize: 30, fontWeight: 800, margin: '12px 0' }}>$1,000 <span style={{ fontSize: 16 }}>MXN</span></p>
-            <p>Para iniciar la investigación de arrendamiento es necesario cubrir el anticipo de $1,000 MXN.</p>
-            <p>El comprobante será revisado por nuestro equipo. La investigación no inicia hasta que el pago sea validado.</p>
+            {context.status !== 'validated' && <p>Para iniciar la investigación de arrendamiento es necesario cubrir el anticipo de $1,000 MXN.</p>}
+            {context.status !== 'validated' && <p>El comprobante será revisado por nuestro equipo. La investigación no inicia hasta que el pago sea validado.</p>}
             <div style={{ background: '#f8f8f8', borderRadius: 12, padding: 16, overflowWrap: 'anywhere' }}>
               <dl style={{ margin: 0 }}><dt>Banco</dt><dd style={{ margin: '0 0 12px', fontWeight: 700 }}>{context.bank.banco}</dd>
                 <dt>Titular</dt><dd style={{ margin: '0 0 12px', fontWeight: 700 }}>{context.bank.titular}</dd>
@@ -61,14 +61,16 @@ export default function Anticipo() {
                 <dt>Concepto sugerido</dt><dd style={{ margin: 0, fontWeight: 700 }}>{context.folio}</dd></dl>
             </div>
             {context.status === 'proof_received' && <div role="status" style={{ marginTop: 20, padding: 16, background: '#fff7df', borderRadius: 10 }}><strong>Comprobante recibido</strong><div>Pendiente de validación por Emporio</div></div>}
-            <form onSubmit={upload} style={{ marginTop: 24 }}>
+            {context.status === 'validated' && <div role="status" style={{ marginTop: 20, padding: 16, background: '#dcfce7', borderRadius: 10 }}><strong>Anticipo validado</strong><div>Emporio confirmó el anticipo de investigación.</div></div>}
+            {context.status === 'rejected' && <div role="status" style={{ marginTop: 20, padding: 16, background: '#fff7df', borderRadius: 10 }}><strong>Necesitamos un nuevo comprobante</strong><p>{context.rejection_reason}</p><div>Puedes reemplazar el comprobante usando esta misma liga.</div></div>}
+            {context.status !== 'validated' && <form onSubmit={upload} style={{ marginTop: 24 }}>
               <label htmlFor="payer-role">¿Quién realiza el pago?</label>
               <select id="payer-role" value={role} onChange={e => setRole(e.target.value)} style={input}><option value="inquilino">Inquilino</option><option value="propietario">Propietario</option><option value="tercero">Otra persona</option></select>
               {role === 'tercero' && <label style={{ display: 'block', marginTop: 16 }} htmlFor="payer-name">Nombre del pagador<input id="payer-name" required maxLength={200} value={name} onChange={e => setName(e.target.value)} style={input} /></label>}
               <label htmlFor="proof" style={{ display: 'block', marginTop: 20 }}>Comprobante · PDF / JPG / PNG · máximo 5 MB</label>
               <input id="proof" type="file" required accept="application/pdf,image/jpeg,image/png" onChange={e => setFile(e.target.files[0] || null)} style={{ ...input, fontSize: 13 }} />
-              <button disabled={busy} type="submit" style={{ ...button, width: '100%', marginTop: 16, opacity: busy ? .6 : 1 }}>{busy ? 'Recibiendo comprobante…' : context.status === 'proof_received' ? 'Reemplazar comprobante' : 'Enviar comprobante'}</button>
-            </form>
+              <button disabled={busy} type="submit" style={{ ...button, width: '100%', marginTop: 16, opacity: busy ? .6 : 1 }}>{busy ? 'Recibiendo comprobante…' : context.status === 'proof_received' ? 'Reemplazar comprobante' : context.status === 'rejected' ? 'Enviar nuevo comprobante' : 'Enviar comprobante'}</button>
+            </form>}
             <button type="button" onClick={copy} style={{ ...button, width: '100%', marginTop: 12, background: '#fff', border: '1px solid #b91c3c', color: '#b91c3c' }}>{copied ? 'Liga copiada' : 'Copiar liga de pago'}</button>
           </>}
         </>}
