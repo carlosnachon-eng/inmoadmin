@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { P, button, input } from './PartnerLayout'
 import { supabase } from '../../lib/supabase'
 
 export default function SecureInvitationLinks({ operationId }) {
@@ -17,7 +18,7 @@ export default function SecureInvitationLinks({ operationId }) {
       const data = await response.json()
       if (!response.ok) throw new Error('No se pudo completar la acción. Verifica tu sesión e intenta nuevamente.')
       if (revoke) {
-        setLinks(previous => ({ ...previous, [role]: null })); setMessage(`Ligas seguras de ${role} revocadas.`)
+        setLinks(previous => ({ ...previous, [role]: null })); setMessage(`Ligas de ${role} revocadas.`)
       } else {
         const page = role === 'inquilino' ? 'solicitud-inquilino' : 'registro-propietario'
         setLinks(previous => ({ ...previous, [role]: `${window.location.origin}/${page}#invite=${data.token}` }))
@@ -25,24 +26,36 @@ export default function SecureInvitationLinks({ operationId }) {
     } catch (_) { setMessage('No se pudo completar la acción. Verifica tu sesión e intenta nuevamente.') }
     finally { setBusy(false) }
   }
-  return <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 20 }}>
-    <h2>Ligas seguras para Blindaje</h2>
-    <p>Vigencia: 30 días. Generar otra liga no revoca las anteriores.</p>
-    {['inquilino', 'propietario'].map(role => <div key={role} style={{ marginBottom: 18 }}>
-      <button type="button" disabled={busy} onClick={() => act(role)}>Generar liga segura para {role}</button>
+  const primaryButton = { ...button, background: P.red, color: '#fff', padding: '8px 11px', fontSize: 12 }
+  const secondaryButton = { ...button, background: '#f4f4f5', color: P.text, padding: '8px 11px', fontSize: 12 }
+  return <section aria-label="Ligas para tus clientes" style={{ background: '#fff', border: `1px solid ${P.line}`, borderRadius: 10, padding: 20 }}>
+    <h2 style={{ margin: '0 0 8px', color: P.ink, fontSize: 18 }}>Ligas para tus clientes</h2>
+    <p style={{ margin: '0 0 14px', color: P.muted, fontSize: 13, lineHeight: 1.5 }}>
+      Genera una liga para cada parte de la operación. Estas ligas identifican de forma segura la operación y muestran la información correspondiente.
+    </p>
+    {['inquilino', 'propietario'].map(role => <div key={role} role="group" aria-label={role === 'inquilino' ? 'Inquilino' : 'Propietario'} style={{ background: '#fafafa', border: `1px solid ${P.line}`, borderRadius: 9, padding: 12, marginBottom: 10 }}>
+      <p style={{ margin: '0 0 7px', color: P.text, fontSize: 13, fontWeight: 850 }}>{role === 'inquilino' ? 'Solicitud para inquilino' : 'Registro para propietario'}</p>
+      <button type="button" disabled={busy} style={{ ...primaryButton, opacity: busy ? .6 : 1 }} onClick={() => act(role)}>Generar liga para {role}</button>
       {links[role] && <div>
-        <p style={{ overflowWrap: 'anywhere' }}>{links[role]}</p>
-        <button type="button" onClick={async () => {
-          try { await navigator.clipboard.writeText(links[role]); setMessage('Liga copiada.') }
-          catch (_) { setMessage('No se pudo copiar. Copia la liga mostrada.') }
-        }}>Copiar liga de {role}</button>{' '}
-        <a href={links[role]} target="_blank" rel="noopener noreferrer">Abrir liga de {role}</a>
+        <p style={{ margin: '10px 0', color: P.muted, fontSize: 12, overflowWrap: 'anywhere' }}>{links[role]}</p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" style={primaryButton} onClick={async () => {
+            try { await navigator.clipboard.writeText(links[role]); setMessage('Liga copiada.') }
+            catch (_) { setMessage('No se pudo copiar. Copia la liga mostrada.') }
+          }}>Copiar liga</button>
+          <a href={links[role]} target="_blank" rel="noopener noreferrer" style={secondaryButton}>Abrir</a>
+        </div>
       </div>}
     </div>)}
-    <label>Revocar por rol: <select value={revokeRole} onChange={e => setRevokeRole(e.target.value)}>
-      <option value="inquilino">Inquilino</option><option value="propietario">Propietario</option>
-    </select></label>{' '}
-    <button type="button" disabled={busy} onClick={() => act(revokeRole, true)}>Revocar ligas seguras</button>
-    <p role="status">{message}</p>
+    <div style={{ marginTop: 18 }}>
+      <label htmlFor="invitation-revoke-role" style={{ display: 'block', marginBottom: 8, color: P.text, fontSize: 13, fontWeight: 850 }}>Administrar ligas</label>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <select id="invitation-revoke-role" value={revokeRole} onChange={e => setRevokeRole(e.target.value)} style={{ ...input, width: 'auto' }}>
+          <option value="inquilino">Inquilino</option><option value="propietario">Propietario</option>
+        </select>
+        <button type="button" disabled={busy} style={{ ...secondaryButton, opacity: busy ? .6 : 1 }} onClick={() => act(revokeRole, true)}>Revocar liga</button>
+      </div>
+    </div>
+    <p role="status" style={{ margin: message ? '12px 0 0' : 0, color: P.muted, fontSize: 13 }}>{message}</p>
   </section>
 }

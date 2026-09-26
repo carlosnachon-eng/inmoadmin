@@ -140,7 +140,7 @@ export default function PartnerOperacionDetalle() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.25fr .75fr', gap: 16 }}>
         <section style={{ display: 'grid', gap: 16 }}>
-          {process.env.NEXT_PUBLIC_BLINDAJE_PARTNER_INVITATIONS_ENABLED === 'true' && <SecureInvitationLinks operationId={operation.id} />}
+          {process.env.NEXT_PUBLIC_BLINDAJE_PARTNER_INVITATIONS_ENABLED === 'true' ? <SecureInvitationLinks operationId={operation.id} /> :
           <div style={{ background: '#fff', border: `1px solid ${P.line}`, borderRadius: 10, padding: 20 }}>
             <h2 style={{ margin: '0 0 8px', color: P.ink, fontSize: 18 }}>Ligas personalizadas</h2>
             <p style={{ margin: '0 0 14px', color: P.muted, fontSize: 13, lineHeight: 1.5 }}>
@@ -148,7 +148,7 @@ export default function PartnerOperacionDetalle() {
             </p>
             <LinkBox label="Solicitud para inquilino" value={links.inquilino} onCopy={() => copy(links.inquilino)} />
             <LinkBox label="Registro para propietario" value={links.propietario} onCopy={() => copy(links.propietario)} />
-          </div>
+          </div>}
 
           <div style={{ background: '#fff', border: `1px solid ${P.line}`, borderRadius: 10, padding: 20 }}>
             <h2 style={{ margin: '0 0 8px', color: P.ink, fontSize: 18 }}>Participantes adicionales</h2>
