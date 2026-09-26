@@ -1,5 +1,7 @@
+import ExternalPaymentRecovery from '../components/blindaje/ExternalPaymentRecovery'
+import { useExternalPaymentRecovery } from '../lib/useExternalPaymentRecovery'
 import ExternalPaymentReceipt from '../components/blindaje/ExternalPaymentReceipt'
-import { externalPaymentEnabled, submissionClaim, bootstrapPayment, receivedFailure } from '../lib/externalPaymentClient.mjs'
+import { externalPaymentEnabled, submissionClaim, bootstrapPayment, receivedFailure, navigateToPayment } from '../lib/externalPaymentClient.mjs'
 import Head from 'next/head'
 import { usePartnerInvitation, invitationsEnabled, invitationUnavailable, linkInvitedSubmission } from '../lib/usePartnerInvitation'
 import PasoOrigen from '../components/poliza/PasoOrigen'
@@ -112,6 +114,10 @@ export default function SolicitudInquilino() {
   const partnerStatus = secureInvitation ? 'valid' : partnerContextStatus(router.query, partnerValidation)
   const [invitationLinkWarning, setInvitationLinkWarning] = useState(false)
   const [origenHydrated, setOrigenHydrated] = useState(false)
+  const recovery = useExternalPaymentRecovery({ role: 'inquilino', claimRef, invitation, partnerStatus, selection: origenSelection, ready: router.isReady })
+  const finishExternalPayment = result => {
+    if (!navigateToPayment(result)) setPaymentReceipt(result)
+  }
   useEffect(() => { setOrigenHydrated(true) }, [])
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -310,7 +316,7 @@ export default function SolicitudInquilino() {
       setErrors({ personas_detalle: "Este campo es requerido" });
       return;
     }
-    if (externalPaymentEnabled && submitLock.current) return
+    if (externalPaymentEnabled && (submitLock.current || recovery.blocked)) return
     if (externalPaymentEnabled) submitLock.current = true
     let receivedId = null, externalOrigin = null
     setSubmitting(true);
@@ -427,7 +433,7 @@ export default function SolicitudInquilino() {
       }
 
       if (externalOrigin) {
-        setPaymentReceipt(await bootstrapPayment({ origin: externalOrigin, role: 'inquilino', claim: claimRef.current, invitation: secureInvitation ? invitation : null, linked: invitedLinked }))
+        finishExternalPayment(await bootstrapPayment({ origin: externalOrigin, role: 'inquilino', claim: claimRef.current, invitation: secureInvitation ? invitation : null, linked: invitedLinked }))
         setSubmitted(true)
         return
       }
@@ -470,7 +476,7 @@ export default function SolicitudInquilino() {
         const recovered = !receivedId && claimRef.current
           ? await bootstrapPayment({ origin: 'b2c', role: 'inquilino', claim: claimRef.current }) : null
         if (receivedId || recovered?.payment_token) {
-          setPaymentReceipt(recovered?.payment_token ? recovered : { error: receivedFailure })
+          finishExternalPayment(recovered?.payment_token ? recovered : { error: receivedFailure })
           setSubmitted(true)
           return
         }
@@ -486,6 +492,7 @@ export default function SolicitudInquilino() {
   };
 
   if (externalPaymentEnabled && paymentReceipt) return <ExternalPaymentReceipt result={paymentReceipt} />
+  if (recovery.blocked) return <ExternalPaymentRecovery recovery={recovery} />
 
   if (['checking', 'pending'].includes(invitation.status)) return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="status">Validando invitación…</p></>
   if (invitation.status === 'invalid') return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="alert">{invitationUnavailable}</p></>

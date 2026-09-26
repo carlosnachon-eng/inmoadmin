@@ -1,6 +1,6 @@
 # I2A — anticipo externo (DEV, no producción)
 
-Base: `e4801685ab34083839b252bf8a4984104208b6d5`.
+Base final recertificada: `d2747e984af8bfaf9ed1e73b24901861f616d48d` (#149 incluido).
 Flag: `NEXT_PUBLIC_BLINDAJE_EXTERNAL_PAYMENT_I2A_ENABLED`, OFF por defecto.
 DEV exclusivo: `hjfwjnejbcpmknvfpdcq`. No activar ni desplegar en Producción sin un rollout posterior autorizado.
 
@@ -83,3 +83,21 @@ No se modifican APIs/tabla/RPC I2A.0, participantes adicionales, #131/#132, pago
 - Sin pago validado, sin inserts en poliza_caja ni cambios en cobro_investigacion. Formularios y documentos de terceros no se utilizaron.
 
 El rechazo temprano de un cuerpo grande sin consumirlo podía dejar la respuesta pendiente en el gateway Edge. La implementación final drena el stream descartando cualquier contenido excedente y nunca conserva más de 5 MB de archivo en memoria. Se certificó el 400 real después de este ajuste.
+
+## Gate final: recuperación tras refresh
+
+El éxito de cualquier bootstrap navega inmediatamente mediante `location.replace` a `/blindaje/anticipo#pay=...`. La credencial queda en el fragment y la página vuelve a consultar instrucciones al refrescar. `ExternalPaymentReceipt` queda sólo para estados sin credencial (legacy o fallo posterior a recepción).
+
+B2C guarda antes del INSERT exclusivamente `{token, claim_hash, expires_at, role}` en `sessionStorage`, bajo `blindaje:b2c:submission:<rol>`. No usa localStorage, PII ni record_id. Se conserva hasta expirar (dos horas) para recuperar una respuesta perdida; no se elimina al navegar al anticipo. Al volver al formulario genérico se mantiene Paso 0: elegir B2C dispara recuperación antes de montar/habilitar el formulario. Elegir Emporio no consulta ni consume ese claim.
+
+La recuperación B2C usa el mismo bootstrap y claim: éxito redirige; 404 permite continuar con el mismo claim; expirado se elimina; errores temporales o sessionStorage inaccesible bloquean el formulario y ofrecen reintento. No se emite un claim nuevo por un 5xx. El bloqueo inicial también aplica al render previo al efecto y al handler de submit.
+
+Partner seguro valida primero la invitación y después consulta bootstrap con el token original de `#invite`. Sin enlace, 404 permite capturar; con enlace, recupera el mismo folio y pago y navega al anticipo sin INSERT. La precarga del propietario se reaplica al montaje posterior a esta comprobación. Legacy y flag OFF no ejecutan esta recuperación.
+
+La garantía es de la sesión/credencial vigente, no un emparejamiento por identidad personal: una sesión nueva o claim expirado sigue el flujo normal solicitado.
+
+Pruebas de este gate:
+- 60 dirigidas PASS; suite sobre main actual: 1,391 PASS.
+- Navegador ON: 42 escenarios a 390/1440, incluyendo ambos roles B2C/Partner, refresh del anticipo y regreso al formulario, cero segundo INSERT, claim previo sin registro reutilizado tras 404, expiración, 503 bloqueado y reintento.
+- `verify-external-payment-recovery-preview.mjs` comprueba los casos DEV existentes, prohíbe INSERTs/claims nuevos/análisis y verifica folio igual y refresh de pago para ambos roles y anchos. La comparación SQL antes/después comprueba que no se crean casos ni pagos.
+- SQL DEV postcheck y certificación transaccional PASS; sin cambio de esquema, RPCs, APIs ni Edge en este gate.

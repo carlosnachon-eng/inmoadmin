@@ -1,5 +1,7 @@
+import ExternalPaymentRecovery from '../components/blindaje/ExternalPaymentRecovery'
+import { useExternalPaymentRecovery } from '../lib/useExternalPaymentRecovery'
 import ExternalPaymentReceipt from '../components/blindaje/ExternalPaymentReceipt'
-import { externalPaymentEnabled, submissionClaim, bootstrapPayment, receivedFailure } from '../lib/externalPaymentClient.mjs'
+import { externalPaymentEnabled, submissionClaim, bootstrapPayment, receivedFailure, navigateToPayment } from '../lib/externalPaymentClient.mjs'
 import { usePartnerInvitation, invitationsEnabled, invitationUnavailable, linkInvitedSubmission } from '../lib/usePartnerInvitation'
 import PasoOrigen from '../components/poliza/PasoOrigen'
 import { needsOrigenStep, origenMetadata, partnerCandidateKey, partnerContextStatus, validatedPartnerResponse, shouldLinkPartner } from '../lib/blindajeOrigen.mjs'
@@ -83,6 +85,10 @@ export default function RegistroPropietario() {
   const partnerStatus = secureInvitation ? 'valid' : partnerContextStatus(router.query, partnerValidation)
   const [invitationLinkWarning, setInvitationLinkWarning] = useState(false)
   const [origenHydrated, setOrigenHydrated] = useState(false)
+  const recovery = useExternalPaymentRecovery({ role: 'propietario', claimRef, invitation, partnerStatus, selection: origenSelection, ready: router.isReady })
+  const finishExternalPayment = result => {
+    if (!navigateToPayment(result)) setPaymentReceipt(result)
+  }
   useEffect(() => { setOrigenHydrated(true) }, [])
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
@@ -161,8 +167,8 @@ export default function RegistroPropietario() {
   useEffect(() => {
     // Partner validation mounts the form after its prefill was saved without a DOM.
     // Apply it immediately on that transition, not on subsequent user edits.
-    if (origenEnabled && partnerStatus === 'valid') setFormValues(savedValues.current)
-  }, [origenEnabled, partnerStatus])
+    if (origenEnabled && partnerStatus === 'valid' && !recovery.blocked) setFormValues(savedValues.current)
+  }, [origenEnabled, partnerStatus, recovery.blocked])
 
   useEffect(() => {
     const timeout = setTimeout(() => setFormValues(savedValues.current), 0)
@@ -263,7 +269,7 @@ export default function RegistroPropietario() {
 
   const handleSubmit = async () => {
     if (!validateStep3()) return
-    if (externalPaymentEnabled && submitLock.current) return
+    if (externalPaymentEnabled && (submitLock.current || recovery.blocked)) return
     if (externalPaymentEnabled) submitLock.current = true
     let receivedId = null, externalOrigin = null
     setLoading(true)
@@ -333,7 +339,7 @@ export default function RegistroPropietario() {
       }
 
       if (externalOrigin) {
-        setPaymentReceipt(await bootstrapPayment({ origin: externalOrigin, role: 'propietario', claim: claimRef.current, invitation: secureInvitation ? invitation : null, linked: invitedLinked }))
+        finishExternalPayment(await bootstrapPayment({ origin: externalOrigin, role: 'propietario', claim: claimRef.current, invitation: secureInvitation ? invitation : null, linked: invitedLinked }))
         setSubmitId(id); setStep(4)
         return
       }
@@ -345,7 +351,7 @@ export default function RegistroPropietario() {
         const recovered = !receivedId && claimRef.current
           ? await bootstrapPayment({ origin: 'b2c', role: 'propietario', claim: claimRef.current }) : null
         if (receivedId || recovered?.payment_token) {
-          setPaymentReceipt(recovered?.payment_token ? recovered : { error: receivedFailure })
+          finishExternalPayment(recovered?.payment_token ? recovered : { error: receivedFailure })
           setStep(4)
           return
         }
@@ -361,6 +367,7 @@ export default function RegistroPropietario() {
   }
 
   if (externalPaymentEnabled && paymentReceipt) return <ExternalPaymentReceipt result={paymentReceipt} />
+  if (recovery.blocked) return <ExternalPaymentRecovery recovery={recovery} />
 
   if (['checking', 'pending'].includes(invitation.status)) return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="status">Validando invitación…</p></>
   if (invitation.status === 'invalid') return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="alert">{invitationUnavailable}</p></>
