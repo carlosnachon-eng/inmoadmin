@@ -1,3 +1,7 @@
+import ExternalPaymentRecovery from '../components/blindaje/ExternalPaymentRecovery'
+import { useExternalPaymentRecovery } from '../lib/useExternalPaymentRecovery'
+import ExternalPaymentReceipt from '../components/blindaje/ExternalPaymentReceipt'
+import { externalPaymentEnabled, submissionClaim, bootstrapPayment, receivedFailure, navigateToPayment } from '../lib/externalPaymentClient.mjs'
 import { usePartnerInvitation, invitationsEnabled, invitationUnavailable, linkInvitedSubmission } from '../lib/usePartnerInvitation'
 import PasoOrigen from '../components/poliza/PasoOrigen'
 import { needsOrigenStep, origenMetadata, partnerCandidateKey, partnerContextStatus, validatedPartnerResponse, shouldLinkPartner } from '../lib/blindajeOrigen.mjs'
@@ -70,7 +74,10 @@ const uploadDoc = async (file, folder, fileName) => {
 
 export default function RegistroPropietario() {
   const router = useRouter()
-  const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true'
+  const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true' || externalPaymentEnabled
+  const claimRef = useRef(null)
+  const submitLock = useRef(false)
+  const [paymentReceipt, setPaymentReceipt] = useState(null)
   const [origenSelection, setOrigenSelection] = useState(null)
   const [partnerValidation, setPartnerValidation] = useState(null)
   const invitation = usePartnerInvitation('propietario')
@@ -78,6 +85,10 @@ export default function RegistroPropietario() {
   const partnerStatus = secureInvitation ? 'valid' : partnerContextStatus(router.query, partnerValidation)
   const [invitationLinkWarning, setInvitationLinkWarning] = useState(false)
   const [origenHydrated, setOrigenHydrated] = useState(false)
+  const recovery = useExternalPaymentRecovery({ role: 'propietario', claimRef, invitation, partnerStatus, selection: origenSelection, ready: router.isReady })
+  const finishExternalPayment = result => {
+    if (!navigateToPayment(result)) setPaymentReceipt(result)
+  }
   useEffect(() => { setOrigenHydrated(true) }, [])
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
@@ -156,8 +167,8 @@ export default function RegistroPropietario() {
   useEffect(() => {
     // Partner validation mounts the form after its prefill was saved without a DOM.
     // Apply it immediately on that transition, not on subsequent user edits.
-    if (origenEnabled && partnerStatus === 'valid') setFormValues(savedValues.current)
-  }, [origenEnabled, partnerStatus])
+    if (origenEnabled && partnerStatus === 'valid' && !recovery.blocked) setFormValues(savedValues.current)
+  }, [origenEnabled, partnerStatus, recovery.blocked])
 
   useEffect(() => {
     const timeout = setTimeout(() => setFormValues(savedValues.current), 0)
@@ -258,6 +269,9 @@ export default function RegistroPropietario() {
 
   const handleSubmit = async () => {
     if (!validateStep3()) return
+    if (externalPaymentEnabled && (submitLock.current || recovery.blocked)) return
+    if (externalPaymentEnabled) submitLock.current = true
+    let receivedId = null, externalOrigin = null
     setLoading(true)
     try {
       const v = getValues()
@@ -275,8 +289,15 @@ export default function RegistroPropietario() {
         num_habitantes: parseInt(v.num_habitantes) || null, reglamento,
         permiso_mudanzas: v.permiso_mudanzas, contrato_administracion: contratoAdmin,
       }
+      externalOrigin = externalPaymentEnabled && ['b2c', 'partner'].includes(payload.origen_operacion) ? payload.origen_operacion : null
+      if (externalOrigin === 'b2c') {
+        const claim = await submissionClaim(claimRef, 'propietario')
+        payload.blindaje_submission_claim_hash = claim.claim_hash
+      }
+
       const { data, error } = await supabase.from('propietarios_inmuebles').insert(payload).select('id').single()
       if (error) throw error
+      receivedId = data.id
 
       const id = data.id
       const folder = `propietarios/${id}`
@@ -298,8 +319,10 @@ export default function RegistroPropietario() {
         await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', id)
       }
 
+      let invitedLinked = false
       if (secureInvitation) {
         const linked = await linkInvitedSubmission(invitation, 'propietario', id)
+        invitedLinked = linked
         setInvitationLinkWarning(!linked)
       } else if (shouldLinkPartner(origenEnabled, router.query, partnerStatus)) {
         fetch('/api/partners/link-submission', {
@@ -315,14 +338,36 @@ export default function RegistroPropietario() {
         }).catch(() => {})
       }
 
+      if (externalOrigin) {
+        finishExternalPayment(await bootstrapPayment({ origin: externalOrigin, role: 'propietario', claim: claimRef.current, invitation: secureInvitation ? invitation : null, linked: invitedLinked }))
+        setSubmitId(id); setStep(4)
+        return
+      }
+
       setSubmitId(id); setStep(4)
     } catch (err) {
+      if (externalOrigin) {
+        // Recover a committed INSERT whose HTTP response was lost, using the claim, never a UUID credential.
+        const recovered = !receivedId && claimRef.current
+          ? await bootstrapPayment({ origin: 'b2c', role: 'propietario', claim: claimRef.current }) : null
+        if (receivedId || recovered?.payment_token) {
+          finishExternalPayment(recovered?.payment_token ? recovered : { error: receivedFailure })
+          setStep(4)
+          return
+        }
+        setErrors({ global: "No pudimos confirmar el envío. Comunícate con Emporio antes de enviarlo nuevamente."})
+        return
+      }
       console.error(err)
       setErrors({ global: 'Ocurrió un error al subir los documentos. Por favor intenta de nuevo.' })
     } finally {
+      submitLock.current = false
       setLoading(false)
     }
   }
+
+  if (externalPaymentEnabled && paymentReceipt) return <ExternalPaymentReceipt result={paymentReceipt} />
+  if (recovery.blocked) return <ExternalPaymentRecovery recovery={recovery} />
 
   if (['checking', 'pending'].includes(invitation.status)) return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="status">Validando invitación…</p></>
   if (invitation.status === 'invalid') return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="alert">{invitationUnavailable}</p></>
