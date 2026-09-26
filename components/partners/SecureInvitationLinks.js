@@ -31,7 +31,7 @@ export default function SecureInvitationLinks({ operationId }) {
   return <section aria-label="Ligas para tus clientes" style={{ background: '#fff', border: `1px solid ${P.line}`, borderRadius: 10, padding: 20 }}>
     <h2 style={{ margin: '0 0 8px', color: P.ink, fontSize: 18 }}>Ligas para tus clientes</h2>
     <p style={{ margin: '0 0 14px', color: P.muted, fontSize: 13, lineHeight: 1.5 }}>
-      Genera una liga para cada parte de la operación. Estas ligas identifican de forma segura la operación y muestran la información correspondiente.
+      Genera una liga para cada parte de la operación. Cada liga identifica la operación y muestra únicamente la información correspondiente.
     </p>
     {['inquilino', 'propietario'].map(role => <div key={role} role="group" aria-label={role === 'inquilino' ? 'Inquilino' : 'Propietario'} style={{ background: '#fafafa', border: `1px solid ${P.line}`, borderRadius: 9, padding: 12, marginBottom: 10 }}>
       <p style={{ margin: '0 0 7px', color: P.text, fontSize: 13, fontWeight: 850 }}>{role === 'inquilino' ? 'Solicitud para inquilino' : 'Registro para propietario'}</p>
