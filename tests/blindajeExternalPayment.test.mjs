@@ -124,3 +124,10 @@ test('API failures never leak database details', async () => {
   const r = await endpoint('b2c', { token, role: 'inquilino' }, db)
   assert.equal(r.status, 503); assert.ok(!JSON.stringify(r.body).includes('secret'))
 })
+
+test('oversized Content-Length drains without retaining the request body', async () => {
+  const db = dbFixture()
+  const req = request(fixtures['application/pdf'], 'application/pdf', { 'Content-Length': String(MAX_PROOF_BYTES+1) })
+  assert.equal((await proofHandler(() => db)(req)).status, 400)
+  assert.equal(db.objects.size, 0); assert.equal(req.bodyUsed, true)
+})

@@ -15,7 +15,7 @@ export function proofExtension(bytes, mime) {
   return null
 }
 async function limitedBody(req) {
-  if (Number(req.headers.get('content-length')) > MAX_PROOF_BYTES) return null
+  const declaredTooLarge = Number(req.headers.get('content-length')) > MAX_PROOF_BYTES
   const reader = req.body?.getReader()
   if (!reader) return null
   const parts = []; let size = 0
@@ -23,9 +23,11 @@ async function limitedBody(req) {
     const { done, value } = await reader.read()
     if (done) break
     size += value.length
-    if (size > MAX_PROOF_BYTES) { await reader.cancel(); return null }
-    parts.push(value)
+    // Drain rejected bodies without retaining them: early cancellation can stall the Edge gateway response.
+    if (size > MAX_PROOF_BYTES || declaredTooLarge) parts.length = 0
+    else parts.push(value)
   }
+  if (size > MAX_PROOF_BYTES || declaredTooLarge) return null
   const buffer = new Uint8Array(size); let offset = 0
   for (const part of parts) { buffer.set(part, offset); offset += part.length }
   return buffer

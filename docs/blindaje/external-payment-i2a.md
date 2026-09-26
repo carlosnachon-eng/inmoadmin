@@ -67,3 +67,19 @@ No se modifican APIs/tabla/RPC I2A.0, participantes adicionales, #131/#132, pago
 - `scripts/blindaje/verify-external-payment.mjs`: 390/1440, ON/OFF, formularios sintéticos, cero análisis externo, recuperación, errores, doble clic, UI anticipo, copia y reemplazo Edge.
 - SQL DEV: `postcheck-external-payment-i2a.sql`, `certify-external-payment-i2a.sql`.
 - No nuevas advertencias de seguridad del advisor, salvo INFO esperado de tablas privadas con RLS sin policies. Las advertencias preexistentes quedan fuera del alcance.
+
+## Certificación DEV del 26-09-2026
+
+- Suite: **1,352 PASS**. Pruebas nuevas de endpoints/Edge: **23 PASS**.
+- Builds ON/OFF: PASS (avisos de fuentes remotas preexistentes en build local).
+- Navegador sintético: **30 ON + 18 OFF**, anchos 390/1440; regresión **40 I1 + 32 I2A.0** con I2A OFF.
+- Navegador real Preview: **2 PASS**, 390/1440, sesión de protección de Vercel, lectura de datos DEV sin tráfico a Producción.
+- DEV real: emisión B2C, INSERT con publishable key, duplicado rechazado 409, bootstrap y retry por ambos roles; casos independientes. Partner: enlace real mediante API I2A.0 y ambos roles al mismo folio `BL-2026-000007` y mismo pago.
+- Edge real: PDF de 5,242,880 bytes → 200; 5,242,881 bytes → 400. MIME falso y magic bytes falsos → 400. PDF → PNG → JPG reemplazados; **1 objeto vigente, 0 huérfanos**.
+- Banco DEV: una cuenta → 200; cero y dos → 503 uniforme. Se retiró la fila temporal duplicada y se restauró una cuenta sintética activa.
+- Tokens inventados/expirados/revocados: respuesta pública uniforme 404, sin datos.
+- SQL: grants/RLS/RPC PASS; claims inmutables anon/authenticated; ambos órdenes Partner; reintento, pago único, CAS, reemplazo y revocación PASS. Fixtures de esa prueba revertidos.
+- Se conservan exclusivamente para revisión DEV **3 casos/pagos sintéticos**: B2C inquilino `BL-2026-000005`, B2C propietario `BL-2026-000006`, Partner `BL-2026-000007`. Una agencia/operación `I2A-QA`, dos registros B2C y dos Partner, dos invitaciones de QA y una cuenta de banco ficticia. Ningún usuario Auth creado. Las credenciales de prueba se mantienen fuera del repositorio.
+- Sin pago validado, sin inserts en poliza_caja ni cambios en cobro_investigacion. Formularios y documentos de terceros no se utilizaron.
+
+El rechazo temprano de un cuerpo grande sin consumirlo podía dejar la respuesta pendiente en el gateway Edge. La implementación final drena el stream descartando cualquier contenido excedente y nunca conserva más de 5 MB de archivo en memoria. Se certificó el 400 real después de este ajuste.
