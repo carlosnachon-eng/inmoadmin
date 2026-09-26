@@ -1,0 +1,49 @@
+{
+  "stage": "ui_attempt2_completed",
+  "label": "completed-after",
+  "structural": [
+    {
+      "heading": "Intento 1: error",
+      "visible": true,
+      "detailsOpen": true,
+      "buttons": []
+    },
+    {
+      "heading": "Intento 2: completed",
+      "visible": true,
+      "detailsOpen": true,
+      "buttons": []
+    }
+  ],
+  "browserErrors": [],
+  "network": [
+    {
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "status": 200
+    }
+  ]
+}

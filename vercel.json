@@ -9,7 +9,8 @@
       "codex/historical-replay-schema-error-diagnostics": false,
       "codex/shadow-reduced-output-schema-local": false,
       "codex/historical-replay-reduced-schema": false,
-      "codex/historical-replay-output-privacy-diagnostics": false
+      "codex/historical-replay-output-privacy-diagnostics": false,
+      "codex/historical-replay-explicit-attempts": false
     }
   },
   "crons": [
