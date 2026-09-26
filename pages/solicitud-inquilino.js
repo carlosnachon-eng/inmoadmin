@@ -1,9 +1,11 @@
+import ExternalPaymentReceipt from '../components/blindaje/ExternalPaymentReceipt'
+import { externalPaymentEnabled, submissionClaim, bootstrapPayment, receivedFailure } from '../lib/externalPaymentClient.mjs'
 import Head from 'next/head'
 import { usePartnerInvitation, invitationsEnabled, invitationUnavailable, linkInvitedSubmission } from '../lib/usePartnerInvitation'
 import PasoOrigen from '../components/poliza/PasoOrigen'
 import { needsOrigenStep, origenMetadata, partnerCandidateKey, partnerContextStatus, validatedPartnerResponse, shouldLinkPartner } from '../lib/blindajeOrigen.mjs'
 import { supabase } from "../lib/supabase";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 
 const colors = {
@@ -99,7 +101,10 @@ const PartnerBanner = ({ branding }) => {
 
 export default function SolicitudInquilino() {
   const router = useRouter();
-  const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true'
+  const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true' || externalPaymentEnabled
+  const claimRef = useRef(null)
+  const submitLock = useRef(false)
+  const [paymentReceipt, setPaymentReceipt] = useState(null)
   const [origenSelection, setOrigenSelection] = useState(null)
   const [partnerValidation, setPartnerValidation] = useState(null)
   const invitation = usePartnerInvitation('inquilino')
@@ -305,6 +310,9 @@ export default function SolicitudInquilino() {
       setErrors({ personas_detalle: "Este campo es requerido" });
       return;
     }
+    if (externalPaymentEnabled && submitLock.current) return
+    if (externalPaymentEnabled) submitLock.current = true
+    let receivedId = null, externalOrigin = null
     setSubmitting(true);
     setError("");
 
@@ -363,6 +371,12 @@ export default function SolicitudInquilino() {
         status: "pendiente",
       };
 
+      externalOrigin = externalPaymentEnabled && ['b2c', 'partner'].includes(payload.origen_operacion) ? payload.origen_operacion : null
+      if (externalOrigin === 'b2c') {
+        const claim = await submissionClaim(claimRef, 'inquilino')
+        payload.blindaje_submission_claim_hash = claim.claim_hash
+      }
+
       const { data, error: insertError } = await supabase
         .from("solicitudes_inquilino")
         .insert(payload)
@@ -370,6 +384,7 @@ export default function SolicitudInquilino() {
         .single();
 
       if (insertError) throw insertError;
+      receivedId = data.id
 
       // ── Convertir archivos a base64 ──
       const [b64Ident, b64Ingresos1, b64Ingresos2, b64Ingresos3, b64CartaLaboral, b64ConstanciaFiscal] = await Promise.all([
@@ -392,8 +407,10 @@ export default function SolicitudInquilino() {
 
       setSubmitId(data.id);
 
+      let invitedLinked = false
       if (secureInvitation) {
         const linked = await linkInvitedSubmission(invitation, 'inquilino', data.id)
+        invitedLinked = linked
         setInvitationLinkWarning(!linked)
       } else if (shouldLinkPartner(origenEnabled, router.query, partnerStatus)) {
         fetch('/api/partners/link-submission', {
@@ -407,6 +424,12 @@ export default function SolicitudInquilino() {
             record_id: data.id,
           }),
         }).catch(() => {});
+      }
+
+      if (externalOrigin) {
+        setPaymentReceipt(await bootstrapPayment({ origin: externalOrigin, role: 'inquilino', claim: claimRef.current, invitation: secureInvitation ? invitation : null, linked: invitedLinked }))
+        setSubmitted(true)
+        return
       }
 
       // ── Análisis de pre-viabilidad con IA ──
@@ -442,12 +465,27 @@ export default function SolicitudInquilino() {
       setSubmitted(true);
 
     } catch (e) {
-      console.error(e);
+      if (externalOrigin) {
+        // Recover a committed INSERT whose HTTP response was lost, using the claim, never a UUID credential.
+        const recovered = !receivedId && claimRef.current
+          ? await bootstrapPayment({ origin: 'b2c', role: 'inquilino', claim: claimRef.current }) : null
+        if (receivedId || recovered?.payment_token) {
+          setPaymentReceipt(recovered?.payment_token ? recovered : { error: receivedFailure })
+          setSubmitted(true)
+          return
+        }
+        setError("No pudimos confirmar el envío. Comunícate con Emporio antes de enviarlo nuevamente.")
+        return
+      }
+      console.error(e)
       setError("Error al enviar: " + e.message);
     } finally {
+      submitLock.current = false
       setSubmitting(false);
     }
   };
+
+  if (externalPaymentEnabled && paymentReceipt) return <ExternalPaymentReceipt result={paymentReceipt} />
 
   if (['checking', 'pending'].includes(invitation.status)) return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="status">Validando invitación…</p></>
   if (invitation.status === 'invalid') return <><Head><meta name="referrer" content="no-referrer" /></Head><p role="alert">{invitationUnavailable}</p></>
