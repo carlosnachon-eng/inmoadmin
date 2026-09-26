@@ -1,12 +1,44 @@
 # Historical Replay — intentos explícitos, evidencia inmutable
 
-## Alcance certificado localmente
+## Estado de certificación y publicación
+
+Certificación funcional cerrada en el HEAD
+`6f966d5553a17408dc6eb0d8a00ba6c5ca66680b`:
+**HISTORICAL_REPLAY_EXPLICIT_ATTEMPTS_DEV_PASS**.
+Evidencia sanitizada e integridad:
+[informe DEV completo](historical-replay-explicit-attempts-dev/README.md),
+[instalación/Auth/concurrencia DEV](historical-replay-explicit-attempts-dev/initial-certification.md)
+y [manifiesto](historical-replay-explicit-attempts-dev/manifest.sha256).
+
+UI, Auth, autorización, endpoint, RPC, persistencia y GET fueron reales contra
+Supabase DEV. Sólo el proveedor/modelo/usage fueron sintéticos; no hubo llamadas
+a Anthropic. El original permaneció byte-for-byte intacto; intento 2 tuvo resultado
+propio; limpieza sin residuos. La evidencia SQL local y la evidencia DEV siguen
+separadas. La migración **no está aplicada en Producción por esta entrega**.
+
+Para publicar se integró exclusivamente `main`
+`e4801685ab34083839b252bf8a4984104208b6d5` (PR #148), sin conflictos.
+Merge local: `e3cfd126dcdb5d45b92b4b02e133fe5ca8b3a5ea`.
+Los tres archivos de Partner de ese commit se conservan idénticos a `main`;
+los seis archivos funcionales/tests/SQL de attempts siguen idénticos al candidato
+certificado. Sólo se incorpora documentación DEV y la exclusión de Preview
+`git.deploymentEnabled["codex/historical-replay-explicit-attempts"]=false`.
+Crons, otras exclusiones, gates y variables permanecen intactos.
+
+Validación posterior a integrar `main`: dirigidas **626/626 PASS**, suite
+**1,363/1,363 PASS**, build **PASS**, `git diff --check` **PASS** y estructura de
+`vercel.json` **PASS**. No se repitió PostgreSQL local ni la certificación DEV.
+Preview: **no ejecutado; deployment automático de esta rama deshabilitado**,
+no se presenta como un check verde. No hay workflow GitHub ni script de deployment
+en `package.json` versionados; no se invocaron vías alternativas de despliegue.
+
+## Alcance de la certificación local original
 
 Rama: `codex/historical-replay-explicit-attempts`.
 Base: `5cc620fa6bb9e16d60edfe3e7fc180a3ab2fd545` (`origin/main` al comenzar).
 El cambio ajeno de Partners/Blindaje en esa base se conserva sin modificarlo.
 
-No publicación, PR, deployment, conexión a Supabase DEV/Producción, Replay real,
+Durante la certificación local original: no publicación, PR, deployment, conexión a Supabase DEV/Producción, Replay real,
 Anthropic, caso bancario ni cambios de gates durante esta entrega. Sólo fixtures
 sintéticos y PostgreSQL efímero local. La autorización de implementar este
 mecanismo no se interpreta como autorización de reejecutar el caso real.
@@ -85,7 +117,7 @@ guías de privilegios mínimos y transacciones cortas de la skill Supabase.
 
 ## Migración y límites de instalación
 
-Nueva migración aditiva, **no aplicada fuera de PostgreSQL local**:
+Nueva migración aditiva, aplicada después en **Supabase DEV**, no en Producción:
 `20260925160512_historical_replay_attempts.sql`.
 
 Dependencias: tablas de casos/cohortes/reviews existentes, `profiles(id, role_id,
@@ -97,8 +129,9 @@ Crear el trigger en la tabla de casos necesita un lock de tabla; la instalación
 debe abortar ante timeout/error. La RPC usa locks por caso/padre, sin mantenerlos
 durante llamadas al modelo. Hay índices para las FK y la unicidad de hijos.
 
-Orden futuro, sujeto a autorización independiente: certificar en DEV con su
-esquema real, instalar la migración antes del código que consulta la tabla y
+Certificación DEV completada con su esquema real (informe enlazado arriba).
+Orden productivo futuro, sujeto a autorización independiente: instalar la
+migración antes del código que consulta la tabla y
 verificar permisos/objetos. No hace falta backfill. La migración no ejecuta casos
 ni habilita proveedor/outbound. Revertir la aplicación **no** revierte resultados:
 mantener tabla, auditoría y triggers; no borrar evidencia ni volver a `pending`.
@@ -172,6 +205,6 @@ SHA-256 de los artefactos SQL/local:
 - Migración: `3a34fb16b1f2aa9bfec12214f78aa3669b578e7d1dfd613723457fe495592ecc`
 - Script PostgreSQL: `d9f67ad90df80c0f22f0713007909de6bfd515f85e36664bc3a09fd0b69fb42d`
 
-**Dictamen: GO para revisión del cambio local; no es autorización ni
-certificación de rollout productivo.** Pendiente: instalación/certificación en
-Supabase DEV, publicación y revisión, y cualquier ejecución real por separado.
+**Dictamen: GO para publicación y revisión; no es autorización de rollout
+productivo.** DEV cerrado. Pendientes independientes: revisión del PR, autorización
+de instalación productiva/merge/deployment y cualquier Replay real por separado.

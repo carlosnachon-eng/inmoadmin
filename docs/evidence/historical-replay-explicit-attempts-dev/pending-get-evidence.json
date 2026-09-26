@@ -1,0 +1,90 @@
+[
+  {
+    "label": "pending",
+    "http": 200,
+    "error": null,
+    "original": {
+      "status": "error",
+      "attempt_number": 1,
+      "case_ref": "0e72410725e24b2c",
+      "attempt_ref": null,
+      "parent_ref": null,
+      "error_code": "synthetic_original_error",
+      "input_tokens": 17,
+      "output_tokens": 3,
+      "providerModels": [
+        "synthetic-original-provider"
+      ],
+      "privacy_checks": [],
+      "requires_human": null,
+      "auto_send_eligible": null,
+      "conversation_action": null
+    },
+    "attempts": [
+      {
+        "status": "pending",
+        "attempt_number": 2,
+        "case_ref": "0e72410725e24b2c",
+        "attempt_ref": "3daff13055bb491c93a1974449af8b53",
+        "parent_ref": "0e72410725e24b2c",
+        "error_code": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "providerModels": [],
+        "privacy_checks": [],
+        "requires_human": null,
+        "auto_send_eligible": null,
+        "conversation_action": null
+      }
+    ]
+  },
+  {
+    "label": "completed",
+    "http": 200,
+    "error": null,
+    "original": {
+      "status": "error",
+      "attempt_number": 1,
+      "case_ref": "0e72410725e24b2c",
+      "attempt_ref": null,
+      "parent_ref": null,
+      "error_code": "synthetic_original_error",
+      "input_tokens": 17,
+      "output_tokens": 3,
+      "providerModels": [
+        "synthetic-original-provider"
+      ],
+      "privacy_checks": [],
+      "requires_human": null,
+      "auto_send_eligible": null,
+      "conversation_action": null
+    },
+    "attempts": [
+      {
+        "status": "completed",
+        "attempt_number": 2,
+        "case_ref": "0e72410725e24b2c",
+        "attempt_ref": "3daff13055bb491c93a1974449af8b53",
+        "parent_ref": "0e72410725e24b2c",
+        "error_code": null,
+        "input_tokens": 31,
+        "output_tokens": 7,
+        "providerModels": [
+          "synthetic-replay-attempt-two"
+        ],
+        "privacy_checks": [
+          {
+            "final_payload_verified": true,
+            "serialized_body_verified": true,
+            "output_mode": "anthropic_json_schema",
+            "privacy_stage": "final_model_privacy",
+            "provider_invoked": true
+          }
+        ],
+        "requires_human": true,
+        "auto_send_eligible": false,
+        "conversation_action": "human_handoff"
+      }
+    ]
+  }
+]
