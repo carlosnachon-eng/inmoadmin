@@ -7,8 +7,12 @@ import { invokeShadowPhase3A, invokeHistoricalReplayReducedPhase3A } from "../li
 import { createHistoricalReplayReducedTransport } from "../lib/shadow/ai/anthropic.js";
 import { assertHistoricalReplaySchemaContext, withHistoricalReplaySchemaContext } from "../lib/shadow/ai/historicalReplaySchemaContext.js";
 import { anthropicShadowAiDecisionJsonSchema } from "../lib/shadow/ai/schema.js";
-import { buildReducedAnthropicDecisionSchema } from "../lib/shadow/ai/reducedOutputSchema.js";
+import { buildReducedAnthropicDecisionSchema, decodeReducedShadowAiDecision } from "../lib/shadow/ai/reducedOutputSchema.js";
 import { REAL_SHADOW_AI_SYSTEM_PROMPT, REAL_SHADOW_AI_TOOL_GUIDE } from "../lib/shadow/ai/realPrompt.js";
+import { SHADOW_AI_TOOL_GUIDE } from "../lib/shadow/ai/prompt.js";
+import { REDUCED_REPLAY_REFERENCE_CONTRACT, REDUCED_REPLAY_TOOL_GUIDE } from "../lib/shadow/ai/historicalReplayToolGuide.js";
+import { createModelPrivacyScope, bindVerifiedModelMessages, bindModelResult, modelReferenceType, verifyFinalModelPayload } from "../lib/shadow/ai/finalModelPrivacy.js";
+import { SHADOW_TOOL_ARGUMENT_SCHEMAS } from "../lib/shadow/context.js";
 import { modelPrivacyReceipt } from "../lib/shadow/ai/modelPrivacyTelemetry.js";
 import { memoryAdmin } from "./helpers/condominiumIdentityFixture.mjs";
 
@@ -47,7 +51,7 @@ test("native Replay reduced transport + two rounds + real read-only tool + groun
         const body = JSON.parse(init.body), context = JSON.parse(body.messages[0].content);
         bodies.push(body); contexts.push(context);
         assert.deepEqual(body.output_config.format.schema, reduced ? buildReducedAnthropicDecisionSchema() : anthropicShadowAiDecisionJsonSchema);
-        assert.equal(body.system, `${REAL_SHADOW_AI_SYSTEM_PROMPT}\n\n${REAL_SHADOW_AI_TOOL_GUIDE}`);
+        assert.equal(body.system, `${REAL_SHADOW_AI_SYSTEM_PROMPT}\n\n${reduced ? REDUCED_REPLAY_TOOL_GUIDE : REAL_SHADOW_AI_TOOL_GUIDE}`);
         assert.equal(body.model, "claude-haiku-4-5-20251001"); assert.equal(body.max_tokens, 1400);
         assert.doesNotMatch(init.body, /a1100000|synthetic-only/);
         const d = structuredClone(decision);
@@ -84,6 +88,8 @@ test("normal gateway ignores spoofed reduced options/env/metadata and returns th
     modelOptions: { env: { ...env, SHADOW_REDUCED_OUTPUT_SCHEMA_ENABLED: "true" }, useReducedOutputSchema: true,
       fetchImpl: async (_url, { body }) => {
         assert.deepEqual(JSON.parse(body).output_config.format.schema, anthropicShadowAiDecisionJsonSchema);
+        assert.equal(JSON.parse(body).system, `${REAL_SHADOW_AI_SYSTEM_PROMPT}\n\n${SHADOW_AI_TOOL_GUIDE}`);
+        assert.ok(!JSON.parse(body).system.includes(REDUCED_REPLAY_REFERENCE_CONTRACT));
         return response(decision);
       } },
   });
@@ -130,7 +136,7 @@ for (const mode of ["bad_option", "text_mode", "isolation_off", "not_replay"]) {
   });
 }
 
-for (const mutation of ["legacy", "unknown_key", "wrong_tool_key", "duplicate", "invented_alias", "wrong_alias_type", "raw_uuid", "free_text_alias"]) {
+for (const mutation of ["legacy", "unknown_key", "wrong_tool_key", "duplicate", "invented_alias", "wrong_alias_type", "raw_uuid", "raw_id", "empty_reference", "null_reference", "descriptive_reference", "free_text_alias"]) {
   test(`reduced wire validation rejects ${mutation} before tools without fallback/retry`, async () => {
     let fetches = 0, tools = 0;
     await assert.rejects(executeHistoricalReplayCase({}, replayCase, options({
@@ -143,6 +149,10 @@ for (const mutation of ["legacy", "unknown_key", "wrong_tool_key", "duplicate", 
         if (mutation === "invented_alias") args[0].value = "ref_invented_99";
         if (mutation === "wrong_alias_type") args[0].key = "ticketId";
         if (mutation === "raw_uuid") args[0].value = propertyId;
+        if (mutation === "raw_id") args[0].value = "12345";
+        if (mutation === "empty_reference") args[0].value = "";
+        if (mutation === "null_reference") args[0].value = null;
+        if (mutation === "descriptive_reference") args[0].value = "el inmueble indicado";
         if (mutation === "free_text_alias") d.summary = context.metadata.propertyId;
         d.proposedToolCalls = [call(mutation === "legacy" ? { propertyId: context.metadata.propertyId } : args)];
         return response(d);
@@ -166,6 +176,77 @@ test("a prior-round alias cannot be used by a reduced second round", async () =>
     }, executeTool: async () => { tools++; return []; },
   })), /pre_model_sanitization_blocked/);
   assert.equal(fetches, 2); assert.equal(tools, 1);
+});
+
+test("the fixed reduced guide covers reference/literal keys without changing the existing tool contracts", () => {
+  assert.equal(REAL_SHADOW_AI_TOOL_GUIDE, SHADOW_AI_TOOL_GUIDE);
+  assert.equal(REDUCED_REPLAY_TOOL_GUIDE, `${SHADOW_AI_TOOL_GUIDE}\n\n${REDUCED_REPLAY_REFERENCE_CONTRACT}`);
+  const keys = [...new Set(Object.values(SHADOW_TOOL_ARGUMENT_SCHEMAS).flatMap((s) => Object.keys(s.properties)))];
+  const referenceLine = REDUCED_REPLAY_REFERENCE_CONTRACT.split("\n").find((s) => s.startsWith("- Son argumentos de referencia:"));
+  const literalLine = REDUCED_REPLAY_REFERENCE_CONTRACT.split("\n").find((s) => s.startsWith("- domain,"));
+  assert.deepEqual(keys.filter((key) => !modelReferenceType(key)).sort(), ["domain", "period", "serviceType", "sourceType", "status"]);
+  for (const key of keys) assert.ok((modelReferenceType(key) ? referenceLine : literalLine).includes(key), key);
+  assert.match(REDUCED_REPLAY_REFERENCE_CONTRACT, /copia exactamente el valor ref_\.\.\./);
+  assert.match(REDUCED_REPLAY_REFERENCE_CONTRACT, /no solicites esa tool/);
+  assert.match(REDUCED_REPLAY_REFERENCE_CONTRACT, /omite su par \{key,value\}/);
+});
+
+test("reduced gateway selects its fixed guide only after validating the Replay capability", async () => {
+  await withHistoricalReplaySchemaContext(async (context) => {
+    const result = await invokeHistoricalReplayReducedPhase3A({ ...gatewayOptions, toolGuide: "ignored caller guide", replayCase, replaySchemaContext: context,
+      modelOptions: { env, fetchImpl: async (_url, { body }) => {
+        assert.equal(JSON.parse(body).system, `${REAL_SHADOW_AI_SYSTEM_PROMPT}\n\n${REDUCED_REPLAY_TOOL_GUIDE}`);
+        return response(decision);
+      } },
+    });
+    assert.deepEqual(modelPrivacyReceipt(result), pass);
+  });
+});
+
+test("no emitted reference: omitting the tool completes without empty/invented arguments or a provider retry", async () => {
+  const noReference = { ...replayCase, envelope: { ...replayCase.envelope, providerMetadata: {} } };
+  const results = [];
+  for (const reduced of [false, true]) {
+    let fetches = 0;
+    results.push(await executeHistoricalReplayCase({}, noReference, options({ useReducedOutputSchema: reduced,
+      fetchImpl: async (_url, { body }) => {
+        fetches++;
+        const context = JSON.parse(JSON.parse(body).messages[0].content);
+        assert.deepEqual(context.metadata, {});
+        assert.deepEqual(context.tools, []);
+        assert.deepEqual(context.evidenceLedger, []);
+        return response(decision);
+      }, executeTool: () => assert.fail("no tool without a reference"),
+    })));
+    assert.equal(fetches, 1);
+  }
+  assert.deepEqual(results[1], results[0]);
+  assert.deepEqual(results[1].privacyChecks, [pass]);
+});
+
+for (const [tool, raw] of [
+  ["list_administrative_work", { domain: "maintenance", status: "pending" }],
+  ["find_administrative_work_by_context", { sourceType: "contract", sourceId: propertyId }],
+  ["get_service_period_status", { propertyId, serviceType: "agua", period: "2026-09" }],
+]) {
+  test(`reduced reference contract preserves literal arguments for ${tool}`, () => {
+    const scope = createModelPrivacyScope();
+    const aliases = Object.fromEntries(Object.entries(raw).map(([key, value]) => [key,
+      modelReferenceType(key, raw, tool) ? scope.reference(value, modelReferenceType(key, raw, tool)) : value]));
+    const messages = bindVerifiedModelMessages([{ role: "user", content: JSON.stringify({ message: "Consulta", metadata: aliases }) }], scope);
+    const result = bindModelResult({}, messages);
+    const decoded = decodeReducedShadowAiDecision({ ...decision, proposedToolCalls: [{ tool, arguments: wireArgs(aliases), reason: "Consultar estado" }] }, result);
+    assert.deepEqual(decoded.proposedToolCalls[0].arguments, raw);
+  });
+}
+
+test("registering the exact static guide does not exempt modified prompts or data from privacy checks", () => {
+  const system = `${REAL_SHADOW_AI_SYSTEM_PROMPT}\n\n${REDUCED_REPLAY_TOOL_GUIDE}`;
+  assert.equal(verifyFinalModelPayload({ system }, { transport: true }).allowed, true);
+  for (const residual of [propertyId, "test@example.invalid", "+52 222 123 4567", "sk-ant-synthetic-secret-value"]) {
+    assert.equal(verifyFinalModelPayload({ system: `${system}\n${residual}` }, { transport: true }).allowed, false);
+    assert.equal(verifyFinalModelPayload({ system, message: residual }, { transport: true }).allowed, false);
+  }
 });
 
 for (const stage of ["final_payload_rejected", "serialized_body_rejected"]) {
@@ -209,6 +290,8 @@ test("architecture confines schema capability, dedicated gateway and decoder to 
     createHistoricalReplayReducedTransport: ["lib/shadow/ai/anthropic.js", "lib/shadow/ai/phase3AGateway.js"],
     decodeReducedShadowAiDecision: ["lib/shadow/ai/reducedOutputSchema.js", "lib/shadow/ai/historicalReplay.js"],
     useReducedOutputSchema: ["lib/shadow/ai/historicalReplay.js", "pages/api/operaciones/shadow-historical-replay.js"],
+    REDUCED_REPLAY_TOOL_GUIDE: ["lib/shadow/ai/historicalReplayToolGuide.js", "lib/shadow/ai/phase3AGateway.js", "lib/shadow/ai/finalModelPrivacy.js"],
+    REDUCED_REPLAY_REFERENCE_CONTRACT: ["lib/shadow/ai/historicalReplayToolGuide.js"],
   };
   for (const file of [...walk("lib"), ...walk("pages")]) {
     const source = fs.readFileSync(new URL(file, root), "utf8");
