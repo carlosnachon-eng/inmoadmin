@@ -477,11 +477,12 @@ export default async function handler(req, res) {
     .single();
 
   if (solError || !sol) return res.status(404).json({ error: 'Solicitud no encontrada' });
-  if (tipo_ejecucion === 'inicial' && ['b2c', 'partner'].includes(sol.origen_operacion)) {
+  const externalInitial = tipo_ejecucion === 'inicial' && ['b2c', 'partner'].includes(sol.origen_operacion);
+  if (externalInitial) {
     const gate = await externalInvestigationGate(supabase, req, solicitud_id);
     if (gate.error) return res.status(gate.status).json({ error: gate.error });
   }
-  if (tipo_ejecucion === 'inicial' && sol.pre_viabilidad) {
+  if (tipo_ejecucion === 'inicial' && (externalInitial ? sol.pre_viabilidad != null : sol.pre_viabilidad)) {
     return res.status(409).json({ error: 'El análisis inicial ya fue ejecutado; usa el reanálisis interno' });
   }
 
@@ -521,7 +522,7 @@ export default async function handler(req, res) {
 
   const curpFallo = validacionCurp && validacionCurp.valido !== true;
 
-  const guardarAuditoria = async (revisionManual, detalles = {}) => {
+  const guardarAuditoria = async (revisionManual, detalles = {}, respuesta = null) => {
     const audit = {
       ia_revision_manual: revisionManual,
       ia_ultimo_analisis_en: new Date().toISOString(),
@@ -532,26 +533,31 @@ export default async function handler(req, res) {
       audit.ia_reanalizado_en = new Date().toISOString();
       audit.ia_reanalisis_motivo = motivo.trim();
     }
+    if (externalInitial && respuesta) {
+      Object.assign(audit, {
+        pre_viabilidad: respuesta.resultado,
+        pre_viabilidad_detalle: respuesta.mensaje,
+        pre_viabilidad_detalle_interno: respuesta.mensajeInterno,
+        ingreso_detectado_ia: respuesta.detalles?.ingresoDetectado ?? null,
+        ingreso_total_ia: respuesta.detalles?.analisisIA?.ingreso_mensual_total ?? null,
+      });
+      if (respuesta.validacionCurp) {
+        audit.curp_validada = respuesta.validacionCurp.valido;
+        audit.curp_nombre_renapo = respuesta.validacionCurp.nombre_en_renapo;
+        audit.curp_status = respuesta.validacionCurp.curp_status;
+      }
+    }
     const { error } = await supabase.from('solicitudes_inquilino').update(audit).eq('id', solicitud_id);
-    if (error) console.error('Error guardando auditoría IA:', error.message);
+    if (error && !externalInitial) console.error('Error guardando auditoría IA:', error.message);
+    return !error;
+
   };
 
   if (!tieneDocumentosIngresos) {
     const alertas = ['No se encontraron documentos de ingresos adjuntos'];
     if (faltantesRequeridos.length) alertas.push(`Documentos requeridos faltantes: ${faltantesRequeridos.join(', ')}`);
     if (curpFallo) alertas.push(`CURP no válida en RENAPO: ${validacionCurp?.curp_status || 'error de verificación'}`);
-    await guardarAuditoria(true, {
-      ia_analisis_documental: {
-        identidad_detectada: null,
-        ingresos_detectados: null,
-        documentos_analizados: [],
-        documentos_fallidos: [],
-        informacion_faltante: alertas,
-        revision_manual: true,
-      },
-      ia_resumen_juridico: alertas.join('. '),
-    });
-    return res.status(200).json({
+    const respuesta = {
       resultado: 'pendiente',
       icono: '⏳',
       color: '#92400e',
@@ -564,7 +570,20 @@ export default async function handler(req, res) {
         analisisIA: { alertas, confianza: 'baja', revision_manual: true, documentos_analizados: [] },
         sin_documentos: true,
       },
-    });
+    };
+    const saved = await guardarAuditoria(true, {
+      ia_analisis_documental: {
+        identidad_detectada: null,
+        ingresos_detectados: null,
+        documentos_analizados: [],
+        documentos_fallidos: [],
+        informacion_faltante: alertas,
+        revision_manual: true,
+      },
+      ia_resumen_juridico: alertas.join('. '),
+    }, respuesta);
+    if (externalInitial && !saved) return res.status(503).json({ error: 'No se pudo guardar el resultado de la investigación' });
+    return res.status(200).json(respuesta);
   }
 
   const resultados = await Promise.all(documentosPresentes.map(async documento => {
@@ -577,6 +596,9 @@ export default async function handler(req, res) {
 
   const exitosos = resultados.filter(r => r.ok);
   const fallidos = resultados.filter(r => !r.ok);
+  if (externalInitial && exitosos.length === 0) {
+    return res.status(503).json({ error: 'No se pudo completar el análisis documental' });
+  }
   const revisionManual = faltantesRequeridos.length > 0 || fallidos.length > 0;
   const docINE = exitosos.find(r => r.documento.tipo === 'ine')?.data;
   const docsIngresos = exitosos.filter(r => r.documento.tipo === 'ingresos').map(r => r.data);
@@ -775,12 +797,7 @@ export default async function handler(req, res) {
       : `Ingresos por debajo del criterio preliminar: relación ${razonIngreso}x (mínimo ${multiplicador}x). | ${resumenJuridico}`;
   }
 
-  await guardarAuditoria(revisionManual, {
-    ia_analisis_documental: analisisIA,
-    ia_resumen_juridico: resumenJuridico,
-  });
-
-  return res.status(200).json({
+  const respuesta = {
     resultado, icono, color, mensaje, mensajeInterno,
     validacionCurp,
     detalles: {
@@ -790,5 +807,12 @@ export default async function handler(req, res) {
       analisisIA,
       errorIA: fallidos.length ? fallidos.map(r => `${r.documento.etiqueta}: ${r.error}`).join(' | ') : null,
     },
-  });
+  };
+  const saved = await guardarAuditoria(revisionManual, {
+    ia_analisis_documental: analisisIA,
+    ia_resumen_juridico: resumenJuridico,
+  }, respuesta);
+
+  if (externalInitial && !saved) return res.status(503).json({ error: 'No se pudo guardar el resultado de la investigación' });
+  return res.status(200).json(respuesta);
 }

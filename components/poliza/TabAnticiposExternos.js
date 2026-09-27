@@ -40,9 +40,8 @@ export default function TabAnticiposExternos({ puedeEditar }) {
     if (lock.current || !puedeEditar) return
     lock.current = true; setBusy(true); setError('')
     try {
-      const result = await request('/api/analizar-solicitud', { solicitud_id: id, tipo_ejecucion: 'inicial' })
+      await request('/api/analizar-solicitud', { solicitud_id: id, tipo_ejecucion: 'inicial' })
       await refresh()
-      if (result.detalles?.sin_documentos) throw new Error('Documentos pendientes')
     }
     catch (_) { setError('Pago validado. La investigación no pudo iniciarse; puedes reintentar.') }
     finally { lock.current = false; setBusy(false) }
@@ -65,7 +64,7 @@ export default function TabAnticiposExternos({ puedeEditar }) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {p.proof_original_name && <button style={button} onClick={() => proof(p)}>Ver comprobante</button>}
         {puedeEditar && p.status === 'proof_received' && <><button disabled={busy} style={{ ...button, background: '#b91c3c', color: '#fff' }} onClick={() => { setReview({ id: p.id, action: 'validate', folio: c.folio }); setConfirmed(false) }}>Validar $1,000</button><button disabled={busy} style={button} onClick={() => { setReview({ id: p.id, action: 'reject', folio: c.folio }); setReason('') }}>Rechazar</button></>}
-        {p.status === 'validated' && (x.solicitud_id ? x.pre_viabilidad !== null ? <p>Investigación iniciada</p> : puedeEditar && <button disabled={busy} style={button} onClick={() => investigate(x.solicitud_id)}>Iniciar investigación</button> : <p>Anticipo validado. Falta recibir la solicitud del inquilino.</p>)}
+        {p.status === 'validated' && (x.solicitud_id ? x.pre_viabilidad !== null ? <p>{x.pre_viabilidad === 'pendiente' ? 'Investigación en revisión manual' : x.pre_viabilidad === 'revisar' ? 'Investigación iniciada · requiere revisión' : 'Investigación iniciada'}</p> : puedeEditar && <button disabled={busy} style={button} onClick={() => investigate(x.solicitud_id)}>Iniciar investigación</button> : <p>Anticipo validado. Falta recibir la solicitud del inquilino.</p>)}
       </div>
     </article>)}
     {review && <div role="dialog" aria-modal="true" aria-label="Revisar anticipo" style={{ position: 'fixed', inset: 0, background: '#0008', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 1000 }}>

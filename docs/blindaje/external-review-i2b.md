@@ -33,7 +33,7 @@ Proyecto `hjfwjnejbcpmknvfpdcq`. Producción `bnzrnizrmonjxlktbhlp` sólo fue co
 - SQL: `scripts/blindaje/sql/postcheck-external-review-i2b.sql`, `certify-external-review-i2b.sql`, `certify-external-review-partner-i2b.sql`. Las certificaciones transaccionales terminan en rollback y conservan fixtures.
 - Auth real DEV: cinco identidades temporales I2B-QA (admin/editor/reader/inactive/external), login real GoTrue y llamadas al Preview. Sin sesión/inválida 401, externo/inactivo 403, lectura sí y mutación no, editor/admin sí. Se eliminan perfiles, sesiones, identidades, usuarios y roles QA al cierre.
 - Navegador real: cola 390/1440, confirmación obligatoria, rechazo, motivo público, reemplazo Edge, validación y ausencia de upload después de validar.
-- El análisis real del caso sintético validado llegó al motor existente y devolvió revisión manual por ausencia de documentos. No se certifica una decisión documental de IA con documentos reales. El pago y Caja permanecen validados; la UI permite reintentar. Tests de endpoint comprueban Emporio/NULL sin nueva exigencia de sesión y bloqueo externo previo a cualquier auditoría/análisis.
+- El análisis real del caso sintético validado llegó al motor existente y devolvió revisión manual por ausencia de documentos. No se certifica una decisión documental de IA con documentos reales. El resultado inicial externo y su auditoría se persisten en un solo UPDATE server-side. Sin documentos queda `pre_viabilidad=pendiente`, revisión manual y sin botón de inicio incluso después de recargar. Una segunda llamada inicial devuelve 409 antes de CURP/IA. El pago, Caja y ledger permanecen intactos. Fallos reales de análisis o persistencia no se reportan como éxito y permiten retry. Tests de endpoint comprueban Emporio/NULL sin nueva exigencia de sesión y bloqueo externo previo a cualquier auditoría/análisis.
 
 Se conservan los tres casos I2A-QA: BL-2026-000005 rejected, BL-2026-000006 pending, BL-2026-000007 validated. Un ingreso de prueba asociado al último y dos comprobantes privados (uno rechazado, uno validado). Sin PII real. Las pruebas de ambos órdenes Partner usan filas temporales con rollback.
 
@@ -44,3 +44,9 @@ Se conservan los tres casos I2A-QA: BL-2026-000005 rejected, BL-2026-000006 pend
 ## Límites
 
 No se cambian policies legacy, contratos, expedientes, dictamen, comisiones, precio de póliza ni #131/#132. Los avisos preexistentes del advisor sobre RLS legacy quedan fuera de alcance; no se abren permisos para resolverlos. La nueva tabla pasa los postchecks exactos.
+
+## Gate final: persistencia del resultado externo
+
+Sólo `inicial` B2C/Partner incorpora resultado, detalles público/interno, ingresos y CURP (cuando existe) al UPDATE de auditoría. Emporio, origen NULL y reanálisis mantienen la persistencia histórica. La UI refresca la cola tras un 200 y distingue revisión manual, revisión requerida e investigación iniciada.
+
+`tests/blindajeInvestigationPersistence.test.mjs` ejecuta el handler real con proveedor documental sintético y almacenamiento controlado: una escritura conjunta, campos exactos, retry 409 sin otra invocación del proveedor, errores y regresiones. El bloqueo certificado es el de una llamada inicial posterior a la persistencia exitosa; no se introduce un lock distribuido para peticiones iniciales simultáneas.
