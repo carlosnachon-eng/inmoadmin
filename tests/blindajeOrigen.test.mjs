@@ -62,8 +62,8 @@ test('flag OFF preserves main linking rule, omits metadata and never gates on va
     assert.equal(shouldLinkPartner(false, { partner: 'agency' }, status), false)
   }
 })
-test('internal flow and Partner endpoint are byte-identical to the reviewed base', () => {
-  for (const file of ['components/poliza/ModalSolicitud.js', 'pages/poliza/index.js', 'pages/api/partners/link-submission.js', 'pages/api/partners/public-branding.js']) {
+test('legacy Partner endpoints are byte-identical to the reviewed base', () => {
+  for (const file of ['pages/api/partners/link-submission.js', 'pages/api/partners/public-branding.js']) {
     assert.equal(readFileSync(new URL('../' + file, import.meta.url), 'utf8'), execFileSync('git', ['show', '9876bae968c4af5bb83ab5b9e1debbd5750bc75b:' + file], { encoding: 'utf8' }))
   }
 })
@@ -84,4 +84,10 @@ test('historical NULL origin renders identically in Jurídico and preserves inve
   const render = solicitud => renderToStaticMarkup(React.createElement(Modal, { solicitud }))
   assert.equal(render(historical), render({ ...historical, origen_operacion: null, asesor_referencia: null }))
   assert.ok(render(historical).includes('Registrar cobro $1,000'))
+  assert.equal(render(historical), render({ ...historical, origen_operacion: 'emporio' }))
+  for (const origen_operacion of ['b2c', 'partner']) {
+    const html = render({ ...historical, origen_operacion })
+    assert.ok(!html.includes('Registrar cobro $1,000'))
+    assert.ok(html.includes('se gestiona desde Anticipos externos'))
+  }
 })

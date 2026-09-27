@@ -44,7 +44,7 @@ export function proofHandler(getDb) {
       if (!access || access.revoked_at || new Date(access.expires_at) <= new Date()) return reply(404, { error: unavailable })
       const externalCase = checked(await db.from('blindaje_external_cases').select('id,status').eq('id', access.case_id).maybeSingle())
       const payment = checked(await db.from('blindaje_investigation_payments').select('id,status,proof_storage_path').eq('case_id', access.case_id).maybeSingle())
-      if (!externalCase || !['awaiting_payment','proof_received'].includes(externalCase.status) || !payment || !['pending','proof_received'].includes(payment.status)) return reply(404, { error: unavailable })
+      if (!externalCase || !['awaiting_payment','proof_received','payment_rejected'].includes(externalCase.status) || !payment || !['pending','proof_received','rejected'].includes(payment.status)) return reply(404, { error: unavailable })
       const payerRole = req.headers.get('x-payer-role')
       const payerName = decodeURIComponent(req.headers.get('x-payer-name') || '').trim()
       const originalName = decodeURIComponent(req.headers.get('x-file-name') || '').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 255)

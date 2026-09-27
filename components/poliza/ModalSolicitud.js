@@ -98,7 +98,8 @@ export default function ModalSolicitud({ solicitud: sol, onClose, onSaved, onNue
           <label style={st.label}>Notas jurídicas internas</label>
           <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={3} style={{ ...st.input, resize: 'vertical' }} />
         </div>
-        {status === 'rechazado' && !sol.cobro_investigacion && (
+        {['b2c', 'partner'].includes(sol.origen_operacion) && <p>El anticipo de esta operación se gestiona desde Anticipos externos.</p>}
+        {!['b2c', 'partner'].includes(sol.origen_operacion) && status === 'rechazado' && !sol.cobro_investigacion && (
           <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, padding: '14px 16px', marginTop: 16 }}>
             <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700, color: C.redText }}>💰 Cobrar investigación ($1,000)</p>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
