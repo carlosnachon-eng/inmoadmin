@@ -13,7 +13,8 @@
       "codex/historical-replay-explicit-attempts": false,
       "codex/historical-replay-reference-contract": false,
       "codex/shadow-labeled-identifier-precision": false,
-      "codex/historical-replay-tool-reference-diagnostics": false
+      "codex/historical-replay-tool-reference-diagnostics": false,
+      "codex/shadow-respond-contact-reference": false
     }
   },
   "crons": [
