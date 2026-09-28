@@ -480,7 +480,11 @@ export default function ShadowCoordinatorPage() {
           {(() => {
             const diagnostic = sanitizedOutputPrivacyDiagnostics(item.result_safe?.outputDiagnostics);
             return <div aria-label="Diagnóstico sanitizado de privacidad de salida">{diagnostic
-              ? <p>Etapa de salida: {diagnostic.outputStage} · razón: {diagnostic.outputPrivacy?.reason ?? "no registrada"} · ubicación: {diagnostic.outputPrivacy?.location ?? "no registrada"}</p>
+              ? <p>Etapa de salida: {diagnostic.outputStage} · razón: {diagnostic.outputPrivacy?.reason ?? "no registrada"} · ubicación: {diagnostic.outputPrivacy?.location ?? "no registrada"}
+                {diagnostic.outputPrivacy?.tool && <> · tool: {diagnostic.outputPrivacy.tool}</>}
+                {diagnostic.outputPrivacy?.argument_key && <> · argumento: {diagnostic.outputPrivacy.argument_key}</>}
+                {diagnostic.outputPrivacy?.expected_reference_type && <> · tipo esperado: {diagnostic.outputPrivacy.expected_reference_type}</>}
+              </p>
               : <p>Sin diagnóstico específico de salida registrado; no se infiere la causa.</p>}</div>;
           })()}
           <div aria-label="Comprobantes de privacidad del transporte"><strong>Privacidad final:</strong>{!(item.privacy_checks||[]).length?<p>Sin comprobante registrado; no equivale a PASS.</p>:(item.privacy_checks||[]).map((check,index)=><p key={index}>
