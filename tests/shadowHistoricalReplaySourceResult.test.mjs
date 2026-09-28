@@ -342,6 +342,55 @@ function syntheticTransport(fetchImpl) {
 }
 const syntheticModelResponse = (value = decision) => ({ ok: true, json: async () => ({ id: "synthetic-provider", content: [{ type: "text", text: JSON.stringify(value) }], usage: { input_tokens: 5, output_tokens: 2 } }) });
 
+for (const rawReference of [false, true]) {
+  test(`Respond alias → reduced native endpoint → ${rawReference ? "safe rejection" : "server-side tool"} → persistence/GET/UI without raw contact`, async () => {
+    const contact = "73592186", db = database(tableSeed()); let fetches = 0, tools = 0;
+    const row = { id: "respond-alias-case", case_ref: "synthetic-case", status: "pending", turn_snapshot: { envelope: {
+      provider: "respond_admin", sanitizedText: "¿Cómo va el mantenimiento?", providerMetadata: { respondContactId: contact },
+    } } };
+    db.tables.shadow_historical_replay_cases.push(row);
+    const originalSnapshot = JSON.stringify(row.turn_snapshot);
+    const api = endpoint(db, { executeCase: (admin, replayCase, options) => executeHistoricalReplayCase(admin, replayCase, {
+      ...options, now: () => NOW, fetchImpl: async (_url, { body }) => {
+        fetches++; assert.equal(body.includes(contact), false);
+        const context = JSON.parse(JSON.parse(body).messages[0].content);
+        assert.match(context.metadata.respondContactId, /^ref_[a-z]+_\d+$/);
+        const d = structuredClone(decision);
+        if (fetches === 1) d.proposedToolCalls = [{ tool: "resolve_contact_identity", reason: "Consultar identidad",
+          arguments: [{ key: "respondContactId", value: rawReference ? contact : context.metadata.respondContactId }] }];
+        return syntheticModelResponse(d);
+      }, executeTool: async (_admin, name, args) => {
+        tools++; assert.equal(name, "resolve_contact_identity"); assert.deepEqual(args, { respondContactId: contact });
+        return [{ entityType: "contact_identity", internalId: contact, resolved: false, status: "insufficient_identity_context" }];
+      },
+    }) });
+    const response = await api({ action: "execute_one", caseId: row.id });
+    assert.equal(response.statusCode, rawReference ? 422 : 200);
+    assert.equal(fetches, rawReference ? 1 : 2); assert.equal(tools, rawReference ? 0 : 1);
+    assert.equal(row.status, rawReference ? "error" : "completed");
+    assert.deepEqual(row.result_safe.privacy_checks, rawReference ? [privacyPass] : [privacyPass, privacyPass]);
+    const listed = (await api({}, "GET")).body;
+    // Existing server snapshot is not rewritten, duplicated into diagnostics,
+    // or treated as newly generated model output.
+    assert.equal(JSON.stringify(row.turn_snapshot), originalSnapshot);
+    for (const data of [response.body, row.result_safe, db.writes, listed.cases[0].result_safe]) {
+      assert.equal(JSON.stringify(data).includes(contact), false);
+      assert.doesNotMatch(JSON.stringify(data), /ref_[a-z]+_\d+/);
+    }
+    const require = createRequire(import.meta.url), ui = fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
+    const heading = ui.indexOf("Evaluación histórica 3B"), start = ui.lastIndexOf("<details", heading), end = ui.indexOf("</details>", heading) + "</details>".length;
+    const names = ["card", "brand", "historicalReplay", "historicalReplayBusy", "historicalReplayPreview", "historicalReplayTurnKeys", "historicalReviewDrafts", "REPLAY_RATINGS", "REPLAY_REASONS", "sanitizedOutputPrivacyDiagnostics"];
+    const compiled = require("next/dist/build/swc").transformSync(`export default function Section({${names.join(",")}}) { return (${ui.slice(start, end)}); }`, { jsc: { parser: { syntax: "ecmascript", jsx: true }, transform: { react: { runtime: "automatic" } } }, module: { type: "commonjs" } }).code;
+    const mod = { exports: {} }; new Function("require", "module", "exports", compiled)(require, mod, mod.exports);
+    const tree = mod.exports.default({ card: {}, brand: {}, historicalReplay: listed, historicalReplayBusy: false,
+      historicalReplayPreview: null, historicalReplayTurnKeys: [], historicalReviewDrafts: {}, REPLAY_RATINGS: [], REPLAY_REASONS: [], sanitizedOutputPrivacyDiagnostics });
+    const html = require("react-dom/server").renderToStaticMarkup(tree);
+    assert.equal(html.includes(contact), false); assert.doesNotMatch(html, /ref_[a-z]+_\d+/);
+    assert.match(html, /final_payload_verified: true/);
+    assert.match(html, rawReference ? /pre_model_sanitization_blocked/ : /auto_send_eligible: false/);
+  });
+}
+
 for (const variant of ["free_text", "wrong_position", "type_mismatch", "unissued_argument", "raw_id"]) {
   test(`reduced native synthetic response → output failure ${variant} → safe persistence/GET, no tools or 3B`, async () => {
     const db = database(tableSeed()); let fetches = 0, tools = 0;
