@@ -10,7 +10,8 @@ import { REAL_SHADOW_AI_SYSTEM_PROMPT, REAL_SHADOW_AI_TOOL_GUIDE } from "../lib/
 import { REDUCED_REPLAY_TOOL_GUIDE } from "../lib/shadow/ai/historicalReplayToolGuide.js";
 import { modelPrivacyReceipt } from "../lib/shadow/ai/modelPrivacyTelemetry.js";
 import { projectOutputPrivacyFailure } from "../lib/shadow/ai/outputPrivacyDiagnostics.js";
-import { condominiumCases, confirmedCondoTables, memoryAdmin } from "./helpers/condominiumIdentityFixture.mjs";
+import { condominiumCases, confirmedCondoTables } from "./helpers/condominiumIdentityFixture.mjs";
+import { instrumentIdentityAdmin } from "./helpers/identityReadOnlyFixture.mjs";
 
 // Synthetic data only. Native gateway/transport/decoders, no network or database.
 const contact = "73592186";
@@ -111,7 +112,8 @@ for (const reduced of [false, true]) {
   });
 
   test(`${label}: condominium pre-load is unchanged, contact alias reused within round, fresh across rounds`, async () => {
-    const tables = confirmedCondoTables(), before = structuredClone(tables), admin = memoryAdmin(tables), tools = [], contexts = [];
+    const tables = confirmedCondoTables(), before = structuredClone(tables), tools = [], contexts = [];
+    const { admin, mutations } = instrumentIdentityAdmin(tables);
     const c = condominiumCases[0];
     for (const round of [0, 1]) {
       const result = await invoke(reduced, { admin, envelope: envelope({ respondContactId: c.contactId }), toolResults: tools, round,
@@ -128,13 +130,15 @@ for (const reduced of [false, true]) {
     assert.equal(tools.length, 1); assert.equal(tools[0].args.respondContactId, c.contactId);
     assert.equal(tools[0].result[1].unitId, c.unitId);
     assert.notEqual(contexts[0].metadata.respondContactId, contexts[1].metadata.respondContactId);
+    assert.deepEqual(mutations, []);
     assert.deepEqual(tables, before);
   });
 }
 
-test("reduced Replay: emitted contact alias reaches server tool and second round without leaking into result/telemetry", async () => {
-  let fetches = 0, toolCalls = 0; const contexts = [];
-  const result = await executeHistoricalReplayCase(memoryAdmin(), replay(envelope()), { env, useReducedOutputSchema: true, now: () => 1000,
+test("reduced Replay: emitted contact alias traverses real read-only resolver and second round without writes or leaks", async () => {
+  let fetches = 0; const contexts = [];
+  const { admin, mutations } = instrumentIdentityAdmin();
+  const result = await executeHistoricalReplayCase(admin, replay(envelope()), { env, useReducedOutputSchema: true, now: () => 1000,
     fetchImpl: async (_url, { body }) => {
       fetches++; const context = JSON.parse(JSON.parse(body).messages[0].content); contexts.push(context);
       assert.equal(body.includes(contact), false);
@@ -143,12 +147,12 @@ test("reduced Replay: emitted contact alias reaches server tool and second round
       assert.equal(context.tools[0].result[0].internalId, context.metadata.respondContactId);
       assert.notEqual(context.metadata.respondContactId, contexts[0].metadata.respondContactId);
       return response(decision());
-    }, executeTool: async (_admin, name, args) => {
-      toolCalls++; assert.equal(name, "resolve_contact_identity"); assert.deepEqual(args, { respondContactId: contact });
-      return [{ entityType: "contact_identity", internalId: contact, resolved: false, status: "insufficient_identity_context" }];
     },
   });
-  assert.equal(fetches, 2); assert.equal(toolCalls, 1); assert.deepEqual(result.privacyChecks, [receipt, receipt]);
+  assert.equal(fetches, 2); assert.equal(result.tools.length, 1); assert.equal(result.tools[0].name, "resolve_contact_identity");
+  assert.deepEqual(result.privacyChecks, [receipt, receipt]);
+  assert.deepEqual(mutations, []);
+  assert.equal(admin.reads.includes("respond_identity_links"), true);
   assert.equal(result.tools[0].ok, true); assert.equal(result.conversationAction.requires_human, true);
   assert.equal(result.conversationAction.auto_send_eligible, false);
   assert.equal(JSON.stringify(result).includes(contact), false); assert.doesNotMatch(JSON.stringify(result), /ref_[a-z]+_\d+/);
