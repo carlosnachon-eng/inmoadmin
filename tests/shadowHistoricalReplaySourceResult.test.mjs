@@ -296,7 +296,10 @@ test("actual replay JSX renders true/false/legacy distinctly and prepare forward
       { id: "two", status: "completed", requires_human: true, auto_send_eligible: false, blocked_reason: "financial_sensitive", conversation_action: "human_handoff", review: { rating: "correct", human_auto_send_eligible: true }, privacy_checks: [{ privacy_stage: "final_model_privacy", privacy_failure_code: "serialized_body_rejected", provider_invoked: false }] },
       { id: "legacy", status: "completed", review: { rating: "correct", human_auto_send_eligible: true } },
       { id: "http-error", status: "error", input_tokens: null, output_tokens: null, estimated_cost_usd: null, provider_model_status: "unaccredited", provider_http: { provider_http_status: 400, provider_error_type: "invalid_request_error", provider_error_code: "invalid_json_schema", provider_error_param: "output_config.format.schema", provider_error_message_safe: "invalid_json_schema", provider_request_ref: "a".repeat(64) }, result_safe: { outputDiagnostics: { outputStage: "provider_http" } } },
-      { id: "output-error", status: "error", result_safe: { outputDiagnostics: { outputStage: "output_privacy_validation", outputPrivacy: { reason: "model_alias_in_free_text", location: "summary", value: "ref_private_1", path: "ana@example.com" }, body: "sk-ant-private" } } },
+      { id: "output-error", status: "error", result_safe: { outputDiagnostics: { outputStage: "output_privacy_validation", outputPrivacy: { reason: "model_alias_in_free_text", location: "summary", value: "ref_private_1", path: "ana@example.com", tool: "find_active_contracts", argument_key: "contractId", expected_reference_type: "contract" }, body: "sk-ant-private" } } },
+      { id: "tool-error", status: "error", result_safe: { outputDiagnostics: { outputStage: "output_reference_decode", outputPrivacy: { reason: "unissued_or_raw_model_reference", location: "tool_argument", tool: "find_active_contracts", argument_key: "contractId", expected_reference_type: "contract", value: "ref_private_1", alias: "ref_private_1", actual_type: "private_type", path: "ana@example.com" } } } },
+      { id: "unknown-tool", status: "error", result_safe: { outputDiagnostics: { outputStage: "output_reference_decode", outputPrivacy: { reason: "unissued_or_raw_model_reference", location: "tool_argument", tool: "ana@example.com", argument_key: "ref_private_1", expected_reference_type: "sk-ant-private" } } } },
+      { id: "legacy-tool", status: "error", result_safe: { outputDiagnostics: { outputStage: "output_reference_decode", outputPrivacy: { reason: "unissued_or_raw_model_reference", location: "tool_argument" } } } },
       { id: "tampered-output", status: "error", result_safe: { outputDiagnostics: { outputStage: "output_reference_decode", outputPrivacy: { reason: "ana@example.com", location: "ref_private_1" } } } },
       { id: "legacy-output", status: "error", result_safe: { outputDiagnostics: { outputStage: "final_model_privacy", diagnosticCode: "pre_model_sanitization_blocked" } } },
     ] }, operateHistoricalReplay: (...args) => calls.push(args) };
@@ -318,7 +321,9 @@ test("actual replay JSX renders true/false/legacy distinctly and prepare forward
   assert.match(html, /Etapa de salida: output_privacy_validation · razón: model_alias_in_free_text · ubicación: summary/);
   assert.match(html, /Etapa de salida: output_reference_decode · razón: no registrada · ubicación: no registrada/);
   assert.match(html, /Sin diagnóstico específico de salida registrado; no se infiere la causa/);
-  assert.doesNotMatch(html, /ref_private_1|ana@example.com|sk-ant-private/);
+  assert.match(html, /tool: find_active_contracts.*argumento: contractId.*tipo esperado: contract/);
+  for (const label of ["tool: ", "argumento: ", "tipo esperado: "]) assert.equal(html.split(label).length - 1, 1);
+  assert.doesNotMatch(html, /ref_private_1|ana@example.com|sk-ant-private|private_type/);
 });
 
 const privacyPass = { final_payload_verified: true, serialized_body_verified: true, output_mode: "anthropic_json_schema", privacy_stage: "final_model_privacy", provider_invoked: true };
@@ -337,7 +342,7 @@ function syntheticTransport(fetchImpl) {
 }
 const syntheticModelResponse = (value = decision) => ({ ok: true, json: async () => ({ id: "synthetic-provider", content: [{ type: "text", text: JSON.stringify(value) }], usage: { input_tokens: 5, output_tokens: 2 } }) });
 
-for (const variant of ["free_text", "wrong_position", "type_mismatch", "raw_id"]) {
+for (const variant of ["free_text", "wrong_position", "type_mismatch", "unissued_argument", "raw_id"]) {
   test(`reduced native synthetic response → output failure ${variant} → safe persistence/GET, no tools or 3B`, async () => {
     const db = database(tableSeed()); let fetches = 0, tools = 0;
     const row = { id: "output-case", status: "pending", turn_snapshot: { envelope: {
@@ -347,7 +352,10 @@ for (const variant of ["free_text", "wrong_position", "type_mismatch", "raw_id"]
     const expected = {
       free_text: { outputStage: "output_privacy_validation", outputPrivacy: { reason: "model_alias_in_free_text", location: "summary" } },
       wrong_position: { outputStage: "output_reference_decode", outputPrivacy: { reason: "model_reference_wrong_position", location: "tool_argument" } },
-      type_mismatch: { outputStage: "output_reference_decode", outputPrivacy: { reason: "model_reference_type_mismatch", location: "tool_argument" } },
+      type_mismatch: { outputStage: "output_reference_decode", outputPrivacy: { reason: "model_reference_type_mismatch", location: "tool_argument",
+        tool: "resolve_contact_identity", argument_key: "respondContactId", expected_reference_type: "respond_contact" } },
+      unissued_argument: { outputStage: "output_reference_decode", outputPrivacy: { reason: "unissued_or_raw_model_reference", location: "tool_argument",
+        tool: "find_active_contracts", argument_key: "contractId", expected_reference_type: "contract" } },
       // Existing verifier selects the first sorted reason; this UUID also has
       // a 12-digit suffix, so digest/token precedes UUID/internal-reference.
       raw_id: { outputStage: "output_privacy_validation", outputPrivacy: { reason: "residual_digest_or_token", location: "summary" } },
@@ -361,6 +369,7 @@ for (const variant of ["free_text", "wrong_position", "type_mismatch", "raw_id"]
         if (variant === "raw_id") d.summary = syntheticId;
         if (variant === "wrong_position") d.proposedToolCalls = [{ tool: "get_service_period_status", arguments: [{ key: "serviceType", value: alias }], reason: "Consultar estado" }];
         if (variant === "type_mismatch") d.proposedToolCalls = [{ tool: "resolve_contact_identity", arguments: [{ key: "respondContactId", value: alias }], reason: "Consultar estado" }];
+        if (variant === "unissued_argument") d.proposedToolCalls = [{ tool: "find_active_contracts", arguments: [{ key: "contractId", value: "" }], reason: "Consultar estado" }];
         return { ok: true, json: async () => ({ model: "claude-haiku-4-5-20251001", content: [{ type: "text", text: JSON.stringify(d) }], usage: { input_tokens: 5, output_tokens: 2 } }) };
       }, executeTool: async () => { tools++; assert.fail("output rejection must precede proposed tools"); },
     }) });
@@ -396,6 +405,34 @@ test("GET reprojects stored output diagnostics; legacy output failures never acq
   row.result_safe.outputDiagnostics = { outputStage: "final_model_privacy", diagnosticCode: "pre_model_sanitization_blocked", outputPrivacy: { reason: "model_alias_in_free_text", location: "summary" } };
   listed = (await api({}, "GET")).body.cases[0];
   assert.equal(listed.result_safe.outputDiagnostics.outputPrivacy, undefined);
+  assert.equal(db.writes.length, 0);
+});
+
+test("GET reprojects tool/key/type from stored errors, omits unknowns and preserves legacy evidence", async () => {
+  const db = database(tableSeed()), api = endpoint(db);
+  const secret = `${syntheticId} ref_private_1 ana@example.com sk-ant-private`;
+  const detail = { reason: "unissued_or_raw_model_reference", location: "tool_argument",
+    tool: "find_active_contracts", argument_key: "contractId", expected_reference_type: "contract" };
+  const row = { id: "tool-error", status: "error", result_safe: { outputDiagnostics: {
+    outputStage: "output_reference_decode", outputPrivacy: { ...detail, value: secret, alias: secret, actual_type: "property", path: secret },
+  } } };
+  db.tables.shadow_historical_replay_cases.push(row);
+  let listed = (await api({}, "GET")).body.cases[0];
+  assert.deepEqual(listed.result_safe.outputDiagnostics.outputPrivacy, detail);
+  const legacy = { reason: detail.reason, location: detail.location };
+  for (const change of [{ tool: secret }, { argument_key: "paymentId" }, { argument_key: secret }]) {
+    row.result_safe.outputDiagnostics.outputPrivacy = { ...detail, ...change };
+    listed = (await api({}, "GET")).body.cases[0];
+    assert.deepEqual(listed.result_safe.outputDiagnostics.outputPrivacy, legacy);
+  }
+  row.result_safe.outputDiagnostics.outputPrivacy = { ...detail, expected_reference_type: secret };
+  listed = (await api({}, "GET")).body.cases[0];
+  assert.deepEqual(listed.result_safe.outputDiagnostics.outputPrivacy, { ...legacy, tool: detail.tool, argument_key: detail.argument_key });
+  row.result_safe.outputDiagnostics.outputPrivacy = legacy;
+  const original = JSON.stringify(row);
+  listed = (await api({}, "GET")).body.cases[0];
+  assert.deepEqual(listed.result_safe.outputDiagnostics.outputPrivacy, legacy);
+  assert.equal(JSON.stringify(row), original);
   assert.equal(db.writes.length, 0);
 });
 

@@ -7,8 +7,10 @@ import {
 import {
   createModelPrivacyScope, bindVerifiedModelMessages, bindModelResult,
   decodeModelDecisionReferences, verifyFinalModelPayload, FinalModelPrivacyError,
+  modelReferenceType,
 } from "../lib/shadow/ai/finalModelPrivacy.js";
 import { decodeReducedShadowAiDecision } from "../lib/shadow/ai/reducedOutputSchema.js";
+import { READ_ONLY_SHADOW_TOOLS, SHADOW_TOOL_ARGUMENT_SCHEMAS } from "../lib/shadow/context.js";
 
 const rawId = "a1100000-0000-4000-8000-000000000001";
 const sensitive = `${rawId} persona@example.com ref_private_1 sk-ant-syntheticSecret123456 +52 222 123 4567`;
@@ -85,7 +87,13 @@ test("reference decode identifies argument, entity and both evidence positions w
     ["factual_claim_evidence", { factualClaims: [{ evidenceIds: [context.alias] }] }],
     ["verified_fact_reference", { conversationalResponseParts: { verifiedFactReferences: [context.alias] } }],
   ];
-  for (const [location, d] of cases) failure(d, context, safe("model_reference_type_mismatch", location, "output_reference_decode"));
+  for (const [location, d] of cases) {
+    const expected = safe("model_reference_type_mismatch", location, "output_reference_decode");
+    if (location === "tool_argument") Object.assign(expected.outputPrivacy, {
+      tool: "resolve_contact_identity", argument_key: "respondContactId", expected_reference_type: "respond_contact",
+    });
+    failure(d, context, expected);
+  }
 });
 
 test("wrong position and missing/non-issued references retain the original guards", () => {
@@ -137,4 +145,88 @@ test("legacy generic errors and transport PASS never imply an output reason", ()
   assert.deepEqual(reprojectOutputPrivacyDiagnostics({ ...legacy, outputPrivacy: safe("residual_uuid", "summary").outputPrivacy, path: sensitive }), legacy);
   assert.equal(sanitizedOutputPrivacyDiagnostics(legacy), null);
   assert.equal(sanitizedOutputPrivacyDiagnostics({ final_payload_verified: true, serialized_body_verified: true, provider_invoked: true }), null);
+});
+
+const toolDiagnostic = (reason = "unissued_or_raw_model_reference") => ({
+  outputStage: "output_reference_decode", outputPrivacy: { reason, location: "tool_argument",
+    tool: "find_active_contracts", argument_key: "contractId", expected_reference_type: "contract" },
+});
+
+for (const value of ["", null]) test(`unissued ${value === null ? "null" : "empty"} argument retains error and adds structural tool diagnostic`, () => {
+  const context = bound();
+  const error = failure({ proposedToolCalls: [{ tool: "find_active_contracts", arguments: { contractId: value } }] }, context, toolDiagnostic());
+  assert.deepEqual(error.reasons, ["unissued_or_raw_model_reference"]);
+  assert.equal(error.message, "pre_model_sanitization_blocked");
+  assert.doesNotMatch(JSON.stringify([error, projectOutputPrivacyFailure(error)]), /"value"|"alias"|"actual_type"|"internal_type"|ref_|a1100000/);
+});
+
+for (const tool of READ_ONLY_SHADOW_TOOLS) {
+  for (const key of Object.keys(SHADOW_TOOL_ARGUMENT_SCHEMAS[tool].properties)) {
+    const type = modelReferenceType(key, {}, tool);
+    if (!type || type.startsWith("source:")) continue;
+    test(`safe expected type from modelReferenceType only: ${tool}.${key}`, () => {
+      const context = bound(), wrongAlias = context.scope.reference("synthetic-wrong-evidence", "evidence");
+      const expected = { outputStage: "output_reference_decode", outputPrivacy: {
+        reason: "model_reference_type_mismatch", location: "tool_argument", tool, argument_key: key, expected_reference_type: type,
+      } };
+      const error = failure({ proposedToolCalls: [{ tool, arguments: { [key]: wrongAlias } }] }, context, expected);
+      assert.deepEqual(error.reasons, ["model_reference_type_mismatch"]);
+      assert.doesNotMatch(JSON.stringify([error, projectOutputPrivacyFailure(error)]), /ref_|synthetic-wrong|"actual_type"|"internal_type"|"value"/);
+      assert.deepEqual(reprojectOutputPrivacyDiagnostics(expected).outputPrivacy, expected.outputPrivacy);
+    });
+  }
+}
+
+test("direct UUID and invented/cross-round alias still reject at the earlier verifier, without invented decode metadata", () => {
+  for (const value of [rawId, "ref_invented_1", bound().alias]) {
+    const context = bound(), d = { proposedToolCalls: [{ tool: "find_active_contracts", arguments: { contractId: value } }] };
+    const check = verifyFinalModelPayload(d, { scope: context.scope });
+    assert.equal(check.allowed, false);
+    failure(d, context, safe(check.reasons[0], "tool_argument"));
+  }
+});
+
+test("dynamic source expected type is omitted rather than echoing model-supplied sourceType", () => {
+  const context = bound();
+  const d = { proposedToolCalls: [{ tool: "find_administrative_work_by_context", arguments: { sourceId: "", sourceType: "syntheticSourceText" } }] };
+  const expected = { outputStage: "output_reference_decode", outputPrivacy: { reason: "unissued_or_raw_model_reference", location: "tool_argument",
+    tool: "find_administrative_work_by_context", argument_key: "sourceId" } };
+  const error = failure(d, context, expected);
+  assert.doesNotMatch(JSON.stringify([error, projectOutputPrivacyFailure(error)]), /syntheticSourceText|source:/);
+});
+
+test("tool diagnostics project only known tool/key pair and fixed expected type; never values or actual type", () => {
+  const expected = toolDiagnostic();
+  const contaminated = { ...expected, outputPrivacy: { ...expected.outputPrivacy, value: sensitive, alias: sensitive,
+    actual_type: "evidence", internal_type: "property", references: { secret: sensitive }, path: sensitive } };
+  assert.deepEqual(sanitizedOutputPrivacyDiagnostics(contaminated), expected);
+  for (const tool of ["unknown_tool", sensitive, "constructor", "toString"]) {
+    assert.deepEqual(sanitizedOutputPrivacyDiagnostics({ ...expected, outputPrivacy: { ...contaminated.outputPrivacy, tool } }),
+      safe(expected.outputPrivacy.reason, "tool_argument", "output_reference_decode"));
+  }
+  for (const argument_key of ["unknown_key", "paymentId", sensitive, "constructor", "__proto__"]) {
+    assert.deepEqual(sanitizedOutputPrivacyDiagnostics({ ...expected, outputPrivacy: { ...contaminated.outputPrivacy, argument_key } }),
+      safe(expected.outputPrivacy.reason, "tool_argument", "output_reference_decode"));
+  }
+  for (const expected_reference_type of [sensitive, "source:private", "unknown_type", undefined]) {
+    const { expected_reference_type: ignored, ...detail } = expected.outputPrivacy;
+    assert.deepEqual(sanitizedOutputPrivacyDiagnostics({ ...expected, outputPrivacy: { ...contaminated.outputPrivacy, expected_reference_type } }),
+      { outputStage: expected.outputStage, outputPrivacy: detail });
+  }
+});
+
+test("legacy tool failures and other locations/stages never acquire tool metadata", () => {
+  const extra = toolDiagnostic().outputPrivacy;
+  for (const location of OUTPUT_PRIVACY_LOCATIONS) {
+    if (location === "tool_argument") continue;
+    const old = safe(extra.reason, location, "output_reference_decode");
+    assert.deepEqual(sanitizedOutputPrivacyDiagnostics({ ...old, outputPrivacy: { ...extra, location } }), old);
+  }
+  const old = safe(extra.reason, "tool_argument", "output_reference_decode");
+  assert.deepEqual(sanitizedOutputPrivacyDiagnostics(old), old);
+  assert.deepEqual(reprojectOutputPrivacyDiagnostics(old), { ...old, diagnosticCode: "pre_model_sanitization_blocked", truncatedFields: [] });
+  assert.deepEqual(sanitizedOutputPrivacyDiagnostics({ ...toolDiagnostic(), outputStage: "output_privacy_validation" }),
+    safe(extra.reason, "tool_argument"));
+  assert.deepEqual(sanitizedOutputPrivacyDiagnostics({ ...toolDiagnostic(), outputPrivacy: { ...extra, reason: "model_reference_wrong_position" } }),
+    safe("model_reference_wrong_position", "tool_argument", "output_reference_decode"));
 });
