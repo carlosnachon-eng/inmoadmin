@@ -7,7 +7,8 @@
 - Un único archivo funcional: `lib/shadow/ai/preModelSanitizer.js`.
 - Sin cambios en aliases, decoder, schema reducido/general, prompts, contrato de
   tools, 3A/3B, grounding, políticas financieras, SQL ni gates.
-- Sin publicación, proveedor real, Replay productivo, intento 4 ni caso bancario.
+- Certificación inicial sin publicación; seguimiento P1 en el mismo PR #153.
+- Sin proveedor real, Replay productivo, intento 4 ni caso bancario.
 
 El diagnóstico productivo cerrado identifica `output_privacy_validation /
 residual_labeled_identifier / proposed_action`, pero no conserva el valor
@@ -55,7 +56,7 @@ Ahora, ambas comparten exactamente el sufijo detector:
 
 ```js
 const LABELED_IDENTIFIER_VALUE = String.raw`(?:\s*(?:n[uú]m(?:ero)?\b\.?|no\.|#|:)\s*(?:[:#]\s*)?[A-Z0-9][A-Z0-9._/-]{3,}|\s*(?:no\b\s*)?(?=[A-Z0-9._/-]*\d)[A-Z0-9][A-Z0-9._/-]{3,})\b`;
-const labeledIdentifier = (labels, flags) => new RegExp(String.raw`\b(?:${labels})${LABELED_IDENTIFIER_VALUE}`, flags);
+const labeledIdentifier = (labels, flags) => new RegExp(String.raw`\b(${labels})${LABELED_IDENTIFIER_VALUE}`, flags);
 ```
 
 Cada regla mantiene sus etiquetas y flags anteriores. La primera alternativa
@@ -66,7 +67,8 @@ no disponible`. Se conserva el mínimo previo de cuatro caracteres por token y
 la protección de IDs pegados a la etiqueta (`folio928374`).
 
 No se tocan las otras reglas de cuenta, CLABE, tarjeta, teléfono, UUID, secrets,
-nombres o domicilios, ni las sustituciones de texto ya existentes. Los datos que
+nombres o domicilios. El seguimiento P1 sólo corrige la sustitución `folio`
+para preservar su etiqueta (detalle abajo). Los datos que
 no se redactan siguen fallando cerrados en el verificador residual. La frontera
 final reutiliza `verifyPreModelPayload` sin alterar su decoder ni sus diagnósticos.
 
@@ -88,7 +90,7 @@ final reutiliza `verifyPreModelPayload` sin alterar su decoder ni sus diagnósti
 - La suite existente cubre aliases tipados, rondas, tools, privacidad, contrato
   reducido/general y decisiones 3A/3B; todos PASS.
 
-## Certificación local
+## Certificación local inicial (antes del seguimiento P1)
 
 | Comprobación | Resultado |
 |---|---|
@@ -123,3 +125,58 @@ git diff --check
 
 No validación productiva ni promesa de que una futura respuesta del proveedor
 pase todas las demás guardas. No se creó un nuevo intento para comprobarlo.
+
+## Seguimiento P1 del PR #153: captura de etiqueta
+
+Base del seguimiento: `014e840e235e677ea1ddc0cb24ac025b19dab43c`.
+Reproducción local con textos sintéticos: los tres ejemplos requeridos devolvían
+`[MONTO] [FOLIO]`, en lugar de conservar la etiqueta. Había dos condiciones:
+
+1. `labeledIdentifier()` no tenía grupo capturante para la etiqueta.
+2. El bucle de sanitización devuelve los replacements mediante un callback;
+   por ello una cadena `$1 [FOLIO]` no interpola capturas, incluso con un grupo
+   capturante. La regla posterior `amount` convertía ese `$1` literal a `[MONTO]`.
+
+Cambio funcional mínimo, dos líneas:
+
+```js
+const labeledIdentifier = (labels, flags) => new RegExp(String.raw`\b(${labels})${LABELED_IDENTIFIER_VALUE}`, flags);
+// Replacement de la regla folio:
+(_match, label) => `${label} [FOLIO]`
+```
+
+No se cambia el sufijo `LABELED_IDENTIFIER_VALUE`, etiquetas, flags, límites ni
+el bucle genérico de sustitución. El grupo capturante conserva exactamente la
+misma coincidencia para `.test()` en verificación residual. El callback mantiene
+mayúsculas/acentos de la etiqueta sin interpolación literal ni redacción de monto
+espuria. No hay cambios en aliases, decoder, Replay, schemas, tools, 3A/3B ni gates.
+
+| Entrada sintética | Salida exacta |
+|---|---|
+| `referencia AB1234` | `referencia [FOLIO]` |
+| `folio 928374` | `folio [FOLIO]` |
+| `operación #A12993` | `operación [FOLIO]` |
+
+Nueve regresiones nuevas exigen salida exacta y `{ folio: 1 }`, sin `$1` ni
+redacción `amount`. Cubren también las demás etiquetas, mayúsculas y separadores.
+La prueba de múltiples coincidencias ahora exige la frase completa exacta.
+Antes de corregir: **35 PASS / 10 FAIL**; después: **45/45 PASS**.
+Se mantienen las ocho frases normales intactas y los 25 verdaderos positivos
+bloqueados en verificación residual/salida, incluidos cuenta, CLABE y tarjeta.
+
+### Certificación del seguimiento P1
+
+| Comprobación | Resultado |
+|---|---|
+| Regresiones específicas | 45/45 PASS |
+| Dirigidas amplias | 682/682 PASS |
+| Suite completa | 1,447/1,447 PASS |
+| Build | PASS, 76/76 páginas estáticas |
+| `git diff --check` | PASS |
+
+Mismos comandos y entorno aislado descritos arriba (`env -i`, Node v24.19.0,
+build con URL loopback y claves ficticias). Sin cambios de dependencias.
+Google Fonts no se descargó y Next omitió esa optimización, sin impedir el build.
+Pruebas de proveedor exclusivamente sintéticas; sin Anthropic, Replay productivo,
+caso bancario, intento 4, SQL, merge, deployment ni cambios de gates.
+La exclusión Preview ya existente de esta rama en `vercel.json` permanece intacta.

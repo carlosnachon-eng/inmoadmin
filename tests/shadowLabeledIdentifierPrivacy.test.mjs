@@ -56,6 +56,27 @@ function decision(proposedAction) {
     executionCommitment: "none", confidence: .8, requiresHuman: true, escalationReason: "Revisión", safetyFlags: [] };
 }
 
+for (const [text, expected] of [
+  ["referencia AB1234", "referencia [FOLIO]"],
+  ["folio 928374", "folio [FOLIO]"],
+  ["operación #A12993", "operación [FOLIO]"],
+  ["referencia: AB1234", "referencia [FOLIO]"],
+  ["autorización 873421", "autorización [FOLIO]"],
+  ["rastreo ZX.7788", "rastreo [FOLIO]"],
+  ["ticket #A12993", "ticket [FOLIO]"],
+  ["OPERACION #A12993", "OPERACION [FOLIO]"],
+  ["referencia no. ABCD", "referencia [FOLIO]"],
+]) {
+  test(`folio redaction preserves the captured label exactly: ${text}`, () => {
+    const result = sanitizePreModelInput({ text });
+    assert.equal(result.allowed, true);
+    assert.deepEqual(result.payload, { message: expected });
+    assert.deepEqual(result.replacements, { folio: 1 });
+    assert.ok(!result.payload.message.includes("$1"));
+    assert.deepEqual(verifyPreModelPayload(result.payload), { allowed: true, reasons: [] });
+  });
+}
+
 for (const text of normalPhrases) {
   test(`ordinary language stays intact at input and output: ${text}`, () => {
     const input = sanitizePreModelInput({ text });
@@ -77,6 +98,7 @@ for (const [text, value] of identifiers) {
     const sanitized = sanitizePreModelInput({ text });
     if (sanitized.allowed) {
       assert.ok(!sanitized.payload.message.includes(value));
+      assert.ok(!sanitized.payload.message.includes("$1"));
       assert.equal(verifyPreModelPayload(sanitized.payload).allowed, true);
     } else assert.equal(sanitized.payload, null);
     assert.throws(() => decodeReducedShadowAiDecision(decision(text), modelResult()), (error) => {
@@ -96,6 +118,8 @@ test("multiple matches and repeated calls do not leak global-regexp state or eat
     const result = sanitizePreModelInput({ text });
     assert.equal(result.allowed, true);
     assert.equal(result.replacements.folio, 2);
+    assert.equal(result.payload.message, "pedir referencia antes de continuar; folio [FOLIO]; operación [FOLIO]; solicitar referencia para identificar el caso");
+    assert.ok(!result.payload.message.includes("$1"));
     assert.ok(result.payload.message.startsWith("pedir referencia antes de continuar;"));
     assert.ok(result.payload.message.endsWith("solicitar referencia para identificar el caso"));
     assert.doesNotMatch(result.payload.message, /928374|A12993/);
