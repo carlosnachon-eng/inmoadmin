@@ -14,7 +14,8 @@
       "codex/historical-replay-reference-contract": false,
       "codex/shadow-labeled-identifier-precision": false,
       "codex/historical-replay-tool-reference-diagnostics": false,
-      "codex/shadow-respond-contact-reference": false
+      "codex/shadow-respond-contact-reference": false,
+      "codex/historical-replay-reduced-argument-diagnostics": false
     }
   },
   "crons": [

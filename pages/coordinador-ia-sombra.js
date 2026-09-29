@@ -7,6 +7,7 @@ import { EXACT_PHONE_VALIDATED_CANDIDATE_REFS } from "../lib/shadow/exactPhoneVa
 import CondominiumIdentityReview from "../components/CondominiumIdentityReview";
 import RunIdentityScope from "../components/RunIdentityScope";
 import { sanitizedOutputPrivacyDiagnostics } from "../lib/shadow/ai/outputPrivacyDiagnostics";
+import { sanitizedStructuredOutputDiagnostics } from "../lib/shadow/ai/structuredOutputDiagnostics";
 
 const ROLES = new Set(["admin", "coord_operaciones"]);
 const EVALUATIONS = [
@@ -486,6 +487,14 @@ export default function ShadowCoordinatorPage() {
                 {diagnostic.outputPrivacy?.expected_reference_type && <> · tipo esperado: {diagnostic.outputPrivacy.expected_reference_type}</>}
               </p>
               : <p>Sin diagnóstico específico de salida registrado; no se infiere la causa.</p>}</div>;
+          })()}
+          {(() => {
+            const diagnostic = sanitizedStructuredOutputDiagnostics(item.result_safe?.outputDiagnostics);
+            return diagnostic && <div aria-label="Diagnóstico sanitizado de salida estructurada">
+              <p>Etapa: {diagnostic.outputStage} · código: {diagnostic.diagnosticCode}
+                {diagnostic.structuredOutput && <> · tool: {diagnostic.structuredOutput.tool} · argumento: {diagnostic.structuredOutput.argument_key}</>}
+              </p>
+            </div>;
           })()}
           <div aria-label="Comprobantes de privacidad del transporte"><strong>Privacidad final:</strong>{!(item.privacy_checks||[]).length?<p>Sin comprobante registrado; no equivale a PASS.</p>:(item.privacy_checks||[]).map((check,index)=><p key={index}>
             Ronda {index+1} · {check.privacy_stage} · {check.privacy_failure_code?<>FAIL: {check.privacy_failure_code}</>:<>final_payload_verified: {String(check.final_payload_verified)} · serialized_body_verified: {String(check.serialized_body_verified)} · output_mode: {check.output_mode}</>} · provider_invoked: {String(check.provider_invoked)}

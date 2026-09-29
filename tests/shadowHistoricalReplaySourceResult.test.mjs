@@ -10,6 +10,7 @@ import { buildConversationAction } from "../lib/shadow/ai/conversationAction.js"
 import { createAnthropicShadowResponse } from "../lib/shadow/ai/anthropic.js";
 import { opaqueProviderRequestRef } from "../lib/shadow/ai/providerHttpDiagnostics.js";
 import { sanitizedOutputPrivacyDiagnostics } from "../lib/shadow/ai/outputPrivacyDiagnostics.js";
+import { sanitizedStructuredOutputDiagnostics } from "../lib/shadow/ai/structuredOutputDiagnostics.js";
 import { createModelPrivacyScope, bindVerifiedModelMessages, bindModelResult, decodeModelDecisionReferences } from "../lib/shadow/ai/finalModelPrivacy.js";
 
 const NOW = Date.parse("2026-09-22T18:00:00Z");
@@ -285,11 +286,11 @@ test("UI sends preview snapshot and exposes actual 3B booleans/blocker separatel
 test("actual replay JSX renders true/false/legacy distinctly and prepare forwards the preview fingerprint", () => {
   const require = createRequire(import.meta.url), ui = fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
   const heading = ui.indexOf("Evaluación histórica 3B"), start = ui.lastIndexOf("<details", heading), end = ui.indexOf("</details>", heading) + "</details>".length;
-  const names = ["card", "brand", "historicalReplay", "historicalReplayBusy", "historicalReplayPreview", "historicalReplayTurnKeys", "historicalReviewDrafts", "operateHistoricalReplay", "setHistoricalReplayTurnKeys", "setHistoricalReviewDrafts", "reviewHistoricalReplay", "REPLAY_RATINGS", "REPLAY_REASONS", "sanitizedOutputPrivacyDiagnostics"];
+  const names = ["card", "brand", "historicalReplay", "historicalReplayBusy", "historicalReplayPreview", "historicalReplayTurnKeys", "historicalReviewDrafts", "operateHistoricalReplay", "setHistoricalReplayTurnKeys", "setHistoricalReviewDrafts", "reviewHistoricalReplay", "REPLAY_RATINGS", "REPLAY_REASONS", "sanitizedOutputPrivacyDiagnostics", "sanitizedStructuredOutputDiagnostics"];
   const compiled = require("next/dist/build/swc").transformSync(`export default function Section({${names.join(",")}}) { return (${ui.slice(start, end)}); }`, { jsc: { parser: { syntax: "ecmascript", jsx: true }, transform: { react: { runtime: "automatic" } } }, module: { type: "commonjs" } }).code;
   const mod = { exports: {} }; new Function("require", "module", "exports", compiled)(require, mod, mod.exports);
   const snapshot = { asOf: new Date(NOW).toISOString(), fingerprint: "a".repeat(64) }; const calls = [];
-  const props = { sanitizedOutputPrivacyDiagnostics, card: {}, brand: {}, historicalReplayBusy: false, historicalReplayTurnKeys: ["turn1"], historicalReviewDrafts: {}, REPLAY_RATINGS: [], REPLAY_REASONS: [],
+  const props = { sanitizedOutputPrivacyDiagnostics, sanitizedStructuredOutputDiagnostics, card: {}, brand: {}, historicalReplayBusy: false, historicalReplayTurnKeys: ["turn1"], historicalReviewDrafts: {}, REPLAY_RATINGS: [], REPLAY_REASONS: [],
     historicalReplayPreview: { cases: [], selected: 1, sourceSnapshot: snapshot, sourceInfo: {} },
     historicalReplay: { metrics: { autoSendEligible: 1, eligibilityNotRecorded: 1 }, cases: [
       { id: "one", status: "completed", requires_human: false, auto_send_eligible: true, blocked_reason: null, conversation_action: "provide_verified_status", review: { rating: "correct", human_auto_send_eligible: false }, privacy_checks: [{ final_payload_verified: true, serialized_body_verified: true, output_mode: "anthropic_json_schema", privacy_stage: "final_model_privacy", provider_invoked: true }] },
@@ -342,6 +343,102 @@ function syntheticTransport(fetchImpl) {
 }
 const syntheticModelResponse = (value = decision) => ({ ok: true, json: async () => ({ id: "synthetic-provider", content: [{ type: "text", text: JSON.stringify(value) }], usage: { input_tokens: 5, output_tokens: 2 } }) });
 
+function renderStructuredReplayDiagnostic(diagnostic) {
+  const require = createRequire(import.meta.url), ui = fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
+  const heading = ui.indexOf("Evaluación histórica 3B"), start = ui.lastIndexOf("<details", heading), end = ui.indexOf("</details>", heading) + 10;
+  const names = ["card", "brand", "historicalReplay", "historicalReplayBusy", "historicalReplayPreview", "historicalReplayTurnKeys", "historicalReviewDrafts", "REPLAY_RATINGS", "REPLAY_REASONS", "sanitizedOutputPrivacyDiagnostics", "sanitizedStructuredOutputDiagnostics"];
+  const compiled = require("next/dist/build/swc").transformSync(`export default function Section({${names.join(",")}}) { return (${ui.slice(start, end)}); }`, { jsc: { parser: { syntax: "ecmascript", jsx: true }, transform: { react: { runtime: "automatic" } } }, module: { type: "commonjs" } }).code;
+  const mod = { exports: {} }; new Function("require", "module", "exports", compiled)(require, mod, mod.exports);
+  const tree = mod.exports.default({ card: {}, brand: {}, historicalReplayBusy: false, historicalReplayPreview: null, historicalReplayTurnKeys: [], historicalReviewDrafts: {},
+    REPLAY_RATINGS: [], REPLAY_REASONS: [], sanitizedOutputPrivacyDiagnostics, sanitizedStructuredOutputDiagnostics,
+    historicalReplay: { cases: [{ id: "synthetic", status: "error", result_safe: { outputDiagnostics: diagnostic } }] } });
+  return require("react-dom/server").renderToStaticMarkup(tree);
+}
+
+for (const failedRound of [1, 2]) for (const knownKey of [false, true]) {
+  test(`reduced wrong-tool key round ${failedRound}, ${knownKey ? "known" : "unknown"}: native boundary → telemetry → result_safe → POST/GET/UI`, async () => {
+    const db = database(tableSeed()); let fetches = 0, tools = 0, failure;
+    const sensitive = "ref_abcdefghijklmnopqrstuvwxyzabcdef_1 11000000-0000-4000-8000-000000000001 ana@example.com +52 222 123 4567 032180000118359719 sk-ant-synthetic-private";
+    const row = { id: "structured-case", status: "pending", turn_snapshot: { envelope: {
+      provider: "respond_admin", sanitizedText: "¿Cómo va el mantenimiento?", providerMetadata: { propertyId: syntheticId },
+    } } };
+    db.tables.shadow_historical_replay_cases.push(row);
+    const snapshot = JSON.stringify(row.turn_snapshot);
+    const api = endpoint(db, { executeCase: async (admin, replayCase, options) => {
+      let clock = NOW;
+      try { return await executeHistoricalReplayCase(admin, replayCase, { ...options, now: () => ++clock,
+        fetchImpl: async (_url, { body }) => {
+          fetches++; const parsed = JSON.parse(body), context = JSON.parse(parsed.messages[0].content);
+          assert.equal(parsed.output_config.format.schema.properties.proposedToolCalls.items.properties.arguments.type, "array");
+          const d = structuredClone(decision);
+          d.proposedToolCalls = fetches === failedRound
+            ? [{ tool: "resolve_contact_identity", arguments: [{ key: knownKey ? "propertyId" : sensitive, value: sensitive }], reason: "Consultar contexto" }]
+            : [{ tool: "get_maintenance_ticket_summary", arguments: [{ key: "propertyId", value: context.metadata.propertyId }], reason: "Consultar estado" }];
+          return { ok: true, json: async () => ({ id: "synthetic-provider", model: "claude-haiku-4-5-20251001",
+            content: [{ type: "text", text: JSON.stringify(d) }], usage: { input_tokens: 5, output_tokens: 2 } }) };
+        }, executeTool: async (_admin, tool, args) => {
+          tools++; assert.equal(tool, "get_maintenance_ticket_summary"); assert.deepEqual(args, { propertyId: syntheticId }); return [];
+        },
+      }); } catch (error) { failure = error; throw error; }
+    } });
+    const response = await api({ action: "execute_one", caseId: row.id });
+    assert.equal(response.statusCode, 422);
+    const expected = { outputStage: "structured_validation", diagnosticCode: "reduced_arguments_key_not_allowed_for_tool",
+      ...(knownKey ? { structuredOutput: { tool: "resolve_contact_identity", argument_key: "propertyId" } } : {}) };
+    assert.equal(failure.message, "invalid_structured_output:reduced_arguments_key_not_allowed_for_tool");
+    assert.equal(row.error_code, "invalid_structured_output_reduced_arguments_key_not_allowed_for_tool");
+    assert.equal(row.status, "error");
+    assert.equal(fetches, failedRound); assert.equal(tools, failedRound - 1); // no tool from the rejected round, no retry
+    assert.equal(row.operational_resolution, undefined); assert.equal(row.conversation_action, undefined);
+    assert.equal(JSON.stringify(row.turn_snapshot), snapshot);
+    assert.equal(row.input_tokens, failedRound * 5); assert.equal(row.output_tokens, failedRound * 2);
+    assert.deepEqual(row.result_safe.providerModels, ["claude-haiku-4-5-20251001"]);
+    assert.deepEqual(row.result_safe.privacy_checks, Array.from({ length: failedRound }, () => privacyPass));
+    const listed = (await api({}, "GET")).body.cases[0];
+    for (const diagnostics of [response.body.outputDiagnostics, row.result_safe.outputDiagnostics, listed.result_safe.outputDiagnostics,
+      sanitizedStructuredOutputDiagnostics(failure.historicalReplayTelemetry)]) assert.deepEqual(diagnostics, expected);
+    const html = renderStructuredReplayDiagnostic(listed.result_safe.outputDiagnostics);
+    assert.match(html, /structured_validation.*reduced_arguments_key_not_allowed_for_tool/);
+    if (knownKey) assert.match(html, /tool: resolve_contact_identity.*argumento: propertyId/);
+    else assert.doesNotMatch(html, /tool: |argumento: /);
+    for (const data of [failure, failure.historicalReplayTelemetry, response.body, db.writes, listed.result_safe, html]) {
+      assert.doesNotMatch(JSON.stringify(data), /ref_abcdefghijklmnopqrstuvwxyz|11000000|ana@example|222 123|032180|sk-ant/);
+    }
+    assert.ok(db.writes.every(w => w.table === "shadow_historical_replay_cases"));
+  });
+}
+
+test("GET and actual JSX independently discard contaminated/unknown structured diagnostics; legacy rows never gain detail", async () => {
+  const db = database(tableSeed()), api = endpoint(db);
+  const base = { outputStage: "structured_validation", diagnosticCode: "reduced_arguments_key_not_allowed_for_tool" };
+  const detail = { tool: "resolve_contact_identity", argument_key: "propertyId" };
+  const sensitive = "ref_private_1 ana@example.com sk-ant-private";
+  const row = { id: "structured-stored", status: "error", result_safe: {} }; db.tables.shadow_historical_replay_cases.push(row);
+  const cases = [
+    [{ ...base, body: sensitive, structuredOutput: { ...detail, value: sensitive, alias: sensitive, path: sensitive } }, { ...base, structuredOutput: detail }],
+    [{ ...base, structuredOutput: { tool: sensitive, argument_key: "propertyId" } }, base],
+    [{ ...base, structuredOutput: { tool: "resolve_contact_identity", argument_key: sensitive } }, base],
+    [{ ...base, structuredOutput: { tool: "resolve_contact_identity", argument_key: "respondContactId" } }, base],
+    [base, base],
+    [{ outputStage: "structured_validation", diagnosticCode: "reduced_arguments_shape", structuredOutput: detail }, { outputStage: "structured_validation", diagnosticCode: "reduced_arguments_shape" }],
+  ];
+  for (const [input, expected] of cases) {
+    row.result_safe.outputDiagnostics = input;
+    const original = JSON.stringify(row);
+    const listed = (await api({}, "GET")).body.cases[0];
+    assert.deepEqual(listed.result_safe.outputDiagnostics, expected);
+    assert.equal(JSON.stringify(row), original);
+    // Render the contaminated input as well: UI cannot rely on GET alone.
+    for (const diagnostic of [input, listed.result_safe.outputDiagnostics]) {
+      const html = renderStructuredReplayDiagnostic(diagnostic);
+      assert.doesNotMatch(html, /ref_private_1|ana@example|sk-ant|body:|value:/);
+      if (expected.structuredOutput) assert.match(html, /tool: resolve_contact_identity.*argumento: propertyId/);
+      else assert.doesNotMatch(html, /tool: |argumento: /);
+    }
+  }
+  assert.equal(db.writes.length, 0);
+});
+
 for (const rawReference of [false, true]) {
   test(`Respond alias → reduced native endpoint → ${rawReference ? "safe rejection" : "server-side tool"} → persistence/GET/UI without raw contact`, async () => {
     const contact = "73592186", db = database(tableSeed()); let fetches = 0, tools = 0;
@@ -379,11 +476,11 @@ for (const rawReference of [false, true]) {
     }
     const require = createRequire(import.meta.url), ui = fs.readFileSync(new URL("../pages/coordinador-ia-sombra.js", import.meta.url), "utf8");
     const heading = ui.indexOf("Evaluación histórica 3B"), start = ui.lastIndexOf("<details", heading), end = ui.indexOf("</details>", heading) + "</details>".length;
-    const names = ["card", "brand", "historicalReplay", "historicalReplayBusy", "historicalReplayPreview", "historicalReplayTurnKeys", "historicalReviewDrafts", "REPLAY_RATINGS", "REPLAY_REASONS", "sanitizedOutputPrivacyDiagnostics"];
+    const names = ["card", "brand", "historicalReplay", "historicalReplayBusy", "historicalReplayPreview", "historicalReplayTurnKeys", "historicalReviewDrafts", "REPLAY_RATINGS", "REPLAY_REASONS", "sanitizedOutputPrivacyDiagnostics", "sanitizedStructuredOutputDiagnostics"];
     const compiled = require("next/dist/build/swc").transformSync(`export default function Section({${names.join(",")}}) { return (${ui.slice(start, end)}); }`, { jsc: { parser: { syntax: "ecmascript", jsx: true }, transform: { react: { runtime: "automatic" } } }, module: { type: "commonjs" } }).code;
     const mod = { exports: {} }; new Function("require", "module", "exports", compiled)(require, mod, mod.exports);
     const tree = mod.exports.default({ card: {}, brand: {}, historicalReplay: listed, historicalReplayBusy: false,
-      historicalReplayPreview: null, historicalReplayTurnKeys: [], historicalReviewDrafts: {}, REPLAY_RATINGS: [], REPLAY_REASONS: [], sanitizedOutputPrivacyDiagnostics });
+      historicalReplayPreview: null, historicalReplayTurnKeys: [], historicalReviewDrafts: {}, REPLAY_RATINGS: [], REPLAY_REASONS: [], sanitizedOutputPrivacyDiagnostics, sanitizedStructuredOutputDiagnostics });
     const html = require("react-dom/server").renderToStaticMarkup(tree);
     assert.equal(html.includes(contact), false); assert.doesNotMatch(html, /ref_[a-z]+_\d+/);
     assert.match(html, /final_payload_verified: true/);
