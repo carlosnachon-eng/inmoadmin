@@ -1,8 +1,11 @@
 # Manual Real Shadow · certificación DEV de un turno
 
 Base: `2da8cc3c21f07718c969350f2f1058b5bb16853c`.
-Rama: `codex/manual-real-shadow-one-turn`. No publicación, merge ni Producción.
+Rama: `codex/manual-real-shadow-one-turn`. PR #157 abierto para revisión; sin merge ni Producción.
 Destino exclusivo: `inmoadmin-dev / hjfwjnejbcpmknvfpdcq`.
+Estado final: **`MANUAL_REAL_SHADOW_DEV_PASS`** sobre el HEAD funcional
+`9f6a9c528a7ca008e499768cd7a0e891bfb4fb9c`. La recertificación del timeout está
+cerrada; los intentos bloqueados que aparecen abajo son únicamente históricos.
 
 ## Flujo y aislamiento
 
@@ -58,9 +61,13 @@ Todos deben estar presentes con valor literal `false`:
 ## Persistencia y permisos
 
 Migración aditiva aplicada **sólo en DEV**:
-`202609280001_manual_shadow_one_turn_dev.sql`.
+`supabase/dev/migrations/202609280001_manual_shadow_one_turn_dev.sql`.
 SHA-256: `b4a8450edb94d0cc7fb403414fb73a0ab326149572cb4423366a2634ec8a8a95`.
 Archivo idéntico al SQL aplicado; no reejecutado ni editado tras instalación.
+El artefacto se trasladó byte-for-byte fuera de `supabase/migrations`, al carril
+DEV-only ya existente. No es una migración productiva pendiente. Una futura
+migración productiva deberá ser un artefacto separado, revisado y autorizado
+específicamente; este traslado no autoriza su aplicación en ningún entorno.
 
 Reutiliza `shadow_ai_manual_authorizations`: 3 columnas, constraint y unique
 parcial por turno. Añade vista de lookup de referencia y dos RPC service-only
@@ -118,7 +125,7 @@ Un resultado incierto de persistencia no restaura la autorización consumida.
   actores eliminados mediante Admin API y perfiles propios en cero. No se
   reconstruyó ni vació el entorno.
 
-### Pendiente específico descubierto durante la certificación
+### Historial: timeout inicial y recertificación bloqueada, anteriores al cierre
 
 La primera prueba DEV de timeout terminó fail-closed, pero perdió el receipt al
 ganar el deadline externo la carrera de cancelación. **No se infiere ese receipt.**
@@ -126,15 +133,17 @@ Se corrigió únicamente la observabilidad manual: el transporte comunica su
 receipt seguro inmediatamente después de invocar fetch con el body ya verificado.
 En timeout, no se inventan modelo ni usage; permanecen `null`.
 
-La corrección pasó localmente. Su recertificación DEV puntual **no ejecutó el
+La corrección pasó localmente. El primer intento de recertificación DEV puntual **no ejecutó el
 endpoint**: `local_server_timeout` tras 120 segundos sin READY. Se limpiaron el
 único mensaje/conversación y los dos actores de ese intento. El arnés quedó
 preparado para certificar sólo timeout sin inicializar de nuevo la UI Next.
-No se abrió otra captura en bucle. No se declara `MANUAL_REAL_SHADOW_DEV_PASS`.
+No se abrió otra captura en bucle. En ese intento bloqueado no se declaró PASS;
+no representa el estado final, acreditado en la sección de cierre al final.
 
 Un SELECT agregado adicional de Auth/perfiles/sesiones al final no pudo responder
 por fallo de transporte del conector MCP. No invalida los recibos de eliminación
-API/SQL anteriores, pero esa comprobación adicional queda no acreditada.
+API/SQL anteriores, pero esa comprobación adicional de aquel intento quedó no
+acreditada. La ejecución final posterior sí confirmó su propia limpieza completa.
 
 ### Certificación local final
 
@@ -153,19 +162,22 @@ con un defecto del producto ni se tocaron procesos ajenos.
 
 Evidencia durable:
 
-- `manual-real-shadow-dev-results.json`: resultados reales del lote DEV; incluye
-  explícitamente la limitación del timeout anterior a la corrección.
+- `manual-real-shadow-dev-results.json`: evidencia histórica del lote DEV; incluye
+  explícitamente la limitación del timeout anterior a la corrección y no es el
+  estado final de su recertificación.
 - `manual-real-shadow-dev-ui.png`: UI real; proveedor/modelo sintéticos.
-- `manual-real-shadow-timeout-recert-pending.json`: fallo de arranque de la
-  recertificación puntual y limpieza, **no** un resultado de ejecución del modelo.
-- `manual-real-shadow-manifest.json`: hashes del paquete y evidencia.
+- `manual-real-shadow-timeout-recert-pending.json`: evidencia histórica intacta
+  del fallo de arranque y su limpieza; **no** resultado del modelo ni estado final.
+- `manual-real-shadow-timeout-recert-pass.json`: cierre final sanitizado del
+  timeout real DEV, receipts, integridad y limpieza, sin IDs de fixtures.
+- `manual-real-shadow-manifest.json`: estado final PASS, clasificación de los
+  artefactos históricos y hashes actualizados del paquete.
 
-Reanudación acotada pendiente: `MANUAL_CERT_FOCUS=timeout node
-scripts/certify-manual-shadow-dev.mjs`, sólo con captura segura de la clave API DEV.
-El lanzador emite el inventario de fixtures propios; su limpieza requiere borrar
-exclusivamente esos IDs en orden acciones → decisiones → autorizaciones → runs →
-mensajes → conversaciones. El lanzador verifica cero datos y elimina después
-sus usuarios Auth. No repetir migración ni los otros nueve escenarios.
+La recertificación cerrada utilizó `MANUAL_CERT_FOCUS=timeout node
+scripts/certify-manual-shadow-dev.mjs`, con captura segura de la clave API DEV.
+Se limpió exclusivamente su inventario de fixtures y después sus usuarios Auth.
+No queda reanudación pendiente ni se deben repetir migración u otros escenarios
+para actualizar o publicar estos artefactos.
 
 El certificado usa UI Next real, Auth/perfiles y operaciones Supabase DEV reales.
 El servidor local monta la misma factoría del endpoint; la lista del dashboard
@@ -181,11 +193,11 @@ GET/UI reproyectan; la vista general no expone internals de los nuevos runs manu
 
 ## Checklist futuro 1/1 productivo — NO autorizado ni habilitado
 
-- Cerrar primero la recertificación puntual DEV del receipt de timeout.
 - Revisión independiente del diff, permisos, trigger y equivalencia de contratos.
 - Autorizar expresamente un diseño de habilitación productiva: hoy el código
   rechaza Producción/Preview por construcción, no basta cambiar un gate.
-- Aprobar e instalar por separado la migración productiva y sus checks/locks.
+- Diseñar, revisar y autorizar una migración productiva separada y sus checks/locks;
+  el SQL DEV-only de este PR no entra en el carril productivo.
 - Acreditar main/deployment exactos y todos los gates peligrosos OFF.
 - Seleccionar un único turno existente, revisar snapshot/adjuntos/contexto,
   identidad, sensibilidad, finalidad y autorización de transmisión sanitizada.
@@ -197,3 +209,40 @@ GET/UI reproyectan; la vista general no expone internals de los nuevos runs manu
   `auto_send_eligible`; esa revisión no concede permiso de envío.
 - Cerrar la capacidad manual y verificar runtime fail-closed. Conservar evidencia;
   no borrar ni reejecutar un run productivo fallido.
+
+## Cierre final — MANUAL_REAL_SHADOW_DEV_PASS
+
+Recertificación puntual ya ejecutada en **Supabase DEV real**, con Auth y endpoint
+reales y proveedor/modelo sintéticos: **14/14 comprobaciones PASS**, más lecturas
+acotadas de integridad y limpieza. No se reejecutó nada para este cierre documental.
+Artefacto final: [manual-real-shadow-timeout-recert-pass.json](manual-real-shadow-timeout-recert-pass.json).
+
+| Comprobación | Resultado persistido u observado |
+| --- | --- |
+| Timeout efectivo | 1,501 ms, una ronda |
+| Estado final | `status=timeout`, `execution_state=timeout`, `certified=false` |
+| Diagnóstico | `outputStage=timeout`, `error_code=manual_turn_timeout` |
+| Receipt | Persistido tras timeout y visible mediante GET |
+| Privacidad | `final_payload_verified=true`, `serialized_body_verified=true` |
+| Proveedor | `provider_invoked=true`, exclusivamente `synthetic_fetch`, una llamada |
+| Output mode | `anthropic_json_schema` |
+| Modelo / tokens input / tokens output | `null` / `null` / `null`; no respuesta con usage acreditable |
+| Autorización / run | Una autorización consumida y vinculada a exactamente un run |
+| Reejecución | Duplicada rechazada; ningún segundo run ni nueva llamada sintética |
+| Integridad | Resultado GET intacto tras recarga; mensajes capturados sin cambios |
+| Decisión / 3A / 3B | Ninguna persistida; sin resultado parcial presentado como completo |
+| Tools / identidad / outbound | Cero tools, cero mutaciones de identidad, cero outbound |
+| Limpieza | Cero autorizaciones, runs, mensajes, conversaciones, usuarios Auth, perfiles y sesiones propios |
+
+No se persistió un `diagnosticCode` adicional; no se infiere. `certified=false`
+es el cierre seguro esperado del run con timeout, no un fallo de la certificación.
+El log estructural de la ruta mostró únicamente authorize/claim y dos PATCH del
+run; las lecturas acotadas comprobaron cero auditorías de identidad del fixture.
+Eliminados sólo los registros sintéticos propios y sus dos actores; credenciales
+descartadas. Cero llamadas externas al proveedor, sin Producción ni cambios de gates.
+
+El lote DEV anterior conserva la evidencia UI y de los otros escenarios. Este
+cierre acredita exclusivamente el timeout con la factoría real del endpoint,
+sin reiniciar la UI completa ni repetir suite/build, migración o escenarios.
+La actualización P1 sólo versiona evidencia y cambia la ubicación del SQL y su
+referencia en el script local: contenido SQL y código funcional intactos.

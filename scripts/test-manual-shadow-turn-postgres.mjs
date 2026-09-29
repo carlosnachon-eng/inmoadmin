@@ -28,7 +28,7 @@ try {
     grant usage on schema public to service_role,anon,authenticated;
     grant all on all tables in schema public to service_role;`);
   await db.query(await file("202608220001_fase_2a_shadow_ai_manual_authorizations.sql"));
-  await db.query(await file("202609280001_manual_shadow_one_turn_dev.sql"));pass("additive migration installed on local base");
+  await db.query(await readFile(new URL("../supabase/dev/migrations/202609280001_manual_shadow_one_turn_dev.sql",import.meta.url),"utf8"));pass("additive migration installed on local base");
   const actor=randomUUID(),other=randomUUID(),message=randomUUID(),conversation=randomUUID();
   await db.query("insert into profiles values($1,'admin',true),($2,'asesor',true)",[actor,other]);
   await db.query("insert into shadow_conversations values($1,'respond_admin','544519')",[conversation]);

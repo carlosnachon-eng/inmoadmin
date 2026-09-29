@@ -1,11 +1,24 @@
 {
   "base": "2da8cc3c21f07718c969350f2f1058b5bb16853c",
-  "status": "DEV_CERTIFICATION_PARTIAL_TIMEOUT_RECEIPT_RECERT_PENDING",
+  "status": "MANUAL_REAL_SHADOW_DEV_PASS",
+  "certified_functional_head": "9f6a9c528a7ca008e499768cd7a0e891bfb4fb9c",
+  "final_evidence": "docs/evidence/manual-real-shadow-timeout-recert-pass.json",
+  "historical_artifacts": {
+    "docs/evidence/manual-real-shadow-dev-results.json": "prior_dev_batch_before_timeout_receipt_fix",
+    "docs/evidence/manual-real-shadow-timeout-recert-pending.json": "blocked_timeout_recertification_not_final"
+  },
+  "sql_artifact": {
+    "path": "supabase/dev/migrations/202609280001_manual_shadow_one_turn_dev.sql",
+    "scope": "DEV_ONLY",
+    "already_applied_in_dev": true,
+    "production_migration": false
+  },
   "files": {
     "components/ManualShadowTurnReview.js": "bdfc0c1f2630dafa94601cc6187a640794c182340e7bb64dd49cedca1e4e0eb1",
     "docs/evidence/manual-real-shadow-dev-results.json": "890ac6f96a9b6726a90276a70a17931c259e2a91aa834afd65289317ebda4caf",
     "docs/evidence/manual-real-shadow-dev-ui.png": "61d52ee50284a4fb20eede38351ea047e3e1fa53497136bdbda58aa1e9e9af81",
-    "docs/evidence/manual-real-shadow-one-turn.md": "cd5bf38870d527514249677fd6cb6f3ddb1976810c05218d70e3ad8cc6885d67",
+    "docs/evidence/manual-real-shadow-one-turn.md": "0fa62d85d47d25468a35546aba90f00a54e0d27c9174977441c49ca46003000f",
+    "docs/evidence/manual-real-shadow-timeout-recert-pass.json": "febf93c455f6bbae2424eb319519ee0f6727073ffad9d5c1eb559f1bdb282f85",
     "docs/evidence/manual-real-shadow-timeout-recert-pending.json": "dd80f2bbcd23c8a4e4c20323e1f013df9369d069378462181f69f3923bad9678",
     "lib/shadow/ai/anthropic.js": "9c74f6ff98be9a1fd07d1871859481b90d05367223a22d0b8322dc2e09e5cbe7",
     "lib/shadow/ai/explicitRetry.js": "61cffe457b16cd6ecf8e5072666476d7020aa9ee3e88bda026cefe6e5c54ea12",
@@ -21,13 +34,14 @@
     "scripts/capture-manual-shadow-dev.jxa": "1e46f50c271b347f9b30eb371755331e435f10f133d4500a9a7b65cca901a5f9",
     "scripts/certify-manual-shadow-dev.mjs": "5a864ab8556c24b64bae6976422839b0e1de7e9dc4d074222de1475ab312ca51",
     "scripts/manual-shadow-dev-server.cjs": "fd1381aed6430bb3f9f85371fe08b9bc26f5168d8c2cfb56e3a4f9613b5eb502",
-    "scripts/test-manual-shadow-turn-postgres.mjs": "adff59c97534be0a47414ea1246a1ac5a9f532ff27fa8722f3d2ae5abcae9c44",
-    "supabase/migrations/202609280001_manual_shadow_one_turn_dev.sql": "b4a8450edb94d0cc7fb403414fb73a0ab326149572cb4423366a2634ec8a8a95",
+    "scripts/test-manual-shadow-turn-postgres.mjs": "29a47d7747862d8e61e028ae6c04dff208bea7d276d2349019e966c867ec9bda",
+    "supabase/dev/migrations/202609280001_manual_shadow_one_turn_dev.sql": "b4a8450edb94d0cc7fb403414fb73a0ab326149572cb4423366a2634ec8a8a95",
     "tests/helpers/manualTurnFixture.mjs": "8afd2dfbde95bfb37d5930f4c82f21cfa9244118de815922f5fd6f334e2bd19c",
     "tests/shadowAiImmediateContinuation.test.mjs": "40419559db8d90fa60c816c274a97e9cb4fa5d3b5dca82565c0043473712ef7e",
     "tests/shadowFinalModelPrivacy.test.mjs": "adf747a0397e95bfefd06536e288c5413391de34c41b54821bf8d7197f0d3bdc",
     "tests/shadowHistoricalReplayReducedSchema.test.mjs": "6448d27b7503d5dc1920c65d65ea6cc86eab4abd73c401df6603e71d72b106db",
     "tests/shadowManualTurn.test.mjs": "c2bde7fa1f11a775fc7fe3a21dd3594279e4a1f20e5c24ff3965bb95098b30f7",
-    "tests/shadowReducedOutputSchema.test.mjs": "42ad8285d67f0021a446497804afbcc0b54ffb81dbb8991cb78566740315eae8"
+    "tests/shadowReducedOutputSchema.test.mjs": "42ad8285d67f0021a446497804afbcc0b54ffb81dbb8991cb78566740315eae8",
+    "vercel.json": "418f05dc808df58bca0bb64c067c998194d24a67fa57d996ec9293331511c2ec"
   }
 }

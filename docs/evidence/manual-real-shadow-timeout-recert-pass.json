@@ -1,0 +1,212 @@
+{
+  "artifact_kind": "final_timeout_recertification",
+  "status": "MANUAL_REAL_SHADOW_DEV_PASS",
+  "certified_functional_head": "9f6a9c528a7ca008e499768cd7a0e891bfb4fb9c",
+  "scope": "timeout_only",
+  "project": "hjfwjnejbcpmknvfpdcq",
+  "environment": {
+    "supabase": "real_dev",
+    "auth": "real_dev",
+    "endpoint": "real_local_route_factory",
+    "provider": "synthetic_fetch",
+    "full_ui_repeated": false
+  },
+  "provenance": {
+    "launcher": "scripts/certify-manual-shadow-dev.mjs",
+    "focus": "MANUAL_CERT_FOCUS=timeout",
+    "execution_already_completed": true,
+    "read_only_checks": "Recorded during the completed certification; no queries or tests rerun for this artifact."
+  },
+  "launcher_checks": {
+    "pass": 14,
+    "fail": 0
+  },
+  "reports": [
+    {
+      "name": "collision_check_messages",
+      "result": "PASS"
+    },
+    {
+      "name": "collision_check_conversations",
+      "result": "PASS"
+    },
+    {
+      "name": "collision_admin",
+      "result": "PASS"
+    },
+    {
+      "name": "collision_asesor",
+      "result": "PASS"
+    },
+    {
+      "name": "real_DEV_Auth",
+      "result": "PASS"
+    },
+    {
+      "name": "timeout_authorized",
+      "result": "PASS"
+    },
+    {
+      "name": "timeout_fail_closed",
+      "result": "PASS"
+    },
+    {
+      "name": "timeout_transport_receipt_retained",
+      "result": "PASS"
+    },
+    {
+      "name": "timeout_no_unauthorized_retry",
+      "result": "PASS"
+    },
+    {
+      "name": "captured_messages_unchanged",
+      "result": "PASS"
+    },
+    {
+      "name": "route_write_allowlist_observed",
+      "result": "PASS"
+    },
+    {
+      "name": "cleanup_data_inventory_zero",
+      "result": "PASS"
+    },
+    {
+      "name": "auth_actor_removed",
+      "result": "PASS"
+    },
+    {
+      "name": "auth_actor_removed",
+      "result": "PASS"
+    }
+  ],
+  "results": {
+    "timeout": {
+      "ok": true,
+      "human_review_required": true,
+      "outbound_authorized": false,
+      "status": "timeout",
+      "execution_state": "timeout",
+      "certified": false,
+      "telemetry": {
+        "rounds": [
+          {
+            "round": 1,
+            "duration_ms": 1501,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": null,
+            "input_tokens": null,
+            "output_tokens": null
+          }
+        ],
+        "tools": [],
+        "persistence": {
+          "decision": false,
+          "operational_resolution": false,
+          "conversation_action": false,
+          "verified": false
+        },
+        "failure": {
+          "outputStage": "timeout",
+          "error_code": "manual_turn_timeout"
+        }
+      },
+      "decision_persisted": false,
+      "operational_resolution_persisted": false,
+      "conversation_action_persisted": false,
+      "operational_resolution": null,
+      "conversation_action": null
+    }
+  },
+  "serverEvents": [
+    {
+      "stage": "route_factory_ready"
+    },
+    {
+      "stage": "local_ready",
+      "gates": {
+        "SHADOW_ADMIN_OUTBOUND_ENABLED": "false",
+        "SHADOW_OUTBOUND_ENABLED": "false",
+        "SHADOW_ADMIN_WORK_R1_ENABLED": "false",
+        "SHADOW_ADMIN_OUTBOUND_CANARY_ENABLED": "false",
+        "SHADOW_CLIENT_RECONCILIATION_PREPARE_ENABLED": "false",
+        "SHADOW_CLIENT_RECONCILIATION_WRITE_ENABLED": "false",
+        "SHADOW_IDENTITY_CONFIRMATION_ENABLED": "false",
+        "SHADOW_AI_AUTO_REAL_ENABLED": "false",
+        "SHADOW_HISTORICAL_REPLAY_ANTHROPIC_ENABLED": "false",
+        "SHADOW_AI_ENABLED": "false",
+        "SHADOW_AI_PRODUCTION_ENABLED": "false",
+        "SHADOW_AI_ALLOW_REAL_MESSAGES": "false",
+        "SHADOW_AI_MANUAL_REAL_ENABLED": "false",
+        "SHADOW_IDENTITY_LINK_REVIEW_WRITE_ENABLED": "false",
+        "SHADOW_AI_BACKFILL_REAL_ENABLED": "false",
+        "SHADOW_AI_ALLOW_OPERATIONAL_EVENTS": "false",
+        "SHADOW_AI_EXPLICIT_RETRY_ENABLED": "false",
+        "SHADOW_MANUAL_TURN_DEV_ENABLED": "true",
+        "SHADOW_CONVERSATION_ACTIONS_ENABLED": "true",
+        "SHADOW_AI_OUTPUT_MODE": "anthropic_json_schema"
+      },
+      "provider": "synthetic_fetch"
+    },
+    {
+      "stage": "stopped",
+      "providerCalls": {
+        "timeout": 1
+      },
+      "writeOperations": [
+        {
+          "method": "POST",
+          "table": "authorize_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        }
+      ],
+      "blockedWrites": 0
+    }
+  ],
+  "read_only_integrity": {
+    "run_count": 1,
+    "authorization_count": 1,
+    "consumed_linked_authorizations": 1,
+    "terminal_timeout_first_attempt": true,
+    "decision_count": 0,
+    "conversation_action_count": 0,
+    "fixture_identity_audit_count": 0,
+    "exact_fixture_message_count": 1,
+    "exact_fixture_conversation_count": 1
+  },
+  "read_only_cleanup": {
+    "remaining_authorizations": 0,
+    "remaining_runs": 0,
+    "remaining_messages": 0,
+    "remaining_conversations": 0,
+    "remaining_auth_users": 0,
+    "remaining_profiles": 0,
+    "remaining_auth_sessions": 0,
+    "fixture_identity_audit_count": 0
+  },
+  "cleanup": true,
+  "externalProviderCalls": 0,
+  "limitations": {
+    "diagnosticCode": "not_persisted",
+    "provider_model": "unaccredited",
+    "provider_usage": "unknown",
+    "production_certified": false,
+    "real_anthropic_certified": false
+  }
+}
