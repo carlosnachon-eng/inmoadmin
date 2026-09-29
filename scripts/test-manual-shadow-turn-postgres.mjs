@@ -1,0 +1,60 @@
+// Local, disposable PostgreSQL only. Never reads .env or connects to Supabase.
+import assert from "node:assert/strict";
+import { readFile,mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join,resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { randomUUID } from "node:crypto";
+import net from "node:net";
+const runtime=process.env.MANUAL_LOCAL_PG_RUNTIME;
+if(!runtime)throw new Error("local_runtime_required");
+const {default:EmbeddedPostgres}=await import(pathToFileURL(resolve(runtime,"node_modules/embedded-postgres/dist/index.js")));
+const {default:pg}=await import(pathToFileURL(resolve(runtime,"node_modules/pg/lib/index.js")));
+const directory=await mkdtemp(join(tmpdir(),"manual-turn-pg-")),socket=net.createServer();
+await new Promise(ok=>socket.listen(0,"127.0.0.1",ok));const port=socket.address().port;await new Promise(ok=>socket.close(ok));
+const cluster=new EmbeddedPostgres({databaseDir:join(directory,"data"),user:"postgres",password:"local-only",port,persistent:false,postgresFlags:["-c","listen_addresses=127.0.0.1","-c",`unix_socket_directories=${directory}`],onLog(){},onError(){}});
+const clients=[],checks=[];const pass=name=>{checks.push(name);};
+const connect=async(role)=>{const c=new pg.Client({host:"127.0.0.1",port,user:"postgres",password:"local-only",database:"postgres",statement_timeout:5000});await c.connect();clients.push(c);if(role)await c.query(`set role ${role}`);return c;};
+const file=name=>readFile(new URL(`../supabase/migrations/${name}`,import.meta.url),"utf8");
+try {
+  await cluster.initialise();await cluster.start();const db=await connect();
+  await db.query(`create role anon;create role authenticated;create role service_role bypassrls;
+    create table profiles(id uuid primary key,role_id text,active boolean);
+    create table shadow_conversations(id uuid primary key,provider text,channel text);
+    create table shadow_messages(id uuid primary key,conversation_id uuid references shadow_conversations,provider text,direction text);
+    create table shadow_ai_runs(id uuid primary key default gen_random_uuid(),message_id uuid references shadow_messages,status text,execution_state text,model text,prompt_version text,schema_version text,started_at timestamptz,deadline_at timestamptz,idempotency_key text unique,attempt_number int,current_round int,max_rounds int,round_state_json jsonb,telemetry_json jsonb,input_kind text default 'conversational_message',operational_event_id uuid);
+    create table shadow_conversation_actions(id uuid primary key default gen_random_uuid(),ai_run_id uuid references shadow_ai_runs,status text);
+    create function shadow_authorized_role() returns boolean language sql as 'select false';
+    grant usage on schema public to service_role,anon,authenticated;
+    grant all on all tables in schema public to service_role;`);
+  await db.query(await file("202608220001_fase_2a_shadow_ai_manual_authorizations.sql"));
+  await db.query(await file("202609280001_manual_shadow_one_turn_dev.sql"));pass("additive migration installed on local base");
+  const actor=randomUUID(),other=randomUUID(),message=randomUUID(),conversation=randomUUID();
+  await db.query("insert into profiles values($1,'admin',true),($2,'asesor',true)",[actor,other]);
+  await db.query("insert into shadow_conversations values($1,'respond_admin','544519')",[conversation]);
+  await db.query("insert into shadow_messages values($1,$2,'respond_admin','inbound')",[message,conversation]);
+  const a=await connect("service_role"),b=await connect("service_role"),anon=await connect("anon"),authenticated=await connect("authenticated");
+  const key="a".repeat(64),fingerprint="b".repeat(64),snapshot={provider:"respond_admin",direction:"inbound",providerMetadata:{channelId:"544519",conversationTurn:{turnKey:key,messageIds:[message]}}};
+  const auth=(c,user=actor)=>c.query("select authorize_manual_shadow_turn($1,$2,$3,$4,$5,$6) result",[message,user,key,fingerprint,snapshot,"claude-haiku-4-5-20251001"]).then(r=>r.rows[0].result);
+  for(const c of [anon,authenticated])await assert.rejects(()=>auth(c),/permission denied/);pass("anon/authenticated cannot authorize");
+  await assert.rejects(()=>auth(a,other),/admin_required/);pass("service must verify active admin profile");
+  const first=await auth(a),again=await auth(b);assert.equal(first.authorization_id,again.authorization_id);assert.equal(again.created,false);pass("authorize idempotent");
+  const claim=(c,fp=fingerprint)=>c.query("select claim_manual_shadow_turn($1,$2,$3) result",[first.authorization_id,actor,fp]).then(r=>r.rows[0].result);
+  await assert.rejects(()=>claim(a,"c".repeat(64)),/not_consumable/);pass("changed snapshot rejected");
+  await a.query("begin");const won=await claim(a);let finished=false;
+  const pending=claim(b).then(r=>{finished=true;return r;});let blocked=false;
+  for(let i=0;i<40;i++){const r=await db.query("select $1::int=any(pg_blocking_pids($2::int)) blocked",[a.processID,b.processID]);if(r.rows[0].blocked){blocked=true;break;}await new Promise(ok=>setTimeout(ok,20));}
+  assert.equal(blocked,true);assert.equal(finished,false);pass("B actually waits for row lock held by A");
+  await a.query("commit");const lost=await pending;assert.equal(won.claimed,true);assert.equal(lost.claimed,false);assert.equal(won.run_id,lost.run_id);pass("concurrent claim creates exactly one run");
+  assert.equal((await db.query("select count(*)::int n from shadow_ai_runs")).rows[0].n,1);pass("authorization and run atomic");
+  await db.query("update shadow_ai_runs set status='error' where id=$1",[won.run_id]);
+  assert.equal((await claim(a)).claimed,false);await assert.rejects(()=>auth(a),/not_renewable/);pass("error never renews authorization or creates retry");
+  const action=randomUUID();await a.query("insert into shadow_conversation_actions(id,ai_run_id,status) values($1,$2,'proposed')",[action,won.run_id]);
+  for(const status of ["approved_for_future_auto","sent"])await assert.rejects(()=>a.query("update shadow_conversation_actions set status=$2 where id=$1",[action,status]),/manual_turn_outbound_forbidden/);pass("manual proposal cannot be promoted or sent even by sender role");
+  const catalog=await db.query("select relrowsecurity from pg_class where oid='shadow_ai_manual_authorizations'::regclass");assert.equal(catalog.rows[0].relrowsecurity,true);pass("existing RLS retained");
+  for(const c of [anon,authenticated])await assert.rejects(()=>c.query("select * from shadow_manual_turn_message_refs"),/permission denied/);pass("opaque lookup view service-only");
+  console.log(JSON.stringify({environment:"local PostgreSQL",result:"PASS",checks}));
+} catch(error) {
+  console.error(JSON.stringify({environment:"local PostgreSQL",result:"FAIL",code:error.code||null,message:String(error.message).replaceAll(directory,"[owned-temp]").slice(0,1500)}));
+  process.exitCode=1;
+} finally {for(const c of clients){await c.query("rollback").catch(()=>{});await c.end().catch(()=>{});}await cluster.stop().catch(()=>{});}

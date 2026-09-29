@@ -278,7 +278,7 @@ for (const stage of ["final_payload_rejected", "serialized_body_rejected"]) {
   }
 }
 
-test("architecture confines schema capability, dedicated gateway and decoder to Replay", () => {
+test("architecture confines reduced schema to Replay and explicit DEV manual capability", () => {
   const root = new URL("../", import.meta.url);
   function walk(dir) {
     return fs.readdirSync(new URL(dir, root), { withFileTypes: true }).flatMap((f) => f.isDirectory()
@@ -288,7 +288,10 @@ test("architecture confines schema capability, dedicated gateway and decoder to 
     withHistoricalReplaySchemaContext: ["lib/shadow/ai/historicalReplaySchemaContext.js", "lib/shadow/ai/historicalReplay.js"],
     invokeHistoricalReplayReducedPhase3A: ["lib/shadow/ai/phase3AGateway.js", "lib/shadow/ai/historicalReplay.js"],
     createHistoricalReplayReducedTransport: ["lib/shadow/ai/anthropic.js", "lib/shadow/ai/phase3AGateway.js"],
-    decodeReducedShadowAiDecision: ["lib/shadow/ai/reducedOutputSchema.js", "lib/shadow/ai/historicalReplay.js"],
+    decodeReducedShadowAiDecision: ["lib/shadow/ai/reducedOutputSchema.js", "lib/shadow/ai/historicalReplay.js", "lib/shadow/ai/stateMachine.js"],
+    withManualTurnContext: ["lib/shadow/ai/manualTurnContext.js", "lib/shadow/ai/manualTurn.js"],
+    invokeManualTurnPhase3A: ["lib/shadow/ai/phase3AGateway.js", "lib/shadow/ai/stateMachine.js"],
+    createManualTurnReducedTransport: ["lib/shadow/ai/anthropic.js", "lib/shadow/ai/phase3AGateway.js"],
     useReducedOutputSchema: ["lib/shadow/ai/historicalReplay.js", "pages/api/operaciones/shadow-historical-replay.js"],
     REDUCED_REPLAY_TOOL_GUIDE: ["lib/shadow/ai/historicalReplayToolGuide.js", "lib/shadow/ai/phase3AGateway.js", "lib/shadow/ai/finalModelPrivacy.js"],
     REDUCED_REPLAY_REFERENCE_CONTRACT: ["lib/shadow/ai/historicalReplayToolGuide.js"],
@@ -299,7 +302,8 @@ test("architecture confines schema capability, dedicated gateway and decoder to 
   }
   const transport = fs.readFileSync(new URL("lib/shadow/ai/anthropic.js", root), "utf8");
   assert.match(transport, /createAnthropicShadowResponse\(messages, options = \{\}\)\s*\{\s*return createAnthropicResponse\(messages, options, false\)/);
-  assert.equal((transport.match(/await fetchImpl\(/g) || []).length, 1);
+  assert.equal((transport.match(/const responsePromise = fetchImpl\(/g) || []).length, 1);
+  assert.match(transport, /const response = await responsePromise/);
   assert.match(transport, /serializeVerifiedAnthropicBody\(body, messages/);
   assert.match(transport, /body: serializedBody/);
 });

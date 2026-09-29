@@ -332,6 +332,9 @@ test("arquitectura: decode antes de plan/tools en los tres ejecutores; fetch usa
     assert.doesNotMatch(source, /createAnthropicShadow(?:Repair)?Response/);
   }
   const source = fs.readFileSync(new URL("../lib/shadow/ai/anthropic.js", import.meta.url), "utf8");
-  assert.ok(source.indexOf("serializeVerifiedAnthropicBody(body, messages)") < source.indexOf("await fetchImpl("));
+  const verification = source.indexOf("serializeVerifiedAnthropicBody(body, messages");
+  const transport = source.indexOf("const responsePromise = fetchImpl(");
+  assert.ok(verification >= 0 && transport > verification);
+  assert.ok(source.indexOf("const response = await responsePromise") > transport);
   assert.match(source, /body: serializedBody/);
 });

@@ -1,0 +1,51 @@
+{
+  "project": "hjfwjnejbcpmknvfpdcq",
+  "reports": [
+    {
+      "name": "collision_check_messages",
+      "result": "PASS"
+    },
+    {
+      "name": "collision_check_conversations",
+      "result": "PASS"
+    },
+    {
+      "name": "collision_admin",
+      "result": "PASS"
+    },
+    {
+      "name": "collision_asesor",
+      "result": "PASS"
+    },
+    {
+      "name": "real_DEV_Auth",
+      "result": "PASS"
+    },
+    {
+      "name": "local_server",
+      "result": "FAIL",
+      "code": null,
+      "error": "local_server_timeout"
+    },
+    {
+      "name": "route_write_allowlist_observed",
+      "result": "FAIL"
+    },
+    {
+      "name": "cleanup_data_inventory_zero",
+      "result": "PASS"
+    },
+    {
+      "name": "auth_actor_removed",
+      "result": "PASS"
+    },
+    {
+      "name": "auth_actor_removed",
+      "result": "PASS"
+    }
+  ],
+  "results": {},
+  "serverEvents": [],
+  "cleanup": true,
+  "externalProviderCalls": 0
+}
