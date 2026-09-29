@@ -1,11 +1,15 @@
 import { getAdminSupabase } from "../../../lib/ejecutivo/workCenter";
 import { authorizeShadowAdministrator } from "../../../lib/shadow/ai/apiAuth";
 import { startRealShadowMessageRun } from "../../../lib/shadow/ai/realRun";
+import { createManualTurnHandler } from "../../../lib/shadow/ai/manualTurnApi.js";
 
 export const config = { maxDuration: 120 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export default async function handler(req, res) {
+  if (req.query?.mode === "manual_turn" || req.body?.mode === "manual_turn") {
+    return createManualTurnHandler({authorize:authorizeShadowAdministrator,createAdmin:getAdminSupabase})(req,res);
+  }
   res.setHeader("Cache-Control", "private, no-store, max-age=0");
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Método no permitido." });
   try {

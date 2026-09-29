@@ -52,7 +52,7 @@ test("máximo de tres rondas se conserva", () => {
 
 test("conversation action sigue persistida una sola vez por la máquina final", () => {
   const state=read("lib/shadow/ai/stateMachine.js");
-  assert.equal((state.match(/persistConversationAction\(admin/g)||[]).length,1);
+  assert.equal((state.match(/options\.persistManualAction : persistConversationAction\)\(admin/g)||[]).length,1);
 });
 
 test("telemetría inter-round contiene timestamps delay y presupuesto", () => {

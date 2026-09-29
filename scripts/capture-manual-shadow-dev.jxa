@@ -1,0 +1,14 @@
+ObjC.import('AppKit');
+function run(){
+ const app=$.NSApplication.sharedApplication;app.setActivationPolicy($.NSApplicationActivationPolicyAccessory);
+ const menu=$.NSMenu.alloc.init,edit=$.NSMenuItem.alloc.initWithTitleActionKeyEquivalent('Edit','',''),sub=$.NSMenu.alloc.initWithTitle('Edit');
+ [['Cut','cut:','x'],['Copy','copy:','c'],['Paste','paste:','v'],['Select All','selectAll:','a']].forEach(v=>sub.addItem($.NSMenuItem.alloc.initWithTitleActionKeyEquivalent(v[0],v[1],v[2])));edit.setSubmenu(sub);menu.addItem(edit);app.setMainMenu(menu);
+ const alert=$.NSAlert.alloc.init;alert.messageText='Manual Real Shadow · Supabase DEV';
+ alert.informativeText='Destino exclusivo: inmoadmin-dev / hjfwjnejbcpmknvfpdcq.\nSólo falta la clave administrativa API DEV (sb_secret_...).\nLa clave pública ya está disponible. No PostgreSQL ni claves productivas.\nSe conserva sólo en memoria para crear, probar y limpiar fixtures propios.';
+ alert.addButtonWithTitle('Certificar en DEV');alert.addButtonWithTitle('Cancelar');
+ const box=$.NSView.alloc.initWithFrame($.NSMakeRect(0,0,640,55)),field=$.NSSecureTextField.alloc.initWithFrame($.NSMakeRect(0,15,640,28));
+ field.setEditable(true);field.setSelectable(true);box.addSubview(field);alert.accessoryView=box;
+ app.activateIgnoringOtherApps(true);alert.window.makeFirstResponder(field);
+ if(Number(alert.runModal)!==1000)return JSON.stringify({status:'cancelled'});
+ return JSON.stringify({status:'ok',adminKey:ObjC.unwrap(field.stringValue)});
+}

@@ -1,0 +1,1173 @@
+{
+  "project": "hjfwjnejbcpmknvfpdcq",
+  "reports": [
+    {
+      "name": "collision_check_messages",
+      "result": "PASS"
+    },
+    {
+      "name": "collision_check_conversations",
+      "result": "PASS"
+    },
+    {
+      "name": "collision_admin",
+      "result": "PASS"
+    },
+    {
+      "name": "collision_asesor",
+      "result": "PASS"
+    },
+    {
+      "name": "real_DEV_Auth",
+      "result": "PASS"
+    },
+    {
+      "name": "UI_login_renders",
+      "result": "PASS"
+    },
+    {
+      "name": "UI_no_error_overlay",
+      "result": "PASS"
+    },
+    {
+      "name": "UI_authorize_201",
+      "result": "PASS"
+    },
+    {
+      "name": "UI_complete_3A_3B",
+      "result": "PASS"
+    },
+    {
+      "name": "UI_two_rounds_real_readonly_tool",
+      "result": "PASS"
+    },
+    {
+      "name": "UI_no_runtime_exception",
+      "result": "PASS"
+    },
+    {
+      "name": "UI_GET_same_origin",
+      "result": "PASS"
+    },
+    {
+      "name": "GET_equivalent",
+      "result": "PASS"
+    },
+    {
+      "name": "non_admin_403",
+      "result": "PASS"
+    },
+    {
+      "name": "wrong_origin_403",
+      "result": "PASS"
+    },
+    {
+      "name": "no_message_authorized",
+      "result": "PASS"
+    },
+    {
+      "name": "no_message_complete",
+      "result": "PASS"
+    },
+    {
+      "name": "no_message",
+      "result": "PASS"
+    },
+    {
+      "name": "no_message_no_unauthorized_retry",
+      "result": "PASS"
+    },
+    {
+      "name": "ask_authorized",
+      "result": "PASS"
+    },
+    {
+      "name": "ask_complete",
+      "result": "PASS"
+    },
+    {
+      "name": "ask_missing_information",
+      "result": "PASS"
+    },
+    {
+      "name": "ask_no_unauthorized_retry",
+      "result": "PASS"
+    },
+    {
+      "name": "identity_authorized",
+      "result": "PASS"
+    },
+    {
+      "name": "identity_complete",
+      "result": "PASS"
+    },
+    {
+      "name": "identity_no_unauthorized_retry",
+      "result": "PASS"
+    },
+    {
+      "name": "invalid_authorized",
+      "result": "PASS"
+    },
+    {
+      "name": "invalid_fail_closed",
+      "result": "PASS"
+    },
+    {
+      "name": "invalid_no_unauthorized_retry",
+      "result": "PASS"
+    },
+    {
+      "name": "privacy_authorized",
+      "result": "PASS"
+    },
+    {
+      "name": "privacy_fail_closed",
+      "result": "PASS"
+    },
+    {
+      "name": "privacy_no_unauthorized_retry",
+      "result": "PASS"
+    },
+    {
+      "name": "http_authorized",
+      "result": "PASS"
+    },
+    {
+      "name": "http_fail_closed",
+      "result": "PASS"
+    },
+    {
+      "name": "http_no_unauthorized_retry",
+      "result": "PASS"
+    },
+    {
+      "name": "timeout_authorized",
+      "result": "PASS"
+    },
+    {
+      "name": "timeout_fail_closed",
+      "result": "PASS"
+    },
+    {
+      "name": "timeout_no_unauthorized_retry",
+      "result": "PASS"
+    },
+    {
+      "name": "3b_failure_authorized",
+      "result": "PASS"
+    },
+    {
+      "name": "3b_failure_fail_closed",
+      "result": "PASS"
+    },
+    {
+      "name": "3A_preserved_after_3B_failure",
+      "result": "PASS"
+    },
+    {
+      "name": "3b_failure_no_unauthorized_retry",
+      "result": "PASS"
+    },
+    {
+      "name": "concurrency_authorized",
+      "result": "PASS"
+    },
+    {
+      "name": "concurrency_complete",
+      "result": "PASS"
+    },
+    {
+      "name": "concurrent_single_run",
+      "result": "PASS"
+    },
+    {
+      "name": "concurrent_single_authorization",
+      "result": "PASS"
+    },
+    {
+      "name": "concurrency_no_unauthorized_retry",
+      "result": "PASS"
+    },
+    {
+      "name": "captured_messages_unchanged",
+      "result": "PASS"
+    },
+    {
+      "name": "route_write_allowlist_observed",
+      "result": "PASS"
+    },
+    {
+      "name": "cleanup_data_inventory_zero",
+      "result": "PASS"
+    },
+    {
+      "name": "auth_actor_removed",
+      "result": "PASS"
+    },
+    {
+      "name": "auth_actor_removed",
+      "result": "PASS"
+    }
+  ],
+  "results": {
+    "tool": {
+      "ok": true,
+      "authorizationRef": "284ff108f2b24b4593e77ef931b0c09d",
+      "messageRef": "db6e8f33e1d4944a295d836e2398c038",
+      "human_review_required": true,
+      "outbound_authorized": false,
+      "runRef": "f9a43d9c8fa4447eb42983610f184d0e",
+      "status": "completed",
+      "execution_state": "completed",
+      "certified": true,
+      "telemetry": {
+        "rounds": [
+          {
+            "round": 1,
+            "duration_ms": 220,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          },
+          {
+            "round": 2,
+            "duration_ms": 207,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          }
+        ],
+        "tools": [
+          {
+            "round": 1,
+            "name": "resolve_contact_identity",
+            "ok": true,
+            "source": "both",
+            "duration_ms": 155,
+            "rows": 1,
+            "identity_resolved": false
+          }
+        ],
+        "persistence": {
+          "decision": true,
+          "operational_resolution": true,
+          "conversation_action": true,
+          "verified": true
+        }
+      },
+      "decision_persisted": true,
+      "operational_resolution_persisted": true,
+      "conversation_action_persisted": true,
+      "operational_resolution": {
+        "case_domain": "maintenance",
+        "case_status": "insufficient_identity_context",
+        "requires_human": true,
+        "would_resolve_without_human": false,
+        "evidence_count": 0
+      },
+      "conversation_action": {
+        "conversation_action": "human_handoff",
+        "proposed_message": null,
+        "requires_human": true,
+        "auto_send_eligible": false,
+        "blocked_reason": "insufficient_identity_context",
+        "message_safe": true
+      },
+      "duplicate": false
+    },
+    "no_message": {
+      "ok": true,
+      "authorizationRef": "c104f2bc71094cd1841a29275e237d3e",
+      "messageRef": "50ca6de97bc3b56d86311e6c5541ed74",
+      "human_review_required": true,
+      "outbound_authorized": false,
+      "runRef": "bd4c219ab7a5461a95ae1cad4a2e83fd",
+      "status": "completed",
+      "execution_state": "completed",
+      "certified": true,
+      "telemetry": {
+        "rounds": [
+          {
+            "round": 1,
+            "duration_ms": 167,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          },
+          {
+            "round": 2,
+            "duration_ms": 137,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          }
+        ],
+        "tools": [
+          {
+            "round": 1,
+            "name": "resolve_contact_identity",
+            "ok": true,
+            "source": "policy_required",
+            "duration_ms": 167,
+            "rows": 1,
+            "identity_resolved": false
+          }
+        ],
+        "persistence": {
+          "decision": true,
+          "operational_resolution": true,
+          "conversation_action": true,
+          "verified": true
+        }
+      },
+      "decision_persisted": true,
+      "operational_resolution_persisted": true,
+      "conversation_action_persisted": true,
+      "operational_resolution": {
+        "case_domain": "administrative_pending",
+        "case_status": "no_message",
+        "requires_human": true,
+        "would_resolve_without_human": false,
+        "evidence_count": 0
+      },
+      "conversation_action": {
+        "conversation_action": "no_message",
+        "proposed_message": null,
+        "requires_human": true,
+        "auto_send_eligible": false,
+        "blocked_reason": "no_message",
+        "message_safe": true
+      }
+    },
+    "ask": {
+      "ok": true,
+      "authorizationRef": "e3b1c26792444a8f96966709f679202f",
+      "messageRef": "13b77ad0e153016f24614f4f8c51f7a8",
+      "human_review_required": true,
+      "outbound_authorized": false,
+      "runRef": "51bb1b330c0d43beb4b11f9ab5092b5a",
+      "status": "completed",
+      "execution_state": "completed",
+      "certified": true,
+      "telemetry": {
+        "rounds": [
+          {
+            "round": 1,
+            "duration_ms": 182,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          },
+          {
+            "round": 2,
+            "duration_ms": 156,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          }
+        ],
+        "tools": [
+          {
+            "round": 1,
+            "name": "resolve_contact_identity",
+            "ok": true,
+            "source": "policy_required",
+            "duration_ms": 123,
+            "rows": 1,
+            "identity_resolved": false
+          }
+        ],
+        "persistence": {
+          "decision": true,
+          "operational_resolution": true,
+          "conversation_action": true,
+          "verified": true
+        }
+      },
+      "decision_persisted": true,
+      "operational_resolution_persisted": true,
+      "conversation_action_persisted": true,
+      "operational_resolution": {
+        "case_domain": "maintenance",
+        "case_status": "insufficient_identity_context",
+        "requires_human": true,
+        "would_resolve_without_human": false,
+        "evidence_count": 0
+      },
+      "conversation_action": {
+        "conversation_action": "ask_missing_information",
+        "proposed_message": "¿En qué parte de la propiedad se presenta el problema?",
+        "requires_human": true,
+        "auto_send_eligible": false,
+        "blocked_reason": "insufficient_identity_context",
+        "message_safe": true
+      }
+    },
+    "identity": {
+      "ok": true,
+      "authorizationRef": "8478760763d4433a86fc93e3cb00a6a6",
+      "messageRef": "5e5718a524b5ad6ca78d191cb5d39238",
+      "human_review_required": true,
+      "outbound_authorized": false,
+      "runRef": "0aa979ecddde465b8ebd2c9597992dac",
+      "status": "completed",
+      "execution_state": "completed",
+      "certified": true,
+      "telemetry": {
+        "rounds": [
+          {
+            "round": 1,
+            "duration_ms": 159,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          },
+          {
+            "round": 2,
+            "duration_ms": 159,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          }
+        ],
+        "tools": [
+          {
+            "round": 1,
+            "name": "resolve_contact_identity",
+            "ok": true,
+            "source": "policy_required",
+            "duration_ms": 134,
+            "rows": 1,
+            "identity_resolved": false
+          }
+        ],
+        "persistence": {
+          "decision": true,
+          "operational_resolution": true,
+          "conversation_action": true,
+          "verified": true
+        }
+      },
+      "decision_persisted": true,
+      "operational_resolution_persisted": true,
+      "conversation_action_persisted": true,
+      "operational_resolution": {
+        "case_domain": "administrative_pending",
+        "case_status": "insufficient_identity_context",
+        "requires_human": true,
+        "would_resolve_without_human": false,
+        "evidence_count": 0
+      },
+      "conversation_action": {
+        "conversation_action": "human_handoff",
+        "proposed_message": null,
+        "requires_human": true,
+        "auto_send_eligible": false,
+        "blocked_reason": "insufficient_identity_context",
+        "message_safe": true
+      }
+    },
+    "invalid": {
+      "ok": true,
+      "authorizationRef": "8da61d9acae74d5c94074a9d63304d98",
+      "messageRef": "c00d992ca2e1877e5f0d2b34cba93059",
+      "human_review_required": true,
+      "outbound_authorized": false,
+      "runRef": "517bf7a2b1db4588b8c1732b9780879b",
+      "status": "error",
+      "execution_state": "error",
+      "certified": false,
+      "telemetry": {
+        "rounds": [
+          {
+            "round": 1,
+            "duration_ms": 186,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          }
+        ],
+        "tools": [],
+        "persistence": {
+          "decision": false,
+          "operational_resolution": false,
+          "conversation_action": false,
+          "verified": false
+        },
+        "failure": {
+          "outputStage": "structured_validation",
+          "error_code": "manual_turn_execution_failed"
+        }
+      },
+      "decision_persisted": false,
+      "operational_resolution_persisted": false,
+      "conversation_action_persisted": false,
+      "operational_resolution": null,
+      "conversation_action": null
+    },
+    "privacy": {
+      "ok": true,
+      "authorizationRef": "4ce1984749f74cddb25979f90a958ebf",
+      "messageRef": "21140c7a50634484dabe1fffcc2332d4",
+      "human_review_required": true,
+      "outbound_authorized": false,
+      "runRef": "f58be2fdb2754f30af4764c9d2128aa5",
+      "status": "error",
+      "execution_state": "error",
+      "certified": false,
+      "telemetry": {
+        "rounds": [
+          {
+            "round": 1,
+            "duration_ms": 157,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          }
+        ],
+        "tools": [],
+        "persistence": {
+          "decision": false,
+          "operational_resolution": false,
+          "conversation_action": false,
+          "verified": false
+        },
+        "failure": {
+          "outputStage": "output_privacy_validation",
+          "error_code": "pre_model_sanitization_blocked",
+          "outputPrivacy": {
+            "reason": "unaliased_reference_field",
+            "location": "tool_argument"
+          }
+        }
+      },
+      "decision_persisted": false,
+      "operational_resolution_persisted": false,
+      "conversation_action_persisted": false,
+      "operational_resolution": null,
+      "conversation_action": null
+    },
+    "http": {
+      "ok": true,
+      "authorizationRef": "e807e33f36054a52bac91470d2e09ee3",
+      "messageRef": "130974f3f9e474f48b4d3bb529279426",
+      "human_review_required": true,
+      "outbound_authorized": false,
+      "runRef": "62843a7074ab4e22be1225cbc60515ed",
+      "status": "error",
+      "execution_state": "error",
+      "certified": false,
+      "telemetry": {
+        "rounds": [
+          {
+            "round": 1,
+            "duration_ms": 163,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": null,
+            "input_tokens": null,
+            "output_tokens": null
+          }
+        ],
+        "tools": [],
+        "persistence": {
+          "decision": false,
+          "operational_resolution": false,
+          "conversation_action": false,
+          "verified": false
+        },
+        "failure": {
+          "outputStage": "provider_http",
+          "error_code": "model_http_400",
+          "providerHttp": {
+            "provider_http_status": 400,
+            "provider_error_type": "invalid_request_error",
+            "provider_error_code": null,
+            "provider_error_param": null,
+            "provider_request_ref": null,
+            "provider_error_message_safe": "schema_too_complex"
+          }
+        }
+      },
+      "decision_persisted": false,
+      "operational_resolution_persisted": false,
+      "conversation_action_persisted": false,
+      "operational_resolution": null,
+      "conversation_action": null
+    },
+    "timeout": {
+      "ok": true,
+      "authorizationRef": "ca9c36b471134c0ca91bf1370de956d8",
+      "messageRef": "14de382071854b697ce06f68ed12e5cf",
+      "human_review_required": true,
+      "outbound_authorized": false,
+      "runRef": "68f304d992054624a0e5d00b27776d40",
+      "status": "timeout",
+      "execution_state": "timeout",
+      "certified": false,
+      "telemetry": {
+        "rounds": [
+          {
+            "round": 1,
+            "duration_ms": 1502,
+            "receipt": null,
+            "model": null,
+            "input_tokens": null,
+            "output_tokens": null
+          }
+        ],
+        "tools": [],
+        "persistence": {
+          "decision": false,
+          "operational_resolution": false,
+          "conversation_action": false,
+          "verified": false
+        },
+        "failure": {
+          "outputStage": "timeout",
+          "error_code": "manual_turn_timeout"
+        }
+      },
+      "decision_persisted": false,
+      "operational_resolution_persisted": false,
+      "conversation_action_persisted": false,
+      "operational_resolution": null,
+      "conversation_action": null
+    },
+    "3b_failure": {
+      "ok": true,
+      "authorizationRef": "4eccab957ee64720a079233e557e531e",
+      "messageRef": "1c47c76c7b81b1cd80121918ef60df94",
+      "human_review_required": true,
+      "outbound_authorized": false,
+      "runRef": "5b70f1253d074fbfa64f9764701ebbb8",
+      "status": "error",
+      "execution_state": "error",
+      "certified": false,
+      "telemetry": {
+        "rounds": [
+          {
+            "round": 1,
+            "duration_ms": 196,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          },
+          {
+            "round": 2,
+            "duration_ms": 143,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          }
+        ],
+        "tools": [
+          {
+            "round": 1,
+            "name": "resolve_contact_identity",
+            "ok": true,
+            "source": "policy_required",
+            "duration_ms": 134,
+            "rows": 1,
+            "identity_resolved": false
+          }
+        ],
+        "persistence": {
+          "decision": true,
+          "operational_resolution": true,
+          "conversation_action": false,
+          "verified": false
+        },
+        "failure": {
+          "outputStage": "3B",
+          "error_code": "manual_3b_persistence_failed"
+        }
+      },
+      "decision_persisted": true,
+      "operational_resolution_persisted": true,
+      "conversation_action_persisted": false,
+      "operational_resolution": {
+        "case_domain": "maintenance",
+        "case_status": "insufficient_identity_context",
+        "requires_human": true,
+        "would_resolve_without_human": false,
+        "evidence_count": 0
+      },
+      "conversation_action": null
+    },
+    "concurrency": {
+      "ok": true,
+      "authorizationRef": "3d7832c8f2b441688c3c9b107e097ea7",
+      "messageRef": "06eaa8c166bdfb21a85b03c54439872f",
+      "human_review_required": true,
+      "outbound_authorized": false,
+      "runRef": "6dac082e58a84989a014dd42c2b64d86",
+      "status": "completed",
+      "execution_state": "completed",
+      "certified": true,
+      "telemetry": {
+        "rounds": [
+          {
+            "round": 1,
+            "duration_ms": 291,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          },
+          {
+            "round": 2,
+            "duration_ms": 287,
+            "receipt": {
+              "final_payload_verified": true,
+              "serialized_body_verified": true,
+              "output_mode": "anthropic_json_schema",
+              "privacy_stage": "final_model_privacy",
+              "provider_invoked": true
+            },
+            "model": "claude-haiku-4-5-20251001",
+            "input_tokens": 31,
+            "output_tokens": 7
+          }
+        ],
+        "tools": [
+          {
+            "round": 1,
+            "name": "resolve_contact_identity",
+            "ok": true,
+            "source": "policy_required",
+            "duration_ms": 143,
+            "rows": 1,
+            "identity_resolved": false
+          }
+        ],
+        "persistence": {
+          "decision": true,
+          "operational_resolution": true,
+          "conversation_action": true,
+          "verified": true
+        }
+      },
+      "decision_persisted": true,
+      "operational_resolution_persisted": true,
+      "conversation_action_persisted": true,
+      "operational_resolution": {
+        "case_domain": "maintenance",
+        "case_status": "insufficient_identity_context",
+        "requires_human": true,
+        "would_resolve_without_human": false,
+        "evidence_count": 0
+      },
+      "conversation_action": {
+        "conversation_action": "human_handoff",
+        "proposed_message": null,
+        "requires_human": true,
+        "auto_send_eligible": false,
+        "blocked_reason": "insufficient_identity_context",
+        "message_safe": true
+      }
+    }
+  },
+  "serverEvents": [
+    {
+      "stage": "local_ready",
+      "gates": {
+        "SHADOW_ADMIN_OUTBOUND_ENABLED": "false",
+        "SHADOW_OUTBOUND_ENABLED": "false",
+        "SHADOW_ADMIN_WORK_R1_ENABLED": "false",
+        "SHADOW_ADMIN_OUTBOUND_CANARY_ENABLED": "false",
+        "SHADOW_CLIENT_RECONCILIATION_PREPARE_ENABLED": "false",
+        "SHADOW_CLIENT_RECONCILIATION_WRITE_ENABLED": "false",
+        "SHADOW_IDENTITY_CONFIRMATION_ENABLED": "false",
+        "SHADOW_AI_AUTO_REAL_ENABLED": "false",
+        "SHADOW_HISTORICAL_REPLAY_ANTHROPIC_ENABLED": "false",
+        "SHADOW_AI_ENABLED": "false",
+        "SHADOW_AI_PRODUCTION_ENABLED": "false",
+        "SHADOW_AI_ALLOW_REAL_MESSAGES": "false",
+        "SHADOW_AI_MANUAL_REAL_ENABLED": "false",
+        "SHADOW_IDENTITY_LINK_REVIEW_WRITE_ENABLED": "false",
+        "SHADOW_AI_BACKFILL_REAL_ENABLED": "false",
+        "SHADOW_AI_ALLOW_OPERATIONAL_EVENTS": "false",
+        "SHADOW_AI_EXPLICIT_RETRY_ENABLED": "false",
+        "SHADOW_MANUAL_TURN_DEV_ENABLED": "true",
+        "SHADOW_CONVERSATION_ACTIONS_ENABLED": "true",
+        "SHADOW_AI_OUTPUT_MODE": "anthropic_json_schema"
+      },
+      "provider": "synthetic_fetch"
+    },
+    {
+      "stage": "stopped",
+      "providerCalls": {
+        "tool": 2,
+        "no_message": 2,
+        "ask": 2,
+        "identity": 2,
+        "invalid": 1,
+        "privacy": 1,
+        "http": 1,
+        "timeout": 1,
+        "3b_failure": 2,
+        "concurrency": 2
+      },
+      "writeOperations": [
+        {
+          "method": "POST",
+          "table": "authorize_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "shadow_ai_decisions"
+        },
+        {
+          "method": "POST",
+          "table": "shadow_conversation_actions"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "authorize_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "shadow_ai_decisions"
+        },
+        {
+          "method": "POST",
+          "table": "shadow_conversation_actions"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "authorize_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "shadow_ai_decisions"
+        },
+        {
+          "method": "POST",
+          "table": "shadow_conversation_actions"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "authorize_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "shadow_ai_decisions"
+        },
+        {
+          "method": "POST",
+          "table": "shadow_conversation_actions"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "authorize_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "authorize_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "authorize_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "authorize_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "authorize_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "shadow_ai_decisions"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "authorize_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "POST",
+          "table": "claim_manual_shadow_turn"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        },
+        {
+          "method": "POST",
+          "table": "shadow_ai_decisions"
+        },
+        {
+          "method": "POST",
+          "table": "shadow_conversation_actions"
+        },
+        {
+          "method": "PATCH",
+          "table": "shadow_ai_runs"
+        }
+      ],
+      "blockedWrites": 0
+    }
+  ],
+  "cleanup": true,
+  "externalProviderCalls": 0,
+  "scope": "Supabase DEV real; local endpoint factory and Next UI; synthetic HTTP model only",
+  "limitation": "This original batch's timeout had no receipt. See separate timeout recertification; never infer the missing receipt."
+}
