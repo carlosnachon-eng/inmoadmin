@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { createHistoricalReplayHandler } from "../pages/api/operaciones/shadow-historical-replay.js";
 import { isReplayRetryAdmin, validReplayRetryRequest, prepareHistoricalReplayRetry } from "../lib/shadow/ai/historicalReplayAttempts.js";
 import { sanitizedOutputPrivacyDiagnostics } from "../lib/shadow/ai/outputPrivacyDiagnostics.js";
+import { sanitizedStructuredOutputDiagnostics } from "../lib/shadow/ai/structuredOutputDiagnostics.js";
 import { executeHistoricalReplayCase } from "../lib/shadow/ai/historicalReplay.js";
 
 const id = (n) => `aa000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
@@ -134,10 +135,10 @@ for(const options of [{confirm:false},{session:null},{session:{access_token:"exp
 test("UI network failure does not retry",async()=>{const {run,calls}=uiAction({fetcher:async()=>{throw new Error("network");}});await run("prepare_retry",{id:id(10)});assert.equal(calls.length,1);});
 test("real JSX labels original error and linked retry separately and binds separate explicit actions",()=>{
   const require=createRequire(import.meta.url),heading=ui.indexOf("Evaluación histórica 3B"),start=ui.lastIndexOf("<details",heading),end=ui.indexOf("</details>",heading)+10;
-  const names=["card","brand","historicalReplay","historicalReplayBusy","historicalReplayPreview","historicalReplayTurnKeys","historicalReviewDrafts","operateHistoricalReplay","operateReplayAttempt","setHistoricalReplayTurnKeys","setHistoricalReviewDrafts","reviewHistoricalReplay","REPLAY_RATINGS","REPLAY_REASONS","sanitizedOutputPrivacyDiagnostics"];
+  const names=["card","brand","historicalReplay","historicalReplayBusy","historicalReplayPreview","historicalReplayTurnKeys","historicalReviewDrafts","operateHistoricalReplay","operateReplayAttempt","setHistoricalReplayTurnKeys","setHistoricalReviewDrafts","reviewHistoricalReplay","REPLAY_RATINGS","REPLAY_REASONS","sanitizedOutputPrivacyDiagnostics","sanitizedStructuredOutputDiagnostics"];
   const compiled=require("next/dist/build/swc").transformSync(`export default function Section({${names.join(",")}}){return (${ui.slice(start,end)});}`,{jsc:{parser:{syntax:"ecmascript",jsx:true},transform:{react:{runtime:"automatic"}}},module:{type:"commonjs"}}).code;
   const mod={exports:{}};new Function("require","module","exports",compiled)(require,mod,mod.exports);const calls=[];
-  const tree=mod.exports.default({card:{},brand:{},historicalReviewDrafts:{},sanitizedOutputPrivacyDiagnostics,operateReplayAttempt:(...args)=>calls.push(args),historicalReplay:{cases:[{...original(),attempt_number:1,attempts:[{id:id(21),case_id:id(10),case_ref:"original-ref",parent_ref:"original-ref",attempt_ref:"retry-ref",attempt_number:2,status:"pending",input_tokens:null,output_tokens:null}]}]}});
+  const tree=mod.exports.default({card:{},brand:{},historicalReviewDrafts:{},sanitizedOutputPrivacyDiagnostics,sanitizedStructuredOutputDiagnostics,operateReplayAttempt:(...args)=>calls.push(args),historicalReplay:{cases:[{...original(),attempt_number:1,attempts:[{id:id(21),case_id:id(10),case_ref:"original-ref",parent_ref:"original-ref",attempt_ref:"retry-ref",attempt_number:2,status:"pending",input_tokens:null,output_tokens:null}]}]}});
   const html=require("react-dom/server").renderToStaticMarkup(tree);assert.match(html,/Intento 1: error/);assert.match(html,/Intento 2: pending/);assert.match(html,/anterior original-ref/);assert.match(html,/Tokens:<\/strong> desconocido\/desconocido/);
   const nodes=(n)=>!n||typeof n!=="object"?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)];nodes(tree).find(n=>n.type==="button"&&n.props.children==="Ejecutar este replay").props.onClick();assert.equal(calls.length,1);assert.equal(calls[0][0],"execute_one");assert.equal(calls[0][1].id,id(21));
 });
