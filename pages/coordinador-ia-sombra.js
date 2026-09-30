@@ -58,6 +58,8 @@ export default function ShadowCoordinatorPage() {
   const [outputAbResults, setOutputAbResults] = useState({}); const [outputAbBusy, setOutputAbBusy] = useState("");
   const [v2ShadowBusy, setV2ShadowBusy] = useState(false);
   const [v2ShadowResult, setV2ShadowResult] = useState(null);
+  const [identCanaryBusy, setIdentCanaryBusy] = useState(false);
+  const [identCanaryResult, setIdentCanaryResult] = useState(null);
   const qaDevUiEnabled = isQaDevUiEnabled(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const qaFixtureScope = useMemo(() => qaCampaignFixtureScope(qaCampaignId), [qaCampaignId]);
   useEffect(() => {
@@ -335,6 +337,25 @@ export default function ShadowCoordinatorPage() {
     const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo continuar el run.");
     setQaReport(json); await load();
   };
+  const sendIdentificationCanary = async () => {
+    if (!selectedId || !session?.access_token || identCanaryBusy) return;
+    if (!window.confirm("Esto enviará un mensaje REAL al contacto pidiendo nombre completo e inmueble/departamento. Sólo puede enviarse una vez para este mensaje. ¿Continuar?")) return;
+    setIdentCanaryBusy(true); setIdentCanaryResult(null); setError("");
+    try {
+      const response = await fetch("/api/operaciones/admin-agent-v2-identification-canary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ messageId: selectedId }),
+      });
+      const json = await response.json();
+      if (!response.ok) return setError(json.error || "No se pudo enviar el canary de identificación.");
+      setIdentCanaryResult(json);
+    } catch {
+      setError("No se pudo enviar el canary de identificación.");
+    } finally {
+      setIdentCanaryBusy(false);
+    }
+  };
   const runV2RealShadow = async () => {
     if (!selectedId || !session?.access_token || v2ShadowBusy) return;
     setV2ShadowBusy(true); setV2ShadowResult(null); setError("");
@@ -547,6 +568,12 @@ export default function ShadowCoordinatorPage() {
               <button disabled={v2ShadowBusy || qaRunning} onClick={runV2RealShadow} style={{background:"#111827",color:"#fff",border:0,borderRadius:8,padding:"9px 14px",fontWeight:800}}>
                 {v2ShadowBusy ? "Analizando V2…" : "Probar V2 — sin enviar"}
               </button>
+              {profile?.role_id === "admin" && <button disabled={identCanaryBusy || qaRunning} onClick={sendIdentificationCanary} style={{background:"#b91c1c",color:"#fff",border:0,borderRadius:8,padding:"9px 14px",fontWeight:800,marginLeft:8}}>
+                {identCanaryBusy ? "Enviando identificación…" : "Enviar identificación — REAL 1/1"}
+              </button>}
+              {identCanaryResult?.status === "sent" && <div style={{background:"#fff7ed",border:"1px solid #fdba74",borderRadius:8,padding:12,marginTop:10}}>
+                <p style={{margin:0}}><strong>Canary enviado:</strong> {identCanaryResult.message}</p>
+              </div>}
               {v2ShadowResult && <div style={{background:"#ecfdf5",border:"1px solid #86efac",borderRadius:8,padding:12,marginTop:10}}>
                 <p style={{marginTop:0}}><strong>Shadow V2:</strong> {v2ShadowResult.status} · {v2ShadowResult.latencyMs ? `${(v2ShadowResult.latencyMs/1000).toFixed(1)} s` : "—"}</p>
                 <p><strong>Tools:</strong> {(v2ShadowResult.calledTools || []).join(", ") || "Ninguna"}</p>
