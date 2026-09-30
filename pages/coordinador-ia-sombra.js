@@ -56,6 +56,8 @@ export default function ShadowCoordinatorPage() {
   const replayAttemptInFlight = useRef(false);
   const [explicitRetries, setExplicitRetries] = useState([]); const [explicitRetryBusy, setExplicitRetryBusy] = useState(false);
   const [outputAbResults, setOutputAbResults] = useState({}); const [outputAbBusy, setOutputAbBusy] = useState("");
+  const [v2ShadowBusy, setV2ShadowBusy] = useState(false);
+  const [v2ShadowResult, setV2ShadowResult] = useState(null);
   const qaDevUiEnabled = isQaDevUiEnabled(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const qaFixtureScope = useMemo(() => qaCampaignFixtureScope(qaCampaignId), [qaCampaignId]);
   useEffect(() => {
@@ -333,6 +335,24 @@ export default function ShadowCoordinatorPage() {
     const json = await response.json(); setQaRunning(false); if (!response.ok) return setError(json.error || "No se pudo continuar el run.");
     setQaReport(json); await load();
   };
+  const runV2RealShadow = async () => {
+    if (!selectedId || !session?.access_token || v2ShadowBusy) return;
+    setV2ShadowBusy(true); setV2ShadowResult(null); setError("");
+    try {
+      const response = await fetch("/api/operaciones/admin-agent-v2-real-shadow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ messageId: selectedId }),
+      });
+      const json = await response.json();
+      if (!response.ok) return setError(json.error || "No se pudo ejecutar Shadow V2.");
+      setV2ShadowResult(json);
+    } catch {
+      setError("No se pudo ejecutar Shadow V2.");
+    } finally {
+      setV2ShadowBusy(false);
+    }
+  };
   const runRealShadow = async (continuation = false) => {
     setQaRunning(true); setError("");
     const endpoint = continuation ? "/api/operaciones/shadow-ai-real-continue" : "/api/operaciones/shadow-ai-real-run";
@@ -523,6 +543,17 @@ export default function ShadowCoordinatorPage() {
           <p><strong>Información faltante:</strong> {selected.requires_human ? "Se requiere confirmar contexto o intención." : "Ninguna detectada."}</p>
           {matches[0]?.context_href && <a href={matches[0].context_href}>Abrir contexto en modo lectura</a>}
           <div style={{ ...card, background: "#f8fafc", marginTop: 14 }}><h3 style={{marginTop:0}}>Administradora IA</h3>
+            {selected?.provider === "respond_admin" && selected?.direction === "inbound" && <>
+              <button disabled={v2ShadowBusy || qaRunning} onClick={runV2RealShadow} style={{background:"#111827",color:"#fff",border:0,borderRadius:8,padding:"9px 14px",fontWeight:800}}>
+                {v2ShadowBusy ? "Analizando V2…" : "Probar V2 — sin enviar"}
+              </button>
+              {v2ShadowResult && <div style={{background:"#ecfdf5",border:"1px solid #86efac",borderRadius:8,padding:12,marginTop:10}}>
+                <p style={{marginTop:0}}><strong>Shadow V2:</strong> {v2ShadowResult.status} · {v2ShadowResult.latencyMs ? `${(v2ShadowResult.latencyMs/1000).toFixed(1)} s` : "—"}</p>
+                <p><strong>Tools:</strong> {(v2ShadowResult.calledTools || []).join(", ") || "Ninguna"}</p>
+                <p><strong>Propuesta:</strong> {v2ShadowResult.output || "Sin salida"}</p>
+                <p style={{marginBottom:0,color:"#166534"}}>Modo lectura. No se envió ningún mensaje y no se persistió una acción V2.</p>
+              </div>}
+            </>}
             {turnMessages.length > 1 && <details><summary>Turno del cliente ({turnMessages.length} mensajes)</summary>{turnMessages.map((item)=><p key={item.id}>{item.sanitized_text}</p>)}</details>}
             {selected.real_shadow?.devTest && <p style={{color:"#92400e",fontWeight:800}}>DEV TEST — clone sintético, nunca se envía ni procesa como mensaje real.</p>}
             {selected.real_shadow?.authorizable && <button disabled={qaRunning} onClick={authorizeRealShadow}>Autorizar análisis</button>}
