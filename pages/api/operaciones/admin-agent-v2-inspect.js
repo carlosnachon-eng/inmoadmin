@@ -44,6 +44,19 @@ export default async function handler(req,res) {
     assertAdminAgentV2Environment(process.env);
     const session=await retrieveAdminAgentV2Session({sessionId});
     const items=await listItems(sessionId);
+    const turnsResponse=await fetch(`https://api.openai.com/v1/agents/sessions/${encodeURIComponent(sessionId)}/turns?order=asc&limit=20`,{
+      headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"OpenAI-Beta":"agents=v1"},
+    });
+    const turnsBody=await turnsResponse.json().catch(()=>({}));
+    const turns=turnsResponse.ok&&Array.isArray(turnsBody?.data)?turnsBody.data.map((turn)=>({
+      id:safe(turn?.id,120),
+      status:safe(turn?.status,40),
+      error:safe(turn?.error,300),
+      created_at:turn?.created_at||null,
+      completed_at:turn?.completed_at||null,
+      usage:turn?.usage||null,
+      output_item_ids:Array.isArray(turn?.output_item_ids)?turn.output_item_ids.slice(0,30):[],
+    })).slice(-20):[{error:`turns_http_${turnsResponse.status}`}];
     const eventsText="events_skipped_streaming_endpoint";
     return res.status(200).json({
       ok:true,
@@ -57,6 +70,7 @@ export default async function handler(req,res) {
         model:session.agent?.model||null,
         tools:Array.isArray(session.agent?.tools)?session.agent.tools.map((tool)=>tool?.name||tool?.type||"unknown"):[],
       },
+      turns,
       items:items.map(safeItem).slice(-30),
       eventsText,
     });
