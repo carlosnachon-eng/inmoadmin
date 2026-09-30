@@ -77,3 +77,12 @@ test("production Shadow V2 needs a second explicit gate and outbound stays forbi
     SHADOW_OUTBOUND_ENABLED: "true",
   }), /outbound_forbidden/);
 });
+
+
+test("provider identity resolver is exposed as read-only V2 tool", () => {
+  const tools = buildAdminAgentV2Tools();
+  const provider = tools.find((item) => item.name === "resolve_provider_identity");
+  assert.ok(provider);
+  assert.equal(provider.type, "function");
+  assert.equal(provider.parameters.required[0], "respondContactId");
+});
