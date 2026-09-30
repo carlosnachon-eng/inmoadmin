@@ -8,7 +8,7 @@ const equal=(a,b)=>{const x=Buffer.from(String(a||"")),y=Buffer.from(String(b||"
 async function nextMessage(admin) {
   const { data, error } = await admin
     .from("shadow_messages")
-    .select("id,conversation_id,occurred_at,provider,direction,attachment_metadata,sanitized_text")
+    .select("id,conversation_id,occurred_at,provider,direction,attachment_metadata,sanitized_text,external_message_id")
     .eq("provider","respond_admin")
     .eq("direction","inbound")
     .gte("occurred_at", process.env.ADMIN_AGENT_V2_AUTO_NOT_BEFORE || new Date(Date.now()-86400000).toISOString())
@@ -16,8 +16,18 @@ async function nextMessage(admin) {
     .limit(50);
   if (error) throw error;
   for (const message of data || []) {
-    if ((message.attachment_metadata || []).length) continue;
-    if (!String(message.sanitized_text || "").trim()) continue;
+    if ((message.attachment_metadata || []).length) {
+      const { data: interpretation, error: interpretationError } = await admin
+        .from("shadow_media_interpretations")
+        .select("id")
+        .eq("provider","respond_admin")
+        .eq("external_message_id",message.external_message_id)
+        .eq("status","completed")
+        .limit(1)
+        .maybeSingle();
+      if (interpretationError) throw interpretationError;
+      if (!interpretation) continue;
+    } else if (!String(message.sanitized_text || "").trim()) continue;
     const { data: existing, error: existingError } = await admin
       .from("admin_agent_v2_shadow_runs")
       .select("id")
