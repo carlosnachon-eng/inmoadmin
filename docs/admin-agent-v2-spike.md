@@ -56,3 +56,53 @@ histórica a una sesión V2 y comparar V2 vs Shadow sobre el mismo turno.
 7. Resultado recuperable por `session_id`.
 
 No se autoriza migración productiva con este spike.
+
+
+## Resultados del primer smoke real — 2026-09-30
+
+### Caso A — identidad inexistente
+
+Entrada sintética:
+`respondContactId = V2-SYNTHETIC-NO-LINK`
+Mensaje: “Ya hice el pago de la renta. ¿Me confirman si quedó registrado?”
+
+Resultado:
+- Agents API ejecutó `resolve_contact_identity`.
+- InmoAdmin devolvió ausencia de identidad confirmada.
+- El agente no inventó identidad, contrato, inmueble ni pago.
+- Respuesta segura: indicó que no podía confirmar el registro y que se requería aclaración o revisión humana.
+- Sin outbound y sin mutaciones operativas.
+
+PASS para el gate crítico de identidad.
+
+### Caso B — identidad + contrato + pago sintéticos confirmados en DEV
+
+Fixture temporal:
+- contacto opaco: `V2-SYNTHETIC-CONFIRMED`
+- contrato activo
+- renta septiembre 2026 por MXN 12,500
+- estado del pago: `en_revision`
+
+Resultado:
+- Agents API ejecutó `resolve_contact_identity`.
+- La resolución de identidad ya devolvió el contrato confirmado, por lo que no hizo falta `find_active_contracts`.
+- Después ejecutó `get_payment_summary`.
+- El agente informó el registro de renta por MXN 12,500 en revisión.
+- Indicó explícitamente que ese registro **no confirma recepción bancaria**.
+- Sin outbound y sin mutaciones operativas.
+
+PASS para el gate crítico de pago seguro.
+
+El fixture fue eliminado completamente después de la prueba:
+`respond_identity_links=0, contracts=0, properties=0, payments=0` para los identificadores/marcadores sintéticos.
+
+## Conclusión del spike inicial
+
+OpenAI Agents API ya demostró en DEV que puede:
+1. llamar tools read-only existentes de InmoAdmin;
+2. respetar identidad determinística;
+3. encadenar resolución de identidad con consulta operativa;
+4. evitar confirmar pagos bancarios sin evidencia suficiente;
+5. cerrar el turno con una respuesta útil y segura.
+
+Siguiente etapa recomendada: convertir este smoke en un runner repetible sobre un pequeño set de casos sintéticos/históricos y medir latencia, usage/costo y tasa de handoff antes de integrar Respond.
