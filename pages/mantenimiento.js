@@ -175,6 +175,9 @@ export default function Mantenimiento() {
   const [cotizacionForm, setCotizacionForm] = useState({ costo_proveedor: "", margen_pct: "30" });
   const [savingCotizacion, setSavingCotizacion] = useState(false);
   const [quotes, setQuotes] = useState([]);
+  const [serviceProviders, setServiceProviders] = useState([]);
+  const [providerQuoteRequests, setProviderQuoteRequests] = useState([]);
+  const [providerQuoteBusy, setProviderQuoteBusy] = useState("");
 
   // ── Descuento sobre cotización ──
   const [showModalDescuento, setShowModalDescuento] = useState(false);
@@ -216,14 +219,21 @@ export default function Mantenimiento() {
 
   const loadData = async () => {
     setLoading(true);
-    const [t, p, q] = await Promise.all([
+    const [t, p, q, providerResponse] = await Promise.all([
       supabase.from("maintenance_tickets").select("*").order("created_at", { ascending: false }),
       supabase.from("properties").select("id, name").order("name"),
       supabase.from("maintenance_quotes").select("*"),
+      fetch("/api/operaciones/provider-quote-requests", {
+        headers: { Authorization: `Bearer ${session?.access_token || ""}` },
+      }).then(async (response) => ({ response, json: await response.json() })).catch(() => ({ response: null, json: null })),
     ]);
     setTickets(t.data || []);
     setProperties(p.data || []);
     setQuotes(q.data || []);
+    if (providerResponse?.response?.ok) {
+      setServiceProviders(providerResponse.json.providers || []);
+      setProviderQuoteRequests(providerResponse.json.requests || []);
+    }
     setLoading(false);
   };
 
@@ -439,6 +449,35 @@ export default function Mantenimiento() {
     setShowModalCotizar(false);
     setTicketCotizando(null);
     loadData();
+  };
+
+  const requestProviderQuote = async (ticket, provider) => {
+    if (!session?.access_token || providerQuoteBusy) return;
+    setProviderQuoteBusy(`${ticket.id}:${provider.id}`);
+    try {
+      const previewResponse = await fetch("/api/operaciones/provider-quote-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: "preview", ticketId: ticket.id, providerId: provider.id }),
+      });
+      const preview = await previewResponse.json();
+      if (!previewResponse.ok) { showToast(preview.error || "No se pudo preparar la solicitud.", false); return; }
+      if (!window.confirm(`Se enviará a ${preview.preview.provider}:\n\n${preview.preview.message}\n\n¿Enviar solicitud de cotización?`)) return;
+
+      const sendResponse = await fetch("/api/operaciones/provider-quote-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: "send", ticketId: ticket.id, providerId: provider.id }),
+      });
+      const sent = await sendResponse.json();
+      if (!sendResponse.ok) { showToast(sent.error || "No se pudo enviar la solicitud.", false); return; }
+      showToast(`Solicitud enviada a ${provider.displayName} ✅`);
+      await loadData();
+    } catch {
+      showToast("No se pudo enviar la solicitud de cotización.", false);
+    } finally {
+      setProviderQuoteBusy("");
+    }
   };
 
   // ── Editar descuento de una cotización ya generada ──
@@ -674,6 +713,25 @@ export default function Mantenimiento() {
                       <div style={{ marginTop: 12 }}>
                         <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>Descripción</p>
                         <p style={{ margin: 0, fontSize: 13, color: "#374151", lineHeight: 1.5 }}>{t.description}</p>
+                      </div>
+                    )}
+
+                    {serviceProviders.length > 0 && !["cerrado","cancelado"].includes(t.status) && (
+                      <div style={{ marginTop: 14, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
+                        <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 800, color: "#6b7280", textTransform: "uppercase" }}>🤖 Administradora IA · Proveedores</p>
+                        <p style={{ margin: "0 0 10px", fontSize: 12, color: "#6b7280" }}>Solicita cotización por WhatsApp. El mensaje se muestra antes de enviarse.</p>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {serviceProviders.map((provider) => {
+                            const request = providerQuoteRequests.find((r) => r.ticket_id === t.id && r.provider_id === provider.id && ["draft","sent","responded"].includes(r.status));
+                            const busy = providerQuoteBusy === `${t.id}:${provider.id}`;
+                            return (
+                              <button key={provider.id} disabled={busy || Boolean(request?.status === "sent")} onClick={() => requestProviderQuote(t, provider)}
+                                style={{ border: "1px solid #d1d5db", background: request?.status === "sent" ? "#f0fdf4" : "#fff", color: request?.status === "sent" ? "#065f46" : "#1f2937", borderRadius: 8, padding: "8px 10px", cursor: busy || request?.status === "sent" ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700 }}>
+                                {busy ? "Enviando…" : request?.status === "sent" ? `✓ Solicitada a ${provider.displayName}` : `Pedir a ${provider.displayName}`}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
 
