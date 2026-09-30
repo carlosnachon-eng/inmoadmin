@@ -733,6 +733,12 @@ export default function Mantenimiento() {
                                 {request?.status === "responded" && request.response_summary && (
                                   <div style={{ width: "100%", fontSize: 12, color: "#374151", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 8 }}>
                                     <strong>{provider.displayName} respondió:</strong> {request.response_summary}
+                                    {(request.quoted_amount || request.availability_text) && (
+                                      <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                        {request.quoted_amount && <span style={{ background: "#fff", border: "1px solid #bbf7d0", borderRadius: 999, padding: "2px 8px", fontWeight: 800 }}>Monto: {fmt(request.quoted_amount)}</span>}
+                                        {request.availability_text && <span style={{ background: "#fff", border: "1px solid #bbf7d0", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>Disponibilidad: {request.availability_text}</span>}
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -741,6 +747,26 @@ export default function Mantenimiento() {
                         </div>
                       </div>
                     )}
+
+                    {(() => {
+                      const responses = providerQuoteRequests.filter((r) => r.ticket_id === t.id && r.status === "responded" && r.quoted_amount);
+                      if (responses.length < 2) return null;
+                      const enriched = responses.map((r) => ({
+                        ...r,
+                        provider: serviceProviders.find((p) => p.id === r.provider_id),
+                      })).filter((r) => r.provider).sort((a,b)=>Number(a.quoted_amount)-Number(b.quoted_amount));
+                      return (
+                        <div style={{ marginTop: 14, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: 12 }}>
+                          <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 800, color: "#1e40af", textTransform: "uppercase" }}>Comparación de proveedores</p>
+                          {enriched.map((r,index)=>(
+                            <p key={r.id} style={{ margin: "4px 0", fontSize: 12, color: "#1f2937" }}>
+                              <strong>{index===0 ? "Menor cotización · " : ""}{r.provider.displayName}:</strong> {fmt(r.quoted_amount)}{r.availability_text ? ` · ${r.availability_text}` : ""}
+                            </p>
+                          ))}
+                          <p style={{ margin: "8px 0 0", fontSize: 11, color: "#6b7280" }}>Comparación informativa. La Administradora IA no adjudica el trabajo automáticamente.</p>
+                        </div>
+                      );
+                    })()}
 
                     {/* FOTOS */}
                     <div style={{ marginTop: 14 }}>
