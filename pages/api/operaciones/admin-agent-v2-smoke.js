@@ -52,7 +52,7 @@ export default async function handler(req,res) {
     let session=await createAdminAgentV2Session({input});
     const calledTools=[];
     let terminal=null;
-    for(let step=0;step<16;step+=1){
+    for(let step=0;step<60;step+=1){
       session=await retrieveAdminAgentV2Session({sessionId:session.id});
       if(session.status==="requires_action"){
         for(const action of session.required_actions||[]) calledTools.push(String(action?.name||action?.type||"unknown").slice(0,80));
@@ -61,9 +61,9 @@ export default async function handler(req,res) {
         await sleep(250);
         continue;
       }
-      if(["failed","cancelled"].includes(session.status)){terminal=session.status;break;}
+      if(session.status==="failed"){terminal="failed";break;}
       if(session.status==="idle"){terminal="idle";break;}
-      await sleep(300);
+      await sleep(500);
     }
     session=await retrieveAdminAgentV2Session({sessionId:session.id});
     const items=await listItems(session.id);
@@ -76,7 +76,9 @@ export default async function handler(req,res) {
       calledTools,
       outbound:false,
       production:false,
-      items:items.map(safeItem).slice(-12),
+      usage: session.usage || null,
+      error: session.error || null,
+      items:items.map(safeItem).slice(-20),
     });
   } catch(error) {
     return res.status(500).json({ok:false,error:String(error?.message||"admin_agent_v2_smoke_failed").slice(0,180)});
