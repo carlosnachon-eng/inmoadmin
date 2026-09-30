@@ -56,6 +56,15 @@ async function listTurns(sessionId,env=process.env){
   if(!response.ok) throw new Error(`admin_agent_v2_turns_failed_${response.status}`);
   return Array.isArray(body?.data)?body.data:[];
 }
+async function listTurnsWithSettledUsage(sessionId,env=process.env){
+  let turns=await listTurns(sessionId,env);
+  for(const delay of [800,1600,3000]){
+    if(turns.some((turn)=>turn?.usage)) return turns;
+    await sleep(delay);
+    turns=await listTurns(sessionId,env);
+  }
+  return turns;
+}
 function outputText(items){
   const assistant=[...items].reverse().find((item)=>item?.role==="assistant");
   const parts=Array.isArray(assistant?.content)?assistant.content:[];
@@ -91,7 +100,7 @@ async function runCase(db,testCase){
     await sleep(350);
   }
   session=await retrieveAdminAgentV2Session({sessionId:session.id});
-  const [items,turns]=await Promise.all([listItems(session.id),listTurns(session.id)]);
+  const [items,turns]=await Promise.all([listItems(session.id),listTurnsWithSettledUsage(session.id)]);
   const usage=usageFromTurns(turns);
   const text=outputText(items);
   const toolsOk=testCase.expectedTools.every((name)=>calledTools.includes(name));
