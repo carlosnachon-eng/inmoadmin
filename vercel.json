@@ -75,6 +75,10 @@
     {
       "path": "/api/cron/sales-agent-v2-auto-shadow",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sales-agent-v2-recovery",
+      "schedule": "* * * * *"
     }
   ]
 }
