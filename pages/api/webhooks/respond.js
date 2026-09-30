@@ -12,6 +12,7 @@ import {
 import { captureRespondAdminShadowIsolated } from "../../../lib/shadow/providers/respondAdmin";
 import { routeRespondMessageIsolated } from "../../../lib/respond/channelRouter";
 import { captureRespondMediaReferenceIsolated } from "../../../lib/shadow/media/reference";
+import { captureRespondSalesV2InboundIsolated } from "../../../lib/agentsV2/salesCapture";
 
 export const config = {
   api: {
@@ -66,6 +67,7 @@ export default async function handler(req, res) {
 
     await captureRespondAdminShadowIsolated(admin, body);
     await captureRespondMediaReferenceIsolated(admin, body);
+    await captureRespondSalesV2InboundIsolated(admin, body);
 
     return res.status(200).json({ ok: true, queued: true });
   } catch (error) {
