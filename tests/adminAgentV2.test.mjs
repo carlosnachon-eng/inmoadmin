@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   ADMIN_AGENT_V2_TOOL_NAMES,
   assertAdminAgentV2Environment,
+  assertAdminAgentV2ShadowEnvironment,
   buildAdminAgentV2Config,
   buildAdminAgentV2Tools,
   pendingFunctionCalls,
@@ -58,4 +59,21 @@ test("pending action filter ignores unknown function calls", () => {
   });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].call_id, "1");
+});
+
+
+test("production Shadow V2 needs a second explicit gate and outbound stays forbidden", () => {
+  const production = {
+    ...safeEnv,
+    VERCEL_ENV: "production",
+    SUPABASE_ENVIRONMENT: "production",
+    ADMIN_AGENT_V2_PRODUCTION_SHADOW_ENABLED: "false",
+  };
+  assert.throws(() => assertAdminAgentV2ShadowEnvironment(production), /production_shadow_disabled/);
+  assert.doesNotThrow(() => assertAdminAgentV2ShadowEnvironment({ ...production, ADMIN_AGENT_V2_PRODUCTION_SHADOW_ENABLED: "true" }));
+  assert.throws(() => assertAdminAgentV2ShadowEnvironment({
+    ...production,
+    ADMIN_AGENT_V2_PRODUCTION_SHADOW_ENABLED: "true",
+    SHADOW_OUTBOUND_ENABLED: "true",
+  }), /outbound_forbidden/);
 });
