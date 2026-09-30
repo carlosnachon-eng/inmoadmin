@@ -71,6 +71,10 @@
     {
       "path": "/api/cron/provider-quote-replies",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sales-agent-v2-auto-shadow",
+      "schedule": "* * * * *"
     }
   ]
 }
