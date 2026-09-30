@@ -106,3 +106,8 @@ OpenAI Agents API ya demostró en DEV que puede:
 5. cerrar el turno con una respuesta útil y segura.
 
 Siguiente etapa recomendada: convertir este smoke en un runner repetible sobre un pequeño set de casos sintéticos/históricos y medir latencia, usage/costo y tasa de handoff antes de integrar Respond.
+
+
+## Activación Shadow V2 productiva
+
+2026-09-30: variables productivas configuradas externamente para habilitar únicamente análisis Shadow V2. Outbound continúa bloqueado. Este cambio documental fuerza redeploy para cargar el nuevo entorno; no modifica lógica de negocio.
