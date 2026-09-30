@@ -725,15 +725,17 @@ export default function Mantenimiento() {
                             const request = providerQuoteRequests.find((r) => r.ticket_id === t.id && r.provider_id === provider.id && ["draft","sent","responded"].includes(r.status));
                             const busy = providerQuoteBusy === `${t.id}:${provider.id}`;
                             return (
-                              <button key={provider.id} disabled={busy || Boolean(request?.status === "sent")} onClick={() => requestProviderQuote(t, provider)}
-                                style={{ border: "1px solid #d1d5db", background: request?.status === "sent" ? "#f0fdf4" : "#fff", color: request?.status === "sent" ? "#065f46" : "#1f2937", borderRadius: 8, padding: "8px 10px", cursor: busy || request?.status === "sent" ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700 }}>
-                                {busy ? "Enviando…" : request?.status === "responded" ? `✓ Respondió ${provider.displayName}` : request?.status === "sent" ? `✓ Solicitada a ${provider.displayName}` : `Pedir a ${provider.displayName}`}
-                              </button>
-                              {request?.status === "responded" && request.response_summary && (
-                                <div style={{ width: "100%", fontSize: 12, color: "#374151", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 8 }}>
-                                  <strong>{provider.displayName} respondió:</strong> {request.response_summary}
-                                </div>
-                              )}
+                              <div key={provider.id} style={{ display: "contents" }}>
+                                <button disabled={busy || Boolean(request?.status === "sent")} onClick={() => requestProviderQuote(t, provider)}
+                                  style={{ border: "1px solid #d1d5db", background: request?.status === "sent" || request?.status === "responded" ? "#f0fdf4" : "#fff", color: request?.status === "sent" || request?.status === "responded" ? "#065f46" : "#1f2937", borderRadius: 8, padding: "8px 10px", cursor: busy || request?.status === "sent" ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700 }}>
+                                  {busy ? "Enviando…" : request?.status === "responded" ? `✓ Respondió ${provider.displayName}` : request?.status === "sent" ? `✓ Solicitada a ${provider.displayName}` : `Pedir a ${provider.displayName}`}
+                                </button>
+                                {request?.status === "responded" && request.response_summary && (
+                                  <div style={{ width: "100%", fontSize: 12, color: "#374151", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 8 }}>
+                                    <strong>{provider.displayName} respondió:</strong> {request.response_summary}
+                                  </div>
+                                )}
+                              </div>
                             );
                           })}
                         </div>
