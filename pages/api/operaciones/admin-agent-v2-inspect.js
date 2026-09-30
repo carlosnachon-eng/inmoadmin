@@ -44,16 +44,7 @@ export default async function handler(req,res) {
     assertAdminAgentV2Environment(process.env);
     const session=await retrieveAdminAgentV2Session({sessionId});
     const items=await listItems(sessionId);
-    let eventsText="";
-    try {
-      const eventsResponse=await fetch(`https://api.openai.com/v1/agents/sessions/${encodeURIComponent(sessionId)}/events`,{
-        headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"OpenAI-Beta":"agents=v1"},
-      });
-      if(eventsResponse.ok) eventsText=(await eventsResponse.text()).slice(-20000);
-      else eventsText=`events_http_${eventsResponse.status}`;
-    } catch(error) {
-      eventsText=`events_error_${String(error?.message||"unknown").slice(0,120)}`;
-    }
+    const eventsText="events_skipped_streaming_endpoint";
     return res.status(200).json({
       ok:true,
       sessionId,
