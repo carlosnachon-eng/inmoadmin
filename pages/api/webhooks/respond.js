@@ -16,6 +16,8 @@ import { captureRespondSalesV2InboundIsolated } from "../../../lib/agentsV2/sale
 import { processSalesInboundById } from "../../../lib/agentsV2/processSalesInbound";
 import { captureRespondOwnerInboundIsolated } from "../../../lib/agentsV2/ownerCapture";
 import { processOwnerInboundById } from "../../../lib/agentsV2/processOwnerInbound";
+import { captureRespondLegalInboundIsolated } from "../../../lib/agentsV2/legalCapture";
+import { processLegalInboundById } from "../../../lib/agentsV2/processLegalInbound";
 
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
 
@@ -74,7 +76,31 @@ export default async function handler(req, res) {
     await captureRespondAdminShadowIsolated(admin, body);
     await captureRespondMediaReferenceIsolated(admin, body);
 
-    const ownerCapture=await captureRespondOwnerInboundIsolated(admin, body);
+    const legalCapture=await captureRespondLegalInboundIsolated(admin, body);
+    let legalImmediate=null;
+    if(legalCapture?.status==="captured"&&legalCapture?.id){
+      try{
+        const waitMs=Math.max(0,new Date(legalCapture.debounceUntil||0).getTime()-Date.now());
+        if(waitMs>0)await sleep(Math.min(waitMs,5000));
+        const {data:newer,error:newerError}=await admin.from("legal_agent_v1_inbound_messages")
+          .select("id").eq("respond_contact_id",legalCapture.respondContactId)
+          .gt("created_at",legalCapture.createdAt).in("status",["captured","processing","processed"]).limit(1);
+        if(newerError)throw newerError;
+        if((newer||[]).length){
+          await admin.from("legal_agent_v1_inbound_messages").update({status:"skipped"}).eq("id",legalCapture.id).eq("status","captured");
+          legalImmediate={status:"absorbed_by_newer_message"};
+        }else{
+          legalImmediate=await processLegalInboundById(admin,legalCapture.id,{env:process.env});
+        }
+      }catch(error){
+        console.error("[legal-ai-immediate]",String(error?.message||"legal_immediate_failed").slice(0,160));
+        legalImmediate={status:"fallback_to_cron"};
+      }
+    }
+
+    const ownerCapture=legalCapture?.status==="captured"
+      ? {status:"skipped",reason:"legal_intent"}
+      : await captureRespondOwnerInboundIsolated(admin, body);
     let ownerImmediate=null;
     if(ownerCapture?.status==="captured"&&ownerCapture?.id){
       try{
@@ -104,7 +130,7 @@ export default async function handler(req, res) {
 
     let salesCapture={status:"skipped",reason:"owner_intent"};
     let salesImmediate=null;
-    if(ownerCapture?.status!=="captured"){
+    if(legalCapture?.status!=="captured"&&ownerCapture?.status!=="captured"){
       salesCapture=await captureRespondSalesV2InboundIsolated(admin, body);
       const immediateEnabled=process.env.SALES_AGENT_V2_IMMEDIATE_ENABLED!=="false"
         && process.env.SALES_AGENT_V2_AUTO_SHADOW_ENABLED==="true";
@@ -139,6 +165,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok:true,queued:true,
+      legal:legalCapture?.status||null,legalImmediate:legalImmediate?.status||null,
       owner:ownerCapture?.status||null,ownerImmediate:ownerImmediate?.status||null,
       sales:salesCapture?.status||null,salesImmediate:salesImmediate?.status||null
     });
