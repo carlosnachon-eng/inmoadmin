@@ -28,13 +28,24 @@ export default async function handler(req,res){
     const inbound=run.sales_agent_v2_inbound_messages;
     if(!inbound)continue;
 
-    const [{data:outbound,error:outboundError},{data:handoff,error:handoffError},{data:newer,error:newerError}]=await Promise.all([
+    const [{data:outbound,error:outboundError},{data:handoff,error:handoffError},{data:newer,error:newerError},{data:snapshot,error:snapshotError}]=await Promise.all([
       admin.from("sales_agent_v2_auto_outbound").select("id,status").eq("inbound_message_id",inbound.id).maybeSingle(),
       admin.from("sales_agent_v2_handoffs").select("id,status").eq("inbound_message_id",inbound.id).maybeSingle(),
-      admin.from("sales_agent_v2_inbound_messages").select("id").eq("respond_contact_id",inbound.respond_contact_id).gt("occurred_at",inbound.occurred_at).limit(1)
+      admin.from("sales_agent_v2_inbound_messages").select("id").eq("respond_contact_id",inbound.respond_contact_id).gt("occurred_at",inbound.occurred_at).limit(1),
+      admin.from("gv_respond_contact_snapshots")
+        .select("mapped_profile_id,mapping_status,respond_lifecycle,respond_last_human_outbound_at")
+        .eq("respond_contact_id",inbound.respond_contact_id)
+        .maybeSingle()
     ]);
-    if(outboundError)throw outboundError;if(handoffError)throw handoffError;if(newerError)throw newerError;
-    if(outbound||handoff||(newer||[]).length)continue;
+    if(outboundError)throw outboundError;if(handoffError)throw handoffError;if(newerError)throw newerError;if(snapshotError)throw snapshotError;
+
+    const lifecycle=String(snapshot?.respond_lifecycle||"").trim().toLowerCase();
+    const advancedLifecycle=["en atencion","en atención","visita agendada","apartado","cerrado","ganado"].includes(lifecycle);
+    const humanAfterInbound=snapshot?.respond_last_human_outbound_at
+      && new Date(snapshot.respond_last_human_outbound_at)>new Date(inbound.occurred_at);
+    const alreadyAssigned=Boolean(snapshot?.mapped_profile_id)&&String(snapshot?.mapping_status||"").toLowerCase()==="matched";
+
+    if(outbound||handoff||(newer||[]).length||humanAfterInbound||advancedLifecycle||alreadyAssigned)continue;
 
     let retry=null;
     try{
