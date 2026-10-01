@@ -1,0 +1,415 @@
+{
+  "status": "DEV_NOT_CERTIFIED_BASELINE_ACL_BLOCKED",
+  "date": "2026-10-01",
+  "branch": "codex/social-routing-v1",
+  "head": "a71e74fc117cfc94bddab66607c8626577cd71a9",
+  "project": {
+    "name": "inmoadmin-dev",
+    "ref": "hjfwjnejbcpmknvfpdcq"
+  },
+  "scope": "Hosted DEV catalog and rollback-contained synthetic SQL/RPC checks. Not endpoint, PostgREST, provider or live workflow E2E.",
+  "migration_installation": {
+    "baseline": {
+      "version": "20261001154342",
+      "name": "social_routing_v1_dev_baseline_existing_migrations",
+      "result": "COMMITTED",
+      "source_files": [
+        {
+          "path": "supabase/migrations/202609300009_sales_agent_v2_shadow_lane.sql",
+          "sha256": "1ff749fe0a204d45d688166cc3c9742a12304fc6686396c0cb60a1fab33a6f30"
+        },
+        {
+          "path": "supabase/migrations/202610010002_sales_agent_v2_handoffs.sql",
+          "sha256": "5a1777c4435fe299fe0b5082002145fbd11ba1084acc9a004fe377b2c59cd9fa"
+        },
+        {
+          "path": "supabase/migrations/202610010003_sales_agent_v2_handoff_dispatch.sql",
+          "sha256": "af141b24a4e17fe046b85d26b613720ad3f90b393373f0fb12ca8e8e8ec1d844"
+        },
+        {
+          "path": "supabase/migrations/202610010004_sales_agent_v2_handoff_sla.sql",
+          "sha256": "1e6914cc472d1ac538feecf394db237207d19fe90639c584193dce637276b437"
+        },
+        {
+          "path": "supabase/migrations/202610010005_sales_agent_v2_handoff_escalated_status.sql",
+          "sha256": "18163c19e545fd91af291748d456ac5dd3b9a44ab563bce77c2631240bbc3b68"
+        },
+        {
+          "path": "supabase/migrations/202610010006_sales_agent_v2_immediate_processing_status.sql",
+          "sha256": "a657b22467caeb87a2483cde12a62db88b6799ce3b43fc8b230c37041c4a6730"
+        },
+        {
+          "path": "supabase/migrations/202610010007_sales_agent_v2_message_debounce.sql",
+          "sha256": "92d27631dd1ffc1dffb0a9c0fd0d1589b2121ca80ac1dce110d85afa4f20d8a3"
+        },
+        {
+          "path": "supabase/migrations/202610010008_owner_agent_v1_base.sql",
+          "sha256": "51bb14d5742e6be87f24371d0b2aeee4be9c8a1131aa4526355d75f3a89d8ccb"
+        },
+        {
+          "path": "supabase/migrations/202610010009_legal_agent_v1_base.sql",
+          "sha256": "ad8893f00a7ef7cb0ec8a4fc83ff5cf2753154ae6d93ffdc61365efcfc6fe164"
+        },
+        {
+          "path": "supabase/migrations/202610010010_legal_agent_v1_handoffs.sql",
+          "sha256": "0b44b8a64ab5fb5b75f739273a44657df077936953805c72010559a71843b16a"
+        },
+        {
+          "path": "supabase/migrations/202610010012_respond_appointment_sync.sql",
+          "sha256": "1859103f4f6f94a44ac242fe2efa21473f4c75f73330766ceed49f4a597aa869"
+        }
+      ],
+      "source_sql_changed": false,
+      "transaction_wrapper": "dependency/collision prechecks; lock_timeout=3s; statement_timeout=30s",
+      "minimal_companion_tables": "Existing source migrations also define their run/outbound journals; no workers or gates activated"
+    },
+    "social": {
+      "version": "20261001154448",
+      "name": "social_routing_v1",
+      "result": "COMMITTED",
+      "source": {
+        "path": "supabase/migrations/20261001134913_social_routing_v1.sql",
+        "sha256": "fd0a962d07dda73d346a5cdabb9ab0d80bcdab4537900d764f23040c670d6f0d"
+      },
+      "source_sql_changed": false
+    },
+    "note": "Hosted apply_migration generated these history versions. The 11 baseline source timestamps were NOT individually registered; do not reapply them blindly.",
+    "production_applied": false
+  },
+  "catalog": {
+    "result": "PASS_SOCIAL_CATALOG_ONLY",
+    "table_count": 3,
+    "rpc_count": 4,
+    "enabled_trigger_count": 6,
+    "source_check": {
+      "path": "supabase/checks/social_routing_v1.sql",
+      "sha256": "feeeb442125525856cbfc0c752d52e3a182756f051a9cb6a315d9858cf62316f"
+    },
+    "constraints_reviewed": true
+  },
+  "rpc_subset": {
+    "scope": "SQL/RPC guarantees only; application E2E blocked by baseline service_role ACL",
+    "tests": [
+      "exclusive_destination_sales",
+      "same_event_idempotent_single_inbound",
+      "missing_attribution_remains_null",
+      "event_collision_rejected",
+      "cross_lane_trigger_rejects_duplicate",
+      "exclusive_destination_owner",
+      "exclusive_destination_legal",
+      "exclusive_destination_administration",
+      "exclusive_destination_existing_client",
+      "exclusive_destination_human_review",
+      "exclusive_destination_unknown",
+      "explicit_attribution_preserved",
+      "two_day_owner_lane_and_detail_preserved_no_sales",
+      "stale_owner_chain_rejected",
+      "implicit_owner_to_sales_rejected",
+      "ack_requires_assignment_receipt",
+      "assignment_reservation_cannot_be_reused",
+      "uncertain_ack_remains_consumed_and_separate",
+      "consumed_effect_cannot_reset",
+      "handoff_target_immutable",
+      "uncertain_inbound_not_resettable",
+      "service_direct_route_rewrite_denied",
+      "anon_social_message_routes_read_denied",
+      "anon_social_handoff_effects_read_denied",
+      "anon_social_appointment_keys_read_denied",
+      "anon_capture_rpc_denied",
+      "authenticated_social_message_routes_read_denied",
+      "authenticated_social_handoff_effects_read_denied",
+      "authenticated_social_appointment_keys_read_denied",
+      "authenticated_capture_rpc_denied"
+    ],
+    "checks": 30,
+    "result": "SOCIAL_DEV_RPC_SUBSET_PASS",
+    "outbound_calls": 0,
+    "production_access": false,
+    "fixture_visibility": "uncommitted; rollback in same request",
+    "external_provider_calls": 0,
+    "workflow_runtime_tested": false,
+    "concurrent_sessions_tested": false
+  },
+  "postcheck": {
+    "new_rpc_acl": [
+      {
+        "function": "capture_social_route_v1",
+        "search_path": [
+          "search_path=\"\""
+        ],
+        "anon_execute": false,
+        "service_execute": true,
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "function": "commit_social_appointment_v1",
+        "search_path": [
+          "search_path=\"\""
+        ],
+        "anon_execute": false,
+        "service_execute": true,
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "function": "finish_social_effect_v1",
+        "search_path": [
+          "search_path=\"\""
+        ],
+        "anon_execute": false,
+        "service_execute": true,
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "function": "reserve_social_effect_v1",
+        "search_path": [
+          "search_path=\"\""
+        ],
+        "anon_execute": false,
+        "service_execute": true,
+        "security_definer": true,
+        "authenticated_execute": false
+      }
+    ],
+    "baseline_acl": [
+      {
+        "rls": true,
+        "table": "legal_agent_v1_auto_outbound",
+        "anon_select": false,
+        "service_insert": false,
+        "service_select": false,
+        "service_update": false,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "table": "legal_agent_v1_handoffs",
+        "anon_select": false,
+        "service_insert": false,
+        "service_select": false,
+        "service_update": false,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "table": "legal_agent_v1_inbound_messages",
+        "anon_select": false,
+        "service_insert": false,
+        "service_select": false,
+        "service_update": false,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "table": "legal_agent_v1_runs",
+        "anon_select": false,
+        "service_insert": false,
+        "service_select": false,
+        "service_update": false,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "table": "owner_agent_v1_auto_outbound",
+        "anon_select": false,
+        "service_insert": false,
+        "service_select": false,
+        "service_update": false,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "table": "owner_agent_v1_inbound_messages",
+        "anon_select": false,
+        "service_insert": false,
+        "service_select": false,
+        "service_update": false,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "table": "owner_agent_v1_runs",
+        "anon_select": false,
+        "service_insert": false,
+        "service_select": false,
+        "service_update": false,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "table": "respond_appointment_sync",
+        "anon_select": false,
+        "service_insert": false,
+        "service_select": false,
+        "service_update": false,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "table": "sales_agent_v2_handoffs",
+        "anon_select": false,
+        "service_insert": true,
+        "service_select": true,
+        "service_update": true,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "table": "sales_agent_v2_inbound_messages",
+        "anon_select": false,
+        "service_insert": true,
+        "service_select": true,
+        "service_update": true,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "table": "sales_agent_v2_shadow_runs",
+        "anon_select": false,
+        "service_insert": true,
+        "service_select": true,
+        "service_update": true,
+        "authenticated_select": false
+      }
+    ],
+    "fixture_rows": {
+      "events": 0,
+      "routes": 0,
+      "handoffs": 0,
+      "legal_inbound": 0,
+      "owner_inbound": 0,
+      "sales_inbound": 0
+    },
+    "new_table_rows": {
+      "routes": 0,
+      "effects": 0,
+      "appointment_keys": 0
+    }
+  },
+  "baseline_acl_failure": {
+    "error_sqlstate": "42501",
+    "demonstrated_table": "owner_agent_v1_inbound_messages",
+    "demonstrated_operation": "SET LOCAL ROLE service_role; SELECT id FROM public.owner_agent_v1_inbound_messages LIMIT 0",
+    "missing_service_select_insert_update": [
+      "legal_agent_v1_auto_outbound",
+      "legal_agent_v1_handoffs",
+      "legal_agent_v1_inbound_messages",
+      "legal_agent_v1_runs",
+      "owner_agent_v1_auto_outbound",
+      "owner_agent_v1_inbound_messages",
+      "owner_agent_v1_runs",
+      "respond_appointment_sync"
+    ],
+    "cause": "Existing Owner, Legal and appointment baseline migrations enable RLS but omit service_role table grants; no matching later grant migration found.",
+    "application_read_sites": [
+      "lib/social/continuity.js:14",
+      "lib/social/continuity.js:82"
+    ],
+    "local_harness_limitation": "The previous disposable local PostgreSQL harness grants SELECT/INSERT/UPDATE ON ALL TABLES before applying Social; this masks missing baseline grants. Local PASS does not certify hosted baseline ACL.",
+    "grants_changed": false,
+    "aggregate_pass": false
+  },
+  "hosted_checks_pending": [
+    "Application/endpoint full routing via service client, including canonical identity and duplicate non-dispatch",
+    "Complete Mika fixture: current Carlos mapping, persisted appointment, zero assignment/ACK and absolute date response",
+    "Independent-connection hosted concurrency for capture, assignment/ACK reservations and appointment booking",
+    "Hosted appointment sync/client resolution and same-name non-merge",
+    "Full handoff workflow request vs ACK interception via application",
+    "CTA and audiovisual-provider full processor paths",
+    "Chapulco actual hosted PostgREST query and filters",
+    "Flag-OFF legacy WhatsApp and Administration runtime regressions",
+    "Respond current assignee to advisor_profile_id mapping E2E",
+    "Authenticated review GET/UI against hosted data"
+  ],
+  "prior_local_certification": {
+    "reused_not_rerun": true,
+    "evidence": "social-routing-v1-results.json",
+    "social_pass": 117,
+    "directed_pass": 161,
+    "local_postgres_pass": 54,
+    "commercial_regressions_pass": 35,
+    "full_suite": {
+      "passed": 1770,
+      "total": 1773,
+      "baseline_failures": 3
+    },
+    "build": "PASS_PREVIOUSLY_RECORDED",
+    "mapping_and_workflow_remote_atomicity": "not certified by local fixtures"
+  },
+  "security_advisors": {
+    "relevant": [
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy",
+        "findings": [
+          "legal_agent_v1_auto_outbound",
+          "legal_agent_v1_handoffs",
+          "legal_agent_v1_inbound_messages",
+          "legal_agent_v1_runs",
+          "owner_agent_v1_auto_outbound",
+          "owner_agent_v1_inbound_messages",
+          "owner_agent_v1_runs",
+          "respond_appointment_sync",
+          "sales_agent_v2_handoffs",
+          "sales_agent_v2_inbound_messages",
+          "sales_agent_v2_shadow_runs",
+          "social_appointment_keys",
+          "social_handoff_effects",
+          "social_message_routes"
+        ]
+      }
+    ],
+    "interpretation": "RLS-no-policy INFO is expected on server-only journals with explicit server ACL/RPC. It does not repair missing baseline service_role grants.",
+    "unrelated_findings_not_changed": true
+  },
+  "respond_workflow": {
+    "result": "NOT_CERTIFIED_NO_DEV_WORKSPACE",
+    "name": "Sales V2 — Handoff a asesor — v1",
+    "accessible_workspace_scope": "Only Emporio Inmobiliario production workspace visible",
+    "changed": false,
+    "tested": false,
+    "proposed_flow": [
+      "Incoming Webhook resolves contact",
+      "Any existing assignee: stop without assignment or ACK; do not rely on earlier Inmoadmin snapshot",
+      "Only explicitly unassigned: Assign To Ventas / Round Robin",
+      "Enable Manual Assignment exit condition; no message steps"
+    ],
+    "human_assignment_race": "NOT_PROVEN: Manual Assignment exit excludes API/other workflow assignments; no atomic compare-and-set capability accredited.",
+    "cache_and_race_note": "Workflow contact fields may be cached; a branch alone is not proof that a later human assignment cannot be overwritten.",
+    "mika_live_contact_access_or_mutation": false,
+    "mika_no_workflow_can_move_assignee": "NOT_CERTIFIED",
+    "docs": [
+      "https://respond.io/help/workflows/workflows-overview",
+      "https://respond.io/help/workflows/step-assign-to",
+      "https://respond.io/help/workflows/step-branch"
+    ]
+  },
+  "safety": {
+    "production_mutations": false,
+    "respond_mutations": false,
+    "real_contacts_modified": false,
+    "real_provider_calls": 0,
+    "outbound_calls": 0,
+    "runtime_social_flag_activated": false,
+    "requested_flag": "SOCIAL_ROUTING_V1_ENABLED=false",
+    "environment_variables_changed": false,
+    "production_flag_recertified": false,
+    "application_runtime_started": false,
+    "private_replies_changed": false,
+    "tiktok_changed": false,
+    "fixtures_committed": false,
+    "fixture_cleanup": "ROLLBACK verified by zero prefix-scoped fixture rows and empty new Social tables",
+    "functional_code_changed": false,
+    "merge": false
+  },
+  "pr": {
+    "number": 160,
+    "state": "open",
+    "merged": false,
+    "head": "a71e74fc117cfc94bddab66607c8626577cd71a9"
+  },
+  "conclusion": "NO_GO_FULL_DEV_CERTIFICATION_AND_RESPOND_WORKFLOW. Need authorized minimal baseline ACL correction and a DEV Respond workspace/race test; no production activation."
+}

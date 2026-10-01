@@ -1,5 +1,7 @@
 {
   "scope": "Social Routing v1 foundation only",
+  "snapshot_scope": "Historical local certification before hosted DEV follow-up; access/applied booleans below describe that local run only.",
+  "current_hosted_followup": "social-routing-v1-dev-certification.json",
   "base_sha": "30beba05a1a53741915137c2e65066a547f5ed98",
   "branch": "codex/social-routing-v1",
   "certified_environment": "local synthetic IO and disposable loopback PostgreSQL",
