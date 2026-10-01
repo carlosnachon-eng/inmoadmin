@@ -6,16 +6,18 @@ export const config={maxDuration:120};
 const equal=(a,b)=>{const x=Buffer.from(String(a||"")),y=Buffer.from(String(b||""));return x.length===y.length&&timingSafeEqual(x,y);};
 
 async function nextInbound(admin){
-  let query=admin.from("sales_agent_v2_inbound_messages")
+  const {data,error}=await admin.from("sales_agent_v2_inbound_messages")
     .select("id,event_id,external_message_id,respond_contact_id,channel_id,occurred_at,sanitized_text,status")
     .eq("status","captured")
     .order("occurred_at",{ascending:true})
-    .limit(1);
-  const cutoff=process.env.SALES_AGENT_V2_AUTO_NOT_BEFORE;
-  if(cutoff) query=query.gte("occurred_at",cutoff);
-  const {data,error}=await query.maybeSingle();
+    .limit(50);
   if(error)throw error;
-  return data||null;
+  const cutoff=process.env.SALES_AGENT_V2_AUTO_NOT_BEFORE ? new Date(process.env.SALES_AGENT_V2_AUTO_NOT_BEFORE) : null;
+  return (data||[]).find((row)=>{
+    if(String(row.event_id||"").startsWith("recovery:")) return true;
+    if(!cutoff||Number.isNaN(cutoff.getTime())) return true;
+    return new Date(row.occurred_at)>=cutoff;
+  })||null;
 }
 
 export default async function handler(req,res){
