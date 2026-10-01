@@ -14,6 +14,7 @@ export default function VentasIaSombra(){
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
   const [filter,setFilter]=useState("all");
+  const [comparisons,setComparisons]=useState({});
 
   useEffect(()=>{ supabase.auth.getSession().then(({data:{session}})=>setSession(session)); },[]);
 
@@ -30,6 +31,19 @@ export default function VentasIaSombra(){
   };
 
   useEffect(()=>{ if(session)load(); },[session]);
+
+  const loadComparison=async(runId)=>{
+    if(!session?.access_token||String(runId).startsWith("pending-"))return;
+    setComparisons((prev)=>({...prev,[runId]:{loading:true}}));
+    try{
+      const response=await fetch("/api/operaciones/sales-v2-respond-comparison?runId="+encodeURIComponent(runId),{headers:{Authorization:"Bearer "+session.access_token}});
+      const body=await response.json();
+      if(!response.ok)throw new Error(body.error||"No se pudo comparar");
+      setComparisons((prev)=>({...prev,[runId]:body}));
+    }catch(e){
+      setComparisons((prev)=>({...prev,[runId]:{error:e.message||"Error"}}));
+    }
+  };
 
   const visible=useMemo(()=>rows.filter((r)=>{
     if(filter==="failed")return r.status==="failed";
@@ -68,8 +82,18 @@ export default function VentasIaSombra(){
           <div style={{marginTop:14,background:"#f9fafb",borderRadius:10,padding:12}}><div style={{fontSize:11,fontWeight:800,color:"#6b7280",textTransform:"uppercase",marginBottom:4}}>Sales V2 habría contestado</div><div style={{fontSize:14,color:"#111827",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{r.status==="pending"?"Esperando procesamiento de Sales V2…":(r.proposedResponse||"—")}</div></div>
           <div style={{marginTop:12,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
             {(r.calledTools||[]).map((tool,i)=><span key={tool+"-"+i} style={{fontSize:11,background:"#eef2ff",color:"#3730a3",padding:"3px 7px",borderRadius:999}}>{tool}</span>)}
+            {r.status!=="pending"&&<button onClick={()=>loadComparison(r.id)} style={{fontSize:11,border:"1px solid #d1d5db",background:"#fff",borderRadius:8,padding:"4px 8px",fontWeight:700,cursor:"pointer"}}>{comparisons[r.id]?.loading?"Buscando…":"Ver qué respondió Respond"}</button>}
             <span style={{fontSize:11,color:"#9ca3af",marginLeft:"auto"}}>{r.latencyMs?((r.latencyMs/1000).toFixed(1)+" s"):"—"}</span>
           </div>
+          {comparisons[r.id]&&!comparisons[r.id].loading&&(
+            <div style={{marginTop:10,background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:10,padding:10}}>
+              <div style={{fontSize:11,fontWeight:800,color:"#9a3412",textTransform:"uppercase",marginBottom:4}}>Respuesta real en Respond</div>
+              {comparisons[r.id].error?<div style={{fontSize:12,color:"#991b1b"}}>{comparisons[r.id].error}</div>:comparisons[r.id].found?<>
+                <div style={{fontSize:13,color:"#7c2d12",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{comparisons[r.id].response}</div>
+                <div style={{fontSize:11,color:"#9a3412",marginTop:6}}>Origen: {comparisons[r.id].senderSource||"unknown"} · {fmtTime(comparisons[r.id].sentAt)}</div>
+              </>:<div style={{fontSize:12,color:"#9a3412"}}>No encontré una respuesta outbound posterior a este mensaje.</div>}
+            </div>
+          )}
           {r.errorCode&&<div style={{marginTop:10,fontSize:12,color:"#991b1b"}}>Error: {r.errorCode}</div>}
         </div>)}
       </div>
