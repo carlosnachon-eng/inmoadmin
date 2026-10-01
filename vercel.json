@@ -103,6 +103,10 @@
     {
       "path": "/api/cron/respond-appointment-sync",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/provider-quote-sla",
+      "schedule": "* * * * *"
     }
   ]
 }
