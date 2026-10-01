@@ -13,8 +13,10 @@ import { captureRespondAdminShadowIsolated } from "../../../lib/shadow/providers
 import { routeRespondMessageIsolated } from "../../../lib/respond/channelRouter";
 import { captureRespondMediaReferenceIsolated } from "../../../lib/shadow/media/reference";
 import { captureRespondSalesV2InboundIsolated } from "../../../lib/agentsV2/salesCapture";
+import { processSalesInboundById } from "../../../lib/agentsV2/processSalesInbound";
 
 export const config = {
+  maxDuration: 120,
   api: {
     bodyParser: false,
   },
@@ -67,9 +69,26 @@ export default async function handler(req, res) {
 
     await captureRespondAdminShadowIsolated(admin, body);
     await captureRespondMediaReferenceIsolated(admin, body);
-    await captureRespondSalesV2InboundIsolated(admin, body);
+    const salesCapture=await captureRespondSalesV2InboundIsolated(admin, body);
 
-    return res.status(200).json({ ok: true, queued: true });
+    let salesImmediate=null;
+    const immediateEnabled=process.env.SALES_AGENT_V2_IMMEDIATE_ENABLED!=="false"
+      && process.env.SALES_AGENT_V2_AUTO_SHADOW_ENABLED==="true";
+    if(immediateEnabled&&salesCapture?.status==="captured"&&salesCapture?.id){
+      try{
+        salesImmediate=await processSalesInboundById(admin,salesCapture.id,{env:process.env});
+      }catch(error){
+        console.error("[sales-v2-immediate]",String(error?.message||"immediate_processing_failed").slice(0,160));
+        salesImmediate={status:"fallback_to_cron"};
+      }
+    }
+
+    return res.status(200).json({
+      ok:true,
+      queued:true,
+      sales:salesCapture?.status||null,
+      salesImmediate:salesImmediate?.status||null
+    });
   } catch (error) {
     if (error?.statusCode === 404) return res.status(404).json({ ok: false, error: "Not Found" });
     if (error?.statusCode === 413) return res.status(413).json({ ok: false, error: error.message });
