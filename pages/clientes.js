@@ -280,6 +280,11 @@ export default function Clientes() {
   const [toast, setToast] = useState(null);
   const [proximasCitas, setProximasCitas] = useState([]);
   const [citasVencidas, setCitasVencidas] = useState([]);
+  const [citasRespondPendientes, setCitasRespondPendientes] = useState([]);
+  const [respondPendienteActivo, setRespondPendienteActivo] = useState(null);
+  const [respondPropiedadBusqueda, setRespondPropiedadBusqueda] = useState("");
+  const [respondPropiedadesResultado, setRespondPropiedadesResultado] = useState([]);
+  const [respondConfirmando, setRespondConfirmando] = useState(false);
   const [filtroAsesor, setFiltroAsesor] = useState("");
   const [orden, setOrden] = useState("reciente"); // 'reciente' | 'antiguo'
   const [asesoresLista, setAsesoresLista] = useState([]);
@@ -329,12 +334,83 @@ export default function Clientes() {
     const { data: vencidasData } = await queryVencidas;
     setCitasVencidas(vencidasData || []);
 
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        const pendingResponse = await fetch("/api/operaciones/respond-appointment-pending", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const pendingBody = await pendingResponse.json().catch(() => ({}));
+        setCitasRespondPendientes(pendingResponse.ok ? (pendingBody.pending || []) : []);
+      } else {
+        setCitasRespondPendientes([]);
+      }
+    } catch {
+      setCitasRespondPendientes([]);
+    }
+
     setLoading(false);
   };
 
   useEffect(() => {
     if (!permisoCargando && puedeVer) cargarDatos();
   }, [permisoCargando, puedeVer, alcance]);
+
+  useEffect(() => {
+    const buscar = async () => {
+      if (!respondPendienteActivo || !respondPropiedadBusqueda || respondPropiedadBusqueda.length < 3) {
+        setRespondPropiedadesResultado([]);
+        return;
+      }
+      const { data } = await supabase
+        .from("propiedades")
+        .select("id, titulo, direccion, public_id")
+        .or(`titulo.ilike.%${respondPropiedadBusqueda}%,direccion.ilike.%${respondPropiedadBusqueda}%`)
+        .in("status", ["published", "reserved"])
+        .limit(8);
+      setRespondPropiedadesResultado(data || []);
+    };
+    const timer = setTimeout(buscar, 350);
+    return () => clearTimeout(timer);
+  }, [respondPendienteActivo, respondPropiedadBusqueda]);
+
+  const abrirPendienteRespond = (pending) => {
+    setRespondPendienteActivo(pending);
+    setRespondPropiedadBusqueda("");
+    setRespondPropiedadesResultado([]);
+  };
+
+  const cerrarPendienteRespond = () => {
+    setRespondPendienteActivo(null);
+    setRespondPropiedadBusqueda("");
+    setRespondPropiedadesResultado([]);
+  };
+
+  const confirmarPendienteRespond = async (property) => {
+    if (!respondPendienteActivo?.id || !property?.id) return;
+    setRespondConfirmando(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Sesión requerida");
+      const response = await fetch("/api/operaciones/respond-appointment-pending", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ syncId: respondPendienteActivo.id, propertyId: property.id }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || "No se pudo confirmar la cita");
+      showToast(`Cita creada en CRM · ${property.titulo}`);
+      cerrarPendienteRespond();
+      await cargarDatos();
+    } catch (error) {
+      showToast("No se pudo confirmar la cita: " + (error?.message || "error"), false);
+    } finally {
+      setRespondConfirmando(false);
+    }
+  };
 
   const logout = async () => { await supabase.auth.signOut(); window.location.href = "/"; };
 
@@ -387,6 +463,65 @@ export default function Clientes() {
               </a>
             ))}
             <p style={{ margin: "8px 0 0", fontSize: 11, color: "#991b1b" }}>Actualiza su estado desde la ficha de cada cliente.</p>
+          </div>
+        )}
+
+        {citasRespondPendientes.length > 0 && (
+          <div style={{ background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 14, padding: 14, marginBottom: 16 }}>
+            <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 800, color: "#1e40af" }}>
+              🔗 {citasRespondPendientes.length} visita{citasRespondPendientes.length > 1 ? "s" : ""} de Respond por completar
+            </p>
+            <p style={{ margin: "0 0 10px", fontSize: 11, color: "#1d4ed8" }}>
+              La fecha y el asesor ya están identificados. Falta confirmar la propiedad para crear la cita en CRM y contarla en KPIs.
+            </p>
+            {citasRespondPendientes.slice(0, 6).map((pending) => (
+              <div key={pending.id} style={{ background: "#fff", border: "1px solid #bfdbfe", borderRadius: 10, padding: 10, marginBottom: 8 }}>
+                <p style={{ margin: "0 0 3px", fontSize: 13, color: "#1e3a8a" }}>
+                  <strong>{pending.clienteName || "Cliente por identificar"}</strong> · {fmtFechaHora(pending.appointmentAt)}
+                  {alcance === "todos" && pending.advisorName ? ` · ${pending.advisorName}` : ""}
+                </p>
+                {pending.context && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#6b7280" }}>{pending.context}</p>}
+                <button onClick={() => abrirPendienteRespond(pending)}
+                  disabled={!pending.clienteId}
+                  style={{ background: pending.clienteId ? brand.red : "#d1d5db", color: "#fff", border: "none", borderRadius: 8, padding: "8px 10px", fontWeight: 700, fontSize: 12, cursor: pending.clienteId ? "pointer" : "not-allowed" }}>
+                  {pending.clienteId ? "Seleccionar propiedad y crear cita" : "Falta identificar cliente"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {respondPendienteActivo && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 2500, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+            <div style={{ background: "#fff", width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto", borderRadius: "20px 20px 0 0", padding: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, color: brand.gray }}>Completar visita de Respond</h3>
+                  <p style={{ margin: "5px 0 0", fontSize: 12, color: "#6b7280" }}>
+                    {respondPendienteActivo.clienteName} · {fmtFechaHora(respondPendienteActivo.appointmentAt)}
+                  </p>
+                </div>
+                <button onClick={cerrarPendienteRespond} style={{ border: "none", background: "#f3f4f6", borderRadius: 8, width: 32, height: 32, cursor: "pointer" }}>✕</button>
+              </div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 5 }}>Propiedad de la visita</label>
+              <input value={respondPropiedadBusqueda} onChange={(e) => setRespondPropiedadBusqueda(e.target.value)}
+                placeholder="Buscar por título o dirección…"
+                style={{ width: "100%", boxSizing: "border-box", padding: "13px 14px", border: "1.5px solid #e5e7eb", borderRadius: 11, fontSize: 15 }} />
+              {respondPropiedadesResultado.length > 0 && (
+                <div style={{ marginTop: 8, border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
+                  {respondPropiedadesResultado.map((p) => (
+                    <button key={p.id} onClick={() => confirmarPendienteRespond(p)} disabled={respondConfirmando}
+                      style={{ width: "100%", textAlign: "left", padding: 12, border: "none", borderBottom: "1px solid #f3f4f6", background: "#fff", cursor: respondConfirmando ? "not-allowed" : "pointer" }}>
+                      <strong style={{ display: "block", fontSize: 13 }}>{p.titulo}</strong>
+                      {p.direccion && <span style={{ fontSize: 11, color: "#6b7280" }}>{p.direccion}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p style={{ margin: "12px 0 0", fontSize: 11, color: "#6b7280" }}>
+                No se crea la cita hasta seleccionar la propiedad correcta.
+              </p>
+            </div>
           </div>
         )}
 
