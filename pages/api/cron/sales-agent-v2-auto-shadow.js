@@ -9,15 +9,19 @@ async function nextInbound(admin){
   const {data,error}=await admin.from("sales_agent_v2_inbound_messages")
     .select("id,event_id,external_message_id,respond_contact_id,channel_id,occurred_at,sanitized_text,status")
     .eq("status","captured")
-    .order("occurred_at",{ascending:true})
-    .limit(50);
+    .order("occurred_at",{ascending:false})
+    .limit(100);
   if(error)throw error;
   const cutoff=process.env.SALES_AGENT_V2_AUTO_NOT_BEFORE ? new Date(process.env.SALES_AGENT_V2_AUTO_NOT_BEFORE) : null;
-  return (data||[]).find((row)=>{
+  const eligible=(data||[]).filter((row)=>{
     if(String(row.event_id||"").startsWith("recovery:")) return true;
     if(!cutoff||Number.isNaN(cutoff.getTime())) return true;
     return new Date(row.occurred_at)>=cutoff;
-  })||null;
+  });
+  const live=eligible.find((row)=>!String(row.event_id||"").startsWith("recovery:"));
+  if(live)return live;
+  return eligible.filter((row)=>String(row.event_id||"").startsWith("recovery:"))
+    .sort((a,b)=>String(a.occurred_at).localeCompare(String(b.occurred_at)))[0]||null;
 }
 
 export default async function handler(req,res){
