@@ -5,6 +5,12 @@ Scope: separate branch `codex/social-routing-v1`, based on main
 Private Replies configuration, TikTok connection, new CRM, scheduler or round robin.
 No production access, variables, deployment, database migration or real provider calls.
 
+Current DEV status: **SOCIAL_ROUTING_V1_DEV_FUNCTIONAL_PASS** — 93/93 hosted
+functional checks and 96/96 permission probes; scoped cleanup confirmed zero
+residues. Final receipt: `social-routing-v1-dev-functional-certification.json`.
+Historical ACL/capture blocks below are preserved as history, not current status.
+Respond workflow certification remains **PENDING**; no merge or Production GO.
+
 ## Implemented architecture
 
 ```text
@@ -105,10 +111,11 @@ replaying an agent that may already have sent. Existing non-Social retries are u
 ## Migration (applied in DEV only; NOT applied to Production)
 
 Hosted follow-up on 2026-10-01: the exact baseline source migrations and Social
-migration are now installed in `inmoadmin-dev`. Full DEV certification is **blocked
-by baseline service-role ACL**, not PASS. See the final section and
-`social-routing-v1-dev-certification.json`; the original local results below remain
-historical evidence and must not be presented as hosted end-to-end certification.
+migration are installed in `inmoadmin-dev`. The initial ACL blocker was corrected
+under explicit DEV-only authorization; the functional certification is now PASS.
+See the final section and `social-routing-v1-dev-functional-certification.json`.
+Original local/RPC-only results below remain historical evidence, not a substitute
+for the later hosted functional run or live Respond workflow certification.
 
 `supabase/migrations/20261001134913_social_routing_v1.sql`:
 
@@ -411,7 +418,7 @@ legacy name matching/concurrency behavior; human queue needs operational ownersh
 No new administrator permissions, marketing publishes, campaigns or production
 communications are authorized by this change.
 
-## Hosted DEV follow-up — 2026-10-01: NOT CERTIFIED
+## Historical hosted DEV follow-up — 2026-10-01: initially NOT CERTIFIED
 
 Source HEAD: `a71e74fc117cfc94bddab66607c8626577cd71a9` on
 `codex/social-routing-v1`. PR #160 remains open, unmerged. No functional code
@@ -513,7 +520,7 @@ provide an isolated Respond DEV workspace for the assignment/race tests. Keep
 `SOCIAL_ROUTING_V1_ENABLED=false`; no runtime was started or gate activated here.
 Production gate values were not reread or changed. No merge or rollout is cleared.
 
-## DEV follow-up: minimal grants and authorized usage baseline — 2026-10-01
+## Historical DEV follow-up: minimal grants and authorized usage baseline — 2026-10-01
 
 This section supersedes the preceding **ACL blocker only**. The previous RPC
 subset and its limitations remain historical evidence, not application E2E PASS.
@@ -569,3 +576,98 @@ No functional application code or certified SQL was changed for publication.
 Respond remains **NOT CERTIFIED**, separately from database/application testing.
 No production workspace, real contact, gate, deployment, Private Reply or channel
 connection was changed. PR #160 remains unmerged. No production/merge GO is issued.
+
+## Final hosted functional DEV certification — 2026-10-01
+
+**SOCIAL_ROUTING_V1_DEV_FUNCTIONAL_PASS**
+
+Tested commit: `5cd3e82020ba821a0e5db348e1991bd264a58ee0`, published to the
+existing PR #160 before the credential was requested. Functional application code
+remains at `a71e74fc117cfc94bddab66607c8626577cd71a9`; no functional changes were
+made to obtain this PASS. The grants and both unchanged usage migration files
+were already committed/pushed and their complete SQL bytes matched DEV history.
+
+Only `inmoadmin-dev / hjfwjnejbcpmknvfpdcq` was accessed. The administrative key
+entered through a native hidden field, remained in process memory, and the runner
+was terminated after cleanup. No key, token or provider payload is in this evidence.
+
+### Matrix
+
+| Case | Hosted DEV result | Evidence |
+| --- | --- | --- |
+| Exclusive routing | PASS | Eight matrix inputs, seven destinations; one persisted route/queue; cross-agent insert rejected |
+| Durable OWNER / Mika | PASS | Two-day synthetic continuation, both Day-2 messages stay OWNER; address context preserved; no Sales handoff/assignment/ACK |
+| Existing responsible | PASS | Current assignee overrides stale snapshot; assigned contact blocked before handoff/fallback |
+| Appointment/time | PASS | 01/10/2026 10:30 Mexico City remains absolute; historical relative text anchored; no shift to tomorrow |
+| Appointment concurrency | PASS | Two concurrent hosted service-client operations, one cita; duplicate capture returns same booking |
+| Respond ↔ advisor mapping | PASS | Synthetic Respond assignee maps to active profile; persisted and preserved |
+| Same-name identity | PASS | Two homonyms never joined by name; only explicit contact/client linkage used |
+| Aletz/audiovisual offer | PASS | HUMAN_REVIEW; no handoff, fallback, assignment or ACK |
+| CTA El Conde, absent attribution | PASS | Real Sales processor produces one policy clarification with no model; no handoff/ACK; duplicate not claimed |
+| CTA with verified attribution | PASS | Published property source preserved and used before textual fallback; budget still enforced |
+| Chapulco / EMP-MUN7BHJX | PASS | Legacy phrase false negative reproduced; real hosted query with Social context finds synthetic published listing; no unsupported absence claim |
+| Duplicate/concurrent event | PASS | One immutable route and one specialist queue |
+| Sales assignment/ACK | PASS | Parallel dispatch plus repeat yields one intercepted workflow request and one separate ACK; two completed durable receipts |
+| Legal assignment/ACK | PASS | One workflow/ACK pair after repeat; actual server journal operations/readback |
+| Owner/Legal processors | PASS | Actual modules write/read their DEV journals under minimum service grants; provider/history IO synthetic |
+| Legacy / flag OFF | PASS | Existing WhatsApp capture and duplicate behavior; Owner/Legal capture; no Social marker |
+| Administration | PASS | 544519 excluded even with positive test option; existing admin route unchanged |
+| RLS/ACL/grants | PASS | 96 operation/denial probes; 21 minimum grants on eight tables; no client grants/RLS changes |
+| Safety/cleanup | PASS | 0 real provider/Respond requests; 0 real messages; exact-key cleanup; zero residues |
+
+Functional checks: **93/93 PASS**, **0 FAIL**, one harness execution. Permission
+probes: **96/96 PASS** in a rolled-back zero-row transaction. Existing catalog/RPC
+certification is retained separately, not counted again as new functional checks.
+No suite/build rerun was needed for this evidence-only follow-up.
+
+### Isolation and limits
+
+The real branch processors used the hosted DEV service client and real
+PostgREST/RPC/constraints. External model/history IO was synthetic and Respond
+POSTs were intercepted before network transport. There were **2 simulated workflow
+requests and 5 simulated message calls**. Journal `sent` values acknowledge the
+mock only; **no real message or assignment occurred**. The runner denied every
+other network destination and recorded zero unexpected requests.
+
+`SOCIAL_ROUTING_V1_ENABLED=false` remained in the runner process; deployed
+configuration was untouched. Positive routing was exercised only through explicit
+per-call synthetic test options. No worker, cron or deployment was activated.
+
+This certifies the requested application/DEV paths, **not** live Respond workflow
+execution, model behavior, or admin HTTP/UI. Sales CTA used auto outbound OFF;
+the separate `sales_agent_v2_auto_outbound` baseline remains absent in DEV and was
+not installed or certified. Expanding into that sender path requires separate
+authorization. Chapulco was a synthetic DEV catalog fixture, not a fresh Production
+inventory read. No real contact or Production record was inspected or changed.
+
+Security Advisor reports only expected `rls_enabled_no_policy` INFO for the scoped
+server-only tables (client ACL denied). Unrelated pre-existing project findings
+were not changed. This is not a claim that every table in DEV is globally secure.
+
+### Fixture cleanup
+
+Fixture tag: `social-dev-cert-8ac440cf1450`. Created and removed **92 application
+rows**, plus **1 Auth user and 1 profile**. The recorded footprint included 23
+synthetic webhook events, 20 routes, 18 specialist inbound rows, 4 agent runs,
+3 mock outbound journals, 2 handoffs, 4 assignment/ACK receipts, 3 booking keys,
+3 appointment sync rows, 2 citas, 2 opportunities, 3 contact snapshots, 2 clients,
+and 1 property. Two additional commercial-attribution attempt rows generated by
+the existing cita trigger were included in the 92 and removed. No commercial
+attribution row was created.
+
+Cleanup used only captured fixture primary keys in a bounded DEV transaction;
+no DELETE privilege was added to the application role. Auth deletion targeted only
+the recorded synthetic actor. Independent post-commit reads of **22 tables** and
+Auth users/profiles/sessions/refresh tokens returned **0**. Identity links and
+identity audit rows for the synthetic contacts were **0** before and after cleanup.
+No global cleanup, schema change, extra grants or production mutation occurred.
+
+### Remaining before merge/activation
+
+- Respond remains **NOT CERTIFIED**: a safe isolated workspace or equivalent
+  proven conditional assignment strategy is needed to demonstrate that a human
+  assignment between workflow evaluation and Assign To cannot be overwritten.
+  Local/DEV mocks do not certify that race or the live Round Robin membership.
+- The proposed workflow protection was not installed in production Respond.
+- No merge, Production migration, flag enablement, Private Replies or additional
+  TikTok connection is authorized by this receipt. PR #160 stays open/unmerged.

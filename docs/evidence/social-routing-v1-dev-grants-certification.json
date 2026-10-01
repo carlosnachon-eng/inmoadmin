@@ -1,4 +1,6 @@
 {
+  "historical_application_status": true,
+  "superseded_by": "social-routing-v1-dev-functional-certification.json",
   "status": "DEV_ACL_AND_USAGE_PASS_APPLICATION_CERTIFICATION_PENDING",
   "date": "2026-10-01",
   "branch": "codex/social-routing-v1",

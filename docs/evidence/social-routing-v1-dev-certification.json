@@ -1,4 +1,6 @@
 {
+  "historical": true,
+  "superseded_by": "social-routing-v1-dev-functional-certification.json",
   "status": "DEV_NOT_CERTIFIED_BASELINE_ACL_BLOCKED",
   "date": "2026-10-01",
   "branch": "codex/social-routing-v1",
