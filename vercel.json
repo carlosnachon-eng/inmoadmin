@@ -91,6 +91,10 @@
     {
       "path": "/api/cron/owner-agent-v1",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/legal-agent-v1",
+      "schedule": "* * * * *"
     }
   ]
 }
