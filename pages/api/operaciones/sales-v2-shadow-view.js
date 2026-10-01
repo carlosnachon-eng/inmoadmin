@@ -24,26 +24,47 @@ export default async function handler(req,res){
   if(!profile)return res.status(403).json({ok:false,error:"not_authorized"});
   const admin=getAdminSupabase();
 
-  const {data,error}=await admin.from("sales_agent_v2_shadow_runs")
-    .select("id,inbound_message_id,session_id,status,called_tools,proposed_response,latency_ms,error_code,created_at,completed_at,sales_agent_v2_inbound_messages(id,event_id,respond_contact_id,channel_id,occurred_at,sanitized_text,status)")
-    .order("created_at",{ascending:false})
-    .limit(100);
-  if(error){
-    console.error("[sales-v2-shadow-view]",error.message);
+  const [{data:runs,error:runError},{data:pending,error:pendingError}]=await Promise.all([
+    admin.from("sales_agent_v2_shadow_runs")
+      .select("id,inbound_message_id,session_id,status,called_tools,proposed_response,latency_ms,error_code,created_at,completed_at,sales_agent_v2_inbound_messages(id,event_id,respond_contact_id,channel_id,occurred_at,sanitized_text,status)")
+      .order("created_at",{ascending:false})
+      .limit(100),
+    admin.from("sales_agent_v2_inbound_messages")
+      .select("id,event_id,respond_contact_id,channel_id,occurred_at,sanitized_text,status,created_at")
+      .eq("status","captured")
+      .order("created_at",{ascending:false})
+      .limit(100),
+  ]);
+  if(runError||pendingError){
+    console.error("[sales-v2-shadow-view]",runError?.message||pendingError?.message);
     return res.status(500).json({ok:false,error:"load_failed"});
   }
 
+  const completed=(runs||[]).map((row)=>({
+    id:row.id,
+    status:row.status,
+    calledTools:Array.isArray(row.called_tools)?row.called_tools:[],
+    proposedResponse:row.proposed_response||"",
+    latencyMs:row.latency_ms,
+    errorCode:row.error_code,
+    completedAt:row.completed_at,
+    inbound:row.sales_agent_v2_inbound_messages||null,
+    sortAt:row.sales_agent_v2_inbound_messages?.occurred_at||row.created_at,
+  }));
+  const waiting=(pending||[]).map((row)=>({
+    id:"pending-"+row.id,
+    status:"pending",
+    calledTools:[],
+    proposedResponse:"",
+    latencyMs:null,
+    errorCode:null,
+    completedAt:null,
+    inbound:row,
+    sortAt:row.occurred_at||row.created_at,
+  }));
+
   return res.status(200).json({
     ok:true,
-    rows:(data||[]).map((row)=>({
-      id:row.id,
-      status:row.status,
-      calledTools:Array.isArray(row.called_tools)?row.called_tools:[],
-      proposedResponse:row.proposed_response||"",
-      latencyMs:row.latency_ms,
-      errorCode:row.error_code,
-      completedAt:row.completed_at,
-      inbound:row.sales_agent_v2_inbound_messages||null,
-    })),
+    rows:[...waiting,...completed].sort((a,b)=>String(b.sortAt||"").localeCompare(String(a.sortAt||""))).slice(0,100),
   });
 }
