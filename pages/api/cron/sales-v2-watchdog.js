@@ -43,9 +43,7 @@ export default async function handler(req,res){
     const advancedLifecycle=["en atencion","en atención","visita agendada","apartado","cerrado","ganado"].includes(lifecycle);
     const humanAfterInbound=snapshot?.respond_last_human_outbound_at
       && new Date(snapshot.respond_last_human_outbound_at)>new Date(inbound.occurred_at);
-    const alreadyAssigned=Boolean(snapshot?.mapped_profile_id)&&String(snapshot?.mapping_status||"").toLowerCase()==="matched";
-
-    if(outbound||handoff||(newer||[]).length||humanAfterInbound||advancedLifecycle||alreadyAssigned)continue;
+    if(outbound||handoff||(newer||[]).length||humanAfterInbound||advancedLifecycle)continue;
 
     let retry=null;
     try{
