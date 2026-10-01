@@ -3,11 +3,11 @@
   "base_sha": "30beba05a1a53741915137c2e65066a547f5ed98",
   "branch": "codex/social-routing-v1",
   "certified_environment": "local synthetic IO and disposable loopback PostgreSQL",
-  "focused": { "pass": 82, "total": 82 },
-  "directed": { "pass": 126, "total": 126 },
+  "focused": { "pass": 117, "total": 117 },
+  "directed": { "pass": 161, "total": 161 },
   "postgres": {
-    "pass": 47,
-    "total": 47,
+    "pass": 54,
+    "total": 54,
     "independent_connections": true,
     "observed_lock_wait": true,
     "exclusive_capture": true,
@@ -20,8 +20,8 @@
     "cluster_removed": true
   },
   "full_suite": {
-    "pass": 1735,
-    "total": 1738,
+    "pass": 1770,
+    "total": 1773,
     "fail": 3,
     "all_failures_reproduced_on_unmodified_base": true,
     "baseline_comparison": { "pass": 182, "total": 185, "fail": 3 },
@@ -58,6 +58,30 @@
     "concurrent_stale_sales_route_rejected": true,
     "real_contact_access_or_changes": false,
     "remote_assignment_atomicity": "not_certified_requires_Respond_workflow_guard"
+  },
+  "commercial_incident_regressions": {
+    "based_on_certified_head": "f473756731abeeb98cb6e5c36be54dc6557552ee",
+    "synthetic_regressions": { "pass": 35, "total": 35 },
+    "vendor_offer": { "destination": "HUMAN_REVIEW", "reason": "commercial_service_offer", "handoffs": 0, "assignment_calls": 0, "assignment_acks": 0 },
+    "short_cta": { "unverified_origin": "deterministic_clarification", "model_calls": 0, "persisted_model": null, "handoffs": 0, "assignments": 0, "reassignments": 0, "assignment_acks": 0, "policy_response_idempotent": true, "verified_origin_reused": true },
+    "inventory": {
+      "fixture_public_ref": "EMP-MUN7BHJX",
+      "fixture_price_mxn": 1800000,
+      "legacy_literal_zone_matches": 0,
+      "social_tokenized_matches": 1,
+      "source_first_then_text": true,
+      "explicit_commercial_filters_preserved": true,
+      "empty_query_not_global_absence": true,
+      "false_absence_output_guard": true,
+      "supabase_sdk_and_local_postgres_query_checks": 7,
+      "hosted_postgrest_certified": false,
+      "exact_historical_production_arguments_available": false,
+      "production_listing_freshness_checked": false
+    },
+    "historical_fallback_dispatch_ack_sla_blocked_with_social": true,
+    "legacy_off_unchanged": true,
+    "sql_migration_changed": false,
+    "real_contact_reads_or_changes": false
   },
   "merge_authorized": false,
   "activation_readiness": "NO_GO_pending_baseline_disposition_hosted_DEV_and_manual_Respond_verification"

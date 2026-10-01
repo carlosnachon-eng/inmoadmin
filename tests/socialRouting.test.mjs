@@ -56,7 +56,7 @@ test("ningún identificador estable: fallo cerrado sin escritura", async () => {
 });
 test("captura persiste sólo una decisión antes del despacho; propiedad sólo verificada", async () => {
   let saved;
-  const db = memoryDb({ propiedades: [{ id: "verified-property", public_id: "public-property" }] }, { capture_social_route_v1: async args => { saved = args.p_route; return { data: { created: true, destination: args.p_route.destination, inboundId: "inbound" } }; } });
+  const db = memoryDb({ propiedades: [{ id: "verified-property", public_id: "public-property", status:"published" }] }, { capture_social_route_v1: async args => { saved = args.p_route; return { data: { created: true, destination: args.p_route.destination, inboundId: "inbound" } }; } });
   const result = await captureSocialRoute(db, { message: { text: "Busco casa" }, source: { property_id: "public-property" } }, event(), { env, now: () => new Date("2026-10-01T12:00:01Z") });
   assert.equal(result.destination, "SALES"); assert.equal(saved.source_property_id, "verified-property"); assert.equal(saved.respond_contact_id, "contact-test");
   assert.equal(db.operations.filter(o => o.op === "rpc").length, 1); assert.equal(db.operations.filter(o => o.op === "insert").length, 0);

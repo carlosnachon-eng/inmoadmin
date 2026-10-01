@@ -8,11 +8,18 @@ export function memoryDb(seed = {}, rpc = {}) {
     async rpc(name, args) { operations.push({ table: name, op: "rpc", args }); return rpc[name] ? rpc[name](args) : { error: new Error(`unexpected_rpc:${name}`) }; },
     from(table) {
       let op = "select", payload, predicates = [], ordering, count, single = false;
+      const ilike=(row,key,pattern)=>{
+        const escaped=String(pattern).replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/%/g,".*").replace(/_/g,".");
+        return new RegExp(`^${escaped}$`,"iu").test(String(row[key]??""));
+      };
       const q = {
         select() { return q; }, insert(p) { op = "insert"; payload = p; return q; }, update(p) { op = "update"; payload = p; return q; },
         eq(k, v) { predicates.push(r => r[k] === v); return q; }, is(k, v) { predicates.push(r => (r[k] ?? null) === v); return q; },
+        neq(k,v) { predicates.push(r=>r[k]!==v); return q; },
         not(k, _operator, v) { predicates.push(r => (r[k] ?? null) !== v); return q; },
         in(k, v) { predicates.push(r => v.includes(r[k])); return q; },
+        ilike(k,v) { predicates.push(r=>ilike(r,k,v)); return q; },
+        or(clause) { const filters=clause.split(",").map(part=>{const match=part.match(/^(\w+)\.ilike\.(.+)$/); if(!match)throw new Error("unsupported_fixture_filter"); return match;}); predicates.push(r=>filters.some(([,k,v])=>ilike(r,k,v))); return q; },
         gte(k, v) { predicates.push(r => r[k] >= v); return q; }, lte(k, v) { predicates.push(r => r[k] <= v); return q; },
         gt(k, v) { predicates.push(r => r[k] > v); return q; }, order(k, o) { ordering = [k, o?.ascending !== false]; return q; },
         limit(n) { count = n; return q; }, maybeSingle() { single = true; return q; }, single() { single = true; return q; },

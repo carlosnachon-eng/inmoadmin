@@ -20,7 +20,10 @@ function fixture() {
       const found = [...receipts.values()].find(r => r.token === p_token);
       assert.equal(found.status, "reserved"); Object.assign(found, { status: p_status, resultRef: p_result_ref }); return { error: null };
     },
-  }); return { db, receipts };
+  });
+  db.tables.sales_agent_v2_handoffs[0].inbound_message_id="inbound";
+  db.tables.sales_agent_v2_inbound_messages=[{id:"inbound",respond_contact_id:"synthetic",channel_id:"497382",social_route_id:"r",sanitized_text:"Quiero visitar la casa"}];
+  return { db, receipts };
 }
 test("I workflow y ACK interceptados por separado: retry = una asignación y un ACK", async () => {
   const { db } = fixture(), calls = [];

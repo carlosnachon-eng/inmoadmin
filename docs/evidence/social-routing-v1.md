@@ -14,7 +14,8 @@ Respond signed webhook → existing event journal
        → existing sanitizer + read-only confirmed identity lookup
        → deterministic routing (existing Legal/Owner predicates reused)
        → capture_social_route_v1: decision + ONE specialist queue, one transaction
-            ├─ SALES → existing Sales V2 → existing workflow / ACK / SLA
+            ├─ SALES → existing Sales V2 (or deterministic CTA clarification)
+            │            → explicit intent + assignee checks → existing workflow / ACK / SLA
             ├─ OWNER → existing Propietarios IA
             ├─ LEGAL → existing Jurídico IA → existing handoff where appropriate
             └─ ADMINISTRATION / EXISTING_CLIENT / HUMAN_REVIEW / UNKNOWN
@@ -29,8 +30,8 @@ Human-review destinations are a local review queue, **not** a newly configured
 Respond team assignment; an operator must attend them in the existing systems.
 
 Routing precedence: sensitive/complaint/emergency → ambiguous identity →
-durable OWNER continuity (unless an explicit transition/closure) → Administration
-→ existing client → existing Legal intent → existing Owner intent → Sales intent → destination continuity →
+durable OWNER continuity (unless an explicit transition/closure) → audiovisual service offer review → Administration
+→ existing client → existing Legal intent → existing Owner intent → verified property origin → Sales intent → destination continuity → short CTA clarification →
 WhatsApp-compatible commercial fallback → UNKNOWN. No classification model added.
 Only one destination is immutable for a message, including retry deliveries with
 a different event ID. Persistence failure never falls through to another agent.
@@ -52,7 +53,7 @@ Persisted: `source_platform`, `source_channel_id`, `source_event_id`,
   top-level object `.id`, or `message.referral` / `referral` ID fields. These are
   input adapters, **not a claim that Respond currently supplies these fields**.
 - Property attribution accepts explicit `source.property_id` as an Inmoadmin
-  public property reference; a unique catalog match is required. Otherwise NULL.
+  public property reference; a unique **published** catalog match is required. Otherwise NULL.
 - `source.metadata` / `source_metadata` keeps only provided enum values:
   `origin_kind` (dm/private_reply/comment/ad/post/reel/story) and
   `media_type` (text/image/video/audio). Unknown or absent metadata → NULL.
@@ -135,10 +136,11 @@ tables for upstream catalog dependencies. It is not a hosted Supabase DEV certif
 
 | Verification | Result |
 |---|---|
-| Social tests including two-day OWNER regression | 82/82 PASS |
-| Directed Social + channel router + Administration adapter/security | 126/126 PASS |
-| Local PostgreSQL | 47/47 checks PASS, cluster removed |
-| Full suite | 1735/1738 PASS; 3 pre-existing failures, see below |
+| New commercial regressions (vendor / CTA / inventory) | 35/35 PASS |
+| Social tests including two-day OWNER regression | 117/117 PASS |
+| Directed Social + channel router + Administration adapter/security | 161/161 PASS |
+| Local PostgreSQL | 54/54 checks PASS, cluster removed |
+| Full suite | 1770/1773 PASS; 3 pre-existing failures, see below |
 | Next production build with synthetic configuration | PASS |
 | `git diff --check` / JSON / Preview rule preservation | PASS |
 
@@ -260,6 +262,104 @@ review; never backfill them from historical language during a follow-up. This
 patch does not assert that the real incident's appointment is already stored or
 repair its existing assignment/messages. Production remains NO-GO pending the
 hosted DEV and Respond checks below.
+
+## Three subsequent commercial incidents — PR #160 amendment
+
+Incident evidence was supplied by the operator. No production contact, conversation,
+assignment, listing or provider log was read/modified. Fixtures contain synthetic
+contacts only. The public listing reference/title/price below copy supplied evidence;
+they are **not** a new production availability/price certificate.
+
+### 1. Audiovisual service offer is not a property appointment
+
+Code evidence: the legacy handoff regex accepts isolated `mostrar`, `enseñar`,
+`verlo`, `verla`, `hoy`, `mañana`. The Sales watchdog could then call an unconditional
+`automation_fallback`, summarized as high interest without a prospect intention.
+
+- Social classification recognizes audiovisual/drone/video service offers and
+  persists `HUMAN_REVIEW / commercial_service_offer`, without invoking Sales.
+- Strict Social handoff requires an actual visit request **and** an explicit
+  property noun or validated origin property. A bare verb/time is insufficient.
+- Service offers are also blocked at handoff creation/fallback and outbound, even
+  if an older Sales inbound was already queued. Existing-assignee guards remain.
+- Tests: synthetic provider offering videos to “mostrar propiedades” → zero Sales
+  handoffs, workflow assignments, assignment ACKs or SLA reassignments. Positive
+  buyer visit requests remain eligible (subject to the existing assignment guard).
+
+### 2. Short CTA without verified origin asks for clarification
+
+- A short unclassified keyword such as “El conde” persists an exclusive SALES
+  route with reason `cta_clarification_required`. This is **not** high interest.
+- With no verified property context, the existing Sales runner returns only:
+  “¿A qué propiedad o publicación te refieres? Si tienes el enlace o la zona, compártelo.”
+  No model session/history API is invoked. Existing run journal records a clearly
+  prefixed policy-only session reference, model NULL, zero tokens, no tools.
+  Existing sender/duplicate claim handles the clarification; no new sender/CRM.
+- Explicit origin is resolved server-side from the immutable route bound to the
+  inbound, contact and channel, and revalidated against published inventory. The
+  immediately preceding journal entry's explicit origin may be reused only if
+  it is SALES, same contact/channel and strictly earlier (no timestamp ties).
+  It does not fill missing attribution on the current event. No sweep, fuzzy title-to-CTA
+  mapping, name join or fabricated post/campaign mapping.
+- For Social work, fallback now reuses the explicit-intent decision or returns
+  `not_high_intent`; it does not create `automation_fallback`. Already persisted
+  fallback rows cannot dispatch workflow, ACK or SLA; their history is retained.
+  Other old handoffs are rechecked against their original inbound before each effect.
+- Integrated processor test: one persisted policy response, one intercepted
+  clarification, duplicate returns `not_claimed`; zero assignment/assignment ACK.
+
+### 3. Chapulco: reproduced phrase-filter false negative and bounded correction
+
+Legacy `search_sales_inventory` uses `%<entire zone phrase>%` against title,
+colonia or city. “atrás de la laguna de Chapulco” is not a contiguous substring of
+“Casa en Venta en Chapulco, Puebla | 3 Recámaras y Vista a la Laguna”. Coverage uses
+the same phrase pattern. Calling a search also previously allowed an outbound
+negative response regardless of its actual evidence.
+
+- Local reproduction with `EMP-MUN7BHJX`, published, MXN 1,800,000: legacy literal
+  query → 0 rows; Social query → that public listing. Verified by fixtures **and**
+  the real Supabase SDK's serialized query translated to parameterized PostgreSQL
+  on a disposable loopback cluster. This adapter is not a hosted PostgREST server.
+- Social inventory first uses verified source property if it satisfies the existing
+  explicit commercial filters; then textual fallback: up to four location tokens,
+  AND across tokens / OR across title, colonia, city, address. Return limit remains 5;
+  publication, operation, price, bedrooms and other existing filters remain in force.
+  Token characters cannot inject PostgREST filter grammar. No property-specific rule.
+- Social tool results distinguish `verified_source_property` from
+  `published_text_matches_not_source_confirmation`; empty bounded results explicitly
+  do not prove no inventory. Coverage with no evidence is `coverage_unverified`.
+- Empty inventory results force a safe clarification. Negative inventory claims
+  recognized by the Social output guard are replaced before run persistence; the
+  sender independently blocks such claims in already-persisted older responses.
+  No source certainty is fabricated from textual matches.
+- Exact arguments/results of the historical production tool calls were not supplied.
+  Thus the demonstrated code defect is not asserted to be the uniquely proven
+  cause of that specific production request. Wrong city/type filters or unavailable
+  source attribution still require a clarification, not a global absence claim.
+
+### Scope, compatibility and verification
+
+- New protections use Social ON for the four existing commercial channels or an
+  already-bound Social marker. Flag OFF/unmarked legacy behavior is unchanged,
+  including its known legacy classifier/fallback risk; this is **not a production
+  hotfix activated by publication of this PR**. No gates/deployments were changed.
+- Schema/tool definitions, appointments, advisor mapping, OWNER continuity, Admin
+  544519, Legal, SQL migration, RLS/grants and Preview/crons unchanged by this amendment.
+- Tests: `tests/socialCommercialRegressions.test.mjs` (35 new); existing handoff
+  fixtures now include the actual inbound intent needed for dispatch revalidation.
+  Query harness: `tests/helpers/socialInventoryPostgres.mjs` (7 new PG checks,
+  including source-context SELECTs against the actual migration columns).
+- First local PG adapter run exposed only pg's numeric-as-string vs PostgREST JSON
+  encoding; adapter now uses PostgreSQL `row_to_json`. Application pricing logic
+  was not changed. Final PostgreSQL 54/54 PASS; cluster stopped and removed.
+- No real Respond/model calls, no changes to the reported contacts or production.
+  Current counts and baseline failures are recorded above and in the JSON result.
+
+Residual checks before rollout: verify actual source field delivery and supported
+property mapping; inspect published inventory data types/filters and query latency
+in hosted DEV. LIMIT bounds returned rows, not the cost of an ILIKE scan. Classifier
+language coverage is conservative, not universal NLP; uncertain cases require human
+review. No new index or migration was introduced for these three regressions.
 
 ## Gates, rollout and rollback (proposed, NOT executed)
 
