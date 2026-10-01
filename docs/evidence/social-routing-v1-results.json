@@ -1,0 +1,46 @@
+{
+  "scope": "Social Routing v1 foundation only",
+  "base_sha": "30beba05a1a53741915137c2e65066a547f5ed98",
+  "branch": "codex/social-routing-v1",
+  "certified_environment": "local synthetic IO and disposable loopback PostgreSQL",
+  "focused": { "pass": 56, "total": 56 },
+  "directed": { "pass": 100, "total": 100 },
+  "postgres": {
+    "pass": 40,
+    "total": 40,
+    "independent_connections": true,
+    "observed_lock_wait": true,
+    "exclusive_capture": true,
+    "legacy_capture_race_blocked": true,
+    "separate_assignment_ack_reservations": true,
+    "one_concurrent_appointment": true,
+    "rls_acl_postchecks": true,
+    "empty_rollback_certified": true,
+    "populated_rollback_refused": true,
+    "cluster_removed": true
+  },
+  "full_suite": {
+    "pass": 1709,
+    "total": 1712,
+    "fail": 3,
+    "all_failures_reproduced_on_unmodified_base": true,
+    "baseline_comparison": { "pass": 182, "total": 185, "fail": 3 },
+    "failures": [
+      { "file": "tests/respondWebhookMultiHmac.test.mjs", "reason": "historical_data_url_harness_unresolved_agent_import" },
+      { "file": "tests/shadowAiP3.test.mjs", "reason": "expected_18_tools_base_has_19" },
+      { "file": "tests/shadowReducedOutputSchema.test.mjs", "reason": "expected_4355_schema_bytes_base_has_4383" }
+    ]
+  },
+  "build": "PASS",
+  "diff_check": "PASS",
+  "vercel_json": "PASS_only_this_branch_preview_exclusion",
+  "default_flag": { "SOCIAL_ROUTING_V1_ENABLED": false },
+  "real_respond_calls": 0,
+  "real_model_calls": 0,
+  "supabase_dev_access": false,
+  "production_access": false,
+  "production_changes": false,
+  "migration_applied_to_supabase": false,
+  "merge_authorized": false,
+  "activation_readiness": "NO_GO_pending_baseline_disposition_hosted_DEV_and_manual_Respond_verification"
+}

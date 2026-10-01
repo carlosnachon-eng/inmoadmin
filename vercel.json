@@ -1,6 +1,7 @@
 {
   "git": {
     "deploymentEnabled": {
+      "codex/social-routing-v1": false,
       "codex/condominium-owner-canonical-identity": false,
       "codex/condominium-resolver-healthcheck": false,
       "codex/shadow-final-model-privacy": false,
