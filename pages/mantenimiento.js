@@ -722,14 +722,24 @@ export default function Mantenimiento() {
                         <p style={{ margin: "0 0 10px", fontSize: 12, color: "#6b7280" }}>Solicita cotización por WhatsApp. El mensaje se muestra antes de enviarse.</p>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           {serviceProviders.map((provider) => {
-                            const request = providerQuoteRequests.find((r) => r.ticket_id === t.id && r.provider_id === provider.id && ["draft","sent","responded"].includes(r.status));
+                            const request = providerQuoteRequests.find((r) => r.ticket_id === t.id && r.provider_id === provider.id && ["draft","sent","responded","no_response"].includes(r.status));
                             const busy = providerQuoteBusy === `${t.id}:${provider.id}`;
                             return (
                               <div key={provider.id} style={{ display: "contents" }}>
                                 <button disabled={busy || Boolean(request?.status === "sent")} onClick={() => requestProviderQuote(t, provider)}
                                   style={{ border: "1px solid #d1d5db", background: request?.status === "sent" || request?.status === "responded" ? "#f0fdf4" : "#fff", color: request?.status === "sent" || request?.status === "responded" ? "#065f46" : "#1f2937", borderRadius: 8, padding: "8px 10px", cursor: busy || request?.status === "sent" ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700 }}>
-                                  {busy ? "Enviando…" : request?.status === "responded" ? `✓ Respondió ${provider.displayName}` : request?.status === "sent" ? `✓ Solicitada a ${provider.displayName}` : `Pedir a ${provider.displayName}`}
+                                  {busy ? "Enviando…" : request?.status === "responded" ? `✓ Respondió ${provider.displayName}` : request?.status === "sent" ? `✓ Solicitada a ${provider.displayName}` : request?.status === "no_response" ? `Sin respuesta · volver a pedir a ${provider.displayName}` : `Pedir a ${provider.displayName}`}
                                 </button>
+                                {request?.status === "sent" && request.reminder_sent_at && (
+                                  <div style={{ width: "100%", fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 8 }}>
+                                    Recordatorio enviado a {provider.displayName}. Sigue pendiente de respuesta.
+                                  </div>
+                                )}
+                                {request?.status === "no_response" && (
+                                  <div style={{ width: "100%", fontSize: 12, color: "#991b1b", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: 8 }}>
+                                    {provider.displayName} no respondió dentro de 4 horas hábiles. Puedes solicitar otra cotización o volver a pedirle.
+                                  </div>
+                                )}
                                 {request?.status === "responded" && request.response_summary && (
                                   <div style={{ width: "100%", fontSize: 12, color: "#374151", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 8 }}>
                                     <strong>{provider.displayName} respondió:</strong> {request.response_summary}
