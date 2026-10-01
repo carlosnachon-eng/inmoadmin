@@ -87,6 +87,10 @@
     {
       "path": "/api/cron/sales-v2-handoff-sla",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/owner-agent-v1",
+      "schedule": "* * * * *"
     }
   ]
 }
