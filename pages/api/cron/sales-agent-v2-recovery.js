@@ -71,6 +71,29 @@ export default async function handler(req,res){
       return res.status(200).json({ok:true,status:"skipped",reason:"latest_not_inbound"});
     }
 
+    const externalMessageId=latest.message?.messageId||latest.message?.id||null;
+    if(externalMessageId){
+      const {data:alreadyCaptured,error:alreadyCapturedError}=await admin.from("sales_agent_v2_inbound_messages")
+        .select("id,event_id,status")
+        .eq("respond_contact_id",snapshot.respond_contact_id)
+        .eq("external_message_id",String(externalMessageId))
+        .limit(1);
+      if(alreadyCapturedError) throw alreadyCapturedError;
+      if((alreadyCaptured||[]).length){
+        await admin.from("sales_agent_v2_inbound_messages").insert({
+          event_id:snapshot.eventId,
+          external_message_id:String(externalMessageId),
+          respond_contact_id:snapshot.respond_contact_id,
+          channel_id:snapshot.respond_channel_id,
+          occurred_at:respondMessageTimestamp(latest.message)||snapshot.respond_unanswered_since,
+          sanitized_text:"[DUPLICADO DE WEBHOOK]",
+          sanitization_changed:false,
+          status:"skipped",
+        });
+        return res.status(200).json({ok:true,status:"duplicate_external_message"});
+      }
+    }
+
     const raw=messageText(latest.message);
     const sanitized=sanitizeShadowText(raw);
     if(sanitized.rejected){
