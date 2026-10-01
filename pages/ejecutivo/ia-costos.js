@@ -50,7 +50,7 @@ export default function AiUsagePage(){
       {!loading&&data&&<>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:14,marginTop:24}}>
           <Card label="Costo estimado" value={money(data.total.estimatedCostUsd)} sub="Total del mes"/>
-          <Card label="Tokens" value={number(data.total.totalTokens)} sub={number(data.total.inputTokens)+" entrada · "+number(data.total.outputTokens)+" salida"}/>
+          <Card label="Tokens" value={number(data.total.totalTokens)} sub={number(data.total.inputTokens)+" entrada · "+number(data.total.cachedInputTokens||0)+" cacheados · "+number(data.total.outputTokens)+" salida"}/>
           <Card label="Ejecuciones" value={number(data.total.runs)} sub={number(data.total.meteredRuns)+" con medición"}/>
           <Card label="Cobertura medición" value={coverage+"%"} sub="Los runs históricos previos pueden no tener usage"/>
         </div>
@@ -59,13 +59,15 @@ export default function AiUsagePage(){
           <div style={{padding:"17px 18px",borderBottom:"1px solid #e5e7eb",fontWeight:900,color:"#111827"}}>Detalle por agente</div>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-              <thead><tr>{["Agente","Runs","Medidos","Entrada","Salida","Total tokens","Costo estimado"].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+              <thead><tr>{["Agente","Runs","Medidos","Entrada","Cacheados","Salida","Razonamiento","Total tokens","Costo estimado"].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>{data.agents.map(a=><tr key={a.key}>
                 <td style={{...td,fontWeight:800}}>{a.label}</td>
                 <td style={td}>{number(a.runs)}</td>
                 <td style={td}>{number(a.meteredRuns)}</td>
                 <td style={td}>{number(a.inputTokens)}</td>
+                <td style={td}>{number(a.cachedInputTokens||0)}</td>
                 <td style={td}>{number(a.outputTokens)}</td>
+                <td style={td}>{number(a.reasoningTokens||0)}</td>
                 <td style={td}>{number(a.totalTokens)}</td>
                 <td style={{...td,fontWeight:900}}>{money(a.estimatedCostUsd)}</td>
               </tr>)}</tbody>
