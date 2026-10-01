@@ -6,9 +6,11 @@ export const config={maxDuration:120};
 const equal=(a,b)=>{const x=Buffer.from(String(a||"")),y=Buffer.from(String(b||""));return x.length===y.length&&timingSafeEqual(x,y);};
 
 async function nextInbound(admin){
+  const now=new Date().toISOString();
   const {data,error}=await admin.from("sales_agent_v2_inbound_messages")
-    .select("id,event_id,external_message_id,respond_contact_id,channel_id,occurred_at,sanitized_text,status")
+    .select("id,event_id,external_message_id,respond_contact_id,channel_id,occurred_at,sanitized_text,status,debounce_until")
     .eq("status","captured")
+    .or("debounce_until.is.null,debounce_until.lte."+now)
     .order("occurred_at",{ascending:false})
     .limit(100);
   if(error)throw error;
