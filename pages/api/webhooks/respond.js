@@ -15,6 +15,8 @@ import { captureRespondMediaReferenceIsolated } from "../../../lib/shadow/media/
 import { captureRespondSalesV2InboundIsolated } from "../../../lib/agentsV2/salesCapture";
 import { processSalesInboundById } from "../../../lib/agentsV2/processSalesInbound";
 
+const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
+
 export const config = {
   maxDuration: 120,
   api: {
@@ -76,7 +78,26 @@ export default async function handler(req, res) {
       && process.env.SALES_AGENT_V2_AUTO_SHADOW_ENABLED==="true";
     if(immediateEnabled&&salesCapture?.status==="captured"&&salesCapture?.id){
       try{
-        salesImmediate=await processSalesInboundById(admin,salesCapture.id,{env:process.env});
+        const waitMs=Math.max(0,new Date(salesCapture.debounceUntil||0).getTime()-Date.now());
+        if(waitMs>0)await sleep(Math.min(waitMs,5000));
+
+        const {data:newer,error:newerError}=await admin.from("sales_agent_v2_inbound_messages")
+          .select("id")
+          .eq("respond_contact_id",salesCapture.respondContactId)
+          .gt("created_at",salesCapture.createdAt)
+          .in("status",["captured","processing","processed"])
+          .limit(1);
+        if(newerError)throw newerError;
+
+        if((newer||[]).length){
+          await admin.from("sales_agent_v2_inbound_messages")
+            .update({status:"skipped"})
+            .eq("id",salesCapture.id)
+            .eq("status","captured");
+          salesImmediate={status:"absorbed_by_newer_message"};
+        }else{
+          salesImmediate=await processSalesInboundById(admin,salesCapture.id,{env:process.env});
+        }
       }catch(error){
         console.error("[sales-v2-immediate]",String(error?.message||"immediate_processing_failed").slice(0,160));
         salesImmediate={status:"fallback_to_cron"};
