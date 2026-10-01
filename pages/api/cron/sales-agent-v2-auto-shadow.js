@@ -1,7 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { getAdminSupabase } from "../../../lib/ejecutivo/workCenter";
-import { runSalesAgentV2ShadowMessage } from "../../../lib/agentsV2/runSalesShadowMessage";
-import { createSalesHandoffIfNeeded, dispatchSalesHandoff } from "../../../lib/agentsV2/salesHandoff";
+import { processSalesInboundById } from "../../../lib/agentsV2/processSalesInbound";
 
 export const config={maxDuration:120};
 const equal=(a,b)=>{const x=Buffer.from(String(a||"")),y=Buffer.from(String(b||""));return x.length===y.length&&timingSafeEqual(x,y);};
@@ -36,54 +35,12 @@ export default async function handler(req,res){
   if(!inbound) return res.status(200).json({ok:true,status:"idle"});
 
   try{
-    const result=await runSalesAgentV2ShadowMessage(admin,inbound,{env:process.env});
-    const completedAt=new Date().toISOString();
-    const {data:storedRun,error:runError}=await admin.from("sales_agent_v2_shadow_runs").insert({
-      inbound_message_id:inbound.id,
-      session_id:result.sessionId,
-      status:result.status==="idle"?"idle":"failed",
-      called_tools:result.calledTools,
-      proposed_response:result.output||null,
-      latency_ms:result.latencyMs,
-      error_code:result.error?.code||result.error?.message||null,
-      completed_at:completedAt,
-    }).select("id").single();
-    if(runError)throw runError;
-    await admin.from("sales_agent_v2_inbound_messages").update({status:result.status==="idle"?"processed":"failed"}).eq("id",inbound.id);
+    const result=await processSalesInboundById(admin,inbound.id,{env:process.env});
+    return res.status(200).json({ok:true,...result});
 
-    let handoff=null;
-    if(result.status==="idle"){
-      handoff=await createSalesHandoffIfNeeded(admin,{inbound,run:storedRun});
-      if(handoff?.created){
-        try{
-          handoff.dispatch=await dispatchSalesHandoff(admin,{handoffId:handoff.handoffId,env:process.env});
-        }catch(error){
-          console.error("[sales-v2-handoff-dispatch]",String(error?.message||"handoff_dispatch_failed").slice(0,160));
-          handoff.dispatch={ok:false,error:"handoff_dispatch_failed"};
-        }
-      }
-    }
-
-    return res.status(200).json({
-      ok:true,status:"processed",inboundMessageId:inbound.id,runStatus:result.status,
-      calledTools:result.calledTools,latencyMs:result.latencyMs,
-      handoff:handoff?{created:Boolean(handoff.created),reason:handoff.reason||null,priority:handoff.priority||null,dispatch:handoff.dispatch||null}:null
-    });
   }catch(error){
-    await admin.from("sales_agent_v2_inbound_messages").update({status:"failed"}).eq("id",inbound.id);
-    const existing=await admin.from("sales_agent_v2_shadow_runs").select("id").eq("inbound_message_id",inbound.id).maybeSingle();
-    if(!existing.data){
-      await admin.from("sales_agent_v2_shadow_runs").insert({
-        inbound_message_id:inbound.id,
-        session_id:"failed-"+inbound.id,
-        status:"failed",
-        called_tools:[],
-        proposed_response:null,
-        error_code:String(error?.message||"sales_v2_shadow_failed").slice(0,160),
-        completed_at:new Date().toISOString(),
-      });
-    }
     console.error("[sales-agent-v2-auto-shadow]",error?.message||error);
     return res.status(503).json({ok:false,error:"sales_agent_v2_auto_shadow_failed"});
+
   }
 }
