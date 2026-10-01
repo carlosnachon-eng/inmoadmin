@@ -17,6 +17,8 @@ const summarize=(rows)=>({
   meteredRuns:(rows||[]).filter(r=>r.total_tokens!==null&&r.total_tokens!==undefined).length,
   inputTokens:(rows||[]).reduce((s,r)=>s+Number(r.input_tokens||0),0),
   outputTokens:(rows||[]).reduce((s,r)=>s+Number(r.output_tokens||0),0),
+  cachedInputTokens:(rows||[]).reduce((s,r)=>s+Number(r.cached_input_tokens||0),0),
+  reasoningTokens:(rows||[]).reduce((s,r)=>s+Number(r.reasoning_tokens||0),0),
   totalTokens:(rows||[]).reduce((s,r)=>s+Number(r.total_tokens||0),0),
   estimatedCostUsd:Number((rows||[]).reduce((s,r)=>s+Number(r.estimated_cost_usd||0),0).toFixed(8)),
 });
@@ -36,7 +38,7 @@ export default async function handler(req,res){
     if(!profile?.active||!MANAGEMENT_ROLES.has(profile.role_id))return res.status(403).json({ok:false,error:"No autorizado."});
 
     const bounds=monthBounds(req.query.month);
-    const fields="id,model,input_tokens,output_tokens,total_tokens,estimated_cost_usd,completed_at";
+    const fields="id,model,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,total_tokens,estimated_cost_usd,completed_at";
     const [sales,owner,legal,adminRuns]=await Promise.all([
       admin.from("sales_agent_v2_shadow_runs").select(fields).gte("completed_at",bounds.start).lt("completed_at",bounds.end),
       admin.from("owner_agent_v1_runs").select(fields).gte("completed_at",bounds.start).lt("completed_at",bounds.end),
@@ -55,7 +57,9 @@ export default async function handler(req,res){
       runs:agents.reduce((s,a)=>s+a.runs,0),
       meteredRuns:agents.reduce((s,a)=>s+a.meteredRuns,0),
       inputTokens:agents.reduce((s,a)=>s+a.inputTokens,0),
+      cachedInputTokens:agents.reduce((s,a)=>s+a.cachedInputTokens,0),
       outputTokens:agents.reduce((s,a)=>s+a.outputTokens,0),
+      reasoningTokens:agents.reduce((s,a)=>s+a.reasoningTokens,0),
       totalTokens:agents.reduce((s,a)=>s+a.totalTokens,0),
       estimatedCostUsd:Number(agents.reduce((s,a)=>s+a.estimatedCostUsd,0).toFixed(8)),
     };
