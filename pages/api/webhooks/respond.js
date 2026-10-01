@@ -18,6 +18,7 @@ import { captureRespondOwnerInboundIsolated } from "../../../lib/agentsV2/ownerC
 import { processOwnerInboundById } from "../../../lib/agentsV2/processOwnerInbound";
 import { captureRespondLegalInboundIsolated } from "../../../lib/agentsV2/legalCapture";
 import { processLegalInboundById } from "../../../lib/agentsV2/processLegalInbound";
+import { captureRespondAppointmentLifecycleIsolated } from "../../../lib/agentsV2/respondAppointmentSync";
 
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
 
@@ -75,6 +76,7 @@ export default async function handler(req, res) {
 
     await captureRespondAdminShadowIsolated(admin, body);
     await captureRespondMediaReferenceIsolated(admin, body);
+    await captureRespondAppointmentLifecycleIsolated(admin, body);
 
     const legalCapture=await captureRespondLegalInboundIsolated(admin, body);
     let legalImmediate=null;
