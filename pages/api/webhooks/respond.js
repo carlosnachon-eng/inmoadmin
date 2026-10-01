@@ -14,6 +14,8 @@ import { routeRespondMessageIsolated } from "../../../lib/respond/channelRouter"
 import { captureRespondMediaReferenceIsolated } from "../../../lib/shadow/media/reference";
 import { captureRespondSalesV2InboundIsolated } from "../../../lib/agentsV2/salesCapture";
 import { processSalesInboundById } from "../../../lib/agentsV2/processSalesInbound";
+import { captureRespondOwnerInboundIsolated } from "../../../lib/agentsV2/ownerCapture";
+import { processOwnerInboundById } from "../../../lib/agentsV2/processOwnerInbound";
 
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
 
@@ -71,44 +73,74 @@ export default async function handler(req, res) {
 
     await captureRespondAdminShadowIsolated(admin, body);
     await captureRespondMediaReferenceIsolated(admin, body);
-    const salesCapture=await captureRespondSalesV2InboundIsolated(admin, body);
 
-    let salesImmediate=null;
-    const immediateEnabled=process.env.SALES_AGENT_V2_IMMEDIATE_ENABLED!=="false"
-      && process.env.SALES_AGENT_V2_AUTO_SHADOW_ENABLED==="true";
-    if(immediateEnabled&&salesCapture?.status==="captured"&&salesCapture?.id){
+    const ownerCapture=await captureRespondOwnerInboundIsolated(admin, body);
+    let ownerImmediate=null;
+    if(ownerCapture?.status==="captured"&&ownerCapture?.id){
       try{
-        const waitMs=Math.max(0,new Date(salesCapture.debounceUntil||0).getTime()-Date.now());
+        const waitMs=Math.max(0,new Date(ownerCapture.debounceUntil||0).getTime()-Date.now());
         if(waitMs>0)await sleep(Math.min(waitMs,5000));
 
-        const {data:newer,error:newerError}=await admin.from("sales_agent_v2_inbound_messages")
+        const {data:newer,error:newerError}=await admin.from("owner_agent_v1_inbound_messages")
           .select("id")
-          .eq("respond_contact_id",salesCapture.respondContactId)
-          .gt("created_at",salesCapture.createdAt)
+          .eq("respond_contact_id",ownerCapture.respondContactId)
+          .gt("created_at",ownerCapture.createdAt)
           .in("status",["captured","processing","processed"])
           .limit(1);
         if(newerError)throw newerError;
 
         if((newer||[]).length){
-          await admin.from("sales_agent_v2_inbound_messages")
-            .update({status:"skipped"})
-            .eq("id",salesCapture.id)
-            .eq("status","captured");
-          salesImmediate={status:"absorbed_by_newer_message"};
+          await admin.from("owner_agent_v1_inbound_messages")
+            .update({status:"skipped"}).eq("id",ownerCapture.id).eq("status","captured");
+          ownerImmediate={status:"absorbed_by_newer_message"};
         }else{
-          salesImmediate=await processSalesInboundById(admin,salesCapture.id,{env:process.env});
+          ownerImmediate=await processOwnerInboundById(admin,ownerCapture.id,{env:process.env});
         }
       }catch(error){
-        console.error("[sales-v2-immediate]",String(error?.message||"immediate_processing_failed").slice(0,160));
-        salesImmediate={status:"fallback_to_cron"};
+        console.error("[owner-ai-immediate]",String(error?.message||"owner_immediate_failed").slice(0,160));
+        ownerImmediate={status:"fallback_to_cron"};
+      }
+    }
+
+    let salesCapture={status:"skipped",reason:"owner_intent"};
+    let salesImmediate=null;
+    if(ownerCapture?.status!=="captured"){
+      salesCapture=await captureRespondSalesV2InboundIsolated(admin, body);
+      const immediateEnabled=process.env.SALES_AGENT_V2_IMMEDIATE_ENABLED!=="false"
+        && process.env.SALES_AGENT_V2_AUTO_SHADOW_ENABLED==="true";
+      if(immediateEnabled&&salesCapture?.status==="captured"&&salesCapture?.id){
+        try{
+          const waitMs=Math.max(0,new Date(salesCapture.debounceUntil||0).getTime()-Date.now());
+          if(waitMs>0)await sleep(Math.min(waitMs,5000));
+
+          const {data:newer,error:newerError}=await admin.from("sales_agent_v2_inbound_messages")
+            .select("id")
+            .eq("respond_contact_id",salesCapture.respondContactId)
+            .gt("created_at",salesCapture.createdAt)
+            .in("status",["captured","processing","processed"])
+            .limit(1);
+          if(newerError)throw newerError;
+
+          if((newer||[]).length){
+            await admin.from("sales_agent_v2_inbound_messages")
+              .update({status:"skipped"})
+              .eq("id",salesCapture.id)
+              .eq("status","captured");
+            salesImmediate={status:"absorbed_by_newer_message"};
+          }else{
+            salesImmediate=await processSalesInboundById(admin,salesCapture.id,{env:process.env});
+          }
+        }catch(error){
+          console.error("[sales-v2-immediate]",String(error?.message||"immediate_processing_failed").slice(0,160));
+          salesImmediate={status:"fallback_to_cron"};
+        }
       }
     }
 
     return res.status(200).json({
-      ok:true,
-      queued:true,
-      sales:salesCapture?.status||null,
-      salesImmediate:salesImmediate?.status||null
+      ok:true,queued:true,
+      owner:ownerCapture?.status||null,ownerImmediate:ownerImmediate?.status||null,
+      sales:salesCapture?.status||null,salesImmediate:salesImmediate?.status||null
     });
   } catch (error) {
     if (error?.statusCode === 404) return res.status(404).json({ ok: false, error: "Not Found" });
