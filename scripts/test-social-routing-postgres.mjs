@@ -117,6 +117,30 @@ try {
   await reject("rollback refuses to delete protected evidence", () => db.query(uninstall), /social_rollback_refused_evidence_exists/); await db.query("rollback");
   const security = (await db.query("select relname,relrowsecurity from pg_class where relname=any($1)", [["social_message_routes", "social_handoff_effects", "social_appointment_keys"]])).rows;
   check("RLS enabled on all new tables", () => { assert.equal(security.length, 3); assert.ok(security.every(r => r.relrowsecurity)); });
+  // OWNER continuity is a durable journal chain, including across days. A stale
+  // concurrent classifier cannot commit a SALES route after an OWNER decision.
+  const ownerDay1 = await seedEvent(route("owner-day1", "OWNER", { respond_contact_id: "owner-two-days", reason: "owner_intent", occurred_at: "2026-09-30T16:00:00Z" }));
+  await a.query("begin"); const ownerRoot = await capture(a, ownerDay1);
+  const staleSales = await seedEvent(route("owner-race", "SALES", { respond_contact_id: "owner-two-days", occurred_at: "2026-10-01T14:00:00Z" }));
+  const stalePending = capture(b, staleSales).then(() => null, e => e);
+  await waitBlocked(db, a, b); await a.query("commit");
+  const staleError=await stalePending;
+  check("concurrent stale SALES decision rejected after OWNER commit", () => assert.match(staleError.message, /social_context_changed_requires_review/));
+  const ownerDay2 = await seedEvent(route("owner-day2", "OWNER", { respond_contact_id: "owner-two-days", previous_route_id: ownerRoot.routeId, reason: "conversation_continuity", occurred_at: "2026-10-01T14:00:00Z", sanitized_text: "Calle Sintética 100 col Prueba" }));
+  const ownerDetail = await capture(b, ownerDay2);
+  const stored = (await db.query("select r.destination,i.sanitized_text from social_message_routes r join owner_agent_v1_inbound_messages i on i.social_route_id=r.id where r.id=$1", [ownerDetail.routeId])).rows[0];
+  check("two-day Owner detail persists in same exclusive lane", () => assert.deepEqual(stored, { destination: "OWNER", sanitized_text: "Calle Sintética 100 col Prueba" }));
+  const salesLeak = (await db.query("select count(*)::int n from sales_agent_v2_inbound_messages where respond_contact_id='owner-two-days'")).rows[0];
+  check("no Sales inbound from stale or next-day OWNER path", () => assert.equal(salesLeak.n, 0));
+  const late = await seedEvent(route("owner-late", "SALES", { respond_contact_id: "owner-two-days", previous_route_id: ownerRoot.routeId, occurred_at: "2026-09-30T17:00:00Z" }));
+  await reject("out-of-order event cannot overwrite latest intent", () => capture(a, late), /social_context_changed_requires_review/);
+  const implicitChange = await seedEvent(route("owner-implicit", "SALES", { respond_contact_id: "owner-two-days", previous_route_id: ownerDetail.routeId, occurred_at: "2026-10-01T15:00:00Z" }));
+  await reject("DB refuses implicit OWNER to SALES transition", () => capture(a, implicitChange), /owner_transition_requires_explicit_evidence/);
+  const closeOwner = await seedEvent(route("owner-closed", "UNKNOWN", { respond_contact_id: "owner-two-days", previous_route_id: ownerDetail.routeId, reason: "owner_explicit_closure", occurred_at: "2026-10-01T15:00:00Z" }));
+  const closedOwner = await capture(a, closeOwner);
+  check("explicit closure persisted without specialist", () => { assert.equal(closedOwner.destination, "UNKNOWN"); assert.equal(closedOwner.inboundId, null); });
+  const indexes = (await db.query("select count(*)::int n from pg_indexes where indexname in ('social_owner_context_idx','social_appointment_context_idx')")).rows[0];
+  check("bounded durable context reads indexed", () => assert.equal(indexes.n, 2));
   console.log(JSON.stringify({ result: "SOCIAL_ROUTING_LOCAL_PG_PASS", checks: checks.length, tests: checks, isolation: "loopback disposable PostgreSQL; no Supabase DEV/Production", externalCalls: 0 }, null, 2));
 } finally {
   for (const c of clients) { try { await c.query("rollback"); } catch {} try { await c.end(); } catch {} }

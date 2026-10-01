@@ -29,8 +29,8 @@ Human-review destinations are a local review queue, **not** a newly configured
 Respond team assignment; an operator must attend them in the existing systems.
 
 Routing precedence: sensitive/complaint/emergency → ambiguous identity →
-Administration → existing client → existing Legal intent → existing Owner
-intent/recent Owner context → Sales intent → recent destination continuity →
+durable OWNER continuity (unless an explicit transition/closure) → Administration
+→ existing client → existing Legal intent → existing Owner intent → Sales intent → destination continuity →
 WhatsApp-compatible commercial fallback → UNKNOWN. No classification model added.
 Only one destination is immutable for a message, including retry deliveries with
 a different event ID. Persistence failure never falls through to another agent.
@@ -90,8 +90,11 @@ Social handoffs have a DB-bound marker. Assignment and subsequent ACK have separ
 durable reservations. Once reserved, an uncertain network result is never retried
 automatically. This is **at-most-once transport attempt**, not a claim of exactly-once
 delivery inside Respond. A crash before sending may leave zero deliveries and
-requires human reconciliation. Existing SLA policy is retained: a later genuine
-SLA reassignment has a separate step key; retrying that step cannot assign twice.
+requires human reconciliation. A valid/current assignee or case advisor blocks
+Sales handoff creation, fallback, dispatch, ACK and automatic SLA reassignment.
+An unmapped assignee is also preserved; missing/ambiguous assignment evidence is
+not permission to reassign. An otherwise eligible unassigned SLA step still has
+a separate reservation key; retrying that step cannot assign twice.
 There is no additional round robin or advisor mapping.
 
 Social inbound rows cannot reset from processing/processed/failed to captured.
@@ -132,10 +135,10 @@ tables for upstream catalog dependencies. It is not a hosted Supabase DEV certif
 
 | Verification | Result |
 |---|---|
-| New Social tests | 56/56 PASS |
-| Directed Social + channel router + Administration adapter/security | 100/100 PASS |
-| Local PostgreSQL | 40/40 checks PASS, cluster removed |
-| Full suite | 1709/1712 PASS; 3 pre-existing failures, see below |
+| Social tests including two-day OWNER regression | 82/82 PASS |
+| Directed Social + channel router + Administration adapter/security | 126/126 PASS |
+| Local PostgreSQL | 47/47 checks PASS, cluster removed |
+| Full suite | 1735/1738 PASS; 3 pre-existing failures, see below |
 | Next production build with synthetic configuration | PASS |
 | `git diff --check` / JSON / Preview rule preservation | PASS |
 
@@ -172,6 +175,92 @@ NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_SUPABASE_URL=https://synthetic-only.invali
 git diff --check
 ```
 
+## Mandatory two-day OWNER regression (PR #160 amendment)
+
+Real incident supplied by the operator; no live contact was queried or modified.
+Tests use a different synthetic contact, advisor and street. No original name,
+contact ID or address was added to the repository.
+
+Code-level causes consistent with the reported failure (not a new production
+forensic assertion): legacy `ownerCapture` and initial Social bootstrap used a
+two-hour Owner window; generic casa/address follow-ups could enter Sales.
+`sales-v2-watchdog` could call `createSalesAutomationFallbackHandoff` after an
+outbound attempt was not eligible. Lifecycle/human-response checks did not provide
+a central existing-assignee barrier, and the fallback summary mislabeled this as
+high interest. Sales/Owner history omitted message timestamps, making historical
+relative wording reusable as if it were current.
+
+Corrections:
+
+- `readSocialContinuity` reuses the immutable routing journal without a TTL.
+  Human-review interruptions do not erase OWNER. Bootstrap uses the existing
+  channel-scoped Owner lane; if absent, exact structured `atn_area/atn_servicio`
+  values `owner`, `propietarios`, `captacion` in a same-channel, non-closed snapshot.
+  No inference from display name, address, or a cross-network identity match.
+- Explicit OWNER closure or explicit new buy/rent/legal/admin request persists
+  `owner_explicit_closure` or `explicit_intent_change`. A social closure/transition
+  takes precedence over legacy Owner evidence. There is no automatic TTL expiry.
+  Unsupported transition phrasing remains conservative OWNER/review, not Sales.
+- Address/details remain in the existing Owner inbound journal. Photos without a
+  caption keep OWNER with an uninterpreted-attachment marker; no URL/image content
+  is fabricated. This is context capture, not media interpretation or a new CRM.
+- Capture RPC serializes by contact/channel and compares the predecessor route.
+  Stale/concurrent/out-of-order decisions fail closed rather than execute another
+  specialist. DB also refuses implicit OWNER → non-OWNER transitions. New indexes
+  support durable Owner lookup and appointment-context reads; RLS/ACL unchanged.
+- Central Sales assignment barrier reads current persisted Respond assignment and
+  existing opportunity advisor. OWNER, an assignee/profile/case advisor, or unknown
+  assignment state prevents fallback/assignment/ACK. It is checked again inside
+  reserved effects; it does not create a new round robin or reassign permission.
+  With Social ON, old Sales outbound work for an OWNER is also blocked.
+- Existing appointment sync still parses a **new human agreement** against that
+  original message timestamp and persists absolute `appointment_at/fecha_hora`.
+  A linked `citas` row in `agendada/confirmada` is subsequently authoritative;
+  repeated lifecycle events reuse it without reading or parsing historical text.
+  Multiple/invalid appointments fail to review; no appointment is inferred merely
+  from a historical promise. No new scheduler, client or appointment backfill.
+- Social Owner context includes timestamped, date-anchored history. The explicit
+  acknowledgement for a property-detail follow-up uses only the persisted cita
+  in absolute Mexico City format; a model response containing stale “mañana” is
+  not reused. Other generated appointment/time assertions fail closed. Appointment
+  state is reread after the model and before send; a change aborts the send.
+  A missing/cancelled/ambiguous cita is not announced as confirmed.
+- These protections apply to marked Social work (including after flag OFF) or,
+  for the Sales assignment/outbound barrier, commercial work while Social is ON.
+  Unmarked legacy behavior with flag OFF and Administration 544519 are unchanged.
+
+Synthetic evidence in `tests/socialOwnerContinuity.test.mjs`:
+
+1. Sept 30 human agreement “mañana a las 10:30” → existing sync RPC receives
+   `2026-10-01T16:30:00.000Z`, preserving original source timestamp; no name-based
+   client creation. This equals Oct 1 10:30 America/Mexico_City.
+2. Next-day greeting/address both persist OWNER, even beyond 2 h; original advisor
+   and cita are byte-for-byte unchanged. Address retained in Owner context.
+3. Real Owner processing code with model/Respond IO intercepted; model deliberately
+   returns “mañana”. Both outgoing proposals instead say
+   `La visita registrada es el 01/10/2026 a las 10:30 (America/Mexico_City).`
+   This is the date of the incoming message, not Oct 2. Zero Sales inbounds,
+   handoffs, assignment workflow calls or assignment ACKs.
+4. Legacy Owner bootstrap, structured snapshot bootstrap, explicit closure/change,
+   sensitive interruption, photos, existing case advisor, unknown assignment,
+   watchdog, pending dispatch and SLA paths covered separately.
+5. Cancellation during the model removes the appointment assertion. Ungrounded
+   temporal output is not stored as an accepted response or sent.
+6. Local PostgreSQL observes a real lock wait: a competing stale SALES decision
+   loses to OWNER and cannot insert a Sales inbound. Next-day Owner detail is
+   stored exclusively; implicit transition rejected; explicit closure accepted.
+
+Limitations before activation: persisted assignment snapshots are not an atomic
+lock on Respond. Verify the workflow itself does not overwrite a newly assigned
+human between our last read and Respond execution; no such live configuration
+change was performed. An existing assignment discovered after our workflow may
+conservatively suppress the ACK pending review. Appointments lacking an existing
+contact-to-cita sync link are **not independently resolvable** here and require
+review; never backfill them from historical language during a follow-up. This
+patch does not assert that the real incident's appointment is already stored or
+repair its existing assignment/messages. Production remains NO-GO pending the
+hosted DEV and Respond checks below.
+
 ## Gates, rollout and rollback (proposed, NOT executed)
 
 `SOCIAL_ROUTING_V1_ENABLED=false` by default; only exact `true` opts in. Server-only,
@@ -185,7 +274,9 @@ Before any activation:
    authenticated review UI; hosted DEV was not accessed in this implementation.
 3. Verify manually in Respond: channels connected; Ivonne/default assignment stopped;
    Sales and Legal handoffs Published with correct teams and repeat-trigger behavior;
-   no second ACK inside workflows; 544519 untouched; advisor/profile mapping valid.
+   no second ACK inside workflows; 544519 untouched; advisor/profile mapping valid;
+   current-assignee guard inside the workflow (do not overwrite an already assigned
+   human) and sufficiently current contact snapshots before enabling Social.
 4. Verify actual webhook samples/attribution shape. Private Replies and TikTok
    integration remain outside this PR; do not assume comment/post/campaign delivery.
 5. Obtain separate production migration/deployment/activation authority. Install

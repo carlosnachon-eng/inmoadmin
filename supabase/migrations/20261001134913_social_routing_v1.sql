@@ -42,6 +42,8 @@ create index social_message_routes_contact_idx on public.social_message_routes(r
 create index social_message_routes_review_idx on public.social_message_routes(created_at desc) where inbound_id is null;
 create index social_message_routes_property_idx on public.social_message_routes(source_property_id) where source_property_id is not null;
 create index social_message_routes_identity_idx on public.social_message_routes(canonical_identity_id) where canonical_identity_id is not null;
+create index social_owner_context_idx on public.owner_agent_v1_inbound_messages(respond_contact_id,channel_id,occurred_at desc);
+create index social_appointment_context_idx on public.respond_appointment_sync(respond_contact_id,created_at desc) where status='created' and cita_id is not null;
 alter table public.social_message_routes enable row level security;
 revoke all on public.social_message_routes from public,anon,authenticated,service_role;
 grant select on public.social_message_routes to service_role;
@@ -115,14 +117,27 @@ create trigger social_sales_handoff_binding before insert or update on public.sa
 create trigger social_legal_handoff_binding before insert or update on public.legal_agent_v1_handoffs for each row execute function public.bind_social_handoff_v1();
 
 create function public.capture_social_route_v1(p_route jsonb) returns jsonb language plpgsql security definer set search_path = '' as $$
-declare r public.social_message_routes%rowtype; target text; inserted_inbound uuid; hit boolean;
+declare r public.social_message_routes%rowtype; target text; inserted_inbound uuid; hit boolean; previous_id uuid; previous_destination text;
 begin
+  -- Serialize conversation decisions, not only duplicate deliveries of one message.
+  perform pg_advisory_xact_lock(hashtextextended('social-context:'||coalesce(p_route->>'source_channel_id','')||':'||coalesce(p_route->>'respond_contact_id',''),0));
   perform pg_advisory_xact_lock(hashtextextended('social:' || coalesce(p_route->>'source_channel_id','') || ':' || coalesce(p_route->>'respond_contact_id','') || ':' || coalesce(p_route->>'source_message_id',''),0));
   select * into r from public.social_message_routes where source_event_id = p_route->>'source_event_id'
     or (source_channel_id = p_route->>'source_channel_id' and respond_contact_id = p_route->>'respond_contact_id' and source_message_id = p_route->>'source_message_id') limit 1;
   if found then
     if r.respond_contact_id <> p_route->>'respond_contact_id' or r.source_channel_id <> p_route->>'source_channel_id' or r.source_message_id <> p_route->>'source_message_id' then raise exception 'social_event_collision'; end if;
     return jsonb_build_object('created',false,'destination',r.destination,'routeId',r.id,'inboundId',r.inbound_id);
+  end if;
+  select id,destination into previous_id,previous_destination from public.social_message_routes
+    where respond_contact_id=p_route->>'respond_contact_id' and source_channel_id=p_route->>'source_channel_id'
+      and destination <> 'HUMAN_REVIEW'
+    order by occurred_at desc,created_at desc limit 1;
+  if previous_id is distinct from (p_route->>'previous_route_id')::uuid then
+    raise exception 'social_context_changed_requires_review';
+  end if;
+  if previous_destination='OWNER' and p_route->>'destination' not in ('OWNER','HUMAN_REVIEW')
+    and not (p_route->>'reason'='explicit_intent_change' or (p_route->>'destination'='UNKNOWN' and p_route->>'reason'='owner_explicit_closure')) then
+    raise exception 'social_owner_transition_requires_explicit_evidence';
   end if;
   -- An event already handled by legacy code must never be replayed through a second lane.
   foreach target in array array['sales_agent_v2_inbound_messages','owner_agent_v1_inbound_messages','legal_agent_v1_inbound_messages'] loop

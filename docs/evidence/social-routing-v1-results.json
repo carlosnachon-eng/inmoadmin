@@ -3,11 +3,11 @@
   "base_sha": "30beba05a1a53741915137c2e65066a547f5ed98",
   "branch": "codex/social-routing-v1",
   "certified_environment": "local synthetic IO and disposable loopback PostgreSQL",
-  "focused": { "pass": 56, "total": 56 },
-  "directed": { "pass": 100, "total": 100 },
+  "focused": { "pass": 82, "total": 82 },
+  "directed": { "pass": 126, "total": 126 },
   "postgres": {
-    "pass": 40,
-    "total": 40,
+    "pass": 47,
+    "total": 47,
     "independent_connections": true,
     "observed_lock_wait": true,
     "exclusive_capture": true,
@@ -20,8 +20,8 @@
     "cluster_removed": true
   },
   "full_suite": {
-    "pass": 1709,
-    "total": 1712,
+    "pass": 1735,
+    "total": 1738,
     "fail": 3,
     "all_failures_reproduced_on_unmodified_base": true,
     "baseline_comparison": { "pass": 182, "total": 185, "fail": 3 },
@@ -41,6 +41,24 @@
   "production_access": false,
   "production_changes": false,
   "migration_applied_to_supabase": false,
+  "owner_two_day_regression": {
+    "synthetic_only": true,
+    "durable_owner_without_ttl": true,
+    "same_responsible_preserved": true,
+    "sales_handoffs": 0,
+    "assignment_workflow_calls": 0,
+    "assignment_acks": 0,
+    "appointment_at": "2026-10-01T16:30:00.000Z",
+    "appointment_timezone": "America/Mexico_City",
+    "appointment_label": "01/10/2026 a las 10:30 (America/Mexico_City)",
+    "original_message_date_anchor": true,
+    "property_detail_retained_in_owner_journal": true,
+    "stale_model_tomorrow_not_sent": true,
+    "confirmed_cita_not_reparsed": true,
+    "concurrent_stale_sales_route_rejected": true,
+    "real_contact_access_or_changes": false,
+    "remote_assignment_atomicity": "not_certified_requires_Respond_workflow_guard"
+  },
   "merge_authorized": false,
   "activation_readiness": "NO_GO_pending_baseline_disposition_hosted_DEV_and_manual_Respond_verification"
 }

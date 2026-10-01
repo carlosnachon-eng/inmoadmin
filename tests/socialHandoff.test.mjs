@@ -9,7 +9,7 @@ after(() => { globalThis.fetch = originalFetch; });
 const env = { SALES_AGENT_V2_HANDOFF_WORKFLOW_URL: "https://hooks.respond.io/synthetic-only", RESPOND_IO_TOKEN: "synthetic-not-a-secret" };
 function fixture() {
   const receipts = new Map(); let token = 0;
-  const db = memoryDb({ sales_agent_v2_handoffs: [{ id: "h", social_route_id: "r", respond_contact_id: "synthetic", channel_id: "497382", status: "ready_for_advisor", reason: "appointment_intent" }] }, {
+  const db = memoryDb({ gv_respond_contact_snapshots: [{ respond_contact_id: "synthetic", respond_record_active: true, metadata: { mapping_method: "current_assignee_unassigned" } }], sales_agent_v2_handoffs: [{ id: "h", social_route_id: "r", respond_contact_id: "synthetic", channel_id: "497382", status: "ready_for_advisor", reason: "appointment_intent" }] }, {
     reserve_social_effect_v1: async ({ p_kind, p_handoff_id, p_phase }) => {
       const key = `${p_kind}:${p_handoff_id}:${p_phase}`, found = receipts.get(key);
       if (found) return { data: { owned: false, ...found } };

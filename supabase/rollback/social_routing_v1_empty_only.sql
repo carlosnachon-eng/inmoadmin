@@ -18,6 +18,7 @@ drop trigger social_legal_inbound_guard on public.legal_agent_v1_inbound_message
 drop trigger social_sales_handoff_binding on public.sales_agent_v2_handoffs;
 drop trigger social_legal_handoff_binding on public.legal_agent_v1_handoffs;
 drop trigger social_appointment_binding on public.respond_appointment_sync;
+drop index public.social_owner_context_idx,public.social_appointment_context_idx;
 drop function public.capture_social_route_v1(jsonb),public.reserve_social_effect_v1(text,uuid,text),public.finish_social_effect_v1(uuid,text,text),public.commit_social_appointment_v1(uuid,uuid,uuid,uuid,timestamptz,timestamptz,text),public.guard_social_inbound_v1(),public.bind_social_handoff_v1(),public.guard_social_appointment_v1();
 alter table public.sales_agent_v2_inbound_messages drop column social_route_id;
 alter table public.owner_agent_v1_inbound_messages drop column social_route_id;
