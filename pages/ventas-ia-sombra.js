@@ -33,6 +33,7 @@ export default function VentasIaSombra(){
 
   const visible=useMemo(()=>rows.filter((r)=>{
     if(filter==="failed")return r.status==="failed";
+    if(filter==="pending")return r.status==="pending";
     if(filter==="recovery")return String(r.inbound?.event_id||"").startsWith("recovery:");
     if(filter==="live")return !String(r.inbound?.event_id||"").startsWith("recovery:");
     return true;
@@ -44,7 +45,7 @@ export default function VentasIaSombra(){
       <div style={{background:"#fff",borderRadius:12,padding:14,marginBottom:16,border:"1px solid #e5e7eb"}}>
         <p style={{margin:"0 0 10px",fontSize:13,color:"#374151"}}>Aquí ves lo que habría contestado Sales V2. <strong>No se envía nada desde esta pantalla.</strong></p>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {[["all","Todos"],["live","Nuevos"],["recovery","Recuperados"],["failed","Fallidos"]].map(([key,label])=><button key={key} onClick={()=>setFilter(key)} style={{border:"1px solid #d1d5db",background:filter===key?"#1f2937":"#fff",color:filter===key?"#fff":"#374151",borderRadius:999,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{label}</button>)}
+          {[["all","Todos"],["pending","Pendientes"],["live","Nuevos"],["recovery","Recuperados"],["failed","Fallidos"]].map(([key,label])=><button key={key} onClick={()=>setFilter(key)} style={{border:"1px solid #d1d5db",background:filter===key?"#1f2937":"#fff",color:filter===key?"#fff":"#374151",borderRadius:999,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{label}</button>)}
         </div>
       </div>
       {loading&&<div style={{padding:40,textAlign:"center",color:"#6b7280"}}>Cargando...</div>}
@@ -57,10 +58,14 @@ export default function VentasIaSombra(){
               <div style={{fontSize:11,color:"#6b7280",fontWeight:800,textTransform:"uppercase"}}>{String(r.inbound?.event_id||"").startsWith("recovery:")?"Lead recuperado":"Mensaje nuevo"} · canal {r.inbound?.channel_id||"—"}</div>
               <div style={{marginTop:4,fontSize:12,color:"#6b7280"}}>{fmtTime(r.inbound?.occurred_at)} · contacto {r.inbound?.respond_contact_id||"—"}</div>
             </div>
-            <span style={{fontSize:11,fontWeight:800,borderRadius:999,padding:"4px 8px",background:r.status==="idle"?"#dcfce7":"#fee2e2",color:r.status==="idle"?"#166534":"#991b1b"}}>{r.status==="idle"?"OK":"FALLÓ"}</span>
+            <span style={{
+              fontSize:11,fontWeight:800,borderRadius:999,padding:"4px 8px",
+              background:r.status==="idle"?"#dcfce7":r.status==="pending"?"#fef3c7":"#fee2e2",
+              color:r.status==="idle"?"#166534":r.status==="pending"?"#92400e":"#991b1b"
+            }}>{r.status==="idle"?"OK":r.status==="pending"?"PENDIENTE":"FALLÓ"}</span>
           </div>
           <div style={{marginTop:14}}><div style={{fontSize:11,fontWeight:800,color:"#6b7280",textTransform:"uppercase",marginBottom:4}}>Prospecto escribió</div><div style={{fontSize:14,color:"#111827",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.inbound?.sanitized_text||"—"}</div></div>
-          <div style={{marginTop:14,background:"#f9fafb",borderRadius:10,padding:12}}><div style={{fontSize:11,fontWeight:800,color:"#6b7280",textTransform:"uppercase",marginBottom:4}}>Sales V2 habría contestado</div><div style={{fontSize:14,color:"#111827",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{r.proposedResponse||"—"}</div></div>
+          <div style={{marginTop:14,background:"#f9fafb",borderRadius:10,padding:12}}><div style={{fontSize:11,fontWeight:800,color:"#6b7280",textTransform:"uppercase",marginBottom:4}}>Sales V2 habría contestado</div><div style={{fontSize:14,color:"#111827",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{r.status==="pending"?"Esperando procesamiento de Sales V2…":(r.proposedResponse||"—")}</div></div>
           <div style={{marginTop:12,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
             {(r.calledTools||[]).map((tool,i)=><span key={tool+"-"+i} style={{fontSize:11,background:"#eef2ff",color:"#3730a3",padding:"3px 7px",borderRadius:999}}>{tool}</span>)}
             <span style={{fontSize:11,color:"#9ca3af",marginLeft:"auto"}}>{r.latencyMs?((r.latencyMs/1000).toFixed(1)+" s"):"—"}</span>
