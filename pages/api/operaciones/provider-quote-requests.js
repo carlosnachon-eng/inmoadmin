@@ -46,7 +46,7 @@ export default async function handler(req,res){
         .eq("status","active")
         .order("display_name"),
       admin.from("service_provider_quote_requests")
-        .select("id,ticket_id,provider_id,status,request_message,sent_at,responded_at,response_summary,quoted_amount,availability_text,response_parsed,error_code,created_at")
+        .select("id,ticket_id,provider_id,status,request_message,sent_at,responded_at,response_summary,quoted_amount,availability_text,response_parsed,error_code,reminder_sent_at,escalated_at,created_at")
         .order("created_at",{ascending:false})
         .limit(100),
     ]);
