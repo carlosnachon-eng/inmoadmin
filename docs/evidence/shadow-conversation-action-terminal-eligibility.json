@@ -1,0 +1,99 @@
+{
+  "scope": "Minimal fix for shadow_conversation_actions_check2; local certification only",
+  "branch": "codex/shadow-conversation-action-terminal-eligibility",
+  "base_sha": "82f175ce4947517aba1d2a6d3874b505468eef95",
+  "functional_changes": [
+    "expired UPDATE sets auto_send_eligible=false in the same statement",
+    "superseded UPDATE sets auto_send_eligible=false in the same statement",
+    "direct superseded construction sets auto_send_eligible=false"
+  ],
+  "invariants": {
+    "constraint_unchanged": true,
+    "status_proposed_compare_and_set_preserved": true,
+    "schema_or_migration_changes": false,
+    "historical_backfill_or_deletion": false,
+    "decision_content_and_requires_human_unchanged": true,
+    "social_recovery_handoff_sla_changes": false,
+    "pr_161_touched": false,
+    "production_changes_during_certification": false,
+    "hosted_database_access_during_certification": false,
+    "real_model_calls": 0,
+    "real_outbound_calls": 0
+  },
+  "focused": {
+    "new_regressions": { "pass": 11, "total": 11 },
+    "affected_tests": { "pass": 141, "total": 141 },
+    "files": [
+      "tests/shadowConversationActionTransitions.test.mjs",
+      "tests/shadowConversationActions3B.test.mjs",
+      "tests/shadowAiAutoReal.test.mjs",
+      "tests/shadowAiImmediateContinuation.test.mjs",
+      "tests/shadowAdminOutbound3B.test.mjs"
+    ]
+  },
+  "postgres": {
+    "environment": "Disposable embedded PostgreSQL listening only on 127.0.0.1; no .env or hosted credentials",
+    "pass": 15,
+    "total": 15,
+    "original_migrations_loaded_without_changes": [
+      "202608270001_fase_3b_shadow_conversation_actions.sql",
+      "202608280003_fase_3b_interaction_direction.sql"
+    ],
+    "fk_parents": "Minimal synthetic parent tables; action table and all its constraints/ACL come from repository migrations",
+    "old_expiry_and_human_update_reproduced": "SQLSTATE 23514, constraint shadow_conversation_actions_check2",
+    "actual_application_updates_and_insert": "PASS",
+    "ineligible_content_and_human_decision_preserved": true,
+    "concurrent_expiry_and_human_update": "Independent connections; pg_blocking_pids confirms lock wait; concurrent rejected row remains byte-for-byte unchanged",
+    "repeated_cleanup_idempotent": true,
+    "constraint_definition_before_after_identical": true,
+    "external_fetch_calls": 0,
+    "cluster_stopped_and_removed": true,
+    "runner": "SHADOW_ACTION_LOCAL_PG_RUNTIME=/path/to/local/runtime node scripts/test-shadow-action-transitions-postgres.mjs"
+  },
+  "cron_integration": {
+    "endpoint_source": "pages/api/cron/shadow-ai-real-auto.js",
+    "real_paths": ["origin reconciliation", "turn selection", "action cleanup", "HTTP handler"],
+    "synthetic_boundaries": ["DB factory", "state machine completion"],
+    "first_invocation": "HTTP 200 completed; expired eligible proposal cleaned and next pending turn processed",
+    "second_invocation": "HTTP 200 idle; no duplicate synthetic run",
+    "synthetic_runs": 1,
+    "external_fetch_calls": 0,
+    "outbound_rows": 0,
+    "limitation": "Local synthetic integration; not a production runtime observation"
+  },
+  "suite": {
+    "pass": 1781,
+    "total": 1784,
+    "fail": 3,
+    "skipped": 0,
+    "green": false,
+    "new_failures": 0,
+    "unmodified_main_comparison": { "pass": 182, "total": 185, "fail": 3 },
+    "inherited_failures": [
+      { "file": "tests/respondWebhookMultiHmac.test.mjs", "reason": "Existing data-URL harness fails to resolve relative salesCapture import" },
+      { "file": "tests/shadowAiP3.test.mjs", "reason": "Expected 18 tools, current baseline has 19" },
+      { "file": "tests/shadowReducedOutputSchema.test.mjs", "reason": "Expected 4355 schema bytes, current baseline has 4383" }
+    ],
+    "disposition": "Reproduced on untouched main; not fixed or skipped in this limited PR; explicitly disclosed for merge review"
+  },
+  "build": {
+    "result": "PASS",
+    "configuration": "Synthetic build credentials and loopback Supabase URL; no hosted .env loaded",
+    "initial_harness_issue": "First build lacked required public Supabase variables; repeated with synthetic build-only configuration"
+  },
+  "harness_notes": [
+    "Initial loopback listen was denied by local sandbox; authorized loopback execution passed",
+    "Initial cron fixture was correctly excluded by existing synthetic-ID guard; neutral local-only external ID used without changing product guard",
+    "Empty directory from denied initial listener was removed"
+  ],
+  "preview": "Only this branch excluded in vercel.json; existing exclusions and all cron schedules unchanged",
+  "diff_check": "PASS",
+  "post_merge_checklist": [
+    "Separate approved merge/deployment; verify exact fix SHA and READY aliases",
+    "Social remains OFF, Recovery false, legacy handoff URL absent, SLA false, Approved Materials OFF",
+    "Observe natural shadow-ai-real-auto cron invocations without manually invoking models",
+    "Confirm check2 HTTP 503 no longer recurs; read back terminal action status and eligibility",
+    "Do not claim production recovery solely from local PASS",
+    "Do not reactivate Social in this fix; subsequent cutover is a separate controlled step"
+  ]
+}
