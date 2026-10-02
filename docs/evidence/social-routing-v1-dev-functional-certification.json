@@ -1,0 +1,790 @@
+{
+  "status": "SOCIAL_ROUTING_V1_DEV_FUNCTIONAL_PASS",
+  "date": "2026-10-01",
+  "branch": "codex/social-routing-v1",
+  "tested_head": "5cd3e82020ba821a0e5db348e1991bd264a58ee0",
+  "functional_head": "a71e74fc117cfc94bddab66607c8626577cd71a9",
+  "project": {
+    "name": "inmoadmin-dev",
+    "ref": "hjfwjnejbcpmknvfpdcq"
+  },
+  "scope": "Actual branch processors and hosted PostgREST/RPC/constraints; synthetic external provider/history/Respond IO only. Not live Respond workflow or production certification.",
+  "harness": {
+    "path": "scripts/certify-social-routing-dev.mjs",
+    "sha256": "5d27d6500fa76b03ec7962f346dfdd614cacdb4bc4dbf7286d287348ff012840",
+    "fail_fast": true,
+    "executions": 1,
+    "administrative_key": "secure native hidden field -> process memory only; never written; runner terminated",
+    "network": "deny by default; real requests only to exact DEV origin"
+  },
+  "migrations": {
+    "receipt": "social-routing-v1-dev-grants-certification.json",
+    "source_database_bytes_match": true,
+    "grant_migrations": 1,
+    "usage_migrations": 2,
+    "committed_before_execution": "5cd3e82020ba821a0e5db348e1991bd264a58ee0",
+    "reapplied_in_this_run": 0,
+    "new_ddl_in_this_run": 0
+  },
+  "acl": {
+    "result": "PASS",
+    "checks": 96,
+    "roles": [
+      "service_role",
+      "anon",
+      "authenticated"
+    ],
+    "transaction": "ROLLBACK",
+    "rows_mutated": 0,
+    "minimum_privileges_added": 21,
+    "tables": 8,
+    "rls_or_policies_changed": false,
+    "client_grants_added": false,
+    "source": "supabase/dev/checks/social_agent_server_grants_dev.sql"
+  },
+  "execution": {
+    "project": "hjfwjnejbcpmknvfpdcq",
+    "tag": "social-dev-cert-8ac440cf1450",
+    "reports": [
+      {
+        "name": "no_existing_pending_sync",
+        "result": "PASS"
+      },
+      {
+        "name": "synthetic_listing_no_collision",
+        "result": "PASS"
+      },
+      {
+        "name": "current_human_assignment_overrides_old_snapshot",
+        "result": "PASS"
+      },
+      {
+        "name": "Respond_to_advisor_mapping_persisted",
+        "result": "PASS"
+      },
+      {
+        "name": "same_name_never_joins",
+        "result": "PASS"
+      },
+      {
+        "name": "explicit_contact_link_only",
+        "result": "PASS"
+      },
+      {
+        "name": "instagram_one_persisted_destination",
+        "result": "PASS"
+      },
+      {
+        "name": "instagram_exclusive_queue",
+        "result": "PASS"
+      },
+      {
+        "name": "messenger_one_persisted_destination",
+        "result": "PASS"
+      },
+      {
+        "name": "messenger_exclusive_queue",
+        "result": "PASS"
+      },
+      {
+        "name": "owner_one_persisted_destination",
+        "result": "PASS"
+      },
+      {
+        "name": "owner_exclusive_queue",
+        "result": "PASS"
+      },
+      {
+        "name": "legal_one_persisted_destination",
+        "result": "PASS"
+      },
+      {
+        "name": "legal_exclusive_queue",
+        "result": "PASS"
+      },
+      {
+        "name": "administration_one_persisted_destination",
+        "result": "PASS"
+      },
+      {
+        "name": "administration_exclusive_queue",
+        "result": "PASS"
+      },
+      {
+        "name": "administration_no_specialist",
+        "result": "PASS"
+      },
+      {
+        "name": "complaint_one_persisted_destination",
+        "result": "PASS"
+      },
+      {
+        "name": "complaint_exclusive_queue",
+        "result": "PASS"
+      },
+      {
+        "name": "complaint_no_specialist",
+        "result": "PASS"
+      },
+      {
+        "name": "unknown_one_persisted_destination",
+        "result": "PASS"
+      },
+      {
+        "name": "unknown_exclusive_queue",
+        "result": "PASS"
+      },
+      {
+        "name": "unknown_no_specialist",
+        "result": "PASS"
+      },
+      {
+        "name": "existing_one_persisted_destination",
+        "result": "PASS"
+      },
+      {
+        "name": "existing_exclusive_queue",
+        "result": "PASS"
+      },
+      {
+        "name": "existing_no_specialist",
+        "result": "PASS"
+      },
+      {
+        "name": "concurrent_event_one_route",
+        "result": "PASS"
+      },
+      {
+        "name": "concurrent_event_one_queue",
+        "result": "PASS"
+      },
+      {
+        "name": "explicit_social_attribution_preserved",
+        "result": "PASS"
+      },
+      {
+        "name": "absent_attribution_remains_null",
+        "result": "PASS"
+      },
+      {
+        "name": "cross_agent_insert_rejected",
+        "result": "PASS"
+      },
+      {
+        "name": "appointment_capture_real",
+        "result": "PASS"
+      },
+      {
+        "name": "appointment_event_duplicate",
+        "result": "PASS"
+      },
+      {
+        "name": "day1_relative_date_committed",
+        "result": "PASS"
+      },
+      {
+        "name": "concurrent_booking_starts_without_cita",
+        "result": "PASS"
+      },
+      {
+        "name": "two_connections_same_cita",
+        "result": "PASS"
+      },
+      {
+        "name": "exactly_one_concurrent_cita",
+        "result": "PASS"
+      },
+      {
+        "name": "sync_grant_updates_real",
+        "result": "PASS"
+      },
+      {
+        "name": "next_day_stays_OWNER_2026-10-01T14:00:00.000Z",
+        "result": "PASS"
+      },
+      {
+        "name": "owner_processor_service_writes_2026-10-01T14:00:00.000Z",
+        "result": "PASS"
+      },
+      {
+        "name": "owner_detail_context_preserved_2026-10-01T14:00:00.000Z",
+        "result": "PASS"
+      },
+      {
+        "name": "no_owner_sales_fallback_2026-10-01T14:00:00.000Z",
+        "result": "PASS"
+      },
+      {
+        "name": "no_owner_sales_handoff_2026-10-01T14:00:00.000Z",
+        "result": "PASS"
+      },
+      {
+        "name": "next_day_stays_OWNER_2026-10-01T14:01:00.000Z",
+        "result": "PASS"
+      },
+      {
+        "name": "owner_processor_service_writes_2026-10-01T14:01:00.000Z",
+        "result": "PASS"
+      },
+      {
+        "name": "owner_detail_context_preserved_2026-10-01T14:01:00.000Z",
+        "result": "PASS"
+      },
+      {
+        "name": "no_owner_sales_fallback_2026-10-01T14:01:00.000Z",
+        "result": "PASS"
+      },
+      {
+        "name": "no_owner_sales_handoff_2026-10-01T14:01:00.000Z",
+        "result": "PASS"
+      },
+      {
+        "name": "OWNER_no_assignment_or_ACK",
+        "result": "PASS"
+      },
+      {
+        "name": "appointment_not_shifted_in_messages",
+        "result": "PASS"
+      },
+      {
+        "name": "historical_relative_text_anchored",
+        "result": "PASS"
+      },
+      {
+        "name": "advisor_and_appointment_unchanged",
+        "result": "PASS"
+      },
+      {
+        "name": "OWNER_zero_Sales_rows",
+        "result": "PASS"
+      },
+      {
+        "name": "owner_runs_outbound_readback",
+        "result": "PASS"
+      },
+      {
+        "name": "CTA_processed_policy_only",
+        "result": "PASS"
+      },
+      {
+        "name": "CTA_duplicate_atomic_claim",
+        "result": "PASS"
+      },
+      {
+        "name": "CTA_one_safe_clarification_no_model",
+        "result": "PASS"
+      },
+      {
+        "name": "CTA_no_fallback",
+        "result": "PASS"
+      },
+      {
+        "name": "CTA_zero_handoff_assignment_ACK",
+        "result": "PASS"
+      },
+      {
+        "name": "vendor_HUMAN_REVIEW",
+        "result": "PASS"
+      },
+      {
+        "name": "vendor_no_handoff",
+        "result": "PASS"
+      },
+      {
+        "name": "vendor_no_fallback_assignment_ACK",
+        "result": "PASS"
+      },
+      {
+        "name": "legacy_full_phrase_false_negative_reproduced",
+        "result": "PASS"
+      },
+      {
+        "name": "social_text_finds_published_listing",
+        "result": "PASS"
+      },
+      {
+        "name": "CTA_verified_attribution_used",
+        "result": "PASS"
+      },
+      {
+        "name": "verified_source_precedes_text",
+        "result": "PASS"
+      },
+      {
+        "name": "source_respects_budget",
+        "result": "PASS"
+      },
+      {
+        "name": "coverage_uses_real_published_evidence",
+        "result": "PASS"
+      },
+      {
+        "name": "empty_query_not_inventory_absence",
+        "result": "PASS"
+      },
+      {
+        "name": "unassigned_handoff_created",
+        "result": "PASS"
+      },
+      {
+        "name": "one_workflow_request",
+        "result": "PASS"
+      },
+      {
+        "name": "one_separate_ACK",
+        "result": "PASS"
+      },
+      {
+        "name": "assignment_and_ACK_persisted",
+        "result": "PASS"
+      },
+      {
+        "name": "two_effect_receipts",
+        "result": "PASS"
+      },
+      {
+        "name": "current_responsible_barrier",
+        "result": "PASS"
+      },
+      {
+        "name": "current_responsible_no_assignment",
+        "result": "PASS"
+      },
+      {
+        "name": "legal_processor_sent_synthetic",
+        "result": "PASS"
+      },
+      {
+        "name": "legal_duplicate_no_second_run",
+        "result": "PASS"
+      },
+      {
+        "name": "legal_outbound_insert_readback",
+        "result": "PASS"
+      },
+      {
+        "name": "legal_handoff_S_I_U",
+        "result": "PASS"
+      },
+      {
+        "name": "legal_retry_one_workflow_one_ACK",
+        "result": "PASS"
+      },
+      {
+        "name": "flag_OFF_no_new_route",
+        "result": "PASS"
+      },
+      {
+        "name": "legacy_WhatsApp_capture_unchanged",
+        "result": "PASS"
+      },
+      {
+        "name": "legacy_WhatsApp_duplicate",
+        "result": "PASS"
+      },
+      {
+        "name": "legacy_no_social_marker",
+        "result": "PASS"
+      },
+      {
+        "name": "legacy_Owner_capture",
+        "result": "PASS"
+      },
+      {
+        "name": "legacy_Legal_capture",
+        "result": "PASS"
+      },
+      {
+        "name": "Administration_not_social",
+        "result": "PASS"
+      },
+      {
+        "name": "legacy_Administration_routing_intact",
+        "result": "PASS"
+      },
+      {
+        "name": "commercial_cutover_no_Ivonne",
+        "result": "PASS"
+      },
+      {
+        "name": "no_identity_or_unexpected_app_mutations",
+        "result": "PASS"
+      },
+      {
+        "name": "runtime_flag_still_OFF",
+        "result": "PASS"
+      },
+      {
+        "name": "no_unexpected_network",
+        "result": "PASS"
+      }
+    ],
+    "pass": 93,
+    "fail": 0,
+    "processFlag": "false",
+    "positiveRoutingOption": "test-local only",
+    "realRespondCalls": 0,
+    "realModelCalls": 0,
+    "mockedExternalEffects": 7,
+    "operationCounts": {
+      "respond_appointment_sync": {
+        "select": 13,
+        "insert": 4
+      },
+      "propiedades": {
+        "select": 11,
+        "insert": 1
+      },
+      "profiles": {
+        "update": 1,
+        "select": 1
+      },
+      "clientes": {
+        "insert": 1
+      },
+      "gv_respond_contact_snapshots": {
+        "insert": 3,
+        "select": 41
+      },
+      "gv_opportunities": {
+        "insert": 2,
+        "select": 15
+      },
+      "respond_identity_links": {
+        "select": 24
+      },
+      "gv_respond_webhook_events": {
+        "insert": 23
+      },
+      "social_message_routes": {
+        "select": 68
+      },
+      "owner_agent_v1_inbound_messages": {
+        "select": 35,
+        "insert": 2,
+        "update": 4
+      },
+      "capture_social_route_v1": {
+        "rpc": 21
+      },
+      "sales_agent_v2_inbound_messages": {
+        "select": 22,
+        "update": 3,
+        "insert": 2
+      },
+      "legal_agent_v1_inbound_messages": {
+        "select": 11,
+        "update": 3,
+        "insert": 1
+      },
+      "commit_social_appointment_v1": {
+        "rpc": 3
+      },
+      "citas": {
+        "select": 13
+      },
+      "owner_agent_v1_runs": {
+        "insert": 2,
+        "select": 1
+      },
+      "owner_agent_v1_auto_outbound": {
+        "insert": 2,
+        "update": 2,
+        "select": 1
+      },
+      "sales_agent_v2_handoffs": {
+        "select": 7,
+        "insert": 1,
+        "update": 3
+      },
+      "sales_agent_v2_shadow_runs": {
+        "insert": 1,
+        "select": 1
+      },
+      "reserve_social_effect_v1": {
+        "rpc": 5
+      },
+      "finish_social_effect_v1": {
+        "rpc": 4
+      },
+      "social_handoff_effects": {
+        "select": 1
+      },
+      "legal_agent_v1_runs": {
+        "insert": 1
+      },
+      "legal_agent_v1_auto_outbound": {
+        "insert": 1,
+        "select": 1
+      },
+      "legal_agent_v1_handoffs": {
+        "select": 3,
+        "insert": 1,
+        "update": 2
+      }
+    }
+  },
+  "network": {
+    "project": "hjfwjnejbcpmknvfpdcq",
+    "realModelCalls": 0,
+    "realRespondCalls": 0,
+    "blocked": 0,
+    "mockedWorkflows": 2,
+    "mockedMessages": 5
+  },
+  "cleanup": {
+    "status": "PASS",
+    "fixture_tag": "social-dev-cert-8ac440cf1450",
+    "recorded_synthetic_contacts": 21,
+    "recorded_webhook_events": 23,
+    "rows_created_and_removed": 92,
+    "auth_users_created_and_removed": 1,
+    "profiles_created_and_removed": 1,
+    "method": "Exact recorded primary keys only in a bounded DEV transaction; service Auth admin deleted only synthetic actor. No DELETE grant added. Independent exact-key readback after commit.",
+    "tables": [
+      {
+        "table": "social_handoff_effects",
+        "created": 4,
+        "removed": 4,
+        "remaining": 0
+      },
+      {
+        "table": "sales_agent_v2_handoffs",
+        "created": 1,
+        "removed": 1,
+        "remaining": 0
+      },
+      {
+        "table": "legal_agent_v1_handoffs",
+        "created": 1,
+        "removed": 1,
+        "remaining": 0
+      },
+      {
+        "table": "owner_agent_v1_auto_outbound",
+        "created": 2,
+        "removed": 2,
+        "remaining": 0
+      },
+      {
+        "table": "legal_agent_v1_auto_outbound",
+        "created": 1,
+        "removed": 1,
+        "remaining": 0
+      },
+      {
+        "table": "owner_agent_v1_runs",
+        "created": 2,
+        "removed": 2,
+        "remaining": 0
+      },
+      {
+        "table": "legal_agent_v1_runs",
+        "created": 1,
+        "removed": 1,
+        "remaining": 0
+      },
+      {
+        "table": "sales_agent_v2_shadow_runs",
+        "created": 1,
+        "removed": 1,
+        "remaining": 0
+      },
+      {
+        "table": "owner_agent_v1_inbound_messages",
+        "created": 6,
+        "removed": 6,
+        "remaining": 0
+      },
+      {
+        "table": "legal_agent_v1_inbound_messages",
+        "created": 4,
+        "removed": 4,
+        "remaining": 0
+      },
+      {
+        "table": "sales_agent_v2_inbound_messages",
+        "created": 8,
+        "removed": 8,
+        "remaining": 0
+      },
+      {
+        "table": "social_message_routes",
+        "created": 20,
+        "removed": 20,
+        "remaining": 0
+      },
+      {
+        "table": "social_appointment_keys",
+        "created": 3,
+        "removed": 3,
+        "remaining": 0
+      },
+      {
+        "table": "respond_appointment_sync",
+        "created": 3,
+        "removed": 3,
+        "remaining": 0
+      },
+      {
+        "table": "commercial_attribution_attempts",
+        "created": 2,
+        "removed": 2,
+        "remaining": 0
+      },
+      {
+        "table": "commercial_attributions",
+        "created": 0,
+        "removed": 0,
+        "remaining": 0
+      },
+      {
+        "table": "citas",
+        "created": 2,
+        "removed": 2,
+        "remaining": 0
+      },
+      {
+        "table": "gv_opportunities",
+        "created": 2,
+        "removed": 2,
+        "remaining": 0
+      },
+      {
+        "table": "gv_respond_contact_snapshots",
+        "created": 3,
+        "removed": 3,
+        "remaining": 0
+      },
+      {
+        "table": "clientes",
+        "created": 2,
+        "removed": 2,
+        "remaining": 0
+      },
+      {
+        "table": "propiedades",
+        "created": 1,
+        "removed": 1,
+        "remaining": 0
+      },
+      {
+        "table": "gv_respond_webhook_events",
+        "created": 23,
+        "removed": 23,
+        "remaining": 0
+      }
+    ],
+    "auth_and_identity": [
+      {
+        "kind": "auth_users",
+        "remaining": 0
+      },
+      {
+        "kind": "profiles",
+        "remaining": 0
+      },
+      {
+        "kind": "auth_sessions",
+        "remaining": 0
+      },
+      {
+        "kind": "auth_refresh_tokens",
+        "remaining": 0
+      },
+      {
+        "kind": "identity_audit",
+        "remaining": 0
+      },
+      {
+        "kind": "identity_links",
+        "remaining": 0
+      }
+    ],
+    "total_residues": 0,
+    "identity_links_created": 0,
+    "identity_audit_rows_created": 0,
+    "indirect_effects": "Two CITA commercial_attribution_attempts created by the existing DEV trigger were identified and removed; no commercial_attributions created."
+  },
+  "security_advisors": {
+    "related": [
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "legal_agent_v1_auto_outbound"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "legal_agent_v1_handoffs"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "legal_agent_v1_inbound_messages"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "legal_agent_v1_runs"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "owner_agent_v1_auto_outbound"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "owner_agent_v1_inbound_messages"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "owner_agent_v1_runs"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "respond_appointment_sync"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "social_appointment_keys"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "social_handoff_effects"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "social_message_routes"
+      }
+    ],
+    "interpretation": "INFO only: intentional server-only tables have RLS and no client policies; ACL denies anon/authenticated. Unrelated existing project advisories were not changed.",
+    "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy"
+  },
+  "limits": [
+    "Respond workflow remains NOT_CERTIFIED; no production workspace or assignment changed. A safe isolated race test or documented equivalent conditional assignment guarantee remains required.",
+    "No real model or external delivery tested. Five message calls and two workflow calls were intercepted in memory; sent journal states are synthetic mock acknowledgements, not real sends.",
+    "Sales CTA processor ran with auto outbound disabled. DEV sales_agent_v2_auto_outbound baseline is absent and was not installed or certified; general autonomous Sales sender is outside this run.",
+    "No web UI/admin HTTP review certification in this run; application modules, real DEV PostgREST/RPC, journals and constraints were exercised directly.",
+    "Chapulco public reference was an identifiable synthetic DEV listing matching the supplied regression data; no production listing/contact was consulted.",
+    "Application service client did not receive expanded cleanup privileges; the authorized owner SQL cleanup was restricted to the exact fixture keys."
+  ],
+  "safety": {
+    "production_access": false,
+    "real_model_calls": 0,
+    "real_respond_calls": 0,
+    "real_messages": 0,
+    "hosted_flag_changed": false,
+    "SOCIAL_ROUTING_V1_ENABLED": "false",
+    "positive_route_option": "enabled only for isolated synthetic function calls; process and hosted flags remain OFF",
+    "new_schema_or_grants_during_certification": false,
+    "respond_workspace_changed": false,
+    "merge": false
+  }
+}
