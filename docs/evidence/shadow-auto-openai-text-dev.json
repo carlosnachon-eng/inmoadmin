@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "certified_at": "2026-10-02",
+  "branch": "codex/shadow-auto-openai-text",
+  "base_sha": "1c15c590fa4836d22d44ee70325d9dd3ed6fa448",
+  "scope": "shadow-ai-real-auto text only",
+  "status": "DEV_DATABASE_SYNTHETIC_PROVIDER_PASS",
+  "dev": {
+    "kind": "result",
+    "environment": "hjfwjnejbcpmknvfpdcq",
+    "status": "PASS",
+    "checks": [
+      {
+        "name": "real_check2_present",
+        "status": "PASS"
+      },
+      {
+        "name": "completed_and_full_3a_3b_readback",
+        "status": "PASS"
+      },
+      {
+        "name": "decision_3a_action_same_run",
+        "status": "PASS"
+      },
+      {
+        "name": "usage_cost_persisted",
+        "status": "PASS"
+      },
+      {
+        "name": "all_receipts_pass",
+        "status": "PASS"
+      },
+      {
+        "name": "real_identity_tool_read_only",
+        "status": "PASS"
+      },
+      {
+        "name": "historical_completed_not_pending_unchanged",
+        "status": "PASS"
+      },
+      {
+        "name": "historical_error_not_pending_unchanged",
+        "status": "PASS"
+      },
+      {
+        "name": "historical_timeout_not_pending_unchanged",
+        "status": "PASS"
+      },
+      {
+        "name": "timeout_explicit_fail_closed",
+        "status": "PASS"
+      },
+      {
+        "name": "timeout_receipt_durable",
+        "status": "PASS"
+      },
+      {
+        "name": "timeout_no_3b",
+        "status": "PASS"
+      },
+      {
+        "name": "timeout_usage_unknown_null",
+        "status": "PASS"
+      },
+      {
+        "name": "timeout_permanent_reservation_no_retry",
+        "status": "PASS"
+      },
+      {
+        "name": "uncertain_create_explicit_fail_closed",
+        "status": "PASS"
+      },
+      {
+        "name": "uncertain_create_receipt_durable",
+        "status": "PASS"
+      },
+      {
+        "name": "uncertain_create_no_3b",
+        "status": "PASS"
+      },
+      {
+        "name": "uncertain_create_usage_unknown_null",
+        "status": "PASS"
+      },
+      {
+        "name": "uncertain_create_permanent_reservation_no_retry",
+        "status": "PASS"
+      },
+      {
+        "name": "http_explicit_fail_closed",
+        "status": "PASS"
+      },
+      {
+        "name": "http_receipt_durable",
+        "status": "PASS"
+      },
+      {
+        "name": "http_no_3b",
+        "status": "PASS"
+      },
+      {
+        "name": "invalid_output_explicit_fail_closed",
+        "status": "PASS"
+      },
+      {
+        "name": "invalid_output_receipt_durable",
+        "status": "PASS"
+      },
+      {
+        "name": "invalid_output_no_3b",
+        "status": "PASS"
+      },
+      {
+        "name": "privacy_failure_explicit_fail_closed",
+        "status": "PASS"
+      },
+      {
+        "name": "privacy_failure_receipt_durable",
+        "status": "PASS"
+      },
+      {
+        "name": "privacy_failure_no_3b",
+        "status": "PASS"
+      },
+      {
+        "name": "3b_failure_explicit_fail_closed",
+        "status": "PASS"
+      },
+      {
+        "name": "3b_failure_receipt_durable",
+        "status": "PASS"
+      },
+      {
+        "name": "3b_failure_no_3b",
+        "status": "PASS"
+      },
+      {
+        "name": "concurrent_one_run_one_session",
+        "status": "PASS"
+      },
+      {
+        "name": "cron_completed_then_idle",
+        "status": "PASS"
+      },
+      {
+        "name": "zero_provider_or_outbound_network",
+        "status": "PASS"
+      },
+      {
+        "name": "fixture_cleanup_zero_residues",
+        "status": "PASS"
+      },
+      {
+        "name": "zero_identity_audit_rows",
+        "status": "PASS"
+      }
+    ],
+    "fixtures": {
+      "conversations": 12,
+      "messages": 12,
+      "cleanup": true,
+      "residues": 0
+    },
+    "syntheticSessionCount": 12,
+    "realProviderCalls": 0
+  },
+  "limitations": [
+    "DEV uses real PostgreSQL through a service_role MCP SQL adapter; not a deployed HTTP/Auth test.",
+    "OpenAI/Anthropic/Respond network calls: zero. Provider contract is simulated; live OpenAI behavior is not certified.",
+    "DEV harness only: 600000ms durable deadline and 60000ms tool deadline compensate for MCP latency. Hosted/default runtime clocks unchanged.",
+    "shadow-media-retrieval and historical/manual/backfill Anthropic paths remain outside this migration."
+  ],
+  "prior_harness_runs": {
+    "additional_fixture_conversations": 4,
+    "additional_fixture_messages": 4,
+    "residues": 0,
+    "production_access": false
+  },
+  "local": {
+    "focused": {
+      "passed": 30,
+      "total": 30
+    },
+    "directed": {
+      "passed": 1187,
+      "total": 1189,
+      "inherited_failures": 2
+    },
+    "suite": {
+      "passed": 1811,
+      "total": 1814,
+      "inherited_failures": 3
+    },
+    "baseline_reproduction": {
+      "passed": 182,
+      "total": 185
+    },
+    "postgres_runtime_checks": 34,
+    "postgres_action_transitions_checks": 15,
+    "build": "PASS",
+    "diff_check": "PASS"
+  },
+  "hosted_environment_changes": false,
+  "schema_migrations": 0,
+  "backfill": false,
+  "production_access": false
+}

@@ -1,6 +1,7 @@
 {
   "git": {
     "deploymentEnabled": {
+      "codex/shadow-auto-openai-text": false,
       "codex/shadow-conversation-action-terminal-eligibility": false,
       "codex/social-routing-v1": false,
       "codex/condominium-owner-canonical-identity": false,
