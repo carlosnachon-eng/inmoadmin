@@ -1,7 +1,8 @@
 {
   "scope": "Social Routing v1 foundation only",
   "snapshot_scope": "Historical local certification before hosted DEV follow-up; access/applied booleans below describe that local run only.",
-  "current_hosted_followup": "social-routing-v1-dev-certification.json",
+  "current_hosted_followup": "social-routing-v1-dev-functional-certification.json",
+  "current_respond_followup": "social-routing-v1-respond-qa-accepted.json",
   "base_sha": "30beba05a1a53741915137c2e65066a547f5ed98",
   "branch": "codex/social-routing-v1",
   "certified_environment": "local synthetic IO and disposable loopback PostgreSQL",
@@ -26,6 +27,10 @@
     "total": 1773,
     "fail": 3,
     "all_failures_reproduced_on_unmodified_base": true,
+    "disposition": "inherited_baseline_exceptions_nonblocking_for_reviewed_flag_off_rollout",
+    "suite_green": false,
+    "fixed_or_skipped": false,
+    "followup": "separate_harness_and_stale_expectations_maintenance_not_in_this_PR",
     "baseline_comparison": { "pass": 182, "total": 185, "fail": 3 },
     "failures": [
       { "file": "tests/respondWebhookMultiHmac.test.mjs", "reason": "historical_data_url_harness_unresolved_agent_import" },
@@ -86,5 +91,6 @@
     "real_contact_reads_or_changes": false
   },
   "merge_authorized": false,
-  "activation_readiness": "NO_GO_pending_baseline_disposition_hosted_DEV_and_manual_Respond_verification"
+  "activation_readiness": "OFF_only_Respond_observability_risk_accepted_activation_requires_separate_review",
+  "current_premerge_step": "authorized_exact_production_migration_and_postcheck_pending_no_merge"
 }

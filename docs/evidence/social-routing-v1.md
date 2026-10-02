@@ -3,13 +3,26 @@
 Scope: separate branch `codex/social-routing-v1`, based on main
 `30beba05a1a53741915137c2e65066a547f5ed98`. No Content Agent, publisher, CMS,
 Private Replies configuration, TikTok connection, new CRM, scheduler or round robin.
-No production access, variables, deployment, database migration or real provider calls.
+The initial implementation/certification made no production changes. Later
+environment-specific receipts below identify separately authorized follow-ups.
 
 Current DEV status: **SOCIAL_ROUTING_V1_DEV_FUNCTIONAL_PASS** — 93/93 hosted
 functional checks and 96/96 permission probes; scoped cleanup confirmed zero
 residues. Final receipt: `social-routing-v1-dev-functional-certification.json`.
 Historical ACL/capture blocks below are preserved as history, not current status.
-Respond workflow certification remains **PENDING**; no merge or Production GO.
+Respond QA is **accepted with an explicit observability limitation** (2026-10-02):
+A/B/C behaved as expected; D had no observed overwrite, but its internal wait
+stage and Respond's internal assignment atomicity were not demonstrated. No more
+laboratories will be created to pursue that unobservable guarantee. This is not
+a universal concurrency proof. See `social-routing-v1-respond-qa-accepted.json`.
+
+The three reproduced baseline suite failures are explicitly dispositioned below
+as non-blocking for the reviewed **flag-OFF** rollout, not fixed or hidden. The
+full suite remains 1770/1773, not green. Production authority is limited to the
+preflight, the exact Social migration, and catalog postcheck; **no merge, deployment,
+Social activation or legacy handoff restoration is authorized in this step**.
+Historical pending/blocked sections below describe their original checkpoints and
+are superseded by this current disposition, not new requirements to repeat QA.
 
 ## Implemented architecture
 
@@ -176,8 +189,15 @@ affected files: 182/185 PASS, the same three failures.
 3. `shadowReducedOutputSchema.test.mjs:59`: expected 4355 schema bytes, current base
    provides 4383. No schema/tools/Shadow implementation changed by Social Routing.
 
-The complete suite is therefore **not green**. This PR is for review, not an
-assertion of unconditional merge/production readiness.
+Disposition recorded 2026-10-02: all three are **inherited baseline exceptions,
+non-blocking for the reviewed flag-OFF rollout** because the exact failures were
+independently reproduced on the unmodified base and are outside this Social diff.
+They remain open technical debt for separate harness/expectation maintenance;
+no tests were deleted, skipped or changed to mask them, and no functional change
+is included in this evidence update. No new issue/PR or unrelated fix is implied.
+This disposition does not waive any new regression, migration/postcheck failure,
+or the later controlled-activation review. The complete suite is **not green**.
+No suite/build/DEV certification was repeated for this documentation-only update.
 
 Commands (use the configured local Node runtime):
 
@@ -374,7 +394,7 @@ in hosted DEV. LIMIT bounds returned rows, not the cost of an ILIKE scan. Classi
 language coverage is conservative, not universal NLP; uncertain cases require human
 review. No new index or migration was introduced for these three regressions.
 
-## Gates, rollout and rollback (proposed, NOT executed)
+## Gates, rollout and rollback (original proposal; current disposition above)
 
 `SOCIAL_ROUTING_V1_ENABLED=false` by default; only exact `true` opts in. Server-only,
 not NEXT_PUBLIC. No existing production gates changed. The branch alone is excluded
@@ -662,7 +682,7 @@ Auth users/profiles/sessions/refresh tokens returned **0**. Identity links and
 identity audit rows for the synthetic contacts were **0** before and after cleanup.
 No global cleanup, schema change, extra grants or production mutation occurred.
 
-### Remaining before merge/activation
+### Historical remaining items at hosted DEV completion (superseded)
 
 - Respond remains **NOT CERTIFIED**: a safe isolated workspace or equivalent
   proven conditional assignment strategy is needed to demonstrate that a human
@@ -671,3 +691,33 @@ No global cleanup, schema change, extra grants or production mutation occurred.
 - The proposed workflow protection was not installed in production Respond.
 - No merge, Production migration, flag enablement, Private Replies or additional
   TikTok connection is authorized by this receipt. PR #160 stays open/unmerged.
+
+## Accepted Respond QA closure — 2026-10-02
+
+Source: the operator's accepted QA conclusion in this task; this section does not
+claim new provider observations or reconstruct unavailable internal timestamps.
+
+| Case | Accepted result | Limit |
+|---|---|---|
+| A: assigned contact | Existing Carlos assignment preserved | Observable QA behavior |
+| B: unassigned contact | QA Round Robin assignment behaved as expected | Observable QA behavior |
+| C: manual assignment race | Manual assignment prevailed via `Manual Assignment` protection | Not atomicity of `Assign To` internals |
+| D: availability race | No overwrite observed | Internal waiting stage not accredited |
+
+The residual risk is explicitly accepted: Respond's internal atomicity across all
+possible interleavings cannot be proved with available observability. No extra D
+lab is required. No additional duplicate-dispatch certificate is inferred from
+this acceptance. QA used synthetic contacts; prior scoped cleanup was reported
+complete with zero residues. No new dispatch, Respond change, QA resource or
+message is created by this documentation closure.
+
+The general autonomous Sales sender remains outside this Social merge certificate;
+it is not a prerequisite to enable exclusive routing. Its existing state must not
+be changed by this rollout. PR #161 is independent and untouched.
+
+Production rollout keeps the legacy kill-switch: workflow URL removed and SLA
+false, with Social effectively OFF. QA acceptance does not install workflow guards
+in Respond production and does not authorize restoring legacy assignment/ACK/SLA.
+Future activation still requires review of queues, marked/in-flight work, human
+review ownership, source attribution, and the production workflow guard before
+any separately authorized handoff restoration. OFF does not cancel in-flight work.
