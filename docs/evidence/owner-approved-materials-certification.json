@@ -1,0 +1,28 @@
+{
+  "scope": "local implementation and synthetic certification only",
+  "base_sha": "30beba05a1a53741915137c2e65066a547f5ed98",
+  "branch": "codex/owner-approved-materials-v1",
+  "decision": "CODE_REVIEW_ONLY_NO_PRODUCTION_ACTIVATION",
+  "source_pdfs": {"verified": 2, "modified": 0, "uploaded": 0},
+  "focused": {"total": 51, "pass": 51, "fail": 0},
+  "isolated_postgres": {"groups": 27, "status": "PASS", "real_transaction_concurrency": true, "cluster_removed": true},
+  "full_suite": {"total": 1707, "pass": 1704, "fail": 3, "skipped": 0},
+  "pristine_base_reproduction": {
+    "total": 185, "pass": 182, "fail": 3,
+    "failures": [
+      {"file": "tests/respondWebhookMultiHmac.test.mjs", "reason": "Data URL harness leaves agentsV2 relative imports unresolved"},
+      {"file": "tests/shadowAiP3.test.mjs", "reason": "Expected 18 read-only tools; base contains 19"},
+      {"file": "tests/shadowReducedOutputSchema.test.mjs", "reason": "Expected 4355 schema bytes; base contains 4383"}
+    ]
+  },
+  "build": "PASS_with_synthetic_loopback_configuration",
+  "diff_check": "PASS",
+  "real_respond_calls": 0,
+  "real_model_calls": 0,
+  "remote_migrations_applied": 0,
+  "production_mutations": 0,
+  "pr160_changes": 0,
+  "remote_dev_certified": false,
+  "real_channel_delivery_certified": false,
+  "default_feature_flag": "OFF"
+}

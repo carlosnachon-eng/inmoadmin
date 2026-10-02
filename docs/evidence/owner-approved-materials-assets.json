@@ -1,0 +1,28 @@
+{
+  "scope": "Approved Materials v1; no binary files committed or uploaded",
+  "approval": "Explicit user approval of the two iCloud sources; rental replacement confirmed",
+  "verification": "SHA-256 and byte size read from source; all four pages per PDF rendered and visually inspected; original bytes unchanged",
+  "materials": [
+    {
+      "code": "OWNER_RENT_ADMIN_PRESENTATION",
+      "version": "v1",
+      "filename": "Presentacion Emporio - Renta.pdf",
+      "sha256": "267f9dd296c83b893c453943e1e936c1d5964e85c4779362be09f2cab1b0e5e5",
+      "byte_size": 782647,
+      "pages": 4,
+      "mime_type": "application/pdf",
+      "replaces_previously_supplied_hash": "da693af84f09a43067ba67f42c01907800732c898a920f478401fdf37601af66",
+      "storage_registered": false
+    },
+    {
+      "code": "OWNER_SALE_PRESENTATION",
+      "version": "v1",
+      "filename": "Presentacion Emporio - Venta.pdf",
+      "sha256": "216db677210d2e38deaab47b656f196b3a1df8e9b0cf11e1d2ba126459dd122d",
+      "byte_size": 746620,
+      "pages": 4,
+      "mime_type": "application/pdf",
+      "storage_registered": false
+    }
+  ]
+}
