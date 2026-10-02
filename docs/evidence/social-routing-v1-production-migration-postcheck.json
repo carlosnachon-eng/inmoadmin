@@ -1,0 +1,319 @@
+{
+  "status": "SOCIAL_ROUTING_V1_PRODUCTION_MIGRATION_POSTCHECK_PASS",
+  "recorded_on": "2026-10-02",
+  "scope": "Exact authorized additive DDL plus read-only catalog checks; no traffic execution, deployment or merge",
+  "project": {
+    "name": "inmoadmin",
+    "ref": "bnzrnizrmonjxlktbhlp",
+    "environment": "Production"
+  },
+  "pr": 160,
+  "source_head": "84741876debc998bef2083a5ebde53fb015ab9dd",
+  "migration": {
+    "source": "supabase/migrations/20261001134913_social_routing_v1.sql",
+    "source_version": "20261001134913",
+    "source_sha256": "fd0a962d07dda73d346a5cdabb9ab0d80bcdab4537900d764f23040c670d6f0d",
+    "source_bytes": 21498,
+    "applied_once": true,
+    "provider_receipt": {
+      "success": true
+    },
+    "hosted_version": "20261002132548",
+    "hosted_name": "social_routing_v1",
+    "mapping_note": "Supabase apply_migration assigns the execution timestamp; this is the same source artifact, not a second migration. Do not reapply source filename.",
+    "stored_statement_count": 1,
+    "stored_bytes": 21498,
+    "stored_md5": "f17677e9f90d2bb1f9615274325ca124",
+    "stored_bytes_match_source": true,
+    "migration_count_before": 31,
+    "migration_count_after": 32,
+    "lock_timeout": "3s",
+    "statement_timeout": "30s",
+    "sql_edited": false,
+    "other_migrations_applied": 0,
+    "historical_dml_backfill_in_installation": false
+  },
+  "preflight": {
+    "result": "PASS",
+    "checked_at": "2026-10-02T13:23:02.73002+00:00",
+    "dependencies": 12,
+    "required_columns": 65,
+    "missing_columns": [],
+    "migration_history_matches_before": 0,
+    "object_collisions": 0,
+    "target_locks": 0,
+    "existing_service_grants_sufficient": true,
+    "existing_acl_or_policies_modified": false
+  },
+  "configuration": {
+    "observation": "read-only Vercel project and linked shared-variable UI",
+    "SOCIAL_ROUTING_V1_ENABLED": {
+      "configured": "absent_in_project_and_shared",
+      "effective": false,
+      "basis": "exact true comparison in lib/social/routing.js"
+    },
+    "SALES_AGENT_V2_HANDOFF_WORKFLOW_URL": "absent_in_project_and_shared",
+    "SALES_AGENT_V2_HANDOFF_SLA_ENABLED": false,
+    "changes": 0,
+    "runtime_env_dumped": false
+  },
+  "deployment": {
+    "id": "dpl_Cq51NEx7xDSr8U7izR8tPHyGXUs4",
+    "state": "READY",
+    "sha": "30beba05a1a53741915137c2e65066a547f5ed98",
+    "unchanged": true,
+    "new_deployments": 0,
+    "aliases": [
+      "inmoadmin.vercel.app",
+      "app.emporioinmobiliario.com.mx"
+    ],
+    "limitation": "Deployment state/SHA and current project configuration read independently; no in-process runtime environment dump or traffic probe."
+  },
+  "postcheck": {
+    "result": "PASS",
+    "checked_at": "2026-10-02T13:42:46.618885+00:00",
+    "checks": {
+      "exact_history_bytes": true,
+      "tables": true,
+      "rpc": true,
+      "functions": true,
+      "triggers": true,
+      "indexes": true,
+      "constraints": true,
+      "columns": true,
+      "empty_social_tables": true,
+      "unmarked_legacy": true,
+      "acl": true,
+      "baseline": true
+    },
+    "versioned_catalog_queries_executed": 4,
+    "table_rls_acl": [
+      {
+        "relname": "social_appointment_keys",
+        "rls_enabled": true,
+        "server_can_read": true,
+        "server_cannot_bypass_rpc": true,
+        "anon_denied": true,
+        "authenticated_denied": true
+      },
+      {
+        "relname": "social_handoff_effects",
+        "rls_enabled": true,
+        "server_can_read": true,
+        "server_cannot_bypass_rpc": true,
+        "anon_denied": true,
+        "authenticated_denied": true
+      },
+      {
+        "relname": "social_message_routes",
+        "rls_enabled": true,
+        "server_can_read": true,
+        "server_cannot_bypass_rpc": true,
+        "anon_denied": true,
+        "authenticated_denied": true
+      }
+    ],
+    "rpc_acl": [
+      {
+        "proname": "capture_social_route_v1",
+        "security_definer": true,
+        "fixed_search_path": true,
+        "server_can_execute": true,
+        "anon_denied": true,
+        "authenticated_denied": true
+      },
+      {
+        "proname": "commit_social_appointment_v1",
+        "security_definer": true,
+        "fixed_search_path": true,
+        "server_can_execute": true,
+        "anon_denied": true,
+        "authenticated_denied": true
+      },
+      {
+        "proname": "finish_social_effect_v1",
+        "security_definer": true,
+        "fixed_search_path": true,
+        "server_can_execute": true,
+        "anon_denied": true,
+        "authenticated_denied": true
+      },
+      {
+        "proname": "reserve_social_effect_v1",
+        "security_definer": true,
+        "fixed_search_path": true,
+        "server_can_execute": true,
+        "anon_denied": true,
+        "authenticated_denied": true
+      }
+    ],
+    "functions_body_matches_source": [
+      {
+        "name": "bind_social_handoff_v1",
+        "body_md5": "a2ee3d7731667690935a7e79550575f8",
+        "match": true
+      },
+      {
+        "name": "capture_social_route_v1",
+        "body_md5": "269b8e2ab9d96d9ccf45a581b5e63efe",
+        "match": true
+      },
+      {
+        "name": "commit_social_appointment_v1",
+        "body_md5": "b24831e80ae997be559e5bec75cf138c",
+        "match": true
+      },
+      {
+        "name": "finish_social_effect_v1",
+        "body_md5": "9facb7c1ca6f3a0d51e2f8904921f33e",
+        "match": true
+      },
+      {
+        "name": "guard_social_appointment_v1",
+        "body_md5": "892a9a5b813e430ea6e221b558c71cf4",
+        "match": true
+      },
+      {
+        "name": "guard_social_inbound_v1",
+        "body_md5": "c4d72841e1b201e1ffcbe4546377e47d",
+        "match": true
+      },
+      {
+        "name": "reserve_social_effect_v1",
+        "body_md5": "9b833a18af62f17c96b8d39a842d7ac7",
+        "match": true
+      }
+    ],
+    "triggers": [
+      {
+        "name": "social_sales_inbound_guard",
+        "table": "sales_agent_v2_inbound_messages",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER social_sales_inbound_guard BEFORE INSERT OR UPDATE ON public.sales_agent_v2_inbound_messages FOR EACH ROW EXECUTE FUNCTION guard_social_inbound_v1('SALES')"
+      },
+      {
+        "name": "social_sales_handoff_binding",
+        "table": "sales_agent_v2_handoffs",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER social_sales_handoff_binding BEFORE INSERT OR UPDATE ON public.sales_agent_v2_handoffs FOR EACH ROW EXECUTE FUNCTION bind_social_handoff_v1()"
+      },
+      {
+        "name": "social_owner_inbound_guard",
+        "table": "owner_agent_v1_inbound_messages",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER social_owner_inbound_guard BEFORE INSERT OR UPDATE ON public.owner_agent_v1_inbound_messages FOR EACH ROW EXECUTE FUNCTION guard_social_inbound_v1('OWNER')"
+      },
+      {
+        "name": "social_legal_inbound_guard",
+        "table": "legal_agent_v1_inbound_messages",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER social_legal_inbound_guard BEFORE INSERT OR UPDATE ON public.legal_agent_v1_inbound_messages FOR EACH ROW EXECUTE FUNCTION guard_social_inbound_v1('LEGAL')"
+      },
+      {
+        "name": "social_legal_handoff_binding",
+        "table": "legal_agent_v1_handoffs",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER social_legal_handoff_binding BEFORE INSERT OR UPDATE ON public.legal_agent_v1_handoffs FOR EACH ROW EXECUTE FUNCTION bind_social_handoff_v1()"
+      },
+      {
+        "name": "social_appointment_binding",
+        "table": "respond_appointment_sync",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER social_appointment_binding BEFORE UPDATE ON public.respond_appointment_sync FOR EACH ROW EXECUTE FUNCTION guard_social_appointment_v1()"
+      }
+    ],
+    "columns": [
+      {
+        "type": "uuid",
+        "table": "owner_agent_v1_inbound_messages",
+        "column": "social_route_id",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "type": "uuid",
+        "table": "sales_agent_v2_inbound_messages",
+        "column": "social_route_id",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "type": "uuid",
+        "table": "sales_agent_v2_handoffs",
+        "column": "social_route_id",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "type": "uuid",
+        "table": "legal_agent_v1_inbound_messages",
+        "column": "social_route_id",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "type": "smallint",
+        "table": "respond_appointment_sync",
+        "column": "social_routing_version",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "type": "uuid",
+        "table": "legal_agent_v1_handoffs",
+        "column": "social_route_id",
+        "default": null,
+        "nullable": "YES"
+      }
+    ],
+    "new_table_constraints": 30,
+    "added_base_constraints": 9,
+    "new_indexes_valid": 19,
+    "base_preservation": {
+      "base_acl_unchanged": true,
+      "base_triggers_unchanged": true,
+      "base_constraints_unchanged": true,
+      "locks_after": []
+    },
+    "row_counts": {
+      "routes": 0,
+      "effects": 0,
+      "appointment_keys": 0
+    },
+    "marked_legacy_counts": {
+      "appointments": 0,
+      "legal_inbound": 0,
+      "owner_inbound": 0,
+      "sales_inbound": 0,
+      "legal_handoffs": 0,
+      "sales_handoffs": 0
+    }
+  },
+  "security_advisors": {
+    "scoped_error_or_warning": 0,
+    "expected_info": {
+      "name": "rls_enabled_no_policy",
+      "tables": [
+        "social_appointment_keys",
+        "social_handoff_effects",
+        "social_message_routes"
+      ],
+      "disposition": "Intentional server-only deny-by-default: no client grants, no client policies; service SELECT and narrow security-definer RPCs.",
+      "reference": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy"
+    },
+    "unrelated_findings_not_modified": true
+  },
+  "no_actions": {
+    "customer_fixtures": 0,
+    "provider_calls": 0,
+    "respond_calls": 0,
+    "handoff_dispatches": 0,
+    "ack_sends": 0,
+    "flag_changes": 0,
+    "merges": 0,
+    "pr161_changes": 0
+  },
+  "next_step": "Stop for operator review before merge; deploy OFF and controlled activation require subsequent authorization",
+  "rollback": "Keep Social OFF and legacy URL absent/SLA false; retain additive schema. Empty-only uninstall requires separate authorization and refuses populated Social evidence.",
+  "tests_repeated": false
+}

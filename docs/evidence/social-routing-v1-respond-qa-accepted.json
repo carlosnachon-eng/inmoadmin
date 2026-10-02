@@ -1,0 +1,28 @@
+{
+  "status": "RESPOND_QA_ACCEPTED_WITH_OBSERVABILITY_LIMITATION",
+  "recorded_on": "2026-10-02",
+  "source": "operator_accepted_conclusion_in_task_history_not_new_execution",
+  "pr": 160,
+  "cases": {
+    "A": { "result": "expected_behavior", "existing_assignee_preserved": true },
+    "B": { "result": "expected_behavior", "unassigned_round_robin": true },
+    "C": { "result": "expected_behavior", "manual_assignment_preserved": true, "protection": "Manual Assignment", "assign_to_internal_atomicity_proven": false },
+    "D": { "result": "no_overwrite_observed", "internal_wait_stage_accredited": false }
+  },
+  "residual_risk": "Respond_internal_atomicity_not_demonstrable_with_available_observability",
+  "residual_risk_accepted_by_operator": true,
+  "further_laboratories_authorized": false,
+  "all_internal_interleavings_certified": false,
+  "additional_duplicate_dispatch_certificate_inferred": false,
+  "prior_cleanup": { "source": "accepted_prior_cleanup_report", "reported_residues": 0, "new_cleanup_performed": false },
+  "this_update": { "new_dispatches": 0, "messages": 0, "provider_calls": 0, "respond_changes": 0 },
+  "general_autonomous_sales_sender": "outside_social_merge_certificate_not_routing_prerequisite",
+  "required_rollout_state": {
+    "SOCIAL_ROUTING_V1_ENABLED": false,
+    "SALES_AGENT_V2_HANDOFF_WORKFLOW_URL": "absent",
+    "SALES_AGENT_V2_HANDOFF_SLA_ENABLED": false
+  },
+  "merge_authorized": false,
+  "activation_authorized": false,
+  "legacy_handoff_restoration_authorized": false
+}

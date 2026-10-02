@@ -1,6 +1,6 @@
 # Approved Materials v1 — Owner Agent
 
-Scope: independent branch `codex/owner-approved-materials-v1`, based on `main` `30beba05a1a53741915137c2e65066a547f5ed98`. No PR160 code, routing, handoffs, assignment, cron changes, model tools or prompt changes. No live provider requests, remote SQL, uploads, environment changes or deployments performed.
+Scope: independent branch `codex/owner-approved-materials-v1`, updated onto `main` `82f175ce4947517aba1d2a6d3874b505468eef95` (includes merged PR160). The PR delta remains Approved Materials only: no changes to main routing, handoffs, assignment, crons, model tools or prompts. No live provider requests, remote SQL, uploads, environment changes or deployments performed.
 
 ## Approved source files
 
@@ -76,7 +76,7 @@ All tests are synthetic. See final result artifact for exact counts. Source PDF 
 
 Local PostgreSQL harness uses a temporary loopback cluster (not Supabase). Real independent connections prove reservation contention and one claim; catalog/ACL/RLS, immutable evidence, current version, expired/superseded/human contexts, unauthorized roles and broad legacy Storage policy denial are checked. The temporary cluster is stopped and removed. No remote fixtures exist.
 
-Full suite has **three independently reproduced pre-existing failures on pristine base `30beba0`**; do not label the entire suite PASS:
+Full suite has **three independently reproduced pre-existing failures**, originally on pristine base `30beba0` and recertified on current pristine `main` `82f175c`; do not label the entire suite PASS:
 
 1. `tests/respondWebhookMultiHmac.test.mjs`: data-URL test harness leaves newer `agentsV2/*` imports unmocked; `ERR_UNSUPPORTED_RESOLVE_REQUEST`.
 2. `tests/shadowAiP3.test.mjs:591`: expected 18 tools, current base exposes 19.
@@ -91,6 +91,28 @@ None of those source/test files changed. Fixing them is outside this material de
 3. Register the two exact approved PDFs with a real active admin, explicit approved validity dates, and immutable versions; verify bytes again. Activate versions transactionally. No upload done during this change.
 4. Configure a DEV-only origin/signing secret and synthetic Respond QA transport. Certify document rendering and link expiry/no-cache on each connected channel, MIME headers, provider quotas and bot fetches. No real customer message without separate authorization.
 5. Confirm production gates remain unchanged/OFF for this feature. Any future flag ON/SQL/upload/deployment is a separate authorization.
-6. Merge compatibility with PR160: both touch the Owner processor. Preserve its continuity and appointment protection; this PR has not imported or modified PR160.
+6. Merge compatibility with PR160 is locally certified as described below. Its routing/continuity implementation is inherited unchanged from main; no Social activation is included.
 
 Decision: suitable for code review only, **NO-GO for production activation** until those checks/approvals close.
+
+## Main integration recertification — 2026-10-02
+
+Previous PR head: `dc64837917d2f74defabbd505e4d464ae9d5f67a`. Integrated only current main `82f175ce4947517aba1d2a6d3874b505468eef95`, without rebasing/reworking routing or any other agent.
+
+The sole conflict was `lib/agentsV2/processOwnerInbound.js` (imports and model-output handling). Both imports are retained. Main's appointment/continuity validation runs unchanged, including fail-closed output, fresh appointment checks before sending, and failure handling. The existing materials response guard runs afterwards, only with its exact-true flag and a non-null output, before persistence. An invalid appointment therefore cannot be masked by a materials guarantee/clarification response. Existing receipt-before-material delivery remains unchanged. With Materials OFF, main behavior is retained.
+
+Four added synthetic processor regressions cover Materials OFF/ON combined with a grounded/unverified appointment: the absolute confirmed date is retained, or main's `social_appointment_output_requires_review` blocks before text/material delivery. No routing writes are introduced. The established two-day OWNER regression also passes. These tests stub every provider boundary; no real model or Respond request is made.
+
+| Verification | Result |
+| --- | --- |
+| Approved Materials focused | 55/55 PASS |
+| Focused + main OWNER continuity | 81/81 PASS |
+| Isolated loopback PostgreSQL | 27/27 groups PASS; temporary cluster removed |
+| Full suite | 1,825 PASS / 1,828 total; exactly 3 inherited failures, no skips |
+| Independent current-main reproduction (the three affected files) | 182 PASS / 185 total; same errors and expected/actual values |
+| Next build | PASS; synthetic loopback configuration, Materials/Social OFF |
+| Diff check / JSON | PASS |
+
+The inherited failures remain the unresolved `agentsV2/salesCapture` data-URL import in `respondWebhookMultiHmac`, 19 vs 18 tools in `shadowAiP3`, and 4383 vs 4355 bytes in `shadowReducedOutputSchema`. Their files/assertions were neither modified nor skipped. The build warned that three Google Fonts stylesheets could not be downloaded in the restricted network and skipped font optimization; compilation and all 79 static pages completed.
+
+The materials library, delivery/download policy, SQL, postcheck/rollback, PDF asset manifest and local PostgreSQL harness are byte-for-byte unchanged from the previous PR head. SQL was exercised only inside the disposable local PostgreSQL cluster, not applied to Supabase DEV or Production. No PDF was read/uploaded again. Preview exclusion for `codex/owner-approved-materials-v1` remains false, main's exclusions/crons are preserved, and no feature flag/environment/deployment was changed. This is an update to the same PR for review, not merge or rollout approval.

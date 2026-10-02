@@ -7,6 +7,7 @@ import { verifyMaterialBytes, registerApprovedMaterial } from "../lib/ownerMater
 import { deliverOwnerMaterial } from "../lib/ownerMaterials/delivery.js";
 import { materialLink, verifyMaterialLink } from "../lib/ownerMaterials/links.js";
 import { createMaterialDownloadHandler } from "../lib/ownerMaterials/download.js";
+import { memoryDb, importWithStubs } from "./helpers/socialFixtures.mjs";
 
 const id = n => `aa000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
 const bytes = Buffer.from("%PDF-1.4\nsynthetic fixture only\n%%EOF\n");
@@ -130,4 +131,38 @@ test("real Owner processor integrates guard + delivery, OFF preserves legacy wit
     const result=await process(admin,inbound.id,{env:{...env,OWNER_APPROVED_MATERIALS_V1_ENABLED:String(active)}});
     assert.equal(result.status,"sent");assert.equal(materialCalls,active?1:0);assert.equal(sent[0],active?rentalGuaranteeText():"Aplica la garantía de 30 días");assert.equal(tables.owner_agent_v1_runs[0].proposed_response,sent[0]);
   }
+});
+
+// Merge regression: use the real main continuity/appointment guards, with IO synthetic.
+for(const active of [false,true])for(const grounded of [false,true])test(`main integration: materials ${active?"ON":"OFF"}, appointment ${grounded?"grounded":"unverified"}`,async()=>{
+  const at="2026-10-01T14:00:00.000Z",appointmentAt="2026-10-01T16:30:00.000Z";
+  const row={...inbound,status:"captured",occurred_at:at,social_route_id:id(80),sanitized_text:grounded?"Te mando la ubicación":"Quiero rentar mi casa"};
+  const db=memoryDb({owner_agent_v1_inbound_messages:[row],gv_respond_contact_snapshots:[],
+    respond_appointment_sync:[{respond_contact_id:row.respond_contact_id,status:"created",cita_id:id(81)}],
+    citas:[{id:id(81),fecha_hora:appointmentAt,estado:"agendada",confirmacion_estado:"confirmada"}]});
+  const sent=[];let materialCalls=0;
+  const loaded=await importWithStubs(new URL("../lib/agentsV2/processOwnerInbound.js",import.meta.url),{
+    "../ejecutivo/respondSync":{readRespondMessages:async()=>({messages:[]}),respondMessageTimestamp:()=>null},
+    "../shadow/coordinator":{sanitizeShadowText:text=>({text,rejected:false})},
+    "./openaiOwnerAgent":{createOwnerSession:async()=>({id:"synthetic-merge"}),getOwnerSession:async()=>({id:"synthetic-merge",status:"idle"}),fulfillOwnerActions:async()=>assert.fail("no model tools"),ownerOutput:async()=>"Nos vemos mañana a las 10:30. Aplica la garantía de 30 días."},
+    "./agentUsage":{safeAgentUsage:async()=>({})},
+    "../ownerMaterials/delivery.js":{deliverOwnerMaterial:async()=>{materialCalls++;assert.equal(db.tables.owner_agent_v1_auto_outbound[0].status,"sent");return{status:"skipped"};}},
+  });
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async(_url,init)=>{sent.push(JSON.parse(init.body).message.text);return{ok:true,json:async()=>({messageId:123})};};
+  try{
+    const result=await loaded.processOwnerInboundById(db,row.id,{env:{...env,OWNER_APPROVED_MATERIALS_V1_ENABLED:String(active)}});
+    if(grounded){
+      assert.equal(result.status,"sent");assert.equal(sent.length,1);
+      assert.match(sent[0],/01\/10\/2026 a las 10:30/);assert.doesNotMatch(sent[0],/mañana|garantía/);
+      assert.equal(materialCalls,active?1:0);
+    }else{
+      assert.equal(result.status,"failed");assert.equal(sent.length,0);assert.equal(materialCalls,0);
+      assert.equal(db.tables.owner_agent_v1_runs[0].error_code,"social_appointment_output_requires_review");
+      assert.equal(db.tables.owner_agent_v1_runs[0].proposed_response,null);
+      assert.equal(db.tables.owner_agent_v1_auto_outbound?.length||0,0);
+    }
+    assert.equal(db.tables.citas[0].fecha_hora,appointmentAt);
+    assert.ok(db.operations.every(op=>!op.table.startsWith("social_")),"processor does not add routing writes");
+  }finally{globalThis.fetch=originalFetch;}
 });

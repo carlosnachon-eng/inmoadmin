@@ -1,0 +1,241 @@
+{
+  "historical_application_status": true,
+  "superseded_by": "social-routing-v1-dev-functional-certification.json",
+  "status": "DEV_ACL_AND_USAGE_PASS_APPLICATION_CERTIFICATION_PENDING",
+  "date": "2026-10-01",
+  "branch": "codex/social-routing-v1",
+  "source_head": "a71e74fc117cfc94bddab66607c8626577cd71a9",
+  "project": {
+    "name": "inmoadmin-dev",
+    "ref": "hjfwjnejbcpmknvfpdcq"
+  },
+  "scope": "Minimal server ACL correction and the two separately authorized existing usage migrations; no production or Respond changes.",
+  "migration_reconciliation": {
+    "grant_migrations": 1,
+    "usage_migrations": 2,
+    "all_three_database_statements_exactly_match_source_bytes": true,
+    "comparison": "MD5 of the single schema_migrations.statements element compared with local file bytes; SHA-256 source hashes retained below",
+    "database_statement_fingerprints": {
+      "20261001161313": "c63087d0629df22eb9d90879020bbf8d",
+      "20261001161533": "f3051c7536fc778215cddc256f17132f",
+      "20261001161537": "e2cd736a52d6083292ee97195e24ecc4"
+    },
+    "usage_sources_already_tracked": true,
+    "no_sql_reapplied": true,
+    "history_version_mapping": "Hosted MCP generated versions differ from source filename versions; this explicit mapping is intentional. Do not blindly db push or reapply the source versions."
+  },
+  "applied_migrations": [
+    {
+      "hosted_version": "20261001161313",
+      "name": "social_agent_server_grants_dev",
+      "source": "supabase/dev/migrations/20261001161150_social_agent_server_grants_dev.sql",
+      "sha256": "824e28d4d36b40b4d6c6e61fbfa2ac3cd4fbdc40827352cf03ddd2cd64d15c69",
+      "dev_only": true
+    },
+    {
+      "hosted_version": "20261001161533",
+      "name": "agent_usage_tracking",
+      "source": "supabase/migrations/202610010013_agent_usage_tracking.sql",
+      "sha256": "744fdd24f6d3a40250fa12658561294a0d7815fc8b6941992691608dfab907f9",
+      "source_changed": false
+    },
+    {
+      "hosted_version": "20261001161537",
+      "name": "agent_usage_details",
+      "source": "supabase/migrations/202610010015_agent_usage_details.sql",
+      "sha256": "339d728165466ca31d629948751d311babdcaa4d893116297d6e921bbed6942d",
+      "source_changed": false
+    }
+  ],
+  "comparison": {
+    "working_equivalent": "sales_agent_v2_inbound_messages / sales_agent_v2_shadow_runs / sales_agent_v2_handoffs",
+    "working_privileges": [
+      "SELECT",
+      "INSERT",
+      "UPDATE"
+    ],
+    "narrowing": "Owner/Legal runs and Legal outbound are INSERT-only journals in current code; no UPDATE granted to those three tables."
+  },
+  "table_grants": [
+    {
+      "table_name": "legal_agent_v1_auto_outbound",
+      "rls": true,
+      "policies": 0,
+      "service_privileges": [
+        "SELECT",
+        "INSERT"
+      ],
+      "anon_any": false,
+      "authenticated_any": false,
+      "anon_column_any": false,
+      "authenticated_column_any": false
+    },
+    {
+      "table_name": "legal_agent_v1_handoffs",
+      "rls": true,
+      "policies": 0,
+      "service_privileges": [
+        "SELECT",
+        "INSERT",
+        "UPDATE"
+      ],
+      "anon_any": false,
+      "authenticated_any": false,
+      "anon_column_any": false,
+      "authenticated_column_any": false
+    },
+    {
+      "table_name": "legal_agent_v1_inbound_messages",
+      "rls": true,
+      "policies": 0,
+      "service_privileges": [
+        "SELECT",
+        "INSERT",
+        "UPDATE"
+      ],
+      "anon_any": false,
+      "authenticated_any": false,
+      "anon_column_any": false,
+      "authenticated_column_any": false
+    },
+    {
+      "table_name": "legal_agent_v1_runs",
+      "rls": true,
+      "policies": 0,
+      "service_privileges": [
+        "SELECT",
+        "INSERT"
+      ],
+      "anon_any": false,
+      "authenticated_any": false,
+      "anon_column_any": false,
+      "authenticated_column_any": false
+    },
+    {
+      "table_name": "owner_agent_v1_auto_outbound",
+      "rls": true,
+      "policies": 0,
+      "service_privileges": [
+        "SELECT",
+        "INSERT",
+        "UPDATE"
+      ],
+      "anon_any": false,
+      "authenticated_any": false,
+      "anon_column_any": false,
+      "authenticated_column_any": false
+    },
+    {
+      "table_name": "owner_agent_v1_inbound_messages",
+      "rls": true,
+      "policies": 0,
+      "service_privileges": [
+        "SELECT",
+        "INSERT",
+        "UPDATE"
+      ],
+      "anon_any": false,
+      "authenticated_any": false,
+      "anon_column_any": false,
+      "authenticated_column_any": false
+    },
+    {
+      "table_name": "owner_agent_v1_runs",
+      "rls": true,
+      "policies": 0,
+      "service_privileges": [
+        "SELECT",
+        "INSERT"
+      ],
+      "anon_any": false,
+      "authenticated_any": false,
+      "anon_column_any": false,
+      "authenticated_column_any": false
+    },
+    {
+      "table_name": "respond_appointment_sync",
+      "rls": true,
+      "policies": 0,
+      "service_privileges": [
+        "SELECT",
+        "INSERT",
+        "UPDATE"
+      ],
+      "anon_any": false,
+      "authenticated_any": false,
+      "anon_column_any": false,
+      "authenticated_column_any": false
+    }
+  ],
+  "privileges_added": 21,
+  "rls_changed": false,
+  "policies_changed": false,
+  "public_privileges_added": false,
+  "delete_privileges_added": false,
+  "permission_probes": {
+    "result": "PASS",
+    "checks": 96,
+    "source": "supabase/dev/checks/social_agent_server_grants_dev.sql",
+    "sha256": "26c37841ffec5144855c7ed0fbc1d5a091987ef283eb6dcc40e81a42ae314d92",
+    "fixture_rows_written": 0,
+    "transaction": "ROLLBACK",
+    "note": "These zero-row operation/denial probes are not application processor E2E."
+  },
+  "usage_columns": [
+    {
+      "table_name": "legal_agent_v1_runs",
+      "usage_columns": 7
+    },
+    {
+      "table_name": "owner_agent_v1_runs",
+      "usage_columns": 7
+    },
+    {
+      "table_name": "sales_agent_v2_shadow_runs",
+      "usage_columns": 7
+    }
+  ],
+  "local_regressions": {
+    "pass": 117,
+    "fail": 0,
+    "files": [
+      "tests/socialRouting.test.mjs",
+      "tests/socialCommercialRegressions.test.mjs",
+      "tests/socialOwnerContinuity.test.mjs",
+      "tests/socialHandoff.test.mjs",
+      "tests/socialWebhookIntegration.test.mjs"
+    ],
+    "real_network_calls": 0
+  },
+  "hosted_application": {
+    "status": "PENDING",
+    "blocker": "DEV_API_CREDENTIAL_CAPTURE_TIMEOUT_BEFORE_EXECUTION",
+    "secure_capture_timeout_ms": 600000,
+    "harness_started": false,
+    "fixture_cleanup": "NOT_NEEDED_NO_FIXTURE_CREATED",
+    "harness": "scripts/certify-social-routing-dev.mjs",
+    "harness_syntax_and_imports": "PASS",
+    "requires": "DEV administrative API key through secure memory-only capture; never in chat/files/logs",
+    "new_fixtures_created": false,
+    "existing_SQL_subset": "30/30 PASS from prior evidence; not rerun/reclassified"
+  },
+  "security_advisors": {
+    "relevant": "INFO rls_enabled_no_policy on server-only tables; client ACL remains denied",
+    "unrelated_findings_changed": false
+  },
+  "respond": {
+    "status": "NOT_CERTIFIED",
+    "production_workflows_changed": false,
+    "assignment_atomicity": "Requires isolated safe workspace or equivalent proven strategy; mock calls are not remote workflow certification"
+  },
+  "safety": {
+    "production_access": false,
+    "production_changes": false,
+    "real_model_calls": 0,
+    "real_respond_calls": 0,
+    "environment_changes": false,
+    "social_flag": "OFF unchanged",
+    "merge": false,
+    "push": false
+  }
+}
