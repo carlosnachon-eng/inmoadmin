@@ -24,6 +24,11 @@ Social activation or legacy handoff restoration is authorized in this step**.
 Historical pending/blocked sections below describe their original checkpoints and
 are superseded by this current disposition, not new requirements to repeat QA.
 
+Production DDL follow-up: **SOCIAL_ROUTING_V1_PRODUCTION_MIGRATION_POSTCHECK_PASS**.
+Only the authorized Social SQL was installed; no merge, deployment, traffic test,
+variable change or legacy restoration occurred. Final catalog receipt:
+`social-routing-v1-production-migration-postcheck.json`.
+
 ## Implemented architecture
 
 ```text
@@ -121,7 +126,7 @@ Social inbound rows cannot reset from processing/processed/failed to captured.
 An uncertain processing failure remains stopped for human inspection, rather than
 replaying an agent that may already have sent. Existing non-Social retries are unchanged.
 
-## Migration (applied in DEV only; NOT applied to Production)
+## Migration (DEV certified; exact artifact now installed in Production)
 
 Hosted follow-up on 2026-10-01: the exact baseline source migrations and Social
 migration are installed in `inmoadmin-dev`. The initial ACL blocker was corrected
@@ -721,3 +726,50 @@ in Respond production and does not authorize restoring legacy assignment/ACK/SLA
 Future activation still requires review of queues, marked/in-flight work, human
 review ownership, source attribution, and the production workflow guard before
 any separately authorized handoff restoration. OFF does not cancel in-flight work.
+
+## Production pre-merge migration/postcheck — 2026-10-02
+
+**PASS**, limited to the authorized additive DDL and read-only checks on
+`inmoadmin / bnzrnizrmonjxlktbhlp`. Preflight found all 12 base relations and 65
+required columns, adequate existing service grants, no object-name collisions,
+no target migration, and no target relation locks. No baseline/grants/usage
+migrations were applied to Production.
+
+Applied once, unmodified: `20261001134913_social_routing_v1.sql`, 21,498 bytes,
+SHA-256 `fd0a962d07dda73d346a5cdabb9ab0d80bcdab4537900d764f23040c670d6f0d`.
+Supabase's migration tool recorded **`20261002132548_social_routing_v1`** using
+the execution timestamp. The single stored statement matches the source bytes
+and MD5; history increased from 31 to 32 entries. This is a source-to-hosted-version
+mapping, **not an additional migration**; do not reapply the original filename.
+
+All four queries in `supabase/checks/social_routing_v1.sql` were executed
+individually so no result set was lost by the connector. Extended checks passed:
+
+- Three new tables: RLS ON; no public/anon/authenticated privileges or policies;
+  service direct privilege is SELECT only, mutations via four scoped RPCs.
+- Four RPCs: security definer, fixed empty search path, service EXECUTE, no client
+  EXECUTE. All seven installed function bodies match their source hashes.
+- Six correctly bound/enabled triggers; six nullable/no-default base columns;
+  30 new-table constraints plus nine base-table constraints validated;
+  19 indexes valid/ready, including the three unique inbound bindings.
+- Original base ACL/RLS, constraints and existing triggers unchanged. No locks
+  remained on reviewed relations at postcheck.
+- Routes/effects/appointment keys each contain zero rows; all six base markers
+  have zero non-NULL rows. No customer fixture or live traffic was generated.
+- Security advisor: no scoped ERROR/WARN. Three INFO notices for intentional
+  RLS-without-policies on these server-only tables; deny-by-default was verified.
+  Unrelated findings were not changed.
+
+Vercel read-only preflight confirmed the legacy workflow URL absent (project and
+linked shared variables), SLA=false, and Social absent/default OFF (`=== "true"`
+is required to enable). No variables were changed. Existing Production deployment
+`dpl_Cq51NEx7xDSr8U7izR8tPHyGXUs4` remains READY on
+`30beba05a1a53741915137c2e65066a547f5ed98` with production aliases. Current
+configuration and deployment metadata are independently observed; no runtime env
+dump or customer traffic probe is implied.
+
+Stop for review **before merge**. No suite/build/DEV rerun, Respond change, provider
+call, deployment, legacy handoff restoration or PR #161 change. Rollback defaults
+to keeping flags OFF and the additive schema/evidence intact; the existing
+empty-only uninstall needs separate authorization. Subsequent deployment-OFF
+regression and controlled activation remain separate steps.

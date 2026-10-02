@@ -3,6 +3,7 @@
   "snapshot_scope": "Historical local certification before hosted DEV follow-up; access/applied booleans below describe that local run only.",
   "current_hosted_followup": "social-routing-v1-dev-functional-certification.json",
   "current_respond_followup": "social-routing-v1-respond-qa-accepted.json",
+  "current_production_followup": "social-routing-v1-production-migration-postcheck.json",
   "base_sha": "30beba05a1a53741915137c2e65066a547f5ed98",
   "branch": "codex/social-routing-v1",
   "certified_environment": "local synthetic IO and disposable loopback PostgreSQL",
@@ -92,5 +93,5 @@
   },
   "merge_authorized": false,
   "activation_readiness": "OFF_only_Respond_observability_risk_accepted_activation_requires_separate_review",
-  "current_premerge_step": "authorized_exact_production_migration_and_postcheck_pending_no_merge"
+  "current_premerge_step": "production_migration_postcheck_PASS_stopped_before_merge"
 }
