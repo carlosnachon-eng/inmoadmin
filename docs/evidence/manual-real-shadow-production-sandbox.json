@@ -1,0 +1,596 @@
+{
+  "status": "MANUAL_REAL_SHADOW_PROD_SUPPORT_LOCAL_SANDBOX_PASS",
+  "scope": "PR review only; NOT authorization to install or execute in production",
+  "base_sha": "52b03155971afd12ddfb8b2578bb28e69d6627a7",
+  "branch": "codex/manual-real-shadow-production-one-turn",
+  "date_utc": "2026-09-29",
+  "production_accessed": false,
+  "real_anthropic_calls": 0,
+  "production_gates_changed": false,
+  "real_supabase_dev_recertified": false,
+  "prior_dev_certification": "MANUAL_REAL_SHADOW_DEV_PASS (closed; not repeated)",
+  "local": {
+    "focused": {
+      "pass": 99,
+      "total": 99
+    },
+    "directed": {
+      "pass": 1217,
+      "total": 1217
+    },
+    "suite": {
+      "pass": 1694,
+      "total": 1694
+    },
+    "build": "PASS",
+    "build_warnings": [
+      "Google Fonts optimization skipped because external stylesheets could not be downloaded"
+    ],
+    "diff_check": "PASS"
+  },
+  "sandbox": {
+    "environment": "disposable local PostgreSQL sandbox",
+    "auth": "synthetic assertion + real profile/RPC checks",
+    "provider": "synthetic transport only",
+    "production": false,
+    "result": "PASS",
+    "checks": [
+      "additive production artifact and read-only catalog checks PASS on native sandbox",
+      "RLS/ACL deny unauthorized role reads and RPC execution",
+      "service invocation rechecks active admin profile",
+      "authorize global B blocked by A on independent connections",
+      "different pilot/snapshot cannot bypass lifetime singleton",
+      "claim B blocked by A on independent connections",
+      "one authorization links exactly one run",
+      "reserve B blocked by A on independent connections",
+      "max two reservations; ambiguous/consumed reservation cannot repeat",
+      "runtime/turn/fingerprint/reservation immutable",
+      "persistent linkage blocks promotion, reassignment, telemetry bypass and legacy sender",
+      "gate-OFF close monotonic; no delete/truncate/recreation",
+      "private-control trigger does not break unrelated role-authorized operations",
+      "happy: native persistence, receipts/readback, singleton/no retry, closed OFF, no side writes",
+      "API rejects non-admin, wrong origin, Preview; canonical GET works OFF",
+      "silence: native persistence, receipts/readback, singleton/no retry, closed OFF, no side writes",
+      "tools: native persistence, receipts/readback, singleton/no retry, closed OFF, no side writes",
+      "invalid: native persistence, receipts/readback, singleton/no retry, closed OFF, no side writes",
+      "privacy: native persistence, receipts/readback, singleton/no retry, closed OFF, no side writes",
+      "http: native persistence, receipts/readback, singleton/no retry, closed OFF, no side writes",
+      "timeout: native persistence, receipts/readback, singleton/no retry, closed OFF, no side writes",
+      "partial: native persistence, receipts/readback, singleton/no retry, closed OFF, no side writes",
+      "closed: native persistence, receipts/readback, singleton/no retry, closed OFF, no side writes",
+      "all owned sandbox databases dropped; zero remaining fixtures"
+    ],
+    "scenarios": [
+      {
+        "scenario": "happy",
+        "status": "completed",
+        "certified": true,
+        "reservations": 2,
+        "closed": true,
+        "telemetry": {
+          "message_safety": {
+            "provenance": "semantic_conversation_guard_v1",
+            "message_safe": true
+          },
+          "rounds": [
+            {
+              "round": 1,
+              "duration_ms": 15,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": "claude-haiku-4-5-20251001",
+              "input_tokens": 31,
+              "output_tokens": 7
+            },
+            {
+              "round": 2,
+              "duration_ms": 5,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": "claude-haiku-4-5-20251001",
+              "input_tokens": 31,
+              "output_tokens": 7
+            }
+          ],
+          "tools": [
+            {
+              "round": 1,
+              "name": "resolve_contact_identity",
+              "ok": true,
+              "source": "policy_required",
+              "duration_ms": 1,
+              "rows": 1,
+              "identity_resolved": false
+            }
+          ],
+          "persistence": {
+            "decision": true,
+            "operational_resolution": true,
+            "conversation_action": true,
+            "verified": true
+          }
+        },
+        "decision_persisted": true,
+        "operational_resolution_persisted": true,
+        "conversation_action_persisted": true,
+        "conversation_action": "ask_missing_information",
+        "message_safe": true,
+        "original_snapshot_unchanged": true,
+        "runs": 1,
+        "duplicate_rejected_without_provider": true,
+        "identity_mutations": 0,
+        "outbound": 0
+      },
+      {
+        "scenario": "silence",
+        "status": "completed",
+        "certified": true,
+        "reservations": 2,
+        "closed": true,
+        "telemetry": {
+          "message_safety": {
+            "provenance": "semantic_conversation_guard_v1",
+            "message_safe": null
+          },
+          "rounds": [
+            {
+              "round": 1,
+              "duration_ms": 5,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": "claude-haiku-4-5-20251001",
+              "input_tokens": 31,
+              "output_tokens": 7
+            },
+            {
+              "round": 2,
+              "duration_ms": 4,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": "claude-haiku-4-5-20251001",
+              "input_tokens": 31,
+              "output_tokens": 7
+            }
+          ],
+          "tools": [
+            {
+              "round": 1,
+              "name": "resolve_contact_identity",
+              "ok": true,
+              "source": "policy_required",
+              "duration_ms": 0,
+              "rows": 1,
+              "identity_resolved": false
+            }
+          ],
+          "persistence": {
+            "decision": true,
+            "operational_resolution": true,
+            "conversation_action": true,
+            "verified": true
+          }
+        },
+        "decision_persisted": true,
+        "operational_resolution_persisted": true,
+        "conversation_action_persisted": true,
+        "conversation_action": "no_message",
+        "message_safe": null,
+        "original_snapshot_unchanged": true,
+        "runs": 1,
+        "duplicate_rejected_without_provider": true,
+        "identity_mutations": 0,
+        "outbound": 0
+      },
+      {
+        "scenario": "tools",
+        "status": "completed",
+        "certified": true,
+        "reservations": 2,
+        "closed": true,
+        "telemetry": {
+          "message_safety": {
+            "provenance": "semantic_conversation_guard_v1",
+            "message_safe": true
+          },
+          "rounds": [
+            {
+              "round": 1,
+              "duration_ms": 4,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": "claude-haiku-4-5-20251001",
+              "input_tokens": 31,
+              "output_tokens": 7
+            },
+            {
+              "round": 2,
+              "duration_ms": 7,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": "claude-haiku-4-5-20251001",
+              "input_tokens": 31,
+              "output_tokens": 7
+            }
+          ],
+          "tools": [
+            {
+              "round": 1,
+              "name": "resolve_contact_identity",
+              "ok": true,
+              "source": "both",
+              "duration_ms": 0,
+              "rows": 1,
+              "identity_resolved": false
+            }
+          ],
+          "persistence": {
+            "decision": true,
+            "operational_resolution": true,
+            "conversation_action": true,
+            "verified": true
+          }
+        },
+        "decision_persisted": true,
+        "operational_resolution_persisted": true,
+        "conversation_action_persisted": true,
+        "conversation_action": "ask_missing_information",
+        "message_safe": true,
+        "original_snapshot_unchanged": true,
+        "runs": 1,
+        "duplicate_rejected_without_provider": true,
+        "identity_mutations": 0,
+        "outbound": 0
+      },
+      {
+        "scenario": "invalid",
+        "status": "error",
+        "certified": false,
+        "reservations": 1,
+        "closed": true,
+        "telemetry": {
+          "rounds": [
+            {
+              "round": 1,
+              "duration_ms": 5,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": "claude-haiku-4-5-20251001",
+              "input_tokens": 31,
+              "output_tokens": 7
+            }
+          ],
+          "tools": [],
+          "persistence": {
+            "decision": false,
+            "operational_resolution": false,
+            "conversation_action": false,
+            "verified": false
+          },
+          "failure": {
+            "outputStage": "structured_validation",
+            "error_code": "manual_turn_execution_failed"
+          }
+        },
+        "decision_persisted": false,
+        "operational_resolution_persisted": false,
+        "conversation_action_persisted": false,
+        "conversation_action": null,
+        "message_safe": null,
+        "original_snapshot_unchanged": true,
+        "runs": 1,
+        "duplicate_rejected_without_provider": true,
+        "identity_mutations": 0,
+        "outbound": 0
+      },
+      {
+        "scenario": "privacy",
+        "status": "error",
+        "certified": false,
+        "reservations": 1,
+        "closed": true,
+        "telemetry": {
+          "rounds": [
+            {
+              "round": 1,
+              "duration_ms": 5,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": "claude-haiku-4-5-20251001",
+              "input_tokens": 31,
+              "output_tokens": 7
+            }
+          ],
+          "tools": [],
+          "persistence": {
+            "decision": false,
+            "operational_resolution": false,
+            "conversation_action": false,
+            "verified": false
+          },
+          "failure": {
+            "outputStage": "output_privacy_validation",
+            "error_code": "pre_model_sanitization_blocked",
+            "outputPrivacy": {
+              "reason": "unaliased_reference_field",
+              "location": "tool_argument"
+            }
+          }
+        },
+        "decision_persisted": false,
+        "operational_resolution_persisted": false,
+        "conversation_action_persisted": false,
+        "conversation_action": null,
+        "message_safe": null,
+        "original_snapshot_unchanged": true,
+        "runs": 1,
+        "duplicate_rejected_without_provider": true,
+        "identity_mutations": 0,
+        "outbound": 0
+      },
+      {
+        "scenario": "http",
+        "status": "error",
+        "certified": false,
+        "reservations": 1,
+        "closed": true,
+        "telemetry": {
+          "rounds": [
+            {
+              "round": 1,
+              "duration_ms": 4,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": null,
+              "input_tokens": null,
+              "output_tokens": null
+            }
+          ],
+          "tools": [],
+          "persistence": {
+            "decision": false,
+            "operational_resolution": false,
+            "conversation_action": false,
+            "verified": false
+          },
+          "failure": {
+            "outputStage": "provider_http",
+            "error_code": "model_http_400",
+            "providerHttp": {
+              "provider_http_status": 400,
+              "provider_error_type": "invalid_request_error",
+              "provider_error_code": null,
+              "provider_error_param": null,
+              "provider_request_ref": null
+            }
+          }
+        },
+        "decision_persisted": false,
+        "operational_resolution_persisted": false,
+        "conversation_action_persisted": false,
+        "conversation_action": null,
+        "message_safe": null,
+        "original_snapshot_unchanged": true,
+        "runs": 1,
+        "duplicate_rejected_without_provider": true,
+        "identity_mutations": 0,
+        "outbound": 0
+      },
+      {
+        "scenario": "timeout",
+        "status": "timeout",
+        "certified": false,
+        "reservations": 1,
+        "closed": true,
+        "telemetry": {
+          "rounds": [
+            {
+              "round": 1,
+              "duration_ms": 16,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": null,
+              "input_tokens": null,
+              "output_tokens": null
+            }
+          ],
+          "tools": [],
+          "persistence": {
+            "decision": false,
+            "operational_resolution": false,
+            "conversation_action": false,
+            "verified": false
+          },
+          "failure": {
+            "outputStage": "timeout",
+            "error_code": "manual_turn_timeout"
+          }
+        },
+        "decision_persisted": false,
+        "operational_resolution_persisted": false,
+        "conversation_action_persisted": false,
+        "conversation_action": null,
+        "message_safe": null,
+        "original_snapshot_unchanged": true,
+        "runs": 1,
+        "duplicate_rejected_without_provider": true,
+        "identity_mutations": 0,
+        "outbound": 0
+      },
+      {
+        "scenario": "partial",
+        "status": "error",
+        "certified": false,
+        "reservations": 2,
+        "closed": true,
+        "telemetry": {
+          "rounds": [
+            {
+              "round": 1,
+              "duration_ms": 5,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": "claude-haiku-4-5-20251001",
+              "input_tokens": 31,
+              "output_tokens": 7
+            },
+            {
+              "round": 2,
+              "duration_ms": 4,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": "claude-haiku-4-5-20251001",
+              "input_tokens": 31,
+              "output_tokens": 7
+            }
+          ],
+          "tools": [
+            {
+              "round": 1,
+              "name": "resolve_contact_identity",
+              "ok": true,
+              "source": "policy_required",
+              "duration_ms": 0,
+              "rows": 1,
+              "identity_resolved": false
+            }
+          ],
+          "persistence": {
+            "decision": true,
+            "operational_resolution": true,
+            "conversation_action": false,
+            "verified": false
+          },
+          "failure": {
+            "outputStage": "3B",
+            "error_code": "manual_3b_persistence_failed"
+          }
+        },
+        "decision_persisted": true,
+        "operational_resolution_persisted": true,
+        "conversation_action_persisted": false,
+        "conversation_action": null,
+        "message_safe": null,
+        "original_snapshot_unchanged": true,
+        "runs": 1,
+        "duplicate_rejected_without_provider": true,
+        "identity_mutations": 0,
+        "outbound": 0
+      },
+      {
+        "scenario": "closed",
+        "status": "error",
+        "certified": false,
+        "reservations": 1,
+        "closed": true,
+        "telemetry": {
+          "rounds": [
+            {
+              "round": 1,
+              "duration_ms": 6,
+              "receipt": {
+                "final_payload_verified": true,
+                "serialized_body_verified": true,
+                "output_mode": "anthropic_json_schema",
+                "privacy_stage": "final_model_privacy",
+                "provider_invoked": true
+              },
+              "model": "claude-haiku-4-5-20251001",
+              "input_tokens": 31,
+              "output_tokens": 7
+            }
+          ],
+          "tools": [],
+          "persistence": {
+            "decision": false,
+            "operational_resolution": false,
+            "conversation_action": false,
+            "verified": false
+          },
+          "failure": {
+            "outputStage": "structured_validation",
+            "error_code": "manual_prod_closed"
+          }
+        },
+        "decision_persisted": false,
+        "operational_resolution_persisted": false,
+        "conversation_action_persisted": false,
+        "conversation_action": null,
+        "message_safe": null,
+        "original_snapshot_unchanged": true,
+        "runs": 1,
+        "duplicate_rejected_without_provider": true,
+        "identity_mutations": 0,
+        "outbound": 0
+      }
+    ],
+    "postgres_version": "18.4",
+    "native_check_groups": 24,
+    "cleanup": "All 10 owned databases dropped and native cluster stopped; no shared DEV or production records touched"
+  },
+  "limits": [
+    "Auth provider is synthetic in this sandbox; current profiles and RPC ACLs are checked in native PostgreSQL",
+    "No live browser/real Supabase Auth certification of the new production path",
+    "Production catalog, Vercel variables, deployment and candidate selection were not accessed",
+    "No Review/PR/push/merge/deployment performed"
+  ]
+}

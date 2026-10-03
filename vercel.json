@@ -18,7 +18,8 @@
       "codex/historical-replay-tool-reference-diagnostics": false,
       "codex/shadow-respond-contact-reference": false,
       "codex/historical-replay-reduced-argument-diagnostics": false,
-      "codex/manual-real-shadow-one-turn": false
+      "codex/manual-real-shadow-one-turn": false,
+      "codex/manual-real-shadow-production-one-turn": false
     }
   },
   "crons": [

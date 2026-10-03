@@ -1,0 +1,93 @@
+{
+  "status": "MANUAL_REAL_SHADOW_PROD_SUPPORT_LOCAL_SANDBOX_PASS",
+  "base_sha": "52b03155971afd12ddfb8b2578bb28e69d6627a7",
+  "algorithm": "sha256",
+  "scope": "PR review only; no production execution",
+  "files": [
+    {
+      "path": ".env.example",
+      "sha256": "9c3ff5bf6999bd777f4db873ea1eee08b479922f9b63d830002d76cc06aa487a"
+    },
+    {
+      "path": "components/ManualShadowTurnReview.js",
+      "sha256": "92ee5324891dc4ed55fe4659a88e40f802ed423eb6db84b50e63c06d74acf74f"
+    },
+    {
+      "path": "docs/evidence/manual-real-shadow-production-one-turn.md",
+      "sha256": "3b894c71ba3a2275ad88da478a71aabb375664feb0c0745541d935a1574cd4e1"
+    },
+    {
+      "path": "docs/evidence/manual-real-shadow-production-sandbox.json",
+      "sha256": "9bed94feff1a78cb95f149c6ba703b6d5a447bc2c919e8db24e54ffa5fb7f2e3"
+    },
+    {
+      "path": "lib/shadow/ai/anthropic.js",
+      "sha256": "56a5906290a5d6a63e7a2993308172273ea0919202840bbca25fa69c9807ccc1"
+    },
+    {
+      "path": "lib/shadow/ai/explicitRetry.js",
+      "sha256": "720c0da248e5a9610636e3e700613aae07911c7de57d4ff1850230a58314a945"
+    },
+    {
+      "path": "lib/shadow/ai/manualTurn.js",
+      "sha256": "0c93cf765a5632646225fe592fc3cb68119943ca7a87ab8a68ba4b20e096bfa7"
+    },
+    {
+      "path": "lib/shadow/ai/manualTurnApi.js",
+      "sha256": "78934785b259d2b270c3b1eac78b7fe746c4b7acfb53c3da8a5c33383386f67a"
+    },
+    {
+      "path": "lib/shadow/ai/manualTurnContext.js",
+      "sha256": "e5be869d47ca8e8cd1a504c5f9f46a5416b741253fb133174a5da226948b07c9"
+    },
+    {
+      "path": "lib/shadow/ai/manualTurnProduction.js",
+      "sha256": "066fccc7adb324803b4d03786d3c428199a006111a8e6cfdcf38f839f852c6ff"
+    },
+    {
+      "path": "lib/shadow/ai/manualTurnProductionPolicy.js",
+      "sha256": "12f51c9e2c669da0acbccdcf8ccecbcfa14cce95cb059c6a805437ffd6442629"
+    },
+    {
+      "path": "lib/shadow/ai/manualTurnTelemetry.js",
+      "sha256": "8ea7f76300e3ea633e7152cf9678cf1e02111ff28e7c7da9602a19a2471417d7"
+    },
+    {
+      "path": "lib/shadow/ai/stateMachine.js",
+      "sha256": "6e932ca12379a1a3bfb6030c545827b178389e4b284beedb937ccbb28ed33320"
+    },
+    {
+      "path": "pages/api/operaciones/shadow-coordinator.js",
+      "sha256": "1b3e1384dca37e5c1e3ee64a32ff2c3fdb40f40bb40266e8e65885114163e75d"
+    },
+    {
+      "path": "scripts/test-manual-shadow-production-postgres.mjs",
+      "sha256": "e1f9c31f4f56e46516ce107303cad2ad0827f1de9d35f071ae69d50156595141"
+    },
+    {
+      "path": "supabase/migrations/20260929165153_manual_shadow_prod_one_turn.sql",
+      "sha256": "fd71b568a358c5e421d1161fddc1b05dbda8bec01bcbaf332dace5d5f829096f"
+    },
+    {
+      "path": "supabase/production/tests/manual_shadow_prod_one_turn_checks.sql",
+      "sha256": "5f92d32724e78b8b637da4c33847a91d90232a78d5a2233b1f5b9aef016c5585"
+    },
+    {
+      "path": "tests/helpers/manualProductionFixture.mjs",
+      "sha256": "3c02bf4e4a886054ff61567ab447c46c6dbc417c6aad8cf98db23300aacd7793"
+    },
+    {
+      "path": "tests/helpers/manualProductionPostgres.mjs",
+      "sha256": "00989ee2c48892e2c9d656704039ae377e68245ab0270a3f2e8b1800c691a30b"
+    },
+    {
+      "path": "tests/shadowManualProduction.test.mjs",
+      "sha256": "19fe7e818795b5e5b06d887a18935f9236787acb31f3d5559d54508af7c11211"
+    },
+    {
+      "path": "tests/shadowReducedOutputSchema.test.mjs",
+      "sha256": "9149fed27293e173cf305d90b89bbf731d3f2b14f32a2105a97ab07673541343"
+    }
+  ],
+  "self_excluded": true
+}
