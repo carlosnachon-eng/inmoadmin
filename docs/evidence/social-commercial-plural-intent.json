@@ -1,0 +1,72 @@
+{
+  "scope": "Pre-merge certificate: bounded natural commercial plural queries; deployment is a separate controlled rollout",
+  "branch": "codex/social-commercial-plural-intent",
+  "base_sha": "5964d47bf0582eef17c65e11ca487b3ba0df845c",
+  "correspondence": {
+    "event_ref_md5_prefix16": "6a37c29eb8c51313",
+    "route_ref_md5_prefix16": "8e6e89d43ce90f69",
+    "occurred_at_utc": "2026-10-03T22:53:40.214Z",
+    "received_at_utc": "2026-10-03T22:53:45.079161Z",
+    "platform": "tiktok",
+    "contact_and_message_ids_match_user_report": true,
+    "exact_user_supplied_text_visually_confirmed_in_corresponding_respond_conversation": true,
+    "receipt_state": "routed",
+    "receipt_attempts": 1,
+    "destination": "UNKNOWN",
+    "reason": "classification_uncertain",
+    "sales_inbounds": 0,
+    "later_outgoing_response_visible": true,
+    "later_response_actor_or_automation_attribution": "not established",
+    "retrospective_replay_or_assignment": false
+  },
+  "root_cause": {
+    "demonstrated": true,
+    "description": "The existing commercial noun selector recognizes departamento but not departamentos. The complete incident phrase returned UNKNOWN on Instagram, Messenger and TikTok; its singular variant returned SALES. WhatsApp retained its existing commercial fallback.",
+    "selector_unchanged_by_pr165": true,
+    "attributable_capture_regression": false
+  },
+  "change": {
+    "implementation": "Seven added lines in lib/social/routing.js; no changes to existing branches.",
+    "rule": "Require a plural property noun plus an inquiry expression. Reject plural ownership/offering evidence from this new rule. Run it after existing priority and conversation continuity checks.",
+    "preserved": ["OWNER", "LEGAL", "ADMINISTRATION", "EXISTING_CLIENT", "ambiguous identity", "vendors", "sensitive situations", "WhatsApp fallback", "assignment", "sender guards"]
+  },
+  "certification": {
+    "new_tests": 116,
+    "channels": ["WhatsApp", "Instagram", "Facebook Messenger", "TikTok"],
+    "complete_conversations": 28,
+    "three_turn_query_conversations": 24,
+    "two_turn_empty_inventory_conversations": 4,
+    "intercepted_sends": 80,
+    "exact_accented_query_followed_by_en_renta": "PASS on all four channels: original zones retained in processor input, operation not asked again, budget requested; no unverified availability claim",
+    "duplicates_per_event": 3,
+    "production_js_exercised": ["capture receipt", "classification", "continuity", "immediate dispatch", "Sales processor", "agent adapter", "coverage and inventory tools", "usage adapter", "handoff decisions", "sender guards"],
+    "replaced_io": ["in-memory DB/RPC adapter", "deterministic synthetic model network responses", "Respond history IO", "intercepted Respond send transport"],
+    "focused_command": "node --test tests/social*.test.mjs tests/sales*.test.mjs",
+    "focused_result": {"tests": 471, "passed": 471, "failed": 0, "skipped": 0},
+    "full_suite_command": "node --test tests/*.test.mjs",
+    "full_suite_result": {"tests": 2138, "passed": 2135, "failed": 3, "skipped": 0},
+    "inherited_failures": [
+      {"file": "tests/respondWebhookMultiHmac.test.mjs", "cause": "Existing data-URL fixture cannot resolve ../../../lib/agentsV2/salesCapture (ERR_UNSUPPORTED_RESOLVE_REQUEST)."},
+      {"file": "tests/shadowAiP3.test.mjs", "cause": "Existing tool count assertion: 19 versus 18."},
+      {"file": "tests/shadowReducedOutputSchema.test.mjs", "cause": "Existing schema length assertion: 4383 versus 4355."}
+    ],
+    "inherited_failure_reference": "docs/evidence/social-capture-failsafe.json",
+    "build": {"result": "PASS", "pages": "79/79", "environment": "env -i with synthetic Supabase values; no hosted flags changed", "warnings": "Google Fonts stylesheet download failed; font optimization skipped."},
+    "diff_check": "PASS",
+    "handoffs": 0,
+    "assignment_effects": 0,
+    "ack_messages": 0,
+    "appointments_created": 0,
+    "real_model_calls": 0,
+    "real_respond_calls": 0,
+    "production_writes": 0
+  },
+  "limitations": [
+    "Local processor/sender certification with intercepted IO, not real Respond delivery or real model quality certification.",
+    "No DEV or PostgreSQL certification was executed for this classifier-only change; no schema change is proposed.",
+    "The existing zero-match inventory guard forces a generic publication clarification. Empty-inventory tests preserve this behavior and do not certify it as ideal conversational usefulness. Changing it is outside this classification patch.",
+    "The full suite is not globally green: the three inherited failures remain explicit."
+  ],
+  "release": {"certificate_phase": "before commit/push/merge", "production_activation": "User-authorized conditional squash merge and one automatic deployment after preflight", "migrations_required": false, "configuration_changes": false, "rollback_target": "previous deployment containing PR165; retain current flags"},
+  "monitor_finding_preserved": "PR165 monitoring evidence and saved heartbeat instructions include the confirmed classification false negative; capture success is not commercial attention success."
+}
