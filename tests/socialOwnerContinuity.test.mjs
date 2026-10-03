@@ -167,8 +167,11 @@ test("responsable del caso preservado aun si snapshot Respond dice unassigned", 
 test("watchdog no envía resultado Sales viejo de una conversación Owner", async () => {
   const { db, capture } = fixture(); await capture("Soy propietaria", day1);
   db.tables.sales_agent_v2_shadow_runs = [{ id: "old", status: "idle", completed_at: new Date().toISOString(), proposed_response: "Nos vemos mañana a las 10:30", sales_agent_v2_inbound_messages: { id: "i", respond_contact_id: contact, channel_id: "498219", sanitized_text: "casa" } }];
+  const beforeOperations=db.operations.length;
   const result = await processSalesAutoOutboundRun(db, "old", { env: { ...env, SALES_AGENT_V2_AUTO_OUTBOUND_ENABLED: "true", VERCEL_ENV: "production", SUPABASE_ENVIRONMENT: "production" } });
-  assert.equal(result.reason, "owner_continuity_no_sales_outbound"); assert.ok(db.operations.every(o => o.op !== "insert"));
+  assert.equal(result.reason, "owner_continuity_no_sales_outbound");
+  assert.equal(db.tables.sales_agent_v2_auto_outbound[0].status,"blocked");
+  assert.ok(db.operations.slice(beforeOperations).filter(o=>o.op!=="select").every(o=>o.table==="sales_agent_v2_auto_outbound"));
 });
 test("cita existente evita releer historia o crear cita; relativa nueva se ancla una sola vez", async () => {
   const module = await importWithStubs(new URL("../lib/agentsV2/respondAppointmentSync.js", import.meta.url), {

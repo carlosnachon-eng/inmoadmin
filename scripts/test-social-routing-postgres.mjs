@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import net from "node:net";
 import { randomUUID } from "node:crypto";
 import { certifySocialInventoryPostgres } from "../tests/helpers/socialInventoryPostgres.mjs";
+import { certifySalesRecoveryPostgres } from "../tests/helpers/salesRecoveryPostgres.mjs";
 
 const runtime = process.env.SOCIAL_LOCAL_PG_RUNTIME;
 if (!runtime) throw new Error("SOCIAL_LOCAL_PG_RUNTIME must point to local pg/embedded-postgres packages");
@@ -143,6 +144,7 @@ try {
   const indexes = (await db.query("select count(*)::int n from pg_indexes where indexname in ('social_owner_context_idx','social_appointment_context_idx')")).rows[0];
   check("bounded durable context reads indexed", () => assert.equal(indexes.n, 2));
   await certifySocialInventoryPostgres(db,check);
+  await certifySalesRecoveryPostgres(db,connect,check);
   console.log(JSON.stringify({ result: "SOCIAL_ROUTING_LOCAL_PG_PASS", checks: checks.length, tests: checks, isolation: "loopback disposable PostgreSQL; no Supabase DEV/Production", externalCalls: 0 }, null, 2));
 } finally {
   for (const c of clients) { try { await c.query("rollback"); } catch {} try { await c.end(); } catch {} }

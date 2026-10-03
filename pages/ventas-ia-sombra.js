@@ -11,6 +11,9 @@ const fmtTime=(value)=>{
 export default function VentasIaSombra(){
   const [session,setSession]=useState(null);
   const [rows,setRows]=useState([]);
+  const [reviews,setReviews]=useState([]);
+  const [reviewOffset,setReviewOffset]=useState(0);
+  const [reviewsHasMore,setReviewsHasMore]=useState(false);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
   const [filter,setFilter]=useState("all");
@@ -18,14 +21,17 @@ export default function VentasIaSombra(){
 
   useEffect(()=>{ supabase.auth.getSession().then(({data:{session}})=>setSession(session)); },[]);
 
-  const load=async()=>{
+  const load=async(offset=reviewOffset)=>{
     if(!session?.access_token)return;
     setLoading(true); setError("");
     try{
-      const response=await fetch("/api/operaciones/sales-v2-shadow-view",{headers:{Authorization:"Bearer "+session.access_token}});
+      const response=await fetch("/api/operaciones/sales-v2-shadow-view?reviewOffset="+offset,{headers:{Authorization:"Bearer "+session.access_token}});
       const body=await response.json();
       if(!response.ok)throw new Error(body.error||"No se pudo cargar");
       setRows(body.rows||[]);
+      setReviews(body.reviews||[]);
+      setReviewOffset(body.reviewOffset||0);
+      setReviewsHasMore(Boolean(body.reviewsHasMore));
     }catch(e){ setError(e.message||"Error"); }
     finally{ setLoading(false); }
   };
@@ -54,7 +60,7 @@ export default function VentasIaSombra(){
   }),[rows,filter]);
 
   return <div style={{minHeight:"100vh",background:brand.bg,fontFamily:"system-ui,sans-serif"}}>
-    <PageHeader title="Ventas IA — Sombra" icon="🤖" actions={<button onClick={load} style={{background:brand.red,color:"#fff",border:"none",borderRadius:9,padding:"9px 14px",fontWeight:800,cursor:"pointer"}}>Actualizar</button>}/>
+    <PageHeader title="Ventas IA — Sombra" icon="🤖" actions={<button onClick={()=>load()} style={{background:brand.red,color:"#fff",border:"none",borderRadius:9,padding:"9px 14px",fontWeight:800,cursor:"pointer"}}>Actualizar</button>}/>
     <div style={{maxWidth:1100,margin:"0 auto",padding:"22px 18px"}}>
       <div style={{background:"#fff",borderRadius:12,padding:14,marginBottom:16,border:"1px solid #e5e7eb"}}>
         <p style={{margin:"0 0 10px",fontSize:13,color:"#374151"}}>Aquí ves lo que habría contestado Sales V2. <strong>No se envía nada desde esta pantalla.</strong></p>
@@ -65,6 +71,21 @@ export default function VentasIaSombra(){
       {loading&&<div style={{padding:40,textAlign:"center",color:"#6b7280"}}>Cargando...</div>}
       {error&&<div style={{padding:14,background:"#fee2e2",color:"#991b1b",borderRadius:10}}>{error}</div>}
       {!loading&&!error&&visible.length===0&&<div style={{padding:40,textAlign:"center",color:"#6b7280",background:"#fff",borderRadius:12}}>Todavía no hay runs en este filtro.</div>}
+      {!loading&&!error&&(reviews.length>0||reviewOffset>0)&&<section aria-label="Atención humana pendiente" style={{background:"#fff7ed",padding:16,marginBottom:16,borderRadius:12}}>
+        <h2>Atención humana pendiente — Gerencia de Ventas</h2>
+        <p>Cola operativa, no constancia de atención. Revisar responsable vigente en Respond antes de actuar; no asigna ni envía desde esta pantalla.</p>
+        {reviews.map(review=><article key={review.id} style={{borderTop:"1px solid #fed7aa",padding:"12px 0"}}>
+          <strong>Contacto {review.respond_contact_id} · {review.reason}</strong>
+          <p>{review.summary}</p>
+          <div>Responsable operativo: {review.operationalOwner}</div>
+          <div>Estado: {review.status} · bloqueo: {review.assignment_error_code||"no acreditado"}</div>
+          <div>Solicitud de asignación: {fmtTime(review.assignment_requested_at)} · ACK: {fmtTime(review.ack_sent_at)}</div>
+          <div>Snapshot de responsable: {fmtTime(review.assignmentVerifiedAt)} (no sustituye lectura actual)</div>
+          {review.inboxUrl&&<a href={review.inboxUrl} target="_blank" rel="noopener noreferrer">Abrir conversación en Respond para atención humana</a>}
+        </article>)}
+        <button disabled={reviewOffset===0} onClick={()=>load(Math.max(0,reviewOffset-100))}>Más recientes</button>{" "}
+        <button disabled={!reviewsHasMore} onClick={()=>load(reviewOffset+100)}>Más antiguas</button>
+      </section>}
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         {visible.map((r)=><div key={r.id} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:14,padding:16}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}>
@@ -95,6 +116,7 @@ export default function VentasIaSombra(){
             </div>
           )}
           {r.errorCode&&<div style={{marginTop:10,fontSize:12,color:"#991b1b"}}>Error: {r.errorCode}</div>}
+          <div style={{marginTop:10,fontSize:12}}>Entrega: {r.delivery?.status||"no acreditada"}{r.delivery?.error_code?` · ${r.delivery.error_code}`:""}. Un run OK no acredita atención.</div>
         </div>)}
       </div>
     </div>

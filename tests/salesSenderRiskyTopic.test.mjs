@@ -42,8 +42,8 @@ for (const text of sensitive) {
   });
 }
 
-test("confirming a visit is no longer risky_topic; independent appointment input guard remains", () => {
-  assert.equal(classify("quiero confirmar una visita").eligible, true);
+test("confirming a visit is not risky_topic; actual scheduling still requires review", () => {
+  assert.deepEqual(classify("quiero confirmar una visita"), {eligible:false,reason:"appointment_commitment_requires_validation"});
   assert.deepEqual(classify("quiero confirmar una visita", "input"), {
     eligible: false, reason: "appointment_requires_validation",
   });
@@ -143,8 +143,9 @@ test("actual sender does not reach transport for signature/contract proposals", 
   for (const text of ["firma el contrato", "Podemos firmar", "Puedo confirmar la firma del contrato"]) {
     const db = senderFixture(text);
     assert.deepEqual(await processSalesAutoOutboundRun(db, "synthetic-run", { env }), { status: "blocked", reason: "risky_topic" });
-    assert.equal(db.tables.sales_agent_v2_auto_outbound.length, 0);
-    assert.ok(db.operations.every(op => op.op === "select"));
+    assert.equal(db.tables.sales_agent_v2_auto_outbound.length, 1);
+    assert.equal(db.tables.sales_agent_v2_auto_outbound[0].status, "blocked");
+    assert.equal(db.tables.sales_agent_v2_auto_outbound[0].error_code, "risky_topic");
   }
   assert.equal(calls, 0);
 });
@@ -162,8 +163,9 @@ test("availability plus scheduling cannot reach transport even without the indep
     assert.deepEqual(await processSalesAutoOutboundRun(db, "synthetic-run", {
       env: { ...env, SOCIAL_ROUTING_V1_ENABLED: "false" },
     }), { status: "blocked", reason: "appointment_commitment_requires_validation" });
-    assert.equal(db.tables.sales_agent_v2_auto_outbound.length, 0);
-    assert.ok(db.operations.every(op => op.op === "select"));
+    assert.equal(db.tables.sales_agent_v2_auto_outbound.length, 1);
+    assert.equal(db.tables.sales_agent_v2_auto_outbound[0].status, "blocked");
+    assert.equal(db.tables.sales_agent_v2_auto_outbound[0].error_code, "appointment_commitment_requires_validation");
   }
   assert.equal(calls, 0);
 });

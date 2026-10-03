@@ -28,6 +28,7 @@ function fixture() {
 test("I workflow y ACK interceptados por separado: retry = una asignación y un ACK", async () => {
   const { db } = fixture(), calls = [];
   globalThis.fetch = async (url, options) => {
+    if(options?.method==="GET")return{ok:true,json:async()=>({id:"synthetic",assignee:null})};
     calls.push({ kind: url.startsWith("https://hooks.respond.io/") ? "workflow" : "ack", body: JSON.parse(options.body) });
     return { ok: true, json: async () => ({ messageId: "synthetic-message" }) };
   };
@@ -38,14 +39,14 @@ test("I workflow y ACK interceptados por separado: retry = una asignación y un 
 });
 test("reserva sobrevive incertidumbre: ningún segundo workflow ni ACK", async () => {
   const { db, receipts } = fixture(); let calls = 0;
-  globalThis.fetch = async () => { calls++; throw new Error("synthetic_transport_timeout"); };
+  globalThis.fetch = async (_url,options) => { if(options?.method==="GET")return{ok:true,json:async()=>({id:"synthetic",assignee:null})}; calls++; throw new Error("synthetic_transport_timeout"); };
   await assert.rejects(dispatchSalesHandoff(db, { handoffId: "h", env }), /uncertain_manual_review/);
   await assert.rejects(dispatchSalesHandoff(db, { handoffId: "h", env }), /uncertain_manual_review/);
   assert.equal(calls, 1); assert.equal(receipts.size, 1); assert.equal([...receipts.values()][0].status, "uncertain");
 });
 test("ACK fallido no redispara workflow ni segundo ACK", async () => {
   const { db } = fixture(), calls = [];
-  globalThis.fetch = async url => { const kind = url.includes("hooks.respond.io") ? "workflow" : "ack"; calls.push(kind); if (kind === "ack") throw new Error("synthetic_timeout"); return { ok: true }; };
+  globalThis.fetch = async (url,options) => { if(options?.method==="GET")return{ok:true,json:async()=>({id:"synthetic",assignee:null})}; const kind = url.includes("hooks.respond.io") ? "workflow" : "ack"; calls.push(kind); if (kind === "ack") throw new Error("synthetic_timeout"); return { ok: true }; };
   await assert.rejects(dispatchSalesHandoff(db, { handoffId: "h", env }));
   await assert.rejects(dispatchSalesHandoff(db, { handoffId: "h", env }));
   assert.deepEqual(calls, ["workflow", "ack"]);

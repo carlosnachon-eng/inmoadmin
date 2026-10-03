@@ -7,7 +7,7 @@ export function memoryDb(seed = {}, rpc = {}) {
   return { tables, operations,
     async rpc(name, args) { operations.push({ table: name, op: "rpc", args }); return rpc[name] ? rpc[name](args) : { error: new Error(`unexpected_rpc:${name}`) }; },
     from(table) {
-      let op = "select", payload, predicates = [], ordering, count, single = false;
+      let op = "select", payload, predicates = [], ordering, count, offset = 0, single = false;
       const ilike=(row,key,pattern)=>{
         const escaped=String(pattern).replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/%/g,".*").replace(/_/g,".");
         return new RegExp(`^${escaped}$`,"iu").test(String(row[key]??""));
@@ -23,12 +23,13 @@ export function memoryDb(seed = {}, rpc = {}) {
         gte(k, v) { predicates.push(r => r[k] >= v); return q; }, lte(k, v) { predicates.push(r => r[k] <= v); return q; },
         gt(k, v) { predicates.push(r => r[k] > v); return q; }, order(k, o) { ordering = [k, o?.ascending !== false]; return q; },
         limit(n) { count = n; return q; }, maybeSingle() { single = true; return q; }, single() { single = true; return q; },
+        range(start,end) { offset=start;count=end-start+1;return q; },
         then(ok, fail) {
           operations.push({ table, op, payload });
           const rows = tables[table] ||= [];
           let selected = rows.filter(r => predicates.every(p => p(r)));
           if (ordering) { const [k, asc] = ordering; selected.sort((a, b) => String(a[k]).localeCompare(String(b[k])) * (asc ? 1 : -1)); }
-          if (count !== undefined) selected = selected.slice(0, count);
+          if (count !== undefined) selected = selected.slice(offset, offset+count);
           if (op === "insert") { selected = [payload].flat().map(p => ({ id: randomUUID(), created_at: new Date().toISOString(), ...p })); rows.push(...selected); }
           if (op === "update") selected.forEach(r => Object.assign(r, payload));
           return Promise.resolve({ data: structuredClone(single ? selected[0] || null : selected), error: null }).then(ok, fail);
