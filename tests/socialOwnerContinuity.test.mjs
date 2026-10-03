@@ -39,7 +39,7 @@ test("legacy Owner de días atrás persiste; no búsqueda por nombre ni TTL", as
   const db = memoryDb({ owner_agent_v1_inbound_messages: [{ id: "legacy-owner", respond_contact_id: contact, channel_id: "498219", occurred_at: "2025-01-01" }] });
   assert.equal((await readSocialContinuity(db, contact, "498219", day2)).owner, true);
   assert.equal((await readSocialContinuity(db, contact, "497382", day2)).owner, false);
-  assert.ok(db.operations.every(op => op.op === "select"));
+  assert.ok(db.operations.every(op => op.op === "select" || op.table === "read_social_route_context_v1"));
 });
 test("captación explícita en snapshot conservada sin inferir identidad por nombre", async () => {
   const db=memoryDb({gv_respond_contact_snapshots:[{respond_contact_id:contact,respond_channel_id:"498219",atn_servicio:"Captación",atn_estado:"en atención"}]});
@@ -136,7 +136,7 @@ test("responsable existente bloquea creación, fallback, dispatch y SLA aun si r
   db.tables.sales_agent_v2_handoffs = [{ ...inbound, id: "h", status: "assigned", assignment_requested_at: day1, sla_due_at: day1 }];
   assert.equal((await dispatchSalesHandoff(db, { handoffId: "h", env })).assignmentTriggered, false);
   assert.equal((await processSalesHandoffSla(db, { env })).status, "idle");
-  assert.ok(db.operations.every(o => o.op === "select"));
+  assert.ok(db.operations.every(o => o.op === "select" || o.table === "read_social_route_context_v1"));
 });
 test("fecha no sustentada fuera del acuse de continuidad falla cerrada antes de enviar", async () => {
   const {db,capture}=fixture(); const r=await capture("Soy propietaria, quiero vender mi casa",day1);
@@ -171,7 +171,7 @@ test("watchdog no envía resultado Sales viejo de una conversación Owner", asyn
   const result = await processSalesAutoOutboundRun(db, "old", { env: { ...env, SALES_AGENT_V2_AUTO_OUTBOUND_ENABLED: "true", VERCEL_ENV: "production", SUPABASE_ENVIRONMENT: "production" } });
   assert.equal(result.reason, "owner_continuity_no_sales_outbound");
   assert.equal(db.tables.sales_agent_v2_auto_outbound[0].status,"blocked");
-  assert.ok(db.operations.slice(beforeOperations).filter(o=>o.op!=="select").every(o=>o.table==="sales_agent_v2_auto_outbound"));
+  assert.ok(db.operations.slice(beforeOperations).filter(o=>o.op!=="select"&&o.table!=="read_social_route_context_v1").every(o=>o.table==="sales_agent_v2_auto_outbound"));
 });
 test("cita existente evita releer historia o crear cita; relativa nueva se ancla una sola vez", async () => {
   const module = await importWithStubs(new URL("../lib/agentsV2/respondAppointmentSync.js", import.meta.url), {

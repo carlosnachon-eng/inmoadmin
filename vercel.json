@@ -1,6 +1,7 @@
 {
   "git": {
     "deploymentEnabled": {
+      "codex/social-routing-capture-failsafe": false,
       "codex/sales-conversation-context-recovery": false,
       "codex/shadow-conversation-action-terminal-eligibility": false,
       "codex/social-routing-v1": false,

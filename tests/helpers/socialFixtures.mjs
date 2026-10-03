@@ -5,9 +5,19 @@ import { randomUUID } from "node:crypto";
 export function memoryDb(seed = {}, rpc = {}) {
   const tables = structuredClone(seed), operations = [];
   return { tables, operations,
-    async rpc(name, args) { operations.push({ table: name, op: "rpc", args }); return rpc[name] ? rpc[name](args) : { error: new Error(`unexpected_rpc:${name}`) }; },
+    async rpc(name, args) {
+      operations.push({ table: name, op: "rpc", args });
+      if (rpc[name]) return rpc[name](args);
+      if (name === "read_social_route_context_v1") {
+        const rows = (tables.social_message_routes || []).filter(r => r.respond_contact_id === args.p_contact_id
+          && r.source_channel_id === args.p_channel_id && r.destination !== "HUMAN_REVIEW")
+          .sort((a,b) => ["occurred_at","created_at","id"].map(k => String(b[k]||"").localeCompare(String(a[k]||""))).find(n => n) || 0);
+        return { data: { current: rows[0] || null, historical: rows.find(r => r.occurred_at <= args.p_at) || null }, error: null };
+      }
+      return { error: new Error(`unexpected_rpc:${name}`) };
+    },
     from(table) {
-      let op = "select", payload, predicates = [], ordering, count, offset = 0, single = false;
+      let op = "select", payload, predicates = [], ordering = [], count, offset = 0, single = false;
       const ilike=(row,key,pattern)=>{
         const escaped=String(pattern).replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/%/g,".*").replace(/_/g,".");
         return new RegExp(`^${escaped}$`,"iu").test(String(row[key]??""));
@@ -21,14 +31,14 @@ export function memoryDb(seed = {}, rpc = {}) {
         ilike(k,v) { predicates.push(r=>ilike(r,k,v)); return q; },
         or(clause) { const filters=clause.split(",").map(part=>{const match=part.match(/^(\w+)\.ilike\.(.+)$/); if(!match)throw new Error("unsupported_fixture_filter"); return match;}); predicates.push(r=>filters.some(([,k,v])=>ilike(r,k,v))); return q; },
         gte(k, v) { predicates.push(r => r[k] >= v); return q; }, lte(k, v) { predicates.push(r => r[k] <= v); return q; },
-        gt(k, v) { predicates.push(r => r[k] > v); return q; }, order(k, o) { ordering = [k, o?.ascending !== false]; return q; },
+        gt(k, v) { predicates.push(r => r[k] > v); return q; }, order(k, o) { ordering.push([k, o?.ascending !== false]); return q; },
         limit(n) { count = n; return q; }, maybeSingle() { single = true; return q; }, single() { single = true; return q; },
         range(start,end) { offset=start;count=end-start+1;return q; },
         then(ok, fail) {
           operations.push({ table, op, payload });
           const rows = tables[table] ||= [];
           let selected = rows.filter(r => predicates.every(p => p(r)));
-          if (ordering) { const [k, asc] = ordering; selected.sort((a, b) => String(a[k]).localeCompare(String(b[k])) * (asc ? 1 : -1)); }
+          if (ordering.length) selected.sort((a,b) => ordering.map(([k,asc]) => String(a[k]).localeCompare(String(b[k])) * (asc?1:-1)).find(n=>n) || 0);
           if (count !== undefined) selected = selected.slice(offset, offset+count);
           if (op === "insert") { selected = [payload].flat().map(p => ({ id: randomUUID(), created_at: new Date().toISOString(), ...p })); rows.push(...selected); }
           if (op === "update") selected.forEach(r => Object.assign(r, payload));

@@ -59,7 +59,7 @@ test("captura persiste sólo una decisión antes del despacho; propiedad sólo v
   const db = memoryDb({ propiedades: [{ id: "verified-property", public_id: "public-property", status:"published" }] }, { capture_social_route_v1: async args => { saved = args.p_route; return { data: { created: true, destination: args.p_route.destination, inboundId: "inbound" } }; } });
   const result = await captureSocialRoute(db, { message: { text: "Busco casa" }, source: { property_id: "public-property" } }, event(), { env, now: () => new Date("2026-10-01T12:00:01Z") });
   assert.equal(result.destination, "SALES"); assert.equal(saved.source_property_id, "verified-property"); assert.equal(saved.respond_contact_id, "contact-test");
-  assert.equal(db.operations.filter(o => o.op === "rpc").length, 1); assert.equal(db.operations.filter(o => o.op === "insert").length, 0);
+  assert.equal(db.operations.filter(o => o.op === "rpc" && o.table === "capture_social_route_v1").length, 1); assert.equal(db.operations.filter(o => o.op === "insert").length, 0);
 });
 test("fallo transaccional no deriva a otro agente", async () => {
   const db = memoryDb({}, { capture_social_route_v1: async () => ({ error: new Error("fixture_tx_failure") }) });

@@ -19,7 +19,8 @@ import { processOwnerInboundById } from "../../../lib/agentsV2/processOwnerInbou
 import { captureRespondLegalInboundIsolated } from "../../../lib/agentsV2/legalCapture";
 import { processLegalInboundById } from "../../../lib/agentsV2/processLegalInbound";
 import { captureRespondAppointmentLifecycleIsolated } from "../../../lib/agentsV2/respondAppointmentSync";
-import { socialEligible, captureSocialRoute } from "../../../lib/social/routing.js";
+import { socialEligible } from "../../../lib/social/routing.js";
+import { captureSocialRouteSafely } from "../../../lib/social/captureReceipt.js";
 import { processSocialRouteImmediate } from "../../../lib/social/immediate.js";
 
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
@@ -58,12 +59,13 @@ export default async function handler(req, res) {
       respond_contact_id: event.respondContactId,
       event_occurred_at: event.eventOccurredAt,
       message_id: event.messageId,
-      payload_meta: event.payloadMeta,
+      payload_meta: socialEligible(event) ? { ...event.payloadMeta, social_capture_required: true } : event.payloadMeta,
     });
     // Fail closed: never fall through to legacy capture after a Social Routing error.
     // Replayed webhook deliveries may recover an uncommitted route, but never enqueue twice.
     if ((!error || error.code === "23505") && socialEligible(event)) {
-      const social = await captureSocialRoute(admin, body, event);
+      const social = await captureSocialRouteSafely(admin, body, event);
+      if (social.status) return res.status(200).json({ ok: true, commercial: social.status, duplicate: !social.created });
       const immediate = await processSocialRouteImmediate(admin, social, {
         SALES: processSalesInboundById, OWNER: processOwnerInboundById, LEGAL: processLegalInboundById,
       });

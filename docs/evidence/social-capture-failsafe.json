@@ -1,0 +1,296 @@
+{
+  "status": "LOCAL_AND_DEV_DB_RPC_PASS_WITH_THREE_INHERITED_SUITE_FAILURES",
+  "date_utc": "2026-10-03",
+  "branch": "codex/social-routing-capture-failsafe",
+  "base_sha": "a5887d95cb0d888106cb4b866f1ba6d28e2048c7",
+  "release_authority": "Review only. No merge, deployment, Production migration or assignment activation.",
+  "cause_root": [
+    "Before fix, JS used occurred_at <= inbound timestamp and no complete tie-break; capture RPC used the current conversation head without that cutoff. An out-of-order delivery deterministically failed the CAS with P0001/social_context_changed_requires_review.",
+    "Transport insertion and routing were separate. The snapshot worker could independently set transport processed/clear last_error after a failed capture; there was no durable, separate commercial status.",
+    "The production diagnosis established the same P0001 signature before PR164. This PR does not roll back PR164 or retroactively process those events."
+  ],
+  "design": {
+    "selector": "Both JS and capture invoke read_social_route_context_v1. Current/CAS head and as-of historical context are separate. Total descending order: occurred_at, created_at, UUID id; excludes HUMAN_REVIEW exactly as before.",
+    "current_intent": "Current head protects durable OWNER and compare-and-swap; historical context is NOT a concurrency token.",
+    "late_policy": "A chronologically late message creates one HUMAN_REVIEW route and review_required receipt; no specialist inbound, model, response or assignment. Current OWNER is not overwritten.",
+    "receipt": "AFTER INSERT trigger atomically seeds pending with eligible transport. Snapshot state remains independent. RPC capture atomically writes route+specialist inbound+receipt completion. Failure writes terminal allowlisted review.",
+    "retry": "begin counts webhook deliveries. Only exact stale-CAS reason gets <=3 DB-only re-read/reclassification attempts before any remote effect. No automatic retry after unknown outcome. Four Respond deliveries reuse one decision or terminal review. Terminal review never automatically reopens.",
+    "compatibility": "Existing route/provider-message dedupe retained. Redelivery of pre-rollout transport links existing decision or creates one preexisting_transport_requires_review without replay. No sweep/backfill.",
+    "visibility": "Existing admin-only /social-routing and API: transport received, snapshot status, routing status, safe reason/SQLSTATE/stage/RPC, attempts/timestamps, operational queue owner and Inbox link when RESPOND_IO_WORKSPACE_ID is configured. Paginated oldest-first to retain old and fresh reviews. Read-only even with Social OFF.",
+    "effects": "No assignment, ACK, sender, appointment, retry scheduler or snapshot-worker business logic changes. Existing exclusive lane guards, outbound uniqueness and effect reservation RPCs retained."
+  },
+  "schema": {
+    "repository_migration": "supabase/migrations/20261003201853_social_capture_failsafe.sql",
+    "sha256": "7e77ff5a520a8fcb57acc133ef07fe2e0a94dee26e5a0273321ec237ec4d8648",
+    "local_and_dev_applied_sql_md5": "65bc2d1fed749c5ca40f50f0a27d75f8",
+    "new_table": "social_capture_receipts",
+    "new_functions": [
+      "seed_social_capture_receipt_v1",
+      "read_social_route_context_v1",
+      "begin_social_capture_v1",
+      "fail_social_capture_v1"
+    ],
+    "replaced_function": "capture_social_route_v1(jsonb)",
+    "indexes": [
+      "social_capture_review_idx",
+      "social_route_head_idx",
+      "primary and unique provider-message keys"
+    ],
+    "security": "RLS ON; no anon/authenticated privileges; service_role SELECT only on receipts, EXECUTE on narrow SECURITY DEFINER RPCs with empty search_path. Trigger execution is not exposed as RPC.",
+    "protected_diagnostics": [
+      "event/contact/channel/message IDs",
+      "route linkage",
+      "routing_state",
+      "allowlisted SQLSTATE/reason/stage/RPC",
+      "delivery attempts",
+      "timestamps"
+    ],
+    "forbidden_diagnostics": [
+      "customer text",
+      "full payloads",
+      "tokens",
+      "secrets",
+      "aliases",
+      "raw exception details/hints"
+    ],
+    "rollback": "supabase/rollback/social_capture_failsafe_empty_only.sql restores the original capture function verbatim and refuses any receipts. No CASCADE/no customer deletion. After use retain evidence/schema; any application rollback needs separate approval and review of mixed workers."
+  },
+  "local": {
+    "node": "24.19.0",
+    "directed": {
+      "pass": 355,
+      "total": 355,
+      "command": "node --test tests/social*.test.mjs tests/sales*.test.mjs"
+    },
+    "full_suite": {
+      "pass": 2019,
+      "total": 2022,
+      "fail": 3,
+      "command": "node --test tests/*.test.mjs",
+      "not_a_full_suite_pass": true
+    },
+    "inherited_failures": [
+      {
+        "file": "tests/respondWebhookMultiHmac.test.mjs",
+        "cause": "data-URL fixture cannot resolve relative salesCapture import (ERR_UNSUPPORTED_RESOLVE_REQUEST)"
+      },
+      {
+        "file": "tests/shadowAiP3.test.mjs",
+        "cause": "tool-count assertion 19 vs 18"
+      },
+      {
+        "file": "tests/shadowReducedOutputSchema.test.mjs",
+        "cause": "schema length assertion 4383 vs 4355"
+      }
+    ],
+    "inherited_disposition": "Exactly the three documented failures from main/PR164; these files and underlying Shadow/HMAC implementations are unchanged, outside this PR.",
+    "postgres": {
+      "result": "SOCIAL_ROUTING_LOCAL_PG_PASS",
+      "checks": 77,
+      "tests": [
+        "catalog RLS/ACL RPC/trigger postchecks",
+        "empty-only rollback preserves original schema/history",
+        "historical row unchanged (new nullable binding only)",
+        "H independent concurrent capture: 1 decision / 1 inbound",
+        "no duplicate queue row",
+        "same message different event never routes to another specialist",
+        "event collision rejected",
+        "cross-agent direct insertion rejected",
+        "uncertain execution cannot reset to captured",
+        "binding cannot be cleared",
+        "exclusive destination OWNER",
+        "exclusive destination LEGAL",
+        "exclusive destination ADMINISTRATION",
+        "exclusive destination HUMAN_REVIEW",
+        "exclusive destination EXISTING_CLIENT",
+        "exclusive destination UNKNOWN",
+        "L explicit attribution persisted exactly",
+        "M absent attribution is SQL NULL, not invented",
+        "metadata rejects arbitrary provider content",
+        "legacy/new race fails closed, never duplicates",
+        "unauthorized read rejected",
+        "unauthorized read rejected",
+        "unauthorized read rejected",
+        "unauthorized read rejected",
+        "unauthorized read rejected",
+        "unauthorized read rejected",
+        "authenticated RPC denied",
+        "service cannot rewrite decision",
+        "ACK requires persisted assignment receipt",
+        "assignment reservation one owner; loser cannot send",
+        "uncertain ACK remains consumed",
+        "completed effect cannot reset",
+        "handoff target immutable",
+        "appointment mode cannot be cleared for legacy fallback",
+        "J distinct events within original +/-30m interval create one cita",
+        "same sync key is permanently idempotent",
+        "one cita / two linked event keys",
+        "wrong client link never joins by name",
+        "rollback refuses to delete protected evidence",
+        "RLS enabled on all new tables",
+        "concurrent stale SALES decision rejected after OWNER commit",
+        "two-day Owner detail persists in same exclusive lane",
+        "no Sales inbound from stale or next-day OWNER path",
+        "out-of-order event cannot overwrite latest intent",
+        "DB refuses implicit OWNER to SALES transition",
+        "explicit closure persisted without specialist",
+        "bounded durable context reads indexed",
+        "inventory: old literal zone false negative reproduced in PostgreSQL",
+        "inventory: SDK AND-of-OR filters find Chapulco in PostgreSQL",
+        "coverage: tokenized PostgreSQL query finds published evidence",
+        "inventory: verified origin precedes textual fallback",
+        "inventory: explicit budget preserved, zero rows not global absence",
+        "inventory: actual journal columns and current origin resolve",
+        "inventory: actual journal columns and preceding origin resolve",
+        "sales recovery: real unique constraints admit one durable sender outcome",
+        "sales recovery: blocked reason read-back, no delivery or provider receipt",
+        "sales recovery: RLS and server-only ACL retained",
+        "sales recovery: original constraint still rejects rental_requirements",
+        "sales recovery: rental classification maps to an existing category without DDL",
+        "P1 empty-only rollback and catalog postcheck",
+        "P1 inverted arrival: later routes, late message gets one durable review without P0001",
+        "P1 3 Respond retries: 1 late review, four deliveries, no specialist",
+        "P1 exact timestamp ties share stable UUID ordering",
+        "P1 late Sales cannot overwrite current Owner; next-day continuity remains Owner",
+        "P1 exclusive LEGAL, original source channel",
+        "P1 exclusive ADMINISTRATION, original source channel",
+        "P1 simultaneous deliveries create exactly one route/inbound",
+        "P1 actual dispatcher: one intercepted processor effect, zero duplicate dispatch",
+        "P1 real concurrent conversation lock preserves OWNER",
+        "P1 actual stale CAS: exactly one conflict then reclassifies OWNER",
+        "P1 provider dedupe aliases share one receipt/decision",
+        "P1 pre-rollout delivery exposes one review, never retroactive processing",
+        "P1 REAL snapshot function processed/clears last_error but cannot hide commercial review",
+        "P1 late losing request cannot turn routed into review",
+        "P1 RLS/ACL: anon/auth denied; service cannot rewrite receipts",
+        "P1 receipt schema has no text, tokens, secrets, payload or alias columns",
+        "P1 rollback refuses nonempty diagnostic evidence"
+      ],
+      "isolation": "loopback disposable PostgreSQL; no Supabase DEV/Production",
+      "externalCalls": 0,
+      "version": "18.4 isolated",
+      "cleanup": "LOCAL_SYNTHETIC_CLUSTER_STOPPED_AND_REMOVED"
+    },
+    "build": "PASS; synthetic .invalid Supabase settings, no production credentials, NEXT_TELEMETRY_DISABLED=1",
+    "diff_check": "PASS",
+    "signed_webhook": "Actual HMAC extraction, webhook handler, router and immediate dispatcher with IO intercepts; four failed deliveries become one visible review, zero agents. OFF/Admin legacy paths preserved.",
+    "transport": "Actual sender regressions use intercepted fetch; PostgreSQL dispatcher test uses an intercepted processor. No real Respond delivery or model call certified."
+  },
+  "dev": {
+    "project": "inmoadmin-dev",
+    "project_ref": "hjfwjnejbcpmknvfpdcq",
+    "engine": "17.6.1.155",
+    "status": "PASS",
+    "applied_ledger_version": "20261003215228",
+    "version_mapping": "Supabase apply_migration assigns execution-time ledger version; stored statements MD5 exactly matches repository migration bytes above.",
+    "migration_scope": "Only this new migration, no other schemas/migrations/flags/storage changes.",
+    "postcheck": {
+      "table_rls_acl": true,
+      "server_only_rpcs": 4,
+      "search_path_empty": true,
+      "transport_trigger": true,
+      "indexes": 2
+    },
+    "transactional_fixture": {
+      "script": "supabase/checks/social_capture_failsafe_dev.sql",
+      "transport_rows": 9,
+      "receipts": 9,
+      "routes": 8,
+      "specialist_inbounds": 6,
+      "cleanup": "ROLLBACK; all prefix counts 0"
+    },
+    "cases": [
+      "T+2 before T; late review, no P0001 from chronology alone",
+      "Equal occurred_at; stable head; stale CAS rejected",
+      "Four deliveries preserve terminal review and delivery attempts",
+      "Real invalid-destination constraint violation; zero partial route",
+      "Unchanged real snapshot completion function sets processed/clears last_error but review survives",
+      "OWNER/SALES/LEGAL/ADMIN exclusive queues",
+      "Real anon/authenticated SELECT and RPC denial",
+      "No outbound, handoff, assignment or model effects"
+    ],
+    "parallel_capture": {
+      "requests": 2,
+      "transaction_lock_hold_seconds": 3,
+      "results_created": [
+        true,
+        false
+      ],
+      "routes": 1,
+      "receipts": 1,
+      "destination": "UNKNOWN",
+      "specialist_inbounds": 0,
+      "cleanup": "exact synthetic event/contact deleted after read-back; no other rows touched",
+      "limitation": "Connector launched both requests concurrently; actual waiting/blocking PID chronology was proved in isolated PostgreSQL, not sampled in DEV."
+    },
+    "security_advisor_delta": [
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "table": "social_capture_receipts",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy"
+      }
+    ],
+    "performance_notes": [
+      {
+        "name": "unindexed_foreign_keys",
+        "level": "INFO",
+        "scope": "social_capture_receipts_route_id_fkey",
+        "disposition": "No application deletes/rekeys routes. Keep minimal migration; evaluate covering index before any future retention/deletion process.",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys"
+      },
+      {
+        "name": "unused_index",
+        "level": "INFO",
+        "scope": "social_route_head_idx",
+        "disposition": "New small DEV relation; not an ACL or correctness failure."
+      }
+    ],
+    "preexisting_security_findings": "19 errors pre-existed (3 policies/RLS disabled, 1 security-definer view, 15 RLS disabled); not modified. New table adds only intentional RLS-without-client-policy INFO.",
+    "residues": {
+      "transport": 0,
+      "receipts": 0,
+      "routes": 0,
+      "sales": 0,
+      "owner": 0,
+      "legal": 0
+    },
+    "service_credentials_retrieved": false,
+    "production_calls": 0,
+    "respond_calls": 0,
+    "models": 0,
+    "actual_outbound": 0
+  },
+  "test_harness_notes": [
+    "Initial sandbox loopback launch exited without a PASS marker; not counted. Successful PostgreSQL runs used loopback-only permission and verified cluster removal.",
+    "One read-only postcheck statement was split incorrectly at a semicolon inside a comment; corrected by stripping comments, rerun individually and verified all booleans. No DDL/data change resulted."
+  ],
+  "rollout_pre_go": [
+    "Review this PR and explicit late-message-to-human policy.",
+    "Authorize production migration separately; migration/postcheck before application release. Never run mass pending migrations.",
+    "Read back effective flags; no changes to Social/Recovery/SLA/handoff URL or Approved Materials from this PR.",
+    "Verify admin queue access and existing RESPOND_IO_WORKSPACE_ID Inbox integration.",
+    "Drain old webhook workers or account for mixed-version window: old code cannot seed receipts for new events until rollout; do not claim that window repaired.",
+    "No retrospective customer replay, contact assignment or model test.",
+    "Observe one eligible receipt per provider message, route exclusivity, safe pending/review and zero duplicate effects after separately authorized deploy."
+  ],
+  "residual_risks": [
+    "Late events require human review and may increase queue volume; this is deliberate fail-closed handling, not automatic replay.",
+    "Visible/admin-owned work is not evidence of human acknowledgment or resolution. Queue is read-only; no new CRM/assignment/closing workflow.",
+    "Inbox navigation depends on existing workspace configuration; missing configuration must block production acceptance of actionable review.",
+    "A DB outage can prevent review completion; atomic transport/receipt, when committed, remains pending and visible after service recovers.",
+    "Total-order selection does not prove atomicity of external Respond assignment; that remains separate and disabled.",
+    "Production SQL and deployment remain unapproved/unperformed; DEV DB/RPC + intercepted transport is not real customer delivery."
+  ],
+  "isolation": {
+    "pr161": "untouched",
+    "pr163": "untouched",
+    "production_changes": 0,
+    "flags_changed": 0,
+    "respond_changes": 0,
+    "assignment_enabled": false,
+    "preview_branch_disabled": true,
+    "merge": false,
+    "deployment": false
+  }
+}

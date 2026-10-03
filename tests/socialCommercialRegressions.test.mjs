@@ -41,7 +41,7 @@ for(const text of ["Ofrezco servicios audiovisuales con drones para mostrar mejo
     assert.equal((await createSalesHandoffIfNeeded(db,{inbound,env})).created,false);
     assert.equal((await createSalesAutomationFallbackHandoff(db,{inbound,env})).created,false);
     assert.equal((db.tables.sales_agent_v2_handoffs||[]).length,0);
-    assert.ok(db.operations.every(o=>o.op==="select"));
+    assert.ok(db.operations.every(o=>o.op==="select"||o.table==="read_social_route_context_v1"));
     assert.equal(classifySafeSalesOutbound({messageText:text,calledTools:[],proposedResponse:"Te asigno asesor",socialContext:{}}).eligible,false);
   });
 for(const text of ["Quiero visitar la casa", "¿Podrías mostrarme el departamento?", "Quisiera agendar una visita al terreno"])
@@ -104,7 +104,7 @@ for(const text of ["El conde","Ofrezco videos con drones para mostrar propiedade
       assert.equal((await dispatchSalesHandoff(db,{handoffId:"handoff",env})).assignmentTriggered,false);
       assert.equal((await processSalesHandoffSla(db,{env})).status,"idle");
       assert.equal(JSON.stringify(db.tables.sales_agent_v2_handoffs),before);
-      assert.ok(db.operations.every(o=>o.op==="select"));
+      assert.ok(db.operations.every(o=>o.op==="select"||o.table==="read_social_route_context_v1"));
     });
 test("fallback con intención real usa razón real; nunca acuña interés alto por error de automatización",async()=>{
   const {db,inbound}=fixture("Quiero visitar la casa");

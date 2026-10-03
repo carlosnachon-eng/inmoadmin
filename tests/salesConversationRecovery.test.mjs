@@ -234,7 +234,9 @@ test("diagnostic projection allowlists reasons and never echoes raw transport er
 test("manual assignment after first live read prevents workflow and ACK; uncertainty never retries",async()=>{
   const {db,inbound}=fixture(["Quiero hablar con una persona"]);
   let reserved=false,reads=0,writes=0;
-  db.rpc=async(name)=>{
+  const readRpc=db.rpc.bind(db);
+  db.rpc=async(name,args)=>{
+    if(name==="read_social_route_context_v1")return readRpc(name,args);
     if(name==="reserve_social_effect_v1"){
       if(reserved)return{data:{owned:false,status:"uncertain"}};
       reserved=true;return{data:{owned:true,token:"synthetic-reservation"}};
