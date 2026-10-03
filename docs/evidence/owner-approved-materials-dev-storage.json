@@ -1,0 +1,168 @@
+{
+  "status": "APPROVED_MATERIALS_DEV_STORAGE_PASS",
+  "date": "2026-10-02",
+  "project": "hjfwjnejbcpmknvfpdcq",
+  "project_name": "inmoadmin-dev",
+  "certified_head": "b065db3e0e525ac6b1c12bca99798a74ffce262e",
+  "feature_flag": "OFF",
+  "scope": "schema, RPC, ACL/RLS and private Storage; synthetic fixtures only",
+  "migration": {
+    "repository_version": "20261002044903",
+    "file": "supabase/migrations/20261002044903_owner_approved_materials_v1.sql",
+    "version": "20261002144840",
+    "name": "20261002044903_owner_approved_materials_v1",
+    "statement_entries": 1,
+    "stored_sql_sha256": "18651948ed9cafd703d42fff6034dfb8dcc3d06bb39bbbfb646c52a9eb309b14",
+    "exact_bytes_match": true
+  },
+  "catalog": {
+    "fk_count": 4,
+    "rls_both": true,
+    "indexes_count": 9,
+    "storage_barrier": true,
+    "constraints_count": 26,
+    "constraints_valid": true,
+    "indexes_valid_ready": true,
+    "trigger_count_enabled": true,
+    "bucket_private_pdf_limit": true,
+    "rpc_invoker_service_only": true,
+    "delivery_update_allowlist": true,
+    "version_update_only_active": true,
+    "service_select_insert_no_delete": true,
+    "no_client_table_or_column_grants": true
+  },
+  "functional": {
+    "checks": [
+      "non_admin_approval_denied",
+      "admin_version_insert_and_activation",
+      "reserve_once_duplicate_suppressed",
+      "claim_one_shot",
+      "uncertain_consumed_and_retry_suppressed",
+      "uncertain_reset_denied",
+      "dispatching_uncertain_crash_no_reclaim",
+      "capability_immutable",
+      "current_version_and_retirement",
+      "dedup_survives_new_version",
+      "human_reply_blocks",
+      "newer_inbound_blocks",
+      "no_text_receipt_blocks",
+      "administration_channel_excluded",
+      "social_link_mode_only",
+      "expiry_one_hour",
+      "service_least_privilege",
+      "anon_tables_and_all_rpcs_denied",
+      "authenticated_tables_and_all_rpcs_denied"
+    ],
+    "status": "PASS",
+    "sqlstate": null,
+    "constraint": null,
+    "failed_step": null,
+    "model_calls": 0,
+    "respond_calls": 0,
+    "objects_uploaded": 0,
+    "fixtures_rolled_back": true
+  },
+  "committed_uncertain": {
+    "count": 1,
+    "status": "uncertain",
+    "receipts": 0,
+    "error_code": "material_delivery_uncertain_requires_review",
+    "retry_blocked": true,
+    "one_shot_claim": true,
+    "evidence_unchanged": true,
+    "dispatch_timestamp_present": true,
+    "completed_timestamp_present": true
+  },
+  "duplicate_reservation": {
+    "one_row": true,
+    "first_created": true,
+    "second_created": false,
+    "same_reservation": true,
+    "worker_windows": [
+      {
+        "worker": "A",
+        "started_at": "2026-10-02 14:59:26.781138+00",
+        "ended_at": "2026-10-02 14:59:31.794465+00"
+      },
+      {
+        "worker": "B",
+        "started_at": "2026-10-02 14:59:35.62716+00",
+        "ended_at": "2026-10-02 14:59:35.630393+00"
+      }
+    ],
+    "overlap_observed": false,
+    "limitation": "DEV calls did not overlap; this demonstrates retry/idempotence, not new DEV contention coverage. Genuine transaction contention remains certified by the prior isolated PostgreSQL 27/27 test."
+  },
+  "storage": {
+    "status": "PASS",
+    "scope": "DEV Storage API only",
+    "project": "hjfwjnejbcpmknvfpdcq",
+    "checks": [
+      "private_pdf_bucket_10MiB",
+      "fixture_prefix_empty",
+      "service_upload_download_exact_bytes",
+      "same_object_no_upsert_duplicate_rejected",
+      "public_download_denied",
+      "anon_download_denied",
+      "anon_no_listing",
+      "anon_upload_denied",
+      "anon_signed_url_denied",
+      "anon_owner_approved_material_versions_denied",
+      "anon_owner_material_deliveries_denied",
+      "authenticated_download_denied",
+      "authenticated_no_listing",
+      "authenticated_upload_denied",
+      "authenticated_signed_url_denied",
+      "authenticated_owner_approved_material_versions_denied",
+      "authenticated_owner_material_deliveries_denied",
+      "short_lived_storage_url_exact_bytes",
+      "short_lived_storage_url_expired",
+      "feature_gate_remained_OFF",
+      "zero_non_DEV_calls",
+      "storage_fixture_prefix_empty_after_cleanup",
+      "synthetic_Auth_actor_removed"
+    ],
+    "error": null,
+    "cleanup": true,
+    "network": {
+      "dev_requests": 28,
+      "non_dev_attempts": 0
+    },
+    "production_calls": 0,
+    "respond_calls": 0,
+    "model_calls": 0,
+    "approved_pdf_uploads": 0,
+    "feature_flag": "OFF"
+  },
+  "cleanup": {
+    "versions": 0,
+    "deliveries": 0,
+    "fixture_auth": 0,
+    "fixture_runs": 0,
+    "storage_objects": 0,
+    "fixture_inbounds": 0,
+    "fixture_profiles": 0,
+    "fixture_sessions": 0,
+    "fixture_snapshots": 0,
+    "fixture_text_receipts": 0
+  },
+  "advisors": {
+    "new_material_tables": "INFO rls_enabled_no_policy; intentional server-only tables, no anon/authenticated grants; service_role bypassrls confirmed",
+    "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy"
+  },
+  "differences": [
+    "MCP assigned DEV ledger version 20261002144840; stored SQL SHA-256 exactly equals repository migration. Do not apply it again based only on the repository timestamp.",
+    "DEV PostgreSQL 17.6.1.155; prior isolated PostgreSQL 18.4 harness. No schema, SQL, grants or functional code adjustment required."
+  ],
+  "not_certified_yet": [
+    "Approved PDFs upload, approval, validity and active versions",
+    "Application HMAC download capability against real approved bytes with controlled activation; the tested expiring URL was a Storage API capability only",
+    "Real Respond document/link rendering and per-channel transport",
+    "New DEV concurrent contention (calls were serialized/non-overlapping)"
+  ],
+  "production_calls": 0,
+  "respond_calls": 0,
+  "model_calls": 0,
+  "approved_pdf_uploads": 0,
+  "deployments": 0
+}

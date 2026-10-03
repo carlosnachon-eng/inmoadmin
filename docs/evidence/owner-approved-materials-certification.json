@@ -1,0 +1,50 @@
+{
+  "scope": "local implementation and synthetic certification only",
+  "base_sha": "82f175ce4947517aba1d2a6d3874b505468eef95",
+  "branch": "codex/owner-approved-materials-v1",
+  "decision": "CODE_REVIEW_ONLY_NO_PRODUCTION_ACTIVATION",
+  "source_pdfs": {"verified": 2, "modified": 0, "uploaded": 0},
+  "focused": {"total": 55, "pass": 55, "fail": 0},
+  "focused_with_main_owner_continuity": {"total": 81, "pass": 81, "fail": 0},
+  "isolated_postgres": {"groups": 27, "status": "PASS", "real_transaction_concurrency": true, "cluster_removed": true},
+  "full_suite": {"total": 1828, "pass": 1825, "fail": 3, "skipped": 0},
+  "pristine_base_reproduction": {
+    "base_sha": "82f175ce4947517aba1d2a6d3874b505468eef95",
+    "total": 185, "pass": 182, "fail": 3,
+    "failures": [
+      {"file": "tests/respondWebhookMultiHmac.test.mjs", "reason": "Data URL harness leaves agentsV2 relative imports unresolved"},
+      {"file": "tests/shadowAiP3.test.mjs", "reason": "Expected 18 read-only tools; base contains 19"},
+      {"file": "tests/shadowReducedOutputSchema.test.mjs", "reason": "Expected 4355 schema bytes; base contains 4383"}
+    ]
+  },
+  "build": "PASS_with_synthetic_loopback_configuration",
+  "build_warnings": "Three existing Google Fonts stylesheets unavailable in restricted network; font optimization skipped, build completed",
+  "diff_check": "PASS",
+  "real_respond_calls": 0,
+  "real_model_calls": 0,
+  "remote_migrations_applied": 0,
+  "production_mutations": 0,
+  "pr160_changes": 0,
+  "remote_dev_certified": false,
+  "real_channel_delivery_certified": false,
+  "default_feature_flag": "OFF",
+  "integration_recertification": {
+    "date": "2026-10-02",
+    "previous_head": "dc64837917d2f74defabbd505e4d464ae9d5f67a",
+    "previous_base_sha": "30beba05a1a53741915137c2e65066a547f5ed98",
+    "previous_focused": {"total": 51, "pass": 51},
+    "previous_full_suite": {"total": 1707, "pass": 1704, "fail": 3},
+    "conflicted_files": ["lib/agentsV2/processOwnerInbound.js"],
+    "resolution": "Keep main appointment/continuity guards unchanged; apply the existing opt-in materials response guard only after their validation, before persistence",
+    "new_regressions": 4,
+    "same_three_inherited_failures": true,
+    "new_suite_failures": 0,
+    "routing_delta_vs_main": false,
+    "materials_library_sql_assets_unchanged": true,
+    "preview_branch_excluded": true,
+    "pdfs_accessed_or_uploaded": 0,
+    "remote_sql_applied": 0,
+    "deployments_requested": 0,
+    "production_changes": 0
+  }
+}
