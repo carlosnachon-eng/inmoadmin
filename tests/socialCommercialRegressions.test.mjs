@@ -222,7 +222,9 @@ test("sender bloquea resultado viejo negativo aun si ya estaba persistido",async
   const {db,inbound}=fixture(query);
   db.tables.sales_agent_v2_shadow_runs=[{id:"run",status:"idle",completed_at:new Date().toISOString(),called_tools:["search_sales_inventory"],proposed_response:"No me aparecen casas publicadas.",sales_agent_v2_inbound_messages:inbound}];
   assert.equal((await processSalesAutoOutboundRun(db,"run",{env})).reason,"inventory_absence_not_proven");
-  assert.equal((db.tables.sales_agent_v2_auto_outbound||[]).length,0);
+  assert.equal(db.tables.sales_agent_v2_auto_outbound.length,1);
+  assert.equal(db.tables.sales_agent_v2_auto_outbound[0].status,"blocked");
+  assert.equal(db.tables.sales_agent_v2_auto_outbound[0].error_code,"inventory_absence_not_proven");
 });
 test("flag OFF: ninguna lectura social, schema/contrato legacy de inventario conserva array",async()=>{
   assert.equal(await readSocialSalesContext({from(){assert.fail();}},{channel_id:"498219"},{}),null);

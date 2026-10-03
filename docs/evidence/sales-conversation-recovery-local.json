@@ -1,0 +1,121 @@
+{
+  "status": "LOCAL_CERTIFIED_WITH_INHERITED_SUITE_FAILURES_DEV_BLOCKED",
+  "date_utc": "2026-10-03",
+  "branch": "codex/sales-conversation-context-recovery",
+  "base_sha": "bc305849a73273f9b3e593527e61614a4d3ddf19",
+  "scope": "Sales conversation context, safe references, sender diagnostics and actionable human review only",
+  "production_read_only": {
+    "deployment": "dpl_EXk2GkAM1oqWZYf8sXNRBZEu72ow",
+    "sha": "bc305849a73273f9b3e593527e61614a4d3ddf19",
+    "state": "READY",
+    "project_variables_ui_observed": {
+      "SOCIAL_ROUTING_V1_ENABLED": "true",
+      "SALES_AGENT_V2_RECOVERY_ENABLED": "false",
+      "SALES_AGENT_V2_HANDOFF_SLA_ENABLED": "false",
+      "SALES_AGENT_V2_HANDOFF_WORKFLOW_URL": "no matching project variable",
+      "OWNER_APPROVED_MATERIALS_V1_ENABLED": "no matching project variable"
+    },
+    "configuration_limit": "Dashboard project-variable observation, not a reconstructed historical runtime environment or proof about every shared variable.",
+    "historical_handoffs": {
+      "safe_refs": ["6e57775d37a43284", "cad5f2f2d5efe442"],
+      "count": 2,
+      "reason": "human_requested",
+      "status": "ready_for_advisor",
+      "assignment_requested_at": null,
+      "ack_sent_at": null,
+      "assignment_error_code": null,
+      "social_effect_reservations": 0,
+      "reassignments": 0,
+      "historical_runtime_blocking_branch": "not independently observable",
+      "code_behavior": "Missing workflow URL returns without remote dispatch. Historical snapshot/URL barrier cannot be distinguished from these persisted rows."
+    },
+    "link_metadata": {
+      "sample_event_count": 24,
+      "original_url_or_referral_fields_found": 0,
+      "limitation": "Original social link targets cannot be recovered from the inspected metadata. No Inbox or arbitrary URL fetch was used."
+    },
+    "writes": 0,
+    "environment_changes": 0,
+    "deployments_created": 0,
+    "retrospective_messages_or_assignments": 0
+  },
+  "changes": [
+    "Read bounded same-channel local context before CTA decisions; Respond history cannot replace locally captured burst fragments.",
+    "Preserve visit/human intent when the latest burst fragment is Plis or Este; do not process every fragment.",
+    "Use persisted profile context consistently in runner and sender. No post-model CTA replacement.",
+    "Resolve only exact HTTPS first-party public listing paths against published inventory before URL sanitization. Persist the catalog FK, not the URL or tracking parameters.",
+    "Unresolved links get one alternative question; repeated clarification becomes visible review instead of another link request.",
+    "Allow narrow informational confirmations and coordination requests while retaining sensitive-topic and actual appointment/date/time review guards.",
+    "Persist current blocked sender outcomes in the existing unique journal. Expired historical runs are not backfilled or resent.",
+    "Preserve existing responsible users; require an explicit, validated live unassigned state before a protected workflow effect. Unknown state fails closed.",
+    "Reuse open human review, prevent assignment/ACK replay, and never dispatch policy review as automation_fallback.",
+    "Expose paginated review and sanitized no-send reasons in the existing admin/gerente_ventas screen; Gerencia de Ventas is the operational queue owner. No new CRM or sending action."
+  ],
+  "local_tests": {
+    "new_conversation_regressions": {"pass": 28, "total": 28},
+    "directed_sales_social": {"pass": 339, "total": 339},
+    "suite": {"pass": 2003, "total": 2006, "fail": 3},
+    "postgres_disposable": {"pass": 57, "total": 57, "external_calls": 0, "cluster_stopped_and_removed": true},
+    "build": "PASS",
+    "git_diff_check": "PASS",
+    "fixture_provider": "synthetic OpenAI session/usage adapters; actual processor, handoff and sender code",
+    "respond_transport": "intercepted synthetic fetch only; no real calls or messages",
+    "production_or_customer_fixtures": 0,
+    "cases": [
+      "Rent answer retains furnished apartment/parking history and reaches intercepted sender once.",
+      "Location and building answers retain rental context instead of fixed CTA.",
+      "Visit request plus Plis is absorbed as one complete request and creates visible review with workflow OFF.",
+      "Human request plus Plis bypasses model and becomes actionable review, not a sales clarification.",
+      "Unresolved links: alternate question once, next repetition review, no workflow or ACK.",
+      "Chapulco: actual inventory tool finds the published fixture EMP-MUN7BHJX; noncommittal coordination reaches intercepted sender without booking.",
+      "Informational te confirmo cual es/informacion publicada/disponibilidad is sendable; real appointment/date/signature claims remain blocked.",
+      "Existing responsible preserved; malformed live response is not interpreted as unassigned.",
+      "Manual assignment between live reads prevents workflow and ACK; uncertain reservation is not retried.",
+      "Duplicate processing does not resend; real PostgreSQL unique constraints allow one sender outcome under concurrent claims.",
+      "Blocked outcome claimed by another sender still becomes review work.",
+      "First-party reference extraction preserves the published FK and discards URL/tracking; foreign/private/redirect URLs are never fetched.",
+      "Active admin/manager can read review; advisor denied; pagination retains access to older and fresh jobs.",
+      "WhatsApp legacy, OWNER continuity, Legal routing and Administration regressions remain covered by directed suite."
+    ],
+    "commands": [
+      "node --test tests/salesConversationRecovery.test.mjs",
+      "node --test tests/social*.test.mjs tests/sales*.test.mjs",
+      "node --test tests/*.test.mjs",
+      "SOCIAL_LOCAL_PG_RUNTIME=<isolated-runtime> node scripts/test-social-routing-postgres.mjs",
+      "node node_modules/next/dist/bin/next build (synthetic loopback build environment)",
+      "git diff --check"
+    ]
+  },
+  "inherited_failures": {
+    "reproduced_on_unchanged_base_sha": "bc305849a73273f9b3e593527e61614a4d3ddf19",
+    "baseline_targeted": {"pass": 182, "total": 185, "fail": 3},
+    "disposition": "Unchanged and outside Sales patch; not reported as a full-suite PASS.",
+    "failures": [
+      {"file": "tests/respondWebhookMultiHmac.test.mjs", "cause": "data-URL test harness fails to resolve relative salesCapture import; ERR_UNSUPPORTED_RESOLVE_REQUEST"},
+      {"file": "tests/shadowAiP3.test.mjs", "cause": "tool-count assertion: actual 19, expected 18"},
+      {"file": "tests/shadowReducedOutputSchema.test.mjs", "cause": "schema-length assertion: actual 4383, expected 4355"}
+    ]
+  },
+  "supabase_dev": {
+    "project": "inmoadmin-dev",
+    "project_ref": "hjfwjnejbcpmknvfpdcq",
+    "status": "BLOCKED_BASELINE_MISSING",
+    "present": ["social_message_routes", "sales_agent_v2_inbound_messages", "sales_agent_v2_shadow_runs", "sales_agent_v2_handoffs"],
+    "missing": ["sales_agent_v2_auto_outbound"],
+    "required_existing_migration_pending_authorization": "202610010001_sales_agent_v2_auto_outbound.sql",
+    "schema_changes_applied": 0,
+    "fixtures_created": 0,
+    "fixture_prefix_residues_before": 0,
+    "functional_processors_certified_in_dev": false
+  },
+  "limitations_and_release_gates": [
+    "NO-GO for deployment until authorized DEV baseline and functional DEV checks are completed and reviewed.",
+    "Tests use synthetic model outputs and intercepted Respond transport; this is not proof of a real customer send or actual human attention.",
+    "Review is actionable via the existing private manager screen, but operator acknowledgment/closure is not newly implemented or claimed.",
+    "Respond provider-side atomicity is not proven. Live reads narrow the race; a separately authorized protected workflow with Manual Assignment exit remains required before connecting a workflow URL.",
+    "No historical links or handoff blocking reasons were invented; unresolved social links use bounded clarification/review.",
+    "Conversation reconstruction is bounded to 24 hours and 20 local messages plus existing profile/Respond context; it is not an unlimited history replay.",
+    "No new schema or migration for this patch. Existing DEV baseline migration remains unapplied pending permission.",
+    "No publish, merge, deploy, flag changes, retrospective resends, Respond configuration changes, or changes to PR161/PR163."
+  ]
+}
