@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { salesOutboundStorageKind } from "../../lib/agentsV2/salesAutoOutbound.js";
 
 export async function certifySalesRecoveryPostgres(db, connect, check) {
   await db.query(await readFile(new URL("../../supabase/migrations/202610010001_sales_agent_v2_auto_outbound.sql",import.meta.url),"utf8"));
@@ -26,4 +27,8 @@ export async function certifySalesRecoveryPostgres(db, connect, check) {
     has_table_privilege('authenticated','sales_agent_v2_auto_outbound','SELECT') as authenticated
     from pg_class where oid='sales_agent_v2_auto_outbound'::regclass`)).rows[0];
   check("sales recovery: RLS and server-only ACL retained",()=>assert.deepEqual(acl,{relrowsecurity:true,service:true,anon:false,authenticated:false}));
+  await assert.rejects(db.query("update sales_agent_v2_auto_outbound set case_kind='rental_requirements' where inbound_message_id=$1",[inbound]),error=>error.code==="23514");
+  check("sales recovery: original constraint still rejects rental_requirements",()=>{});
+  await a.query("update sales_agent_v2_auto_outbound set case_kind=$1 where inbound_message_id=$2",[salesOutboundStorageKind("rental_requirements"),inbound]);
+  check("sales recovery: rental classification maps to an existing category without DDL",()=>{});
 }

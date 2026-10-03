@@ -80,6 +80,22 @@ test("Chapulco: real inventory tool + coordination output reaches sender, no fic
   assert.equal(db.tables.citas?.length||0,0);
 });
 
+test("grounded rental requirements preserve the decision and use an original valid journal category",async()=>{
+  const {db,inbound}=fixture(["Busco departamento en renta","Qué documentos necesito para rentar?"]);
+  db.tables.sales_agent_v2_inbound_messages[0].status="processed";
+  let evidence;
+  const output="Los requisitos generales incluyen INE vigente y comprobantes de ingresos de los últimos 3 meses. No implica aprobación del caso.";
+  const p=await processor(db,{output,tools:["get_rental_requirements"],fulfill:async({socialContext})=>{
+    evidence=await executeSalesTool(db,"get_rental_requirements",{topic:"documents"},{socialContext});return true;
+  }});
+  const result=await p.run(inbound[1].id);
+  assert.ok(evidence);assert.equal(result.outbound.status,"sent");
+  assert.equal(result.outbound.caseKind,"rental_requirements");
+  assert.equal(db.tables.sales_agent_v2_auto_outbound[0].case_kind,"property_interest");
+  assert.deepEqual(db.tables.sales_agent_v2_shadow_runs[0].called_tools,["get_rental_requirements"]);
+  assert.deepEqual(p.sends,[output]);
+});
+
 test("webhook parses first-party property before sanitization without persisting its URL",async()=>{
   let route;
   const db=memoryDb({propiedades:[{id:"synthetic-property",public_id:"EMP-SYNTHETIC1",status:"published"}]},{capture_social_route_v1:async({p_route})=>{route=p_route;return{data:{created:true,destination:"SALES"}};}});
@@ -124,13 +140,14 @@ test(`burst ${request} + Plis retains intent, no fragment dispatch`,async()=>{
   else assert.ok(p.inputs[0].includes(request));
 });
 
-test("unresolved link: alternative once, second repetition creates visible review, not another link request",async()=>{
+for(const repeatedRequest of [SOCIAL_CTA_CLARIFICATION,"Compárteme el enlace de la propiedad."])
+test(`unresolved link: alternative once, second repetition creates review: ${repeatedRequest}`,async()=>{
   const {db,inbound}=fixture(["Busco una casa en renta","[URL]","Es esta [URL]"]);
   db.tables.sales_agent_v2_inbound_messages[0].status="processed";
   // Previously sent clarification is evidence, not an unsent proposal.
   db.tables.sales_agent_v2_auto_outbound=[{inbound_message_id:"i0",respond_contact_id:inbound[0].respond_contact_id,channel_id:"497382",status:"sent",proposed_message:SOCIAL_CTA_CLARIFICATION,sent_at:at(1)}];
   db.tables.sales_agent_v2_inbound_messages.pop();
-  const p=await processor(db,{output:SOCIAL_CTA_CLARIFICATION});
+  const p=await processor(db,{output:repeatedRequest});
   assert.equal((await p.run("i1")).outbound.status,"sent");
   assert.deepEqual(p.sends,[LINK_ALTERNATIVE]);
   db.tables.sales_agent_v2_auto_outbound.at(-1).sent_at=at(11);

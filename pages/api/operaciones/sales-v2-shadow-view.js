@@ -52,7 +52,7 @@ export default async function handler(req,res){
   if(outcomes.error)return res.status(500).json({ok:false,error:"load_failed"});
   const deliveryByRun=new Map((outcomes.data||[]).map(row=>[row.shadow_run_id,row]));
   const snapshots=reviewPage.length?await admin.from("gv_respond_contact_snapshots")
-    .select("respond_contact_id,mapped_profile_id,respond_assignee_id,last_synced_at")
+    .select("respond_contact_id,mapped_profile_id,respond_assignee_id,respond_last_synced_at")
     .in("respond_contact_id",[...new Set(reviewPage.map(row=>row.respond_contact_id))]):{data:[]};
   if(snapshots.error)return res.status(500).json({ok:false,error:"load_failed"});
   const byContact=new Map((snapshots.data||[]).map(row=>[row.respond_contact_id,row]));
@@ -89,7 +89,7 @@ export default async function handler(req,res){
       ...row,
       assignment_error_code:safeSalesAttentionReason(row.assignment_error_code),
       operationalOwner:byContact.get(row.respond_contact_id)?.respond_assignee_id?"Responsable actual en Respond; Gerencia de Ventas supervisa":"Gerencia de Ventas",
-      assignmentVerifiedAt:byContact.get(row.respond_contact_id)?.last_synced_at||null,
+      assignmentVerifiedAt:byContact.get(row.respond_contact_id)?.respond_last_synced_at||null,
       inboxUrl:respondInboxLink(row.respond_contact_id),
     })),
     rows:[...waiting,...completed].sort((a,b)=>String(b.sortAt||"").localeCompare(String(a.sortAt||""))).slice(0,100),

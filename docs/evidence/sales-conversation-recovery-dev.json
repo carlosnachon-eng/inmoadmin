@@ -1,0 +1,108 @@
+{
+  "status": "DEV_SCHEMA_PASS_FUNCTIONAL_CREDENTIAL_PENDING",
+  "date_utc": "2026-10-03",
+  "branch": "codex/sales-conversation-context-recovery",
+  "prior_local_head": "5f58a4d26e813937e0fc2bb765fca1dfaa5b5fc4",
+  "historical_local_evidence": "sales-conversation-recovery-local.json",
+  "migration": {
+    "project": "inmoadmin-dev",
+    "project_ref": "hjfwjnejbcpmknvfpdcq",
+    "source": "supabase/migrations/202610010001_sales_agent_v2_auto_outbound.sql",
+    "source_sha256": "355833c228464af2db51007fec5795615283a2e0b973461468d240dfb48cfaad",
+    "hosted_statements_sha256": "355833c228464af2db51007fec5795615283a2e0b973461468d240dfb48cfaad",
+    "hosted_version": "20261003145806",
+    "hosted_name": "sales_agent_v2_auto_outbound",
+    "version_note": "The official apply_migration connector allocated the hosted timestamp. Its stored SQL bytes match the authorized existing repository file exactly.",
+    "precheck": "inmoadmin-dev ACTIVE_HEALTHY; dependency tables and primary keys present; outbound table and migration absent before application",
+    "applied_migrations": 1,
+    "additional_sql_or_schema_changes": 0,
+    "postcheck": {
+      "rls": true,
+      "policies": 0,
+      "service_role": ["SELECT", "INSERT", "UPDATE"],
+      "service_role_delete": false,
+      "anon": [],
+      "authenticated": [],
+      "public": [],
+      "unique_constraints": ["id", "inbound_message_id", "shadow_run_id"],
+      "foreign_keys": ["inbound_message_id RESTRICT", "shadow_run_id RESTRICT"],
+      "case_kind": ["greeting_qualification", "coverage", "inventory_search", "simple_followup", "property_interest"],
+      "status": ["processing", "sent", "blocked", "failed", "superseded"],
+      "message_length": "1..1200",
+      "status_created_at_index": true,
+      "actual_DEV_service_select_insert_update": "PASS in rollback-only synthetic transaction",
+      "actual_DEV_anon_and_authenticated_read": "DENIED as expected",
+      "actual_DEV_raw_rental_requirements": "23514 from the exact case_kind constraint",
+      "actual_DEV_mapped_property_interest": "PASS",
+      "acl_transaction_fixture_rows": 3,
+      "acl_transaction_rollback": "COMPLETE",
+      "acl_transaction_residues": 0
+    }
+  },
+  "compatibility_fixes": {
+    "rental_requirements": {
+      "decision": "rental_requirements retained",
+      "journal_case_kind": "property_interest",
+      "grounding": "get_rental_requirements remains in persisted run.called_tools",
+      "constraint": "Unchanged; direct rental_requirements remains rejected with PostgreSQL 23514",
+      "regression": "Actual requirements tool, processor and intercepted sender PASS locally; actual hosted processor certification pending credential"
+    },
+    "accented_link_request": "Full-conversation regression covers Compárteme el enlace; normalization prevents it from evading the already-shared-link policy.",
+    "review_snapshot_timestamp": {
+      "actual_DEV_column": "respond_last_synced_at",
+      "incorrect_query_column_removed": "last_synced_at",
+      "schema_changes": 0
+    }
+  },
+  "local_recertification": {
+    "conversation_regressions": {"pass": 30, "total": 30},
+    "directed_sales_social": {"pass": 341, "total": 341},
+    "postgres_disposable": {"pass": 59, "total": 59, "cluster_removed": true},
+    "suite": {"pass": 2005, "total": 2008, "fail": 3, "same_inherited_failures": true},
+    "build": "PASS",
+    "diff_check": "PASS"
+  },
+  "hosted_functional_certification": {
+    "status": "NOT_EXECUTED_CREDENTIAL_PENDING",
+    "harness": "scripts/certify-sales-conversation-dev.mjs",
+    "cases_pending": ["rental context then explicit human request", "rental location and repeated links", "visit plus Plis burst", "public reference then short followup", "building name in conversation context", "Chapulco information and noncommittal visit coordination", "rental requirements", "unsafe output diagnostic and actionable review", "concurrent duplicate processor", "real DEV review query and projection"],
+    "database": "Real PostgREST pinned to inmoadmin-dev; no database mock",
+    "business_logic": "Actual branch routing capture, processor, agent tools, sender and handoff modules",
+    "intercepted_boundaries": ["OpenAI HTTP", "Respond send/history", "Auth boundary for review projection only"],
+    "customer_delivery_certified": false,
+    "real_human_attention_certified": false,
+    "fixtures_created": 0,
+    "fixture_residues": 0,
+    "cleanup_plan": "Record exact synthetic inventory before writes. Privileged DEV connector deletes only those fixture rows in dependency order, then counts residues; no new DELETE grant."
+  },
+  "production_assignment_separate": {
+    "deployment": "dpl_EXk2GkAM1oqWZYf8sXNRBZEu72ow",
+    "sha": "bc305849a73273f9b3e593527e61614a4d3ddf19",
+    "state": "READY",
+    "configuration_project_and_shared_Production": "SALES_AGENT_V2_HANDOFF_WORKFLOW_URL has no matching variable in either tab",
+    "effective_deployment_environment": "NOT_INDEPENDENTLY_OBSERVABLE_WITH_CURRENT_ACCESS",
+    "limitation": "get_deployment exposes identity/state/aliases but no env. get_project fails its connector contract. Deployment Settings/Resources do not expose the immutable environment. Current project/shared settings are not claimed as proof of deployed runtime configuration.",
+    "assignment_resolution": "NOT_CERTIFIED; conversational repair does not enable or certify automatic assignment",
+    "writes": 0,
+    "minimum_future_connection_plan": [
+      "Read exact deployed environment with authorized official access and confirm workflow URL state without exposing the URL.",
+      "Audit exact protected workflow, current Sales team/members, no message or ACK steps, current-assignee branch and Manual Assignment exit. No new Respond race laboratory.",
+      "Existing responsible must end without assignment. Only explicitly verified unassigned may enter Sales Round Robin; missing, stale or malformed state goes to manager review.",
+      "Keep live Respond reads immediately before the remote effect, consumed assignment/ACK reservations, and fail-closed uncertain outcome.",
+      "After separate production authorization only, connect that protected URL and redeploy once. Keep Social ON, Recovery OFF and SLA OFF; no historic handoff replay or contact reassignment.",
+      "Observe only new natural cases. On assignment overwrite, duplicate ACK/effect or uncertainty, remove only the protected URL and redeploy without restoring legacy."
+    ]
+  },
+  "publish_preflight": {
+    "remote_main": "bc305849a73273f9b3e593527e61614a4d3ddf19",
+    "production_branch_dashboard": "main",
+    "github_workflow_directory_on_base": "absent",
+    "local_pre_push_hook": "absent",
+    "branch_specific_vercel_deployment_enabled": false,
+    "push": "NOT_EXECUTED",
+    "pull_request": "NOT_CREATED_PENDING_FUNCTIONAL_CERTIFICATION",
+    "merge": false,
+    "deployments": 0
+  },
+  "unchanged": ["Production data", "Social flag", "Recovery", "SLA", "manual assignments", "Respond workflows", "PR161", "PR163"]
+}

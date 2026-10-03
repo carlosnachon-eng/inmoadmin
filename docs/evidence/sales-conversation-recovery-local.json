@@ -1,4 +1,6 @@
 {
+  "evidence_role": "Historical local certification before the authorized DEV baseline application",
+  "superseded_by": "sales-conversation-recovery-dev.json",
   "status": "LOCAL_CERTIFIED_WITH_INHERITED_SUITE_FAILURES_DEV_BLOCKED",
   "date_utc": "2026-10-03",
   "branch": "codex/sales-conversation-context-recovery",
