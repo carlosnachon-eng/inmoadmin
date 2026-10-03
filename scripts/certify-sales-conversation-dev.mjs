@@ -136,7 +136,8 @@ export async function certifySalesConversationDev(db,dir){
     const ref=await contact('reference');
     const linked=await step(ref,'Información de https://www.emporioinmobiliario.com.mx/propiedades/EMP-MUN7BHJX?tracking=discard','La publicación EMP-MUN7BHJX indica $1,800,000 MXN.',[{name:'search_sales_inventory',args:{zone:'otra zona'}}]);sent(linked);
     const stored=await row('social_message_routes',linked.route.routeId);
-    check('public_reference_resolved_before_sanitization',stored.source_property_id===property&&stored.sanitized_text.includes('[URL]')&&!JSON.stringify(stored).includes('tracking'));
+    const storedInbound=await row('sales_agent_v2_inbound_messages',linked.route.inboundId);
+    check('public_reference_resolved_before_sanitization',stored.source_property_id===property&&storedInbound.sanitized_text.includes('[URL]')&&!JSON.stringify([stored,storedInbound]).includes('tracking'));
     check('actual_inventory_tool_uses_origin',toolResults.at(-1).sourceConfirmed===true&&toolResults.at(-1).listings[0].publicId==='EMP-MUN7BHJX');
     sent(await step(ref,'Este','Te confirmo la información publicada.',[{name:'search_sales_inventory',args:{}}]));
 
@@ -181,9 +182,9 @@ export async function certifySalesConversationDev(db,dir){
     check('no_unexpected_network',unexpectedNetwork===0);
     check('one_sent_journal_per_transport_receipt',(await need(db.from('sales_agent_v2_auto_outbound').select('id,provider_message_id').in('respond_contact_id',inventory.contacts).eq('status','sent'))).length===deliveries.length);
     const handoffIds=(await need(db.from('sales_agent_v2_handoffs').select('id').in('respond_contact_id',inventory.contacts))).map(x=>x.id);
-    check('no_assignment_effects',(await need(db.from('social_handoff_effects').select('id').in('handoff_id',handoffIds))).length===0);
+    check('no_assignment_effects',(await need(db.from('social_handoff_effects').select('handoff_id').in('handoff_id',handoffIds))).length===0);
   }catch(error){
-    failure={case:activeCase,code:/^[A-Za-z0-9_]+$/.test(error.code||'')?error.code:null,reason:error.name==='AssertionError'?String(error.message).split('\n')[0]:'dev_harness_or_database_failure'};
+    failure={case:activeCase,code:/^[A-Za-z0-9_]+$/.test(error.code||'')?error.code:null,error_class:['AssertionError','TypeError','Error'].includes(error.name)?error.name:null,reason:error.name==='AssertionError'?String(error.message).split('\n')[0]:'dev_harness_or_database_failure'};
   }finally{
     globalThis.fetch=originalFetch;
     const report={status:failure?'FAIL':'DEV_FUNCTIONAL_PASS_CLEANUP_PENDING',project:PROJECT,tag,checks,failure,interceptedMessages:deliveries.length,syntheticModelSessions:sessions.length,unexpectedNetwork,realRespondCalls:0,realModelCalls:0,hostedFlagChanges:0,reviewAuth:'synthetic Auth boundary; real DEV profile and all review queries',cleanup:'pending_exact_fixture_inventory_via_privileged_connector'};

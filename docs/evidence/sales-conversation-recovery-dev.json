@@ -1,5 +1,5 @@
 {
-  "status": "DEV_SCHEMA_PASS_FUNCTIONAL_CREDENTIAL_PENDING",
+  "status": "DEV_FUNCTIONAL_PASS_INTERCEPTED_TRANSPORT_WITH_SUPPLEMENTAL_POSTCHECK",
   "date_utc": "2026-10-03",
   "branch": "codex/sales-conversation-context-recovery",
   "prior_local_head": "5f58a4d26e813937e0fc2bb765fca1dfaa5b5fc4",
@@ -39,13 +39,33 @@
       "acl_transaction_residues": 0
     }
   },
+  "separately_authorized_dependency_migration": {
+    "source": "supabase/migrations/202610010011_sales_agent_v2_handoff_automation_fallback.sql",
+    "project_ref": "hjfwjnejbcpmknvfpdcq",
+    "explicit_user_authorization": "Apply current repository bytes in inmoadmin-dev only, including replacement of sales_agent_v2_handoffs_reason_check.",
+    "source_sha256": "5de04a96bc073bc60330197814c7fa38ba6b2fba1246a72b8c6a864072cfcd22",
+    "hosted_statements_sha256": "5de04a96bc073bc60330197814c7fa38ba6b2fba1246a72b8c6a864072cfcd22",
+    "hosted_version": "20261003170437",
+    "hosted_name": "sales_agent_v2_handoff_automation_fallback",
+    "postcheck": "PASS",
+    "constraint_validated": true,
+    "allowed_reasons": ["appointment_intent", "reservation_intent", "negotiation_intent", "financing_intent", "specific_property_high_interest", "human_requested", "automation_fallback"],
+    "rls_before_and_after": true,
+    "policies_before_and_after": 0,
+    "service_role_before_and_after": ["SELECT", "INSERT", "UPDATE"],
+    "anon_authenticated_public_grants": [],
+    "handoff_rows_before_and_after": 0,
+    "other_migrations_applied_in_this_step": 0,
+    "production_changes": 0,
+    "functional_recertification": "PASS for actual DEV processors and intercepted transport; historical failed runs retained below. The final auxiliary effects check was completed separately using service_role, without rerunning conversations."
+  },
   "compatibility_fixes": {
     "rental_requirements": {
       "decision": "rental_requirements retained",
       "journal_case_kind": "property_interest",
       "grounding": "get_rental_requirements remains in persisted run.called_tools",
       "constraint": "Unchanged; direct rental_requirements remains rejected with PostgreSQL 23514",
-      "regression": "Actual requirements tool, processor and intercepted sender PASS locally; actual hosted processor certification pending credential"
+      "regression": "PASS locally and in real DEV: actual get_rental_requirements, processor and intercepted sender; decision remains rental_requirements, persisted journal category property_interest. Original CHECK unchanged and still rejects the unrecognized raw category."
     },
     "accented_link_request": "Full-conversation regression covers Compárteme el enlace; normalization prevents it from evading the already-shared-link policy.",
     "review_snapshot_timestamp": {
@@ -62,18 +82,125 @@
     "build": "PASS",
     "diff_check": "PASS"
   },
-  "hosted_functional_certification": {
-    "status": "NOT_EXECUTED_CREDENTIAL_PENDING",
+  "historical_attempt_missing_dependency": {
+    "status": "HISTORICAL_FAILED_ATTEMPT_CLEANED",
+    "tested_head": "4b157a09c9dd30a1adaf8b41b17646d2de9d511f",
     "harness": "scripts/certify-sales-conversation-dev.mjs",
-    "cases_pending": ["rental context then explicit human request", "rental location and repeated links", "visit plus Plis burst", "public reference then short followup", "building name in conversation context", "Chapulco information and noncommittal visit coordination", "rental requirements", "unsafe output diagnostic and actionable review", "concurrent duplicate processor", "real DEV review query and projection"],
+    "cases": [
+      {"case": "rental context then explicit human request", "result": "PASS", "coverage": "Renta and building name retained in model input; five intercepted responses; repeated explicit human request reuses one review; existing responsible unchanged; no assignment or ACK. Full operator API projection not reached."},
+      {"case": "rental location and repeated links", "result": "FAIL", "coverage": "Rental and location responses and first link alternative reach intercepted transport. Second link review insert fails with 23514; final inbound is failed, not silently certified processed."},
+      {"case": "visit plus Plis burst", "result": "NOT_RUN"},
+      {"case": "public reference then short followup", "result": "NOT_RUN"},
+      {"case": "Chapulco", "result": "NOT_RUN"},
+      {"case": "rental requirements hosted processor", "result": "NOT_RUN"},
+      {"case": "unsafe output and duplicate processor", "result": "NOT_RUN"},
+      {"case": "actual DEV operator API projection", "result": "NOT_RUN"}
+    ],
+    "failure": {
+      "code": "23514",
+      "table": "sales_agent_v2_handoffs",
+      "constraint": "sales_agent_v2_handoffs_reason_check",
+      "rejected_value": "automation_fallback",
+      "path": "processSalesInboundById -> createSalesHandoffIfNeeded(reviewReason=unresolved_reference_requires_review) -> INSERT handoff",
+      "diagnostic_basis": "Harness records SQLSTATE 23514 at the repeated-links case. Read-only inspection confirms the current reason CHECK excludes the exact value supplied by this code path; the existing repository migration that adds it is absent from DEV migration history. Harness intentionally did not retain the raw database error body.",
+      "classification": "DEV baseline compatibility failure in a real processor path; not a transport failure. No global functional PASS.",
+      "missing_migration_at_failure": "supabase/migrations/202610010011_sales_agent_v2_handoff_automation_fallback.sql",
+      "migration_sha256": "5de04a96bc073bc60330197814c7fa38ba6b2fba1246a72b8c6a864072cfcd22",
+      "disposition": "Missing dependency subsequently applied under explicit user authorization. Superseded by hosted_functional_certification; this failed attempt remains historical evidence and is not claimed as passed."
+    },
     "database": "Real PostgREST pinned to inmoadmin-dev; no database mock",
     "business_logic": "Actual branch routing capture, processor, agent tools, sender and handoff modules",
     "intercepted_boundaries": ["OpenAI HTTP", "Respond send/history", "Auth boundary for review projection only"],
     "customer_delivery_certified": false,
     "real_human_attention_certified": false,
-    "fixtures_created": 0,
-    "fixture_residues": 0,
-    "cleanup_plan": "Record exact synthetic inventory before writes. Privileged DEV connector deletes only those fixture rows in dependency order, then counts residues; no new DELETE grant."
+    "intercepted_messages": 8,
+    "synthetic_model_sessions": 9,
+    "real_Respond_calls": 0,
+    "real_model_calls": 0,
+    "unexpected_network": 0,
+    "hosted_flag_changes": 0,
+    "fixtures_created": {"contacts": 2, "property": 1, "inbound": 11, "runs": 11, "routes": 11, "events": 11, "outbound": 8, "handoffs": 1, "assignment_effects": 0},
+    "cleanup": {
+      "status": "PASS",
+      "fixture_rows_deleted": 56,
+      "scope": "Only the exact saved synthetic inventory, in one DEV transaction and dependency order; process already stopped; no trigger, RLS or permission changes.",
+      "property_dependents_before_delete": 0,
+      "fixture_residues": {"inbound": 0, "runs": 0, "outbound": 0, "handoffs": 0, "routes": 0, "events": 0, "snapshots": 0, "properties": 0},
+      "service_role_delete_granted": false,
+      "evidence_preserved": true
+    },
+    "fixture_residues": 0
+  },
+  "historical_attempt_wrong_table_check": {
+    "tested_head": "4b157a09c9dd30a1adaf8b41b17646d2de9d511f",
+    "result": "HARNESS_FAILURE_NOT_GLOBAL_PASS",
+    "cases": [
+      {"case": "rental context, building and human request", "result": "PASS", "responsible_preserved": true, "duplicate_review": false, "assignment_ACK": 0},
+      {"case": "rental location and repeated links", "result": "PASS", "alternative_sent_once": true, "review_persisted": true, "assignment_ACK": 0},
+      {"case": "visit then Plis", "result": "PASS", "visit_intent_preserved": true, "older_fragment_absorbed": true, "review_reason": "workflow_not_configured", "fragment_send": 0},
+      {"case": "public reference", "result": "PARTIAL_HARNESS_FAILURE", "sender": "sent to intercepted transport", "independent_DEV_readback": {"source_property_matches_fixture": true, "inbound_URL_sanitized": true, "tracking_absent": true}},
+      {"case": "public-reference short followup, Chapulco, requirements, unsafe output, duplicate and operator API projection", "result": "NOT_RUN"}
+    ],
+    "failure": {
+      "location": "scripts/certify-sales-conversation-dev.mjs public_reference_resolved_before_sanitization",
+      "cause": "The harness attempted stored.sanitized_text.includes on a social_message_routes row. The actual schema stores sanitized_text only in sales_agent_v2_inbound_messages.",
+      "classification": "Harness TypeError, not SQLSTATE failure. The raw exception was not retained by the original sanitizer; diagnosis follows the failing expression, actual schema and successful readback of route and inbound.",
+      "correction": "Read the actual inbound row by inboundId and validate its sanitized_text alongside the route's source_property_id. Add allowlisted error class to future harness failure reports.",
+      "functional_code_changes": 0,
+      "schema_or_permission_changes": 0
+    },
+    "intercepted_messages": 9,
+    "synthetic_model_sessions": 11,
+    "real_Respond_calls": 0,
+    "real_model_calls": 0,
+    "unexpected_network": 0,
+    "hosted_flag_changes": 0,
+    "created_rows": {"inbound": 14, "runs": 13, "outbound": 9, "handoffs": 3, "routes": 14, "events": 14, "snapshots": 4, "properties": 1, "assignment_effects": 0},
+    "cleanup": {"status": "PASS", "rows_deleted": 72, "residues": 0, "property_dependents": 0, "scope": "Exact synthetic inventory in DEV only; dependency-ordered transaction; no grants, RLS or trigger changes."},
+    "disposition": "Harness field access corrected and conversations rerun; superseded by hosted_functional_certification. This original failed attempt remains preserved."
+  },
+  "hosted_functional_certification": {
+    "status": "PASS_WITH_SUPPLEMENTAL_READ_ONLY_POSTCHECK",
+    "functional_head": "4b157a09c9dd30a1adaf8b41b17646d2de9d511f",
+    "harness": "scripts/certify-sales-conversation-dev.mjs",
+    "harness_final_sha256": "4fa81197f352402aaaea208a3b37abe6b5dcb5d455dbacd90363b6c8adc7d712",
+    "raw_result_sha256": "4a7796963cdd32682417b7147dc9834b260ad644978a8803f9d50afd9831e7f0",
+    "raw_harness_status": "FAIL",
+    "raw_harness_failure": {"code": "42703", "case": "actionable_review_projection", "cause": "Last auxiliary query selected nonexistent social_handoff_effects.id; real table uses handoff_id."},
+    "harness_passed_checks": 74,
+    "supplemental_check": {
+      "result": "PASS",
+      "name": "no_assignment_effects",
+      "method": "Read-only DO assertion inside rollback-only transaction with SET LOCAL ROLE service_role; asserts actual current_user, exactly four fixture handoffs and zero linked effects.",
+      "fixture_handoffs": 4,
+      "assignment_effects": 0,
+      "harness_correction": "Select handoff_id instead of nonexistent id. No processor or sender changes and no repeated conversation execution.",
+      "automated_end_to_end_harness_exit_pass_claimed": false
+    },
+    "cases": [
+      {"case": "Mariano-like rental, building name, explicit human request", "result": "PASS", "evidence": "Context reaches synthetic model; five actual sender calls intercepted; existing responsible preserved; repeated human request reuses review; no assignment or ACK."},
+      {"case": "Naitty-like rental location and repeated links", "result": "PASS", "evidence": "Location retained; alternative clarification sent once; second repeated link becomes one review, not another fixed CTA."},
+      {"case": "Visit request followed by Plis", "result": "PASS", "evidence": "Older fragment absorbed; visit intent retained in full context; one review with workflow_not_configured; no fragment response or assignment."},
+      {"case": "Allowed public property link then Este", "result": "PASS", "evidence": "Published catalog reference resolved before URL sanitization; tracking omitted; actual inventory tool uses verified origin; allowed responses reach intercepted sender."},
+      {"case": "Chapulco", "result": "PASS", "evidence": "Actual inventory tool finds synthetic EMP-MUN7BHJX at 1800000 MXN; informative and noncommittal visit coordination both reach intercepted sender; no fictitious booking."},
+      {"case": "Rental requirements", "result": "PASS", "evidence": "Actual grounded tool retained in called_tools; rental_requirements decision preserved; sent journal uses original valid property_interest category."},
+      {"case": "Unsafe contract signature output", "result": "PASS", "evidence": "Sender blocks, persists risky_topic and creates a review visible to the operations API; no assignment or ACK."},
+      {"case": "Concurrent duplicate and subsequent retry", "result": "PASS", "evidence": "Exactly one processor claim and one intercepted send; loser and later retry are not_claimed."},
+      {"case": "Operational review projection", "result": "PASS", "evidence": "Real DEV profile/query/projection returns all four reviews with safe reason, operational owner and link. Auth boundary and link target are synthetic; no claim of real operator attention."}
+    ],
+    "database": "Real PostgREST pinned to inmoadmin-dev, no database or business-logic mock",
+    "intercepted_boundaries": ["OpenAI HTTP with deterministic responses and real tool execution", "Respond send and history", "review Auth boundary and synthetic contact link target"],
+    "intercepted_messages": 15,
+    "synthetic_model_sessions": 18,
+    "real_Respond_calls": 0,
+    "real_model_calls": 0,
+    "unexpected_network": 0,
+    "hosted_flag_changes": 0,
+    "readback": {"processed_inbound": 20, "absorbed_skipped_inbound": 1, "sent_journals": 15, "blocked_journals": 1, "blocked_reason": "risky_topic", "reviews": 4, "assignment_effects": 0},
+    "permissions": {"auto_outbound_and_handoffs": "RLS ON, zero policies, service_role SELECT/INSERT/UPDATE only; no anon/authenticated DML; no DELETE grant", "social_handoff_effects": "RLS ON, zero policies, service_role SELECT only, no direct mutation grants; no anon/authenticated DML"},
+    "fixtures_created": {"contacts": 8, "properties": 1, "inbound": 21, "runs": 20, "outbound": 16, "handoffs": 4, "routes": 21, "events": 21, "snapshots": 8},
+    "cleanup": {"status": "PASS", "rows_deleted": 112, "residues": 0, "property_dependents": 0, "scope": "Only exact saved synthetic inventory, dependency-ordered DEV transaction after process exit; no grants or schema changes."},
+    "limitations": ["Not real Respond delivery", "Not real model quality certification", "No live operator Auth or actual human-attention certification", "No protected production workflow enabled or executed", "Harness raw FAIL is retained; final effects assertion was completed via equivalent real DEV service_role read-only postcheck"]
   },
   "production_assignment_separate": {
     "deployment": "dpl_EXk2GkAM1oqWZYf8sXNRBZEu72ow",
@@ -100,7 +227,7 @@
     "local_pre_push_hook": "absent",
     "branch_specific_vercel_deployment_enabled": false,
     "push": "NOT_EXECUTED",
-    "pull_request": "NOT_CREATED_PENDING_FUNCTIONAL_CERTIFICATION",
+    "pull_request": "AUTHORIZED_REVIEW_ONLY_PUBLICATION_PENDING",
     "merge": false,
     "deployments": 0
   },
