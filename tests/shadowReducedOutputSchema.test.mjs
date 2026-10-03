@@ -279,14 +279,14 @@ test("a previously eligible synthetic 3B response remains exactly eligible, with
   }
 });
 
-test("adapter imports stay confined to Replay, scoped DEV manual decoding and transport, without I/O", () => {
+test("adapter imports stay confined to Replay, scoped manual and OpenAI text transports, without I/O", () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   function walk(dir) {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? walk(path.join(dir, entry.name)) : [path.join(dir, entry.name)]);
   }
   for (const file of [...walk(path.join(root, "lib")), ...walk(path.join(root, "pages"))]) {
     if (!file.endsWith(".js") || file.endsWith("/reducedOutputSchema.js")) continue;
-    if (["lib/shadow/ai/anthropic.js", "lib/shadow/ai/historicalReplay.js", "lib/shadow/ai/stateMachine.js"].includes(path.relative(root, file))) continue;
+    if (["lib/shadow/ai/anthropic.js", "lib/shadow/ai/historicalReplay.js", "lib/shadow/ai/stateMachine.js", "lib/shadow/ai/openaiTextTransport.js"].includes(path.relative(root, file))) continue;
     assert.doesNotMatch(fs.readFileSync(file, "utf8"), /(?:from|import\s*\()[^\n]*reducedOutputSchema/, file);
   }
   const adapter = fs.readFileSync(new URL("../lib/shadow/ai/reducedOutputSchema.js", import.meta.url), "utf8");
@@ -296,5 +296,5 @@ test("adapter imports stay confined to Replay, scoped DEV manual decoding and tr
   assert.doesNotMatch(transport, /decodeReducedShadowAiDecision/);
   const state = fs.readFileSync(new URL("../lib/shadow/ai/stateMachine.js", import.meta.url), "utf8");
   assert.match(state, /assertManualTurnContext\(options\.manualTurnContext\); assertManualTurnDev\(env\)/);
-  assert.match(state, /if \(manual\) \{\s*manualStage = "json_parsing"/);
+  assert.match(state, /if \(manual \|\| openai\) \{\s*manualStage = "json_parsing"/);
 });

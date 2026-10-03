@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     const result = await processNextAutoRealTurn(getAdminSupabase(), { env: process.env, inputMode: "auto_real_shadow" });
     return res.status(200).json({ ok: true, ...result });
   } catch (error) {
-    console.error("[shadow-ai-real-auto]", error?.message || error);
+    console.error("[shadow-ai-real-auto]", "execution_failed_closed");
     return res.status(503).json({ ok: false, error: "Auto Shadow detenido de forma segura." });
   }
 }
