@@ -6,7 +6,7 @@ import { memoryDb } from "./helpers/socialFixtures.mjs";
 
 const originalFetch = globalThis.fetch;
 after(() => { globalThis.fetch = originalFetch; });
-const env = { SALES_AGENT_V2_HANDOFF_WORKFLOW_URL: "https://hooks.respond.io/synthetic-only", RESPOND_IO_TOKEN: "synthetic-not-a-secret" };
+const env = { SOCIAL_ROUTING_V1_ENABLED: "true", SALES_AGENT_V2_PROTECTED_ASSIGNMENT_NOT_BEFORE: new Date(Date.now()-86400000).toISOString(), SALES_AGENT_V2_HANDOFF_WORKFLOW_URL: "https://hooks.respond.io/synthetic-only", RESPOND_IO_TOKEN: "synthetic-not-a-secret" };
 function fixture() {
   const receipts = new Map(); let token = 0;
   const db = memoryDb({ gv_respond_contact_snapshots: [{ respond_contact_id: "synthetic", respond_record_active: true, metadata: { mapping_method: "current_assignee_unassigned" } }], sales_agent_v2_handoffs: [{ id: "h", social_route_id: "r", respond_contact_id: "synthetic", channel_id: "497382", status: "ready_for_advisor", reason: "appointment_intent" }] }, {
@@ -22,7 +22,10 @@ function fixture() {
     },
   });
   db.tables.sales_agent_v2_handoffs[0].inbound_message_id="inbound";
-  db.tables.sales_agent_v2_inbound_messages=[{id:"inbound",respond_contact_id:"synthetic",channel_id:"497382",social_route_id:"r",sanitized_text:"Quiero visitar la casa"}];
+  const at = new Date(Date.now()-10000).toISOString();
+  db.tables.sales_agent_v2_handoffs[0].created_at=at;
+  db.tables.sales_agent_v2_inbound_messages=[{id:"inbound",respond_contact_id:"synthetic",channel_id:"497382",social_route_id:"r",sanitized_text:"Quiero visitar la casa",occurred_at:at,created_at:at}];
+  db.tables.social_message_routes=[{id:"r",inbound_id:"inbound",respond_contact_id:"synthetic",source_channel_id:"497382",destination:"SALES",occurred_at:at,created_at:at}];
   return { db, receipts };
 }
 test("I workflow y ACK interceptados por separado: retry = una asignación y un ACK", async () => {
@@ -40,15 +43,15 @@ test("I workflow y ACK interceptados por separado: retry = una asignación y un 
 test("reserva sobrevive incertidumbre: ningún segundo workflow ni ACK", async () => {
   const { db, receipts } = fixture(); let calls = 0;
   globalThis.fetch = async (_url,options) => { if(options?.method==="GET")return{ok:true,json:async()=>({id:"synthetic",assignee:null})}; calls++; throw new Error("synthetic_transport_timeout"); };
-  await assert.rejects(dispatchSalesHandoff(db, { handoffId: "h", env }), /uncertain_manual_review/);
-  await assert.rejects(dispatchSalesHandoff(db, { handoffId: "h", env }), /uncertain_manual_review/);
+  assert.equal((await dispatchSalesHandoff(db, { handoffId: "h", env })).reason, "social_effect_uncertain_manual_review");
+  assert.equal((await dispatchSalesHandoff(db, { handoffId: "h", env })).reason, "social_effect_uncertain_manual_review");
   assert.equal(calls, 1); assert.equal(receipts.size, 1); assert.equal([...receipts.values()][0].status, "uncertain");
 });
 test("ACK fallido no redispara workflow ni segundo ACK", async () => {
   const { db } = fixture(), calls = [];
   globalThis.fetch = async (url,options) => { if(options?.method==="GET")return{ok:true,json:async()=>({id:"synthetic",assignee:null})}; const kind = url.includes("hooks.respond.io") ? "workflow" : "ack"; calls.push(kind); if (kind === "ack") throw new Error("synthetic_timeout"); return { ok: true }; };
-  await assert.rejects(dispatchSalesHandoff(db, { handoffId: "h", env }));
-  await assert.rejects(dispatchSalesHandoff(db, { handoffId: "h", env }));
+  assert.equal((await dispatchSalesHandoff(db, { handoffId: "h", env })).status, "requires_review");
+  assert.equal((await dispatchSalesHandoff(db, { handoffId: "h", env })).status, "requires_review");
   assert.deepEqual(calls, ["workflow", "ack"]);
 });
 test("receipt incierto no vuelve a ejecutar transporte", async () => {

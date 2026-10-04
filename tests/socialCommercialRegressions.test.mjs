@@ -100,11 +100,14 @@ for(const text of ["El conde","Ofrezco videos con drones para mostrar propiedade
     test(`handoff histórico inseguro no dispara workflow, ACK ni SLA: ${reason}/${text}`,async()=>{
       const {db}=fixture(text);
       db.tables.sales_agent_v2_handoffs=[{id:"handoff",social_route_id:"route",inbound_message_id:"inbound",respond_contact_id:contact,channel_id:"497382",reason,status:"assignment_requested",assignment_requested_at:at,sla_due_at:"2026-01-01",reassignment_count:2}];
-      const before=JSON.stringify(db.tables.sales_agent_v2_handoffs);
+      const before=structuredClone(db.tables.sales_agent_v2_handoffs[0]);
       assert.equal((await dispatchSalesHandoff(db,{handoffId:"handoff",env})).assignmentTriggered,false);
       assert.equal((await processSalesHandoffSla(db,{env})).status,"idle");
-      assert.equal(JSON.stringify(db.tables.sales_agent_v2_handoffs),before);
-      assert.ok(db.operations.every(o=>o.op==="select"||o.table==="read_social_route_context_v1"));
+      const {assignment_error_code,updated_at,...preserved}=db.tables.sales_agent_v2_handoffs[0];
+      assert.deepEqual(preserved,before);
+      assert.ok(assignment_error_code);assert.ok(updated_at);
+      assert.ok(db.operations.every(o=>o.op==="select"||o.table==="read_social_route_context_v1"||
+        (o.table==="sales_agent_v2_handoffs"&&o.op==="update"&&Object.keys(o.payload).every(k=>["assignment_error_code","updated_at"].includes(k)))));
     });
 test("fallback con intención real usa razón real; nunca acuña interés alto por error de automatización",async()=>{
   const {db,inbound}=fixture("Quiero visitar la casa");
