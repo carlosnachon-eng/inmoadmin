@@ -1,0 +1,120 @@
+{
+  "recorded_at": "2026-10-04T00:45:11Z",
+  "branch": "codex/sales-protected-assignment",
+  "base_sha": "ec4b675321e514169368412b8198b346b477c1cb",
+  "scope": "Guarda de dispatch Sales, pruebas interceptadas y preparación de workflow Draft. No merge, deployment ni activación.",
+  "status": {
+    "code_and_intercepted_tests": "PASS",
+    "workflow_ready_to_connect": false,
+    "activation": "BLOCKED: Respond no conserva el grafo al guardar el Draft; no publicar ni conectar.",
+    "production_variables_changed": false,
+    "database_schema_or_permissions_changed": false,
+    "real_assignments_or_messages": 0
+  },
+  "dispatch_contract": {
+    "social": "Debe ser true; OFF no permite escape legacy.",
+    "route": "Origen y ruta vigente SALES vinculados a inbound, contacto y canal. La ruta vigente incluye HUMAN_REVIEW y usa occurred_at, created_at, id DESC. No reutiliza el selector histórico de continuidad como permiso de asignación.",
+    "lane_changes": "Cualquier ruta no SALES desde el origen bloquea ese handoff, aunque después vuelva a SALES. Receipts pending/review_required también bloquean.",
+    "intent": "Reutiliza el clasificador de handoff y contexto Sales existente, exigiendo razón coincidente. Conserva humano/visita + fragmentos del burst de 30 segundos, después del último envío; sólo intención posterior al corte.",
+    "existing_responsible": "Cualquier responsable en snapshot o caso local, o assignee actual en Respond, impide nueva asignación y ACK. La revisión existente muestra responsable actual/seguimiento de Gerencia de Ventas y enlace Inbox; no acredita atención humana realizada.",
+    "remote_state": "GET actual del mismo contacto con assignee explícitamente null; ausente, malformado, bloqueado, error o timeout no significa sin responsable.",
+    "revalidation": "Releer guarda local y estado pendiente del handoff antes y después del GET inmediatamente anterior al POST, dentro de la reserva idempotente. Lo mismo antes del ACK.",
+    "reservation": "Reutiliza reserve_social_effect_v1/finish_social_effect_v1. Reserva owned + reserved + token obligatoria. Rechaza otros handoffs abiertos del contacto y efectos reserved/uncertain de cualquier handoff Sales suyo.",
+    "uncertainty": "Timeout/error de transporte conserva reserva incierta; no se libera ni reintenta a ciegas. Fallos de verificación persisten sólo razón allowlisted para revisión.",
+    "http_200": "Sólo assignment_requested, assignmentConfirmed=false. No acredita asesor asignado.",
+    "ack": "Sólo después del efecto assignment completado y otra revalidación. Informa solicitud enviada y asignación pendiente de confirmar; nunca te voy a asignar ni cita confirmada. Si aparece responsable, cero ACK nuevo.",
+    "timeouts_ms": { "live_get": 5000, "assignment_post": 10000, "ack_post": 10000 },
+    "sla": "No crear sla_due_at mientras SLA está OFF. Worker SLA y su flag no se modifican."
+  },
+  "activation_cut": {
+    "new_configuration_key": "SALES_AGENT_V2_PROTECTED_ASSIGNMENT_NOT_BEFORE",
+    "format": "UTC ISO-8601 con Z; obligatorio. Ausente, inválido o aún futuro bloquea.",
+    "strictly_after_cut_required": [
+      "handoff.created_at",
+      "inbound original: occurred_at y created_at",
+      "ruta original: occurred_at y created_at",
+      "inbound vigente: occurred_at y created_at",
+      "intención usada dentro del contexto"
+    ],
+    "historical_behavior": "No batch, replay, reset ni drenaje que despache históricos. Un nuevo Plis no renueva una intención anterior al corte. Timestamps iguales al corte quedan excluidos.",
+    "deliberate_fail_closed": "Otros handoffs abiertos, más de 100 handoffs del contacto, reservas inciertas o receipts pendientes requieren revisión; esta fase no reconcilia ni borra esos estados."
+  },
+  "tests": {
+    "environment": "Local, Node oficial 24.13.0, sin credenciales reales. Procesamiento JS de guardas/dispatch/reservas real; DB de fixtures en memoria con protocolo RPC y fetch interceptado. No es certificación de entrega Respond ni nueva certificación PostgreSQL/DEV.",
+    "focused": { "command": "node --test tests/social*.test.mjs tests/sales*.test.mjs", "passed": 517, "failed": 0, "new_protected_assignment_tests": 46 },
+    "full_suite": { "command": "node --test tests/*.test.mjs", "tests": 2184, "passed": 2181, "failed": 3 },
+    "inherited_failures": [
+      { "file": "tests/respondWebhookMultiHmac.test.mjs", "reason": "Fixture importado desde data URL deja import relativo sin resolver; ERR_UNSUPPORTED_RESOLVE_REQUEST." },
+      { "file": "tests/shadowAiP3.test.mjs", "reason": "Conteo de herramientas: 19 actual frente a 18 esperado." },
+      { "file": "tests/shadowReducedOutputSchema.test.mjs", "reason": "Métrica de schema: 4383 actual frente a 4355 esperado." }
+    ],
+    "baseline_comparison": "Los mismos tres fallos se reprodujeron en un archivo temporal del SHA base ec4b675, sin cambios del parche; 182/185 PASS en esos tres archivos.",
+    "build": "PASS: Next 14.1.0, compilación, tipos/lint y 79 páginas. Entorno vacío con valores Supabase sintéticos. Advertencias de descarga de fuentes Google, no error de build.",
+    "initial_runtime_limitation": "El Node embebido de ChatGPT rechazó el dylib de Next SWC por firma de biblioteca. Se repitió con Node oficial verificado por SHA-256; desaparecieron las seis fallas de carga y el build pasó.",
+    "diff_check": "PASS",
+    "local_log_sha256": {
+      "focused": "a45010eeb7c1750018e7b54ac1a21938eb7bd938cb03888919e267581e654990",
+      "full_suite": "911f1523c34769915efa32f9f93eb501c54c3d65e58417c96a67905a198e73ba",
+      "baseline_three": "ddc64622b978d2b309fa40c256558e2f031468e1bf923e30a95bb6dbbbad6d08",
+      "build": "4e517afd1a0022687db1c37205876afa09f17f497de5f8a56b1ae2f56037a0ca"
+    },
+    "matrix": [
+      "SALES vigente + intención nueva + local/live unassigned: un POST de workflow, ACK idempotente; HTTP200 no es assigned.",
+      "Responsable en snapshot/caso/live: cero asignaciones y ACK; razón visible.",
+      "OWNER/LEGAL/ADMINISTRATION/EXISTING_CLIENT/HUMAN_REVIEW/UNKNOWN antes del dispatch o durante GET: bloqueo.",
+      "Social OFF, ruta ausente/de otro contacto/canal, snapshot/live ambiguos: bloqueo.",
+      "Receipts pendientes, handoff cerrado, automation_fallback, otro handoff abierto: bloqueo.",
+      "Corte ausente/inválido/futuro/igual, handoff antiguo, inbound ocurrido o persistido antes: bloqueo.",
+      "Humano/visita + Plis conserva intención; intención pre-corte + Plis nuevo no autoriza.",
+      "Cuatro entregas concurrentes del mismo handoff y retry: un efecto assignment y un ACK como máximo.",
+      "Reserva malformada, efecto previo incierto incluso de handoff cerrado: bloqueo.",
+      "Timeout/resultado incierto: revisión persistida, sin otro POST ni secretos del proveedor.",
+      "Asignación manual durante el último GET o tras webhook: responsable conservado, sin ACK de nueva asignación.",
+      "Handoff atendido durante el último GET: estado releído, sin dispatch ni reapertura.",
+      "Error DB: diagnóstico allowlisted, revisión, sin fallback legacy."
+    ],
+    "fixture_cleanup": "Sólo fixtures en memoria; cero fixtures o efectos creados en DEV/Producción/Respond. El workflow Draft es un recurso deliberado, no un residuo de prueba."
+  },
+  "respond_workflow": {
+    "name": "Sales — Asignación protegida — v1",
+    "workspace_id": "411886",
+    "workflow_id": "1791072224994092",
+    "status": "Draft incompleto; NO listo",
+    "verified_persisted": ["Nombre y descripción", "Exit por Manual Assignment activado", "Permitir detener desde Inbox activado"],
+    "graph_persistence": "Save devolvió error genérico Object en consola. Después de recargar: Select a trigger y Steps 0/100. Reproducido con grafo completo y trigger aislado. No se conoce la causa; no atribuir a permisos o plan sin evidencia.",
+    "desired_graph_not_certified": [
+      "Incoming Webhook exclusivo, JSON key $.contactId -> Contact ID",
+      "Branch explícito Contact Field / Assignee / is equal to / Unassigned",
+      "Sólo esa rama -> Assign To / Ventas 42780 / Round Robin",
+      "Else -> terminar sin efecto (responsable existente o estado no comprobable)",
+      "Sin mensajes/ACK/AI Agents ni encadenamiento; salidas Manual Assignment e Inbox"
+    ],
+    "team": "Ventas 42780, seis miembros observados en preflight; no se modificaron membresías. Revalidar al preparar activación.",
+    "incoming_webhook_secret": "No registrado en evidencia ni conectado a Inmoadmin; persistencia del trigger no acreditada.",
+    "not_performed": ["Publish", "Test", "Dispatch", "Cambios a workflows existentes", "Asignaciones", "Mensajes"],
+    "blocker_next_step": "Revisar guardado del mismo Draft desde sesión autorizada/soporte Respond, sin Publish/Test. Recargar y verificar grafo, condiciones, salidas y ausencia de mensajes antes de considerarlo listo."
+  },
+  "connection_plan_not_executed": [
+    "Resolver persistencia del Draft y verificarlo por lectura tras recarga. Mantener separados los workflows inseguros existentes; inventariar competidores y no inferir ausencia sólo de listar workflows.",
+    "Revisión y autorización separada para merge/deploy de la guarda, publicación del workflow y conexión. Ninguna de estas operaciones se ejecuta en esta fase.",
+    "Verificar snapshot local concluyente, lectura API actual, rutas SALES y responsables actuales. OWNER/Legal/Admin/UNKNOWN y reviews generales no adquieren permiso de asignación Sales.",
+    "Publicar únicamente el nuevo workflow cuando se autorice. Configurar SALES_AGENT_V2_HANDOFF_WORKFLOW_URL con su Incoming Webhook exclusivo, nunca la URL previa. No guardar esa URL en git/evidencia.",
+    "Configurar SALES_AGENT_V2_PROTECTED_ASSIGNMENT_NOT_BEFORE=T0 UTC explícito, futuro respecto al despliegue previsto. Hasta T0 todo dispatch falla cerrado. Exigir READY del SHA revisado antes de T0; si se pierde la ventana, abortar sin despachar y definir nuevo corte bajo autorización.",
+    "Conservar SOCIAL_ROUTING_V1_ENABLED=true, SALES_AGENT_V2_RECOVERY_ENABLED=false, SALES_AGENT_V2_HANDOFF_SLA_ENABLED=false y Approved Materials OFF. No tocar #161/#163.",
+    "Tras T0 observar exclusivamente casos naturales nuevos. Una reserva/solicitud no prueba asignación: corroborar assignee actual/evento de Respond y un único efecto. Nada de procesar históricos ni resetear estados."
+  ],
+  "rollback_plan_not_executed": [
+    "Retirar SALES_AGENT_V2_HANDOFF_WORKFLOW_URL y redeployar el mismo SHA revisado, preservando Social ON, Recovery/SLA OFF, esquema y evidencia.",
+    "Un redeploy no cancela requests/workflows ya iniciados. El plan de activación debe autorizar explícitamente detener el nuevo workflow y, si procede, sus ejecuciones desde Inbox, sin reasignar contactos.",
+    "Conservar reservas uncertain/completed y revisiones; no resetear, reenviar ni restaurar workflow legacy. Revalidar responsables antes de cualquier acción manual futura."
+  ],
+  "residual_limits": [
+    "No existe transacción atómica entre SQL, GET de Respond y Assign To. La doble lectura reduce la ventana y Manual Assignment debe cerrar la ejecución remota; no demuestra atomicidad de todos los intercalados del proveedor.",
+    "La salida Manual Assignment no acredita detener asignaciones por API u otros workflows; competidores requieren preflight antes de activar.",
+    "Idempotencia de los mismos handoff/fase usa RPC existente; las pruebas de esta fase interceptan DB/transporte y no certifican efectos remotos reales.",
+    "No se amplían permisos: la revisión permanece en la vista existente para admin/gerente con Inbox; no acredita que alguien la haya atendido.",
+    "Si la escritura del diagnóstico también falla por indisponibilidad DB, no puede garantizarse persistencia de la revisión; no se oculta ese error ni se ejecuta fallback.",
+    "El workflow no está listo: el grafo no persistió. Activación bloqueada independientemente del PASS de código."
+  ],
+  "publish_safety": "vercel.json deshabilita deployments para codex/sales-protected-assignment. No existe .github/workflows en esta base. Publicación del PR sin merge ni deployment solicitado."
+}

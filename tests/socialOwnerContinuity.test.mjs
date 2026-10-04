@@ -136,7 +136,9 @@ test("responsable existente bloquea creación, fallback, dispatch y SLA aun si r
   db.tables.sales_agent_v2_handoffs = [{ ...inbound, id: "h", status: "assigned", assignment_requested_at: day1, sla_due_at: day1 }];
   assert.equal((await dispatchSalesHandoff(db, { handoffId: "h", env })).assignmentTriggered, false);
   assert.equal((await processSalesHandoffSla(db, { env })).status, "idle");
-  assert.ok(db.operations.every(o => o.op === "select" || o.table === "read_social_route_context_v1"));
+  assert.equal(db.tables.sales_agent_v2_handoffs[0].status,"assigned");
+  assert.ok(db.operations.every(o => o.op === "select" || o.table === "read_social_route_context_v1" ||
+    (o.table==="sales_agent_v2_handoffs"&&o.op==="update"&&Object.keys(o.payload).every(k=>["assignment_error_code","updated_at"].includes(k)))));
 });
 test("fecha no sustentada fuera del acuse de continuidad falla cerrada antes de enviar", async () => {
   const {db,capture}=fixture(); const r=await capture("Soy propietaria, quiero vender mi casa",day1);

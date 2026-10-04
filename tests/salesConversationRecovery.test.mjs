@@ -14,12 +14,12 @@ import { captureSocialRoute } from "../lib/social/routing.js";
 
 const originalFetch=globalThis.fetch;
 after(()=>{globalThis.fetch=originalFetch;});
-const env={SOCIAL_ROUTING_V1_ENABLED:"true",SALES_AGENT_V2_AUTO_OUTBOUND_ENABLED:"true",VERCEL_ENV:"production",SUPABASE_ENVIRONMENT:"production",RESPOND_IO_TOKEN:"synthetic-only"};
+const env={SOCIAL_ROUTING_V1_ENABLED:"true",SALES_AGENT_V2_AUTO_OUTBOUND_ENABLED:"true",VERCEL_ENV:"production",SUPABASE_ENVIRONMENT:"production",RESPOND_IO_TOKEN:"synthetic-only",SALES_AGENT_V2_PROTECTED_ASSIGNMENT_NOT_BEFORE:new Date(Date.now()-86400000).toISOString()};
 const start=Date.now()-120000;
 const at=n=>new Date(start+n*1000).toISOString();
 function fixture(messages){
   const inbound=messages.map((text,i)=>({id:`i${i}`,respond_contact_id:"synthetic-sales-recovery",channel_id:"497382",social_route_id:`r${i}`,occurred_at:at(i*10),created_at:at(i*10),sanitized_text:text,status:"captured"}));
-  const db=memoryDb({sales_agent_v2_inbound_messages:inbound,gv_respond_contact_snapshots:[{respond_contact_id:inbound[0].respond_contact_id,respond_record_active:true,metadata:{mapping_method:"current_assignee_unassigned"}}],social_message_routes:inbound.map(row=>({id:row.social_route_id,inbound_id:row.id,respond_contact_id:row.respond_contact_id,source_channel_id:row.channel_id,destination:"SALES",occurred_at:row.occurred_at}))});
+  const db=memoryDb({sales_agent_v2_inbound_messages:inbound,gv_respond_contact_snapshots:[{respond_contact_id:inbound[0].respond_contact_id,respond_record_active:true,metadata:{mapping_method:"current_assignee_unassigned"}}],social_message_routes:inbound.map(row=>({id:row.social_route_id,inbound_id:row.id,respond_contact_id:row.respond_contact_id,source_channel_id:row.channel_id,destination:"SALES",occurred_at:row.occurred_at,created_at:row.created_at}))});
   return {db,inbound};
 }
 async function processor(db,{output="¿Qué zona prefieres?",tools=[],respondMessages=[],fulfill=async()=>true}={}){
@@ -239,7 +239,7 @@ test("manual assignment after first live read prevents workflow and ACK; uncerta
     if(name==="read_social_route_context_v1")return readRpc(name,args);
     if(name==="reserve_social_effect_v1"){
       if(reserved)return{data:{owned:false,status:"uncertain"}};
-      reserved=true;return{data:{owned:true,token:"synthetic-reservation"}};
+      reserved=true;return{data:{owned:true,status:"reserved",token:"synthetic-reservation"}};
     }
     assert.equal(name,"finish_social_effect_v1");return{};
   };
@@ -249,7 +249,7 @@ test("manual assignment after first live read prevents workflow and ACK; uncerta
     reads++;return{ok:true,json:async()=>({id:inbound[0].respond_contact_id,assignee:reads===1?null:{id:"synthetic-human"}})};
   };
   const opts={handoffId:h.handoffId,env:{...env,SALES_AGENT_V2_HANDOFF_WORKFLOW_URL:"https://hooks.respond.io/synthetic"}};
-  await assert.rejects(handoffs.dispatchSalesHandoff(db,opts),/uncertain_manual_review/);
+  assert.equal((await handoffs.dispatchSalesHandoff(db,opts)).reason,"social_effect_uncertain_manual_review");
   assert.equal((await handoffs.dispatchSalesHandoff(db,opts)).reason,"existing_responsible_preserved");
   assert.equal(writes,0);assert.equal(reserved,true);
 });
