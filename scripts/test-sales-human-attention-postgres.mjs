@@ -57,13 +57,63 @@ try{
   await db.query("grant select,insert,update on all tables in schema public to service_role");
   await db.query(await file("20261001134913_social_routing_v1.sql"));
   await db.query(await file("20261003201853_social_capture_failsafe.sql"));
-  await db.query(await file("20261005211304_respond_human_attention_pause.sql"));
+  // Disposable loopback cluster only. Never alter remote project defaults.
+  await db.query(`alter default privileges for role postgres in schema public grant all on tables to anon,authenticated,service_role;
+    alter default privileges for role postgres in schema public grant execute on functions to anon,authenticated,service_role;`);
+  const defaults=async()=>(await db.query("select defaclrole,defaclnamespace,defaclobjtype,defaclacl::text from pg_default_acl order by 1,2,3")).rows;
+  const unrelated=async()=>(await db.query(`select 'table' kind,oid,relacl::text acl from pg_class where relnamespace='public'::regnamespace and relname<>'respond_ai_resumptions'
+    union all select 'function',oid,proacl::text from pg_proc where pronamespace='public'::regnamespace
+    and proname not in ('read_respond_human_pause_v1','pause_sales_on_respond_human_v1','begin_sales_human_guarded_send_v1','resume_respond_ai_v1') order by 1,2`)).rows;
+  const priorDefaults=await defaults(),priorUnrelated=await unrelated();
+  const migration=await file("20261005211304_respond_human_attention_pause.sql");
+  const repair=await file("20261005231221_respond_human_attention_acl.sql");
+  const postcheck=()=>db.query(readPostcheck);
+  const readPostcheck=await readFile(new URL("../supabase/checks/respond_human_attention_pause.sql",import.meta.url),"utf8");
+  await test("regression control: production-like defaults reproduce and repair the old additive-GRANT defect",async()=>{
+    // Same function bodies, but omit the new service_role revocations. Roll back
+    // this local negative control; no invalid objects survive into certification.
+    const vulnerable=migration.replace(/, authenticated, service_role;/g,", authenticated;")
+      .replace(/,authenticated,service_role;/g,",authenticated;")
+      .replace(/^begin;/," ").replace(/commit;\s*$/," ");
+    assert.notEqual(vulnerable,migration);
+    await db.query("begin");
+    try{
+      await db.query(vulnerable);
+      const broken=await postcheck();
+      assert.equal(broken[0].rows[0].audit_immutable_for_service,false);
+      assert.equal(broken[0].rows[0].exact_table_acl,false);
+      assert.equal(broken[1].rows.find(r=>r.proname==='resume_respond_ai_v1').service_internal_only,false);
+      await db.query(repair.replace(/^begin;/," ").replace(/commit;\s*$/," "));
+      for(const result of await postcheck())for(const r of result.rows)for(const value of Object.values(r))if(typeof value==="boolean")assert.equal(value,true);
+    }finally{await db.query("rollback");}
+  });
+  await db.query(migration);
+  await test("ACL repair is idempotent; project defaults and unrelated object grants are unchanged",async()=>{
+    const first=await postcheck();
+    await db.query(repair);await db.query(repair);
+    assert.deepEqual((await postcheck()).map(r=>r.rows),first.map(r=>r.rows));
+    assert.deepEqual(await defaults(),priorDefaults);
+    // The only added index belongs to #168, so exclude its ACL-less catalog row.
+    assert.deepEqual((await unrelated()).filter(r=>priorUnrelated.some(p=>p.kind===r.kind&&p.oid===r.oid)),priorUnrelated);
+  });
   await test("catalog postcheck: RLS/ACL, four RPCs, trigger and index",async()=>{
     const checks=await db.query(await readFile(new URL("../supabase/checks/respond_human_attention_pause.sql",import.meta.url),"utf8"));
     assert.deepEqual(checks.map(r=>r.rowCount),[1,4,1,1]);
     for(const result of checks)for(const r of result.rows)for(const value of Object.values(r))if(typeof value==="boolean")assert.equal(value,true);
   });
   const service=await connect("service_role"),other=await connect("service_role"),auth=await connect("authenticated"),anon=await connect("anon");
+  await test("effective permissions: service read only; anon/auth table denied; exact function role boundary",async()=>{
+    const statements=["insert into respond_ai_resumptions(human_event_id,respond_contact_id,episode_key,resumed_by) values('synthetic','synthetic','initial',gen_random_uuid())",
+      "update respond_ai_resumptions set episode_key='synthetic' where false","delete from respond_ai_resumptions where false","truncate respond_ai_resumptions"];
+    for(const c of [service,anon,auth])for(const sql of statements)await assert.rejects(c.query(sql),e=>e.code==="42501");
+    for(const c of [anon,auth])await assert.rejects(c.query("select * from respond_ai_resumptions"),e=>e.code==="42501");
+    await service.query("select * from respond_ai_resumptions");
+    for(const c of [anon,auth])for(const sql of ["select read_respond_human_pause_v1('synthetic',now())","select begin_sales_human_guarded_send_v1(gen_random_uuid())","select pause_sales_on_respond_human_v1()"])
+      await assert.rejects(c.query(sql),e=>e.code==="42501");
+    for(const c of [anon,service])await assert.rejects(c.query("select resume_respond_ai_v1('synthetic','initial','synthetic')"),e=>e.code==="42501");
+    assert.equal((await service.query("select read_respond_human_pause_v1('synthetic',now()) result")).rows[0].result.blocked,false);
+    assert.equal((await service.query("select begin_sales_human_guarded_send_v1(gen_random_uuid()) result")).rows[0].result.allowed,false);
+  });
   const admin=localPgAdapter(service);
   const operator=randomUUID(),advisor=randomUUID();
   await db.query("insert into profiles values($1,'admin',true),($2,'asesor',true)",[operator,advisor]);
@@ -196,7 +246,15 @@ try{
     assert.equal((await beginHumanGuardedSalesSend(admin,id)).allowed,false);
     assert.equal((await readHumanAttention({rpc:async()=>({data:null,error:{code:"unavailable"}})},p.inbound)).blocked,true);
   });
-  console.log(JSON.stringify({result:"PASS",checks:checks.length,tests:checks,modelFixtures:inputs.length,interceptedSends:sends.length,externalCalls:0,realRespondDelivery:"NOT_TESTED",productionTouched:false},null,2));
+  await test("ACL-only repair preserves existing audit rows and function bodies",async()=>{
+    const audit=(await db.query("select * from respond_ai_resumptions order by human_event_id")).rows;assert.ok(audit.length>0);
+    const definitions=async()=>(await db.query("select proname,pg_get_functiondef(oid) definition from pg_proc where pronamespace='public'::regnamespace and proname in ('read_respond_human_pause_v1','pause_sales_on_respond_human_v1','begin_sales_human_guarded_send_v1','resume_respond_ai_v1') order by proname")).rows;
+    const before=await definitions();
+    await db.query(repair);
+    assert.deepEqual((await db.query("select * from respond_ai_resumptions order by human_event_id")).rows,audit);
+    assert.deepEqual(await definitions(),before);assert.deepEqual(await defaults(),priorDefaults);
+  });
+  console.log(JSON.stringify({result:"PASS",checks:checks.length,tests:checks,productionLikeDefaults:true,projectDefaultsUnchanged:true,modelFixtures:inputs.length,interceptedSends:sends.length,externalCalls:0,realRespondDelivery:"NOT_TESTED",productionTouched:false},null,2));
 }finally{
   globalThis.fetch=originalFetch;
   for(const c of clients){try{await c.query("rollback");}catch{}try{await c.end();}catch{}}

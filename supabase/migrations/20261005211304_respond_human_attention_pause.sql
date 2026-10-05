@@ -14,8 +14,10 @@ create table public.respond_ai_resumptions (
   resumed_at timestamptz not null default clock_timestamp()
 );
 alter table public.respond_ai_resumptions enable row level security;
-revoke all on public.respond_ai_resumptions from public, anon, authenticated;
-grant select, insert on public.respond_ai_resumptions to service_role;
+-- Reset object grants, including grants inherited from the creator's defaults.
+-- Only the authenticated SECURITY DEFINER return RPC inserts audit records.
+revoke all on public.respond_ai_resumptions from public, anon, authenticated, service_role;
+grant select on public.respond_ai_resumptions to service_role;
 create index respond_human_attention_events_idx on public.gv_respond_webhook_events
   (respond_contact_id, received_at desc, event_id desc)
   where event_type = 'conversation.closed' or (event_type = 'message.sent' and payload_meta->>'sender_source' = 'user');
@@ -116,7 +118,7 @@ end $$;
 
 revoke all on function public.read_respond_human_pause_v1(text,timestamptz),
  public.pause_sales_on_respond_human_v1(), public.begin_sales_human_guarded_send_v1(uuid),
- public.resume_respond_ai_v1(text,text,text) from public,anon,authenticated;
+ public.resume_respond_ai_v1(text,text,text) from public,anon,authenticated,service_role;
 grant execute on function public.read_respond_human_pause_v1(text,timestamptz),
  public.pause_sales_on_respond_human_v1(), public.begin_sales_human_guarded_send_v1(uuid) to service_role;
 grant execute on function public.resume_respond_ai_v1(text,text,text) to authenticated;

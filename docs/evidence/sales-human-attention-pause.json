@@ -1,4 +1,6 @@
 {
+  "historicalAtHead": "f0f29eba050804b4c4c5985fae01ae2b877d1fdc",
+  "supersededAclAndDevEvidence": "docs/evidence/respond-human-attention-acl-dev.json",
   "scope": "Persistent human attention pause for Respond conversation episodes; local and intercepted certification only",
   "date": "2026-10-05",
   "baseMain": "ec4b675321e514169368412b8198b346b477c1cb",
