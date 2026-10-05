@@ -8,6 +8,10 @@ export function memoryDb(seed = {}, rpc = {}) {
     async rpc(name, args) {
       operations.push({ table: name, op: "rpc", args });
       if (rpc[name]) return rpc[name](args);
+      // Default fixtures have no human events. Pause/locking semantics are
+      // certified separately against the real PostgreSQL RPCs, not this fake.
+      if (name === "read_respond_human_pause_v1") return {data:{blocked:false},error:null};
+      if (name === "begin_sales_human_guarded_send_v1") return {data:{allowed:true},error:null};
       if (name === "read_social_route_context_v1") {
         const rows = (tables.social_message_routes || []).filter(r => r.respond_contact_id === args.p_contact_id
           && r.source_channel_id === args.p_channel_id && r.destination !== "HUMAN_REVIEW")

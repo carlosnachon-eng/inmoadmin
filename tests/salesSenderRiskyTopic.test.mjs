@@ -134,7 +134,7 @@ for (const socialEnabled of ["true", "false"]) test(`informational availability 
   assert.deepEqual(db.tables.social_message_routes, routes);
   assert.deepEqual(db.tables.gv_respond_contact_snapshots, assignment);
   assert.deepEqual(db.tables.sales_agent_v2_handoffs, []);
-  assert.ok(db.operations.filter(op => op.op !== "select").every(op => op.table === "sales_agent_v2_auto_outbound" || (op.op === "rpc" && op.table === "read_social_route_context_v1")));
+  assert.ok(db.operations.filter(op => op.op !== "select").every(op => op.table === "sales_agent_v2_auto_outbound" || (op.op === "rpc" && ["read_social_route_context_v1","read_respond_human_pause_v1","begin_sales_human_guarded_send_v1"].includes(op.table))));
 });
 
 test("actual sender does not reach transport for signature/contract proposals", async t => {

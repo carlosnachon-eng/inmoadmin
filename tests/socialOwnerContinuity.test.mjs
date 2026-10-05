@@ -171,7 +171,7 @@ test("watchdog no envía resultado Sales viejo de una conversación Owner", asyn
   const result = await processSalesAutoOutboundRun(db, "old", { env: { ...env, SALES_AGENT_V2_AUTO_OUTBOUND_ENABLED: "true", VERCEL_ENV: "production", SUPABASE_ENVIRONMENT: "production" } });
   assert.equal(result.reason, "owner_continuity_no_sales_outbound");
   assert.equal(db.tables.sales_agent_v2_auto_outbound[0].status,"blocked");
-  assert.ok(db.operations.slice(beforeOperations).filter(o=>o.op!=="select"&&o.table!=="read_social_route_context_v1").every(o=>o.table==="sales_agent_v2_auto_outbound"));
+  assert.ok(db.operations.slice(beforeOperations).filter(o=>o.op!=="select"&&!['read_social_route_context_v1','read_respond_human_pause_v1'].includes(o.table)).every(o=>o.table==="sales_agent_v2_auto_outbound"));
 });
 test("cita existente evita releer historia o crear cita; relativa nueva se ancla una sola vez", async () => {
   const module = await importWithStubs(new URL("../lib/agentsV2/respondAppointmentSync.js", import.meta.url), {
