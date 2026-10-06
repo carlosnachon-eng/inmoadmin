@@ -19,6 +19,9 @@ const runtime=process.env.SOCIAL_LOCAL_PG_RUNTIME;
 if(!runtime)throw Error("SOCIAL_LOCAL_PG_RUNTIME required (local pg/embedded-postgres)");
 const {default:EmbeddedPostgres}=await import(pathToFileURL(resolve(runtime,"node_modules/embedded-postgres/dist/index.js")));
 const {default:pg}=await import(pathToFileURL(resolve(runtime,"node_modules/pg/lib/index.js")));
+// Match PostgREST's lossless timestamps: JS Date truncates microseconds and can
+// make a strict created_at > cutoff query incorrectly find the input itself.
+pg.types.setTypeParser(1184,value=>value.replace(' ','T').replace(/([+-]\d{2})$/,'$1:00'));
 const directory=await mkdtemp(join(tmpdir(),"human-attention-pg-"));
 const socket=net.createServer();await new Promise(ok=>socket.listen(0,"127.0.0.1",ok));const port=socket.address().port;await new Promise(ok=>socket.close(ok));
 const cluster=new EmbeddedPostgres({databaseDir:join(directory,"data"),user:"postgres",password:"local-synthetic-only",port,persistent:false,
@@ -257,7 +260,10 @@ try{
   });
   await db.query(await file("20261006033141_respond_commercial_queue.sql"));
   const queue=await certifyCommercialQueue({db,service,other});
-  console.log(JSON.stringify({result:"PASS",queue,checks:checks.length,tests:checks,productionLikeDefaults:true,projectDefaultsUnchanged:true,modelFixtures:inputs.length,interceptedSends:sends.length,externalCalls:0,realRespondDelivery:"NOT_TESTED",productionTouched:false},null,2));
+  console.log(JSON.stringify({result:queue.result,queue,checks:checks.length,tests:checks,productionLikeDefaults:true,projectDefaultsUnchanged:true,modelFixtures:inputs.length,interceptedSends:sends.length,externalCalls:0,realRespondDelivery:"NOT_TESTED",productionTouched:false},null,2));
+  // Do not turn the newly-required automatic model-failure recovery into a
+  // green certification merely because its fail-closed limitation is known.
+  if(queue.recoveryGaps.length)throw Error('commercial_queue_certification_blocked_scenario_5');
 }finally{
   globalThis.fetch=originalFetch;
   for(const c of clients){try{await c.query("rollback");}catch{}try{await c.end();}catch{}}

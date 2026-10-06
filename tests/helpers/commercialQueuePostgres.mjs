@@ -15,8 +15,9 @@ import * as outbound from "../../lib/agentsV2/salesAutoOutbound.js";
 export async function certifyCommercialQueue({ db, service, other, saveManifest = async()=>{} }) {
   const prefix = "synthetic-q170-" + randomUUID();
   await saveManifest({ prefix });
-  const checks=[], timings=[], sends=[], models=[];
+  const checks=[], timings=[], sends=[], models=[], latency=[], recoveryGaps=[];
   let hook=async()=>{};
+  let sendHook=async()=>{};
   const env={SOCIAL_ROUTING_V1_ENABLED:"true",SALES_AGENT_V2_AUTO_OUTBOUND_ENABLED:"true",
     SALES_AGENT_V2_AUTO_SHADOW_ENABLED:"true",RESPOND_IO_TOKEN:"synthetic-intercepted-only",
     SUPABASE_ENVIRONMENT:"production",VERCEL_ENV:"production"};
@@ -26,6 +27,7 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
     assert.ok(String(url).startsWith("https://api.respond.io/v2/contact/id:"+prefix),"nonfixture network forbidden");
     assert.ok(String(url).endsWith("/message"));assert.equal(options.method,"POST");
     sends.push({url,body:JSON.parse(options.body)});
+    await sendHook();
     return {ok:true,json:async()=>({messageId:"intercepted-"+randomUUID()})};
   };
   const output="¿Cuál es tu presupuesto para el departamento en renta?";
@@ -50,6 +52,9 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
       fulfillLegal:()=>assert.fail(),legalOutput:async()=>output},"./legalHandoff":{createAndDispatchLegalHandoff:()=>assert.fail()},
   });
   const processors={SALES:sales.processSalesInboundById,OWNER:owner.processOwnerInboundById,LEGAL:legal.processLegalInboundById};
+  // Most scenarios skip wall-clock debounce only; the latency scenario below
+  // uses the real 4-second debounce and a deliberately slow intercepted model.
+  const work=(client=admin,options={})=>processCommercialQueueOne(client,{env,processors,sleep:async()=>{},...options});
   const cases={SALES:"Busco departamento en renta",OWNER:"Soy propietario, quiero vender mi casa",LEGAL:"Qué incluye la póliza jurídica"};
   const check=async(label,fn)=>{await fn();checks.push(label);};
   const fixture=(destination="SALES",channel="497382",contact=prefix+"-"+randomUUID(),at=new Date().toISOString())=>{
@@ -106,17 +111,22 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
     await check("atomic ACK and crash after 200 recovered by fresh worker",async()=>{
       const f=fixture();const {res,ms}=await receive(f);assert.equal(res.statusCode,200);assert.ok(ms<5000);timings.push(ms);
       assert.equal(await route(f),undefined);assert.equal(models.length,0);assert.equal(sends.length,0);
-      assert.equal((await processCommercialQueueOne(second,{env})).status,"complete");
+      assert.equal((await work(second)).status,"complete");
       assert.equal((await route(f)).destination,"SALES");
       await process(f);assert.equal(sends.length,1);
       const before=models.length;await receive(f);await process(f);assert.equal(models.length,before);assert.equal(sends.length,1);
     });
     await check("slow model (5.5s) cannot delay another HTTP ACK",async()=>{
-      const slow=fixture();await enqueue(slow);await processCommercialQueueOne(admin,{env});
+      const slow=fixture(),begin=performance.now();await receive(slow);
       let started;const entered=new Promise(ok=>started=ok);hook=async()=>{started();await new Promise(ok=>setTimeout(ok,5500));};
-      const run=process(slow);await entered;
+      const run=work(admin,{sleep:undefined});await entered;
       const f=fixture();const {res,ms}=await receive(f);assert.equal(res.statusCode,200);assert.ok(ms<5000);timings.push(ms);
-      await run;hook=async()=>{};await processCommercialQueueOne(admin,{env});await process(f);
+      await run;
+      const measured=performance.now()-begin;
+      latency.push({modelDelayMs:5500,realDebounce:true,receiptToOutboundMs:measured,
+        simulatedWorkerPhaseMs:60000,simulatedEndToEndMs:60000+measured,secondCronWaitMs:0});
+      assert.ok(measured>=5500&&measured<15000);
+      hook=async()=>{};await work();await process(f);
     });
     await check("persistence/identity failure returns 503; no partial transport",async()=>{
       const f=fixture();f.event.messageId=null;f.body.message.messageId=null;
@@ -133,8 +143,8 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
     });
     await check("concurrent deliveries and workers: one job/route/input/run/outbound",async()=>{
       const f=fixture();await Promise.all([enqueue(f),enqueueCommercialEvent(second,f.body,f.event)]);
-      await Promise.all([processCommercialQueueOne(admin,{env}),processCommercialQueueOne(second,{env})]);
-      const n=sends.length;await Promise.all([process(f),process(f)]);assert.equal(sends.length,n+1);
+      const n=sends.length;await Promise.all([work(),work(second)]);
+      assert.equal(sends.length,n+1);await Promise.all([process(f),process(f)]);assert.equal(sends.length,n+1);
       const alias={...f,event:{...f.event,eventId:prefix+"-alias-"+randomUUID()}};
       assert.equal((await enqueue(alias)).duplicate,true);assert.equal((await processCommercialQueueOne(admin,{env})).status,"idle");
       const r=await route(f);assert.ok(r);
@@ -143,7 +153,7 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
     await check("expired lease recovers; stale worker fenced after newer claim",async()=>{
       const f=fixture();await enqueue(f);const first=(await admin.rpc("claim_respond_commercial_v1",{})).data;
       await db.query("update respond_commercial_jobs set lease_until=now()-interval '1 second' where event_id=$1",[f.event.eventId]);
-      await processCommercialQueueOne(second,{env});
+      await work(second);
       assert.equal((await admin.rpc("finish_respond_commercial_v1",{p_event_id:first.event_id,p_token:first.claim_token,p_state:"complete"})).data.state,"lease_lost");
       assert.ok(await route(f));
     });
@@ -157,23 +167,26 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
     await check("capture commit then worker crash: terminal receipt reused, one input",async()=>{
       const f=fixture();await enqueue(f);
       const broken={from:admin.from.bind(admin),rpc:(n,a)=>n==='finish_respond_commercial_v1'?Promise.resolve({error:{code:'08006'}}):admin.rpc(n,a)};
-      await assert.rejects(processCommercialQueueOne(broken,{env}),/finish_failed/);
+      const count=models.length;await assert.rejects(work(broken),/finish_failed/);assert.equal(models.length,count);
       const id=(await route(f)).id;
       await db.query("update respond_commercial_jobs set lease_until=now()-interval '1 second' where event_id=$1",[f.event.eventId]);
-      assert.equal((await processCommercialQueueOne(second,{env})).status,"complete");assert.equal((await route(f)).id,id);
+      assert.equal((await work(second)).status,"complete");assert.equal((await route(f)).id,id);
+      assert.equal(models.length,count,'queue recovery must not repeat an existing captured route');
+      await process(f);assert.equal(models.length,count+1,'still-captured input recovered by existing lane');
     });
     for(const lane of Object.keys(cases))for(const channel of ["497382","497385","498219","515318"])
       await check(`${lane}/${channel}: capture → real processor → intercepted sent → duplicate no effect`,async()=>{
-        const f=fixture(lane,channel);await receive(f);await processCommercialQueueOne(admin,{env});assert.equal((await route(f)).destination,lane);
-        const n=sends.length;await process(f);assert.equal(sends.length,n+1);await receive(f);await process(f);assert.equal(sends.length,n+1);
+        const f=fixture(lane,channel),n=sends.length;await receive(f);const result=await work();assert.equal((await route(f)).destination,lane);
+        assert.equal(result.laneAttempted,true);assert.equal(sends.length,n+1,'same worker reaches intercepted send without a lane cron');
+        await process(f);await receive(f);await work();assert.equal(sends.length,n+1);
       });
     for(const lane of Object.keys(cases))await check(`${lane}: #168 before model and between model/send; later inbound stays paused`,async()=>{
-      const f=fixture(lane);await receive(f);await human(f);await processCommercialQueueOne(admin,{env});
-      let n=models.length,m=sends.length;await process(f);assert.equal(models.length,n);assert.equal(sends.length,m);
-      const later=fixture(lane,'497382',f.event.respondContactId);await receive(later);await processCommercialQueueOne(admin,{env});await process(later);
+      const f=fixture(lane);await receive(f);await human(f);
+      let n=models.length,m=sends.length;await work();await process(f);assert.equal(models.length,n);assert.equal(sends.length,m);
+      const later=fixture(lane,'497382',f.event.respondContactId);await receive(later);await work();await process(later);
       assert.equal(models.length,n);assert.equal(sends.length,m);
-      const during=fixture(lane);await receive(during);await processCommercialQueueOne(admin,{env});hook=()=>human(during);
-      await process(during);hook=async()=>{};assert.equal(sends.length,m);
+      const during=fixture(lane);await receive(during);hook=()=>human(during);
+      await work();hook=async()=>{};assert.equal(sends.length,m);
     });
     await check("Social OFF holds job, never legacy capture; enable permits capture",async()=>{
       const f=fixture();await receive(f);assert.equal((await processCommercialQueueOne(admin,{env:{}})).status,'disabled');assert.equal(await route(f),undefined);
@@ -191,12 +204,56 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
       assert.equal((await processCommercialQueueOne(cas,{env})).status,'review_required');assert.equal(n,3);
       await enqueue(f);assert.equal((await processCommercialQueueOne(admin,{env})).status,'idle');assert.equal(await route(f),undefined);
     });
+    await check('failure before lane claim leaves captured input recoverable by that lane, not queue retry',async()=>{
+      const f=fixture();await receive(f);const n=models.length,m=sends.length;
+      const result=await work(admin,{processors:{SALES:async()=>{throw Error('synthetic_before_claim_failure');}}});
+      assert.equal(result.status,'complete');assert.equal(result.laneStatus,'fallback_to_existing_lane');
+      assert.equal(models.length,n);await receive(f);await work();assert.equal(models.length,n);
+      await process(f);assert.equal(models.length,n+1);assert.equal(sends.length,m+1);
+      await process(f);assert.equal(sends.length,m+1);
+    });
+    for(const lane of Object.keys(cases))await check(`${lane}: known recovery gap after actual model failure is preserved, no blind retry`,async()=>{
+      const f=fixture(lane);await receive(f);const n=models.length,m=sends.length;
+      hook=async()=>{throw Error('synthetic_model_failure');};const result=await work();hook=async()=>{};
+      assert.equal(result.status,'complete');assert.equal(result.laneStatus,'fallback_to_existing_lane');
+      assert.equal(models.length,n+1);assert.equal(sends.length,m);
+      const r=await route(f),table={SALES:'sales_agent_v2',OWNER:'owner_agent_v1',LEGAL:'legal_agent_v1'}[lane];
+      const state=(await service.query(`select status from ${table}_inbound_messages where id=$1`,[r.inbound_id])).rows[0].status;
+      assert.equal(state,lane==='OWNER'?'failed':'processing');
+      await assert.rejects(service.query(`update ${table}_inbound_messages set status='captured' where id=$1`,[r.inbound_id]),/social_reexecution_requires_review/);
+      await receive(f);await work();assert.equal((await process(f)).status,'not_claimed');
+      assert.equal(models.length,n+1);assert.equal(sends.length,m);
+      recoveryGaps.push({lane,inboundState:state,queueState:'complete',automaticLaneRecovery:false,
+        reason:'social_reexecution_requires_review',newModelCalls:1,newSends:0});
+    });
+    await check('expired queue lease after dispatch_started cannot duplicate a pending/uncertain send',async()=>{
+      const f=fixture();await receive(f);let entered,release;
+      const started=new Promise(ok=>entered=ok),held=new Promise(ok=>release=ok);
+      sendHook=async()=>{entered();await held;throw Error('respond_delivery_unknown');};
+      const run=work();await started;const n=sends.length,m=models.length;
+      const r=await route(f);
+      const out=(await service.query('select status,error_code from sales_agent_v2_auto_outbound where inbound_message_id=$1',[r.inbound_id])).rows[0];
+      assert.equal(out.error_code,'dispatch_started');
+      const job=(await service.query('select state,lease_until from respond_commercial_jobs where event_id=$1',[f.event.eventId])).rows[0];
+      assert.equal(job.state,'complete');assert.equal(job.lease_until,null);
+      // Even a stale lease timestamp cannot reopen a terminal capture job.
+      await db.query("update respond_commercial_jobs set lease_until=now()-interval '1 second' where event_id=$1",[f.event.eventId]);
+      await receive(f);assert.equal((await work(second)).status,'idle');await process(f);
+      assert.equal(models.length,m);assert.equal(sends.length,n);release();await run;sendHook=async()=>{};
+      const uncertain=(await service.query('select * from sales_agent_v2_auto_outbound where inbound_message_id=$1',[r.inbound_id])).rows[0];
+      assert.notEqual(uncertain.status,'sent');assert.equal(uncertain.error_code,'respond_delivery_unknown');
+      await receive(f);await work();await process(f);
+      await outbound.processSalesAutoOutboundRun(admin,uncertain.shadow_run_id,{env});
+      assert.equal(sends.length,n);assert.equal(models.length,m);
+      assert.deepEqual((await service.query('select * from sales_agent_v2_auto_outbound where inbound_message_id=$1',[r.inbound_id])).rows[0],uncertain);
+    });
     await check("no handoff/cita effects created by retries",async()=>{
       for(const table of ['sales_agent_v2_handoffs','legal_agent_v1_handoffs'])
         assert.equal((await service.query(`select count(*)::int n from ${table} where respond_contact_id like $1`,[prefix+'%'])).rows[0].n,0);
       assert.equal((await service.query("select count(*)::int n from respond_appointment_sync where respond_contact_id like $1",[prefix+'%'])).rows[0].n,0);
     });
-    return {result:'PASS',checks,timingsMs:timings,modelCalls:models.length,interceptedSends:sends.length,externalCalls:0,prefix};
+    return {result:recoveryGaps.length?'BLOCKED_SCENARIO_5':'PASS',checks,timingsMs:timings,latency,recoveryGaps,
+      modelCalls:models.length,interceptedSends:sends.length,externalCalls:0,prefix};
   } finally {
     await new Promise(ok=>server.close(ok));
     globalThis.fetch=originalFetch;

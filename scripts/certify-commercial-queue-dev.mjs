@@ -28,7 +28,7 @@ const client=role=>({async query(sql,args=[]){
   return remote(`begin;set local statement_timeout='20s';set local role ${role};${q};commit;`);
 }});
 const service=client('service_role'),db=client('postgres'),admin=localPgAdapter(service);
-const env={SOCIAL_ROUTING_V1_ENABLED:'true',RESPOND_IO_TOKEN:'synthetic-intercepted-only'};
+const env={SOCIAL_ROUTING_V1_ENABLED:'true',SALES_AGENT_V2_AUTO_SHADOW_ENABLED:'true',RESPOND_IO_TOKEN:'synthetic-intercepted-only'};
 globalThis.fetch=async()=>assert.fail('ALL external/model/provider traffic forbidden in DEV certification');
 const forbidden=async()=>assert.fail('human pause must block before model/send');
 const common={'../ejecutivo/respondSync':{readRespondMessages:forbidden,respondMessageTimestamp:()=>null},'../shadow/coordinator':{sanitizeShadowText},'./agentUsage':{safeAgentUsage:forbidden}};
@@ -47,6 +47,7 @@ const owner=await importWithStubs(new URL('../lib/agentsV2/processOwnerInbound.j
 const legal=await importWithStubs(new URL('../lib/agentsV2/processLegalInbound.js',import.meta.url),{
   ...common,'./openaiLegalAgent':{createLegalSession:forbidden,getLegalSession:forbidden,fulfillLegal:forbidden,legalOutput:forbidden},'./legalHandoff':{createAndDispatchLegalHandoff:forbidden},
 });
+const processors={SALES:sales.processSalesInboundById,OWNER:owner.processOwnerInboundById,LEGAL:legal.processLegalInboundById};
 const test=async(name,fn)=>{await fn();checks.push(name);console.log('DEV_CHECK:'+name);};
 let report;
 try{
@@ -61,17 +62,22 @@ try{
       const counts=(await service.query("select (select count(*) from respond_commercial_jobs where event_id=$1)::int jobs,(select count(*) from social_capture_receipts where source_event_id=$1)::int receipts",[event.eventId])).rows[0];assert.deepEqual(counts,{jobs:1,receipts:1});
     });
     await service.query("insert into gv_respond_webhook_events(event_id,event_type,respond_contact_id,event_occurred_at,payload_meta,status,next_attempt_at) values($1,'message.sent',$2,now(),'{\"sender_source\":\"user\"}','processed','2099-01-01')",[prefix+'-human-'+lane,event.respondContactId]);
-    await test(lane+': worker crash/lease recovery → real route/input; #168 pause preserved',async()=>{
+    await test(lane+': worker crash/lease recovery → real route/input → same-cycle processor; #168 pause preserved',async()=>{
       const old=(await admin.rpc('claim_respond_commercial_v1',{})).data;assert.equal(old.event_id,event.eventId);
       assert.equal((await admin.rpc('claim_respond_commercial_v1',{})).data,null);
       await db.query("update respond_commercial_jobs set lease_until=now()-interval '1 second' where event_id=$1",[event.eventId]);
-      assert.equal((await processCommercialQueueOne(admin,{env})).status,'complete');
+      // Skip only the quarantined debounce wait. No pause, claim or send guard
+      // is mocked; all actual processors/RPCs operate on real DEV rows.
+      const result=await processCommercialQueueOne(admin,{env,processors,sleep:async()=>{}});
+      assert.equal(result.status,'complete');assert.equal(result.laneAttempted,true);
+      assert.ok(['paused','skipped'].includes(result.laneStatus));
       assert.equal((await admin.rpc('finish_respond_commercial_v1',{p_event_id:event.eventId,p_token:old.claim_token,p_state:'complete'})).data.state,'lease_lost');
       const r=(await service.query('select destination,inbound_id from social_message_routes where source_event_id=$1',[event.eventId])).rows[0];assert.equal(r.destination,lane);
-      const p=await processor(admin,r.inbound_id,{env});assert.ok(p.status==='paused'||p.reason==='human_attention_active');
+      const state=(await service.query(`select status from ${table}_inbound_messages where id=$1`,[r.inbound_id])).rows[0];assert.equal(state.status,'skipped');
+      const p=await processor(admin,r.inbound_id,{env});assert.equal(p.status,'not_claimed');
       assert.equal((await service.query(`select count(*)::int n from ${table}_auto_outbound where respond_contact_id=$1`,[event.respondContactId])).rows[0].n,0);
       assert.equal((await admin.rpc('enqueue_respond_commercial_v1',args)).data.state,'complete');
-      assert.equal((await processCommercialQueueOne(admin,{env})).status,'idle');
+      assert.equal((await processCommercialQueueOne(admin,{env,processors})).status,'idle');
     });
   }
   report={result:'PASS',project:'hjfwjnejbcpmknvfpdcq',checks,modelCalls:0,realMessages:0,
