@@ -1,6 +1,7 @@
 {
   "git": {
     "deploymentEnabled": {
+      "codex/owner-acquisition-routing": false,
       "codex/sales-human-attention-pause": false,
       "codex/social-routing-capture-failsafe": false,
       "codex/sales-conversation-context-recovery": false,

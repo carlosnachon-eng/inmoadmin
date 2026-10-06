@@ -172,6 +172,10 @@ for(const channelId of Object.keys(SOCIAL_CHANNELS)){
     test(`${channelId}: bounded property noun ${noun}`,()=>assert.deepEqual(classifySocialRoute({text:`¿Tienen opciones de ${noun} por el centro?`,channelId}),{destination:"SALES",reason:"sales_intent"}));
   for(const [text,destination,reason,context] of [
     ["Soy propietario, quiero vender mis departamentos","OWNER","owner_intent",{}],
+    // Owner acquisition now has explicit evidence; #166's plural Sales selector
+    // still must not turn these owner-side requests into buyer inquiries.
+    ["Tengo departamentos y quisiera información para promoverlos","OWNER","owner_intent",{}],
+    ["¿Tienen opciones para promover mis departamentos?","OWNER","owner_intent",{}],
     [exact,"OWNER","conversation_continuity",{previousDestination:"OWNER"}],
     [exact,"LEGAL","conversation_continuity",{previousDestination:"LEGAL"}],
     ["¿Qué incluye la póliza jurídica para departamentos?","LEGAL","legal_intent",{}],
@@ -182,7 +186,7 @@ for(const channelId of Object.keys(SOCIAL_CHANNELS)){
     [exact,"HUMAN_REVIEW","identity_ambiguous",{identityStatus:"ambiguous"}],
   ])test(`${channelId}: priority ${reason}`,()=>assert.deepEqual(classifySocialRoute({text,channelId,...context}),{destination,reason}));
   for(const text of ["¿Tienen opciones de comida por el centro?","¿Manejan equipos para mi negocio?","¿Manejan repuestos para electrodomésticos?","Hola, quisiera conocer su organigrama departamental",
-    "Tengo departamentos y quisiera información para promoverlos", "¿Tienen opciones para promover mis departamentos?", "Ofrezco departamentos y necesito información para publicarlos"]){
+    "Ofrezco departamentos y necesito información para publicarlos"]){
     // Unrelated request verbs or embedded substrings are not a SALES fallback.
     test(`${channelId}: unrelated request remains fallback-compatible: ${text}`,()=>assert.deepEqual(classifySocialRoute({text,channelId}),
       channelId==="498219"?{destination:"SALES",reason:"whatsapp_compatible_fallback"}:{destination:"UNKNOWN",reason:"classification_uncertain"}));

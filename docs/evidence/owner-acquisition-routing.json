@@ -1,0 +1,175 @@
+{
+  "scope": "Owner acquisition routing only; no PR168 pause/resume or assignment changes.",
+  "baseline_main_sha": "e53c4fb7950a67cf558f789ae8ea8cf145f5fcc8",
+  "branch": "codex/owner-acquisition-routing",
+  "real_case": {
+    "source": "Exact sanitized text and two timestamps supplied by the user; not independently re-read from Production.",
+    "fixture": "tests/fixtures/ownerAcquisitionAlan.mjs",
+    "original_channel": "WhatsApp",
+    "greeting_observed": "SALES/whatsapp_compatible_fallback; historical skipped per user evidence",
+    "request_observed": "SALES/sales_intent",
+    "expected_request": "OWNER/owner_intent",
+    "other_channels": "Same supplied text adapted to synthetic channel fixtures, not claimed as real events.",
+    "later_turns": "All later turns are explicitly synthetic; no invented transcript attributed to Alan."
+  },
+  "cause": "Existing Owner phrases miss availability of lofts plus a commercialization/placement request; the generic renta token wins Sales. Existing 'ahora busco' transition also mistakenly treats a new agency search as a buyer transition.",
+  "changes": [
+    "Social-only evidence requires one's own property/inventory plus listing/commercialization/placement, not isolated commission, agency, collaboration or rental words.",
+    "Narrow Owner-to-Sales change to an explicit buyer/renter/property search; asking an agency to commercialize owned inventory preserves Owner.",
+    "No priority reordering. Existing legal/admin/sensitive/provider checks and explicit Owner exits are preserved.",
+    "Two former plural-test UNKNOWN/fallback expectations now explicitly assert OWNER for promotion of owned apartments.",
+    "Only this branch has Git deployment disabled before first push; no runtime flags/project variables/workflows were changed."
+  ],
+  "certification": {
+    "mode": "LOCAL_INTERCEPTED",
+    "node": "24.19.0",
+    "baseline_red": "Exact supplied acquisition message reproduced SALES instead of OWNER in all four channel fixtures before patch.",
+    "new_tests": {
+      "tests": 101,
+      "pass": 101,
+      "fail": 0
+    },
+    "focused_suite": {
+      "tests": 353,
+      "pass": 353,
+      "fail": 0,
+      "command": "node --test --test-reporter=spec tests/social*.test.mjs tests/humanAttention.test.mjs"
+    },
+    "syntax_check": "PASS",
+    "diff_check": "PASS",
+    "full_next_build": "NOT_RUN"
+  },
+  "conversations": [
+    {
+      "channel": "Instagram",
+      "channelId": "497382",
+      "exact_message_routing": "OWNER",
+      "greeting": "UNKNOWN unchanged",
+      "owner_turns_processed": 9,
+      "outbounds_intercepted": 9,
+      "followups": [
+        "commission/conditions",
+        "traditional rental",
+        "administration question",
+        "location",
+        "photos",
+        "property features",
+        "agency search",
+        "marketing one's own rental property"
+      ],
+      "explicit_personal_search_transition": "SALES/explicit_intent_change",
+      "active_human_pause": "0 models / 0 sends",
+      "duplicate_dispatch": "0 additional sends"
+    },
+    {
+      "channel": "TikTok",
+      "channelId": "497385",
+      "exact_message_routing": "OWNER",
+      "greeting": "UNKNOWN unchanged",
+      "owner_turns_processed": 9,
+      "outbounds_intercepted": 9,
+      "followups": [
+        "commission/conditions",
+        "traditional rental",
+        "administration question",
+        "location",
+        "photos",
+        "property features",
+        "agency search",
+        "marketing one's own rental property"
+      ],
+      "explicit_personal_search_transition": "SALES/explicit_intent_change",
+      "active_human_pause": "0 models / 0 sends",
+      "duplicate_dispatch": "0 additional sends"
+    },
+    {
+      "channel": "WhatsApp",
+      "channelId": "498219",
+      "exact_message_routing": "OWNER",
+      "greeting": "SALES fallback unchanged",
+      "owner_turns_processed": 9,
+      "outbounds_intercepted": 9,
+      "followups": [
+        "commission/conditions",
+        "traditional rental",
+        "administration question",
+        "location",
+        "photos",
+        "property features",
+        "agency search",
+        "marketing one's own rental property"
+      ],
+      "explicit_personal_search_transition": "SALES/explicit_intent_change",
+      "active_human_pause": "0 models / 0 sends",
+      "duplicate_dispatch": "0 additional sends"
+    },
+    {
+      "channel": "Facebook Messenger",
+      "channelId": "515318",
+      "exact_message_routing": "OWNER",
+      "greeting": "UNKNOWN unchanged",
+      "owner_turns_processed": 9,
+      "outbounds_intercepted": 9,
+      "followups": [
+        "commission/conditions",
+        "traditional rental",
+        "administration question",
+        "location",
+        "photos",
+        "property features",
+        "agency search",
+        "marketing one's own rental property"
+      ],
+      "explicit_personal_search_transition": "SALES/explicit_intent_change",
+      "active_human_pause": "0 models / 0 sends",
+      "duplicate_dispatch": "0 additional sends"
+    }
+  ],
+  "real_code_exercised": [
+    "captureSocialRoute",
+    "classifySocialRoute",
+    "readSocialContinuity / ownerTransition",
+    "processSocialRouteImmediate",
+    "processOwnerInboundById",
+    "Owner sender",
+    "existing stale Sales outbound Owner barrier"
+  ],
+  "interception": {
+    "db": "In-memory table/journal fixture and capture/context RPC fixture; no real DEV/Postgres certification in this task.",
+    "models": "Owner session, output and usage intercepted; no paid/live model calls.",
+    "respond": "Provider history and send HTTP intercepted; no real contact creation or messaging.",
+    "response_claim": "36 test outbounds reached intercepted transport and test journals; NOT evidence of real Respond delivery or message.sent.",
+    "real_contact": "Source IDs retained solely as fixture provenance; execution uses synthetic contact/event/message IDs."
+  },
+  "boundaries": {
+    "production_writes": 0,
+    "db_migrations": 0,
+    "real_messages": 0,
+    "assignments": 0,
+    "ack_changes": 0,
+    "flags_changed": 0,
+    "workflows_changed": 0,
+    "merge": false,
+    "deployment": false,
+    "pr168_code_changed": false,
+    "prs161_163_167_changed": false
+  },
+  "cleanup": {
+    "external_fixture_rows_created": 0,
+    "external_residues": 0,
+    "temporary_dependency_symlink": "removed after tests",
+    "tracked_fixture_files": "intentionally retained regression source"
+  },
+  "residual_risks": [
+    "Heuristic intent detection is bounded, not a general language classifier.",
+    "Natural Production routing and real delivery remain unverified until a separately authorized rollout.",
+    "The greeting's original skipped status is historical evidence, not recreated as a guaranteed cross-lane status. A prepared old Sales outbound is tested blocked by the existing Owner continuity barrier.",
+    "Existing late-message/CAS/review rules are unchanged; isolated DB/RPC concurrency semantics were not recertified."
+  ],
+  "production_before_push": {
+    "id": "dpl_2qjZh1aF4kYCvCFPrjziWgM3Yf6B",
+    "sha": "e53c4fb7950a67cf558f789ae8ea8cf145f5fcc8",
+    "ref": "main",
+    "state": "READY"
+  }
+}
