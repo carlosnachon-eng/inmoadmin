@@ -9,6 +9,7 @@ import net from "node:net";
 import { randomUUID } from "node:crypto";
 import { localPgAdapter } from "../tests/helpers/localPgAdapter.mjs";
 import { importWithStubs } from "../tests/helpers/socialFixtures.mjs";
+import { certifyCommercialQueue } from "../tests/helpers/commercialQueuePostgres.mjs";
 import { sanitizeShadowText } from "../lib/shadow/coordinator.js";
 import * as handoffs from "../lib/agentsV2/salesHandoff.js";
 import * as outbound from "../lib/agentsV2/salesAutoOutbound.js";
@@ -18,6 +19,9 @@ const runtime=process.env.SOCIAL_LOCAL_PG_RUNTIME;
 if(!runtime)throw Error("SOCIAL_LOCAL_PG_RUNTIME required (local pg/embedded-postgres)");
 const {default:EmbeddedPostgres}=await import(pathToFileURL(resolve(runtime,"node_modules/embedded-postgres/dist/index.js")));
 const {default:pg}=await import(pathToFileURL(resolve(runtime,"node_modules/pg/lib/index.js")));
+// Match PostgREST's lossless timestamps: JS Date truncates microseconds and can
+// make a strict created_at > cutoff query incorrectly find the input itself.
+pg.types.setTypeParser(1184,value=>value.replace(' ','T').replace(/([+-]\d{2})$/,'$1:00'));
 const directory=await mkdtemp(join(tmpdir(),"human-attention-pg-"));
 const socket=net.createServer();await new Promise(ok=>socket.listen(0,"127.0.0.1",ok));const port=socket.address().port;await new Promise(ok=>socket.close(ok));
 const cluster=new EmbeddedPostgres({databaseDir:join(directory,"data"),user:"postgres",password:"local-synthetic-only",port,persistent:false,
@@ -129,6 +133,13 @@ try{
     "./openaiSalesAgent":{assertSalesAgentV2ShadowEnvironment:()=>{},createSalesSession:async({input})=>{inputs.push(input);await onModel();return{id:"synthetic-session"};},getSalesSession:async()=>({id:"synthetic-session",status:"idle"}),fulfillSalesActions:async()=>assert.fail("unexpected model tools"),salesSessionItems:async()=>[],salesAssistantOutput:()=>output},
     "../ejecutivo/respondSync":contextIO,"../shadow/coordinator":{sanitizeShadowText},
   });
+  await db.query(await file("20261006033141_respond_commercial_queue.sql"));
+  await db.query(`select public.enqueue_respond_commercial_v1(
+    '{"event_id":"synthetic-before-execution-migration","event_type":"message.received","respond_contact_id":"synthetic-before-execution-migration","channel_id":"497382","message_id":"synthetic-old-message"}',
+    '{"version":1,"text":"fixture anterior al journal","references":{"publicIds":[]}}')`);
+  await db.query(await file("20261006045043_respond_commercial_execution.sql"));
+  assert.equal((await db.query("select execution_recovery from respond_commercial_jobs where event_id='synthetic-before-execution-migration'")).rows[0].execution_recovery,false,'migration must not backfill recovery authority');
+  await db.query("delete from respond_commercial_jobs where event_id='synthetic-before-execution-migration';delete from social_capture_receipts where source_event_id='synthetic-before-execution-migration';delete from gv_respond_webhook_events where event_id='synthetic-before-execution-migration'");
   const processor=await importWithStubs(new URL("../lib/agentsV2/processSalesInbound.js",import.meta.url),{
     "./runSalesShadowMessage":runner,"./salesHandoff":handoffs,"./salesAutoOutbound":outbound,"./agentUsage":usage,"./openaiSalesAgent":{salesAgentModel:()=>"synthetic"},
   });
@@ -254,7 +265,11 @@ try{
     assert.deepEqual((await db.query("select * from respond_ai_resumptions order by human_event_id")).rows,audit);
     assert.deepEqual(await definitions(),before);assert.deepEqual(await defaults(),priorDefaults);
   });
-  console.log(JSON.stringify({result:"PASS",checks:checks.length,tests:checks,productionLikeDefaults:true,projectDefaultsUnchanged:true,modelFixtures:inputs.length,interceptedSends:sends.length,externalCalls:0,realRespondDelivery:"NOT_TESTED",productionTouched:false},null,2));
+  const queue=await certifyCommercialQueue({db,service,other});
+  console.log(JSON.stringify({result:queue.result,queue,checks:checks.length,tests:checks,productionLikeDefaults:true,projectDefaultsUnchanged:true,modelFixtures:inputs.length,interceptedSends:sends.length,externalCalls:0,realRespondDelivery:"NOT_TESTED",productionTouched:false},null,2));
+  // Do not turn the newly-required automatic model-failure recovery into a
+  // green certification merely because its fail-closed limitation is known.
+  if(queue.recoveryGaps.length)throw Error('commercial_queue_certification_blocked_scenario_5');
 }finally{
   globalThis.fetch=originalFetch;
   for(const c of clients){try{await c.query("rollback");}catch{}try{await c.end();}catch{}}

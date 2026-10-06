@@ -239,6 +239,10 @@ globalThis.__respondReceiverTestDeps = {
 };
 
 const receiverHarnessSource = receiverSource
+  .replace(/import \{ commercialQueueEligible, enqueueCommercialEvent \} from [^;]+;/,
+    "const commercialQueueEligible = () => false;")
+  .replace(/import \{ captureRespondAppointmentLifecycleIsolated \} from [^;]+;/,
+    "const captureRespondAppointmentLifecycleIsolated = async () => ({});")
   .replace(
     /import \{[\s\S]*?\} from "\.\.\/\.\.\/\.\.\/lib\/ejecutivo\/workCenter";/,
     "const { assertSupabaseEnvironment, getAdminSupabase } = globalThis.__respondReceiverTestDeps;",

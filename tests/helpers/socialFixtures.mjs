@@ -8,6 +8,7 @@ export function memoryDb(seed = {}, rpc = {}) {
     async rpc(name, args) {
       operations.push({ table: name, op: "rpc", args });
       if (rpc[name]) return rpc[name](args);
+      if (name === "claim_respond_execution_v1") return {data:{managed:false},error:null};
       // Default fixtures have no human events. Pause/locking semantics are
       // certified separately against the real PostgreSQL RPCs, not this fake.
       if (name === "read_respond_human_pause_v1") return {data:{blocked:false},error:null};

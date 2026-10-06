@@ -106,10 +106,11 @@ test("proyección no expone source_metadata ni IDs", () => {
   const view = socialRouteReview({ id: "raw", source_metadata: { arbitrary: "private" }, destination: "injected", reason: "unknown bad text" });
   assert.equal(view.destination, "UNKNOWN"); assert.equal(view.reason, "unknown"); assert.doesNotMatch(JSON.stringify(view), /private|raw/);
 });
-test("webhook: decisión nueva precede todos los agentes y no reescribe canal admin", async () => {
+test("webhook: encolado durable precede legacy y no ejecuta agentes en HTTP", async () => {
   const source = await readFile(new URL("../pages/api/webhooks/respond.js", import.meta.url), "utf8");
-  const route = source.indexOf("await captureSocialRoute");
-  for (const old of ["await routeRespondMessageIsolated(event)", "const legalCapture=", "const ownerCapture=", "salesCapture=await"]) assert.ok(route < source.indexOf(old));
+  const route = source.indexOf("await enqueueCommercialEvent");
+  assert.ok(route > 0 && route < source.indexOf("await routeRespondMessageIsolated(event)"));
+  assert.doesNotMatch(source, /process(?:Sales|Owner|Legal)Inbound|captureRespond(?:Sales|Owner|Legal)|processSocialRouteImmediate/);
   assert.match(source.slice(route, source.indexOf('if (error?.code === "23505")')), /return res\.status\(200\)/);
 });
 test("lifecycle sin canal usa snapshot; desconocido fail-closed; OFF y admin intactos", async () => {
