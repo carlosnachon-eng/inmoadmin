@@ -1,0 +1,70 @@
+{
+  "historicalAtHead": "f0f29eba050804b4c4c5985fae01ae2b877d1fdc",
+  "supersededAclAndDevEvidence": "docs/evidence/respond-human-attention-acl-dev.json",
+  "scope": "Persistent human attention pause for Respond conversation episodes; local and intercepted certification only",
+  "date": "2026-10-05",
+  "baseMain": "ec4b675321e514169368412b8198b346b477c1cb",
+  "branch": "codex/sales-human-attention-pause",
+  "rootCause": "The deployed Sales generator/sender checked newer inbounds and handoffs but not durable, explicitly authored human outbound. The existing Owner/Legal snapshot comparison was also not a persistent episode pause.",
+  "design": {
+    "humanProof": "Existing authenticated Respond message.sent ledger, payload_meta.sender_source exactly user. No assignee inference, no missing-journal inference; api/workflow/ai_agent/ambiguous agent are not called human.",
+    "persistence": "Reuse gv_respond_webhook_events as durable pause evidence, independent of snapshot status and route. Add only respond_ai_resumptions for explicit, authenticated, audited return-to-AI.",
+    "episode": "Respond contact conversation between verified conversation.closed boundaries. No inactivity TTL. conversation.opened, inbound, snapshot processing and route changes do not reset the active episode pause. A closed episode is not resumed: new inbounds strictly after its close belong to a new episode; old inbounds are blocked. Human events without occurrence time fail closed.",
+    "generation": "Check before context/model and again after context immediately before model creation. Persist a policy-only Sales run with allowlisted reason; no model request and no new handoff/ACK from that branch.",
+    "sender": "Recheck at sender entry, reserve existing unique journal as human_guard_pending, then final RPC serializes with human receipt ingestion using a contact advisory transaction lock. Successful authorization changes marker to dispatch_started exactly once.",
+    "pending": "Human receipt trigger blocks only processing + human_guard_pending, preserving proposal and reason. Sent, failed/uncertain, dispatch_started and legacy processing without a marker are never claimed cancelled. Generated proposals without an outbound are checked before any later sender claim; explicit resume never permits their pre-resume inbound to replay.",
+    "specialists": "Owner/Legal processors read the same episode pause before generation and before their response send. Use existing superseded journal status (constraints unchanged). ADMINISTRATION Social route remains its existing review path, not a new automatic Sales route. No Shadow/Admin provider migration or assignment/workflow changes.",
+    "unchanged": ["routing decisions", "inbound receipt/history", "current assignee", "runtime feature flags", "Recovery", "SLA", "workflows", "PR #161", "PR #163", "PR #167"]
+  },
+  "explicitResume": {
+    "authorization": "Existing active profiles with role admin or gerente_ventas; authenticated Bearer session. DB verifies auth.uid and role independently of HTTP handler. No anon/direct authenticated table access.",
+    "read": "GET /api/operaciones/respond-human-attention?contactId=<contact> returns blocked/reason/episodeKey/humanEventId, Cache-Control private,no-store.",
+    "action": "POST same endpoint with {contactId, action: return_to_ai, episodeKey, humanEventId}, using the exact currently observed episode/event. No customer text, model tool, cron or routing side effect can invoke it implicitly.",
+    "cas": "New human intervention or episode change rejects stale request with HTTP 409. Duplicate explicit resume is idempotent and does not move the original cutoff.",
+    "after": "Only inbounds strictly newer than resumed_at can generate/send. No reset, replay or batch resend of old blocked, pending, sent or uncertain records.",
+    "ui": "No new UI button in this minimal PR; the exact authenticated operations API is the explicit mechanism. Nothing called against real contacts."
+  },
+  "migration": {
+    "file": "20261005211304_respond_human_attention_pause.sql",
+    "sha256": "cddb764db2d9b6bdc2a4a1e78194ac033e5794e3236126b2a2e6a275ac5eaecc",
+    "objects": "1 server-only resumption audit table, 4 RPC/trigger functions, 1 trigger, 1 partial event index; existing constraints unchanged; no backfill",
+    "applied": "Disposable loopback PostgreSQL only, with actual Sales/Owner/Legal schemas and #165 migration",
+    "notApplied": ["Supabase DEV", "Production"],
+    "postcheck": "supabase/checks/respond_human_attention_pause.sql: RLS/ACL/four functions/trigger/index PASS",
+    "rolloutNotExecuted": "Requires separate authorization: apply migration and catalog postcheck, drain old incompatible workers, deploy certified commit. No old-worker or remote-effect atomicity is claimed. Preserve resumption audit evidence if rolling code back; a code rollback restores the old bug and must not be portrayed as safe automated handling."
+  },
+  "certification": {
+    "focused": {"tests": 418, "passed": 418, "failed": 0},
+    "postgres": {"groups": 13, "result": "PASS", "modelFixtures": 2, "interceptedSends": 4, "externalCalls": 0, "clusterStoppedAndRemoved": true, "fixtureResidues": 0},
+    "mandatoryRegressions": [
+      "PASS: client -> AI prepares -> proven human -> automatic outbound blocked",
+      "PASS: later client inbound and sender scanner remain silent; snapshot processed does not clear pause",
+      "PASS: human before processor and human during context before model creation",
+      "PASS: duplicate human event creates one durable event; not another effect",
+      "PASS: actual independent PostgreSQL connections serialize human ingestion/send authorization; competing senders produce one intercepted send",
+      "PASS: sent, unknown delivery, lost RPC response and legacy/in-flight processing stay consumed; no false cancellation or retry",
+      "PASS: Owner/Legal pre-generation and pre-send pause; Administration review route and assignee preserved",
+      "PASS: explicit role-authorized resume allows a new turn; old proposals stay blocked; stale CAS rejected"
+    ],
+    "suite": {"tests": 2143, "passed": 2140, "failed": 3, "newFailures": 0},
+    "inheritedFailures": [
+      {"test": "respondWebhookMultiHmac.test.mjs", "cause": "Legacy data-URL harness leaves relative salesCapture imports unresolved", "reproducedOnMain": true},
+      {"test": "shadowAiP3.test.mjs: tool layer es cerrado, read-only y limitado", "cause": "Expected tool count 18, current 19", "reproducedOnMain": true},
+      {"test": "shadowReducedOutputSchema.test.mjs: objective metrics", "cause": "Expected schema bytes 4355, current 4383", "reproducedOnMain": true}
+    ],
+    "inheritedDisposition": "Unchanged and reproduced on exact main baseline; tracked separately, not fixed or suppressed in this PR. Full suite is not globally green.",
+    "build": "PASS using synthetic loopback Supabase URL/key, no real credentials, CIRCLE_NODE_TOTAL=2. Existing remote font optimization warnings; initial no-config build needed synthetic URL, not a source fix.",
+    "diffCheck": "PASS",
+    "resourceTemporarilyUnavailable": "Not observed in this implementation/certification",
+    "evidenceDirectory": "/private/tmp/sales-human-certification.NkxNy1"
+  },
+  "risks": [
+    "Local committed human receipt is the boundary. Delayed/missing Respond webhooks or non-explicit sender provenance cannot be promoted to proven human authorship.",
+    "No transaction spans Respond and PostgreSQL. A request crossing dispatch_started is in flight/uncertain; human arrival afterward pauses future work but cannot retract that request.",
+    "Episode boundaries depend on correctly timestamped verified conversation.closed events. No close means the active episode remains paused until explicit return; missing human time is fail-closed.",
+    "Historical human events are read, not backfilled. Do not purge this durable ledger without a separately designed archival pause strategy.",
+    "Interception certifies guard and journal behavior, not real Respond delivery, assignment or actual human attendance.",
+    "Existing legacy workflow/ACK/SLA mechanisms are not redesigned or enabled. Any future activation must integrate the pause guard before its effects; #167 remains separate."
+  ],
+  "publicationSafety": "Only this branch is added to vercel.git.deploymentEnabled=false. No tracked GitHub Actions/GitLab/Bitbucket pipeline. No merge, deployment, remote migration, hosted flag change or real-contact effect performed."
+}

@@ -1,0 +1,574 @@
+{
+  "scope": "ACL-only correction and DEV recertification of PR #168; no Production access/mutation in this correction",
+  "certifiedAt": {
+    "current_time": "2026-10-05 23:55:59 UTC"
+  },
+  "previousHead": "f0f29eba050804b4c4c5985fae01ae2b877d1fdc",
+  "branch": "codex/sales-human-attention-pause",
+  "rootCause": "GRANT is additive. Creator defaults can already give service_role ALL table privileges and EXECUTE on every function. The previous migration did not revoke this role before granting the intended subset. DEV public defaults did not reproduce Production's exposure.",
+  "change": {
+    "table": "Explicit REVOKE ALL for PUBLIC/anon/authenticated/service_role, then service_role SELECT only. No direct INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN; no column grants or grant options. Audit inserts occur only inside authenticated resume SECURITY DEFINER RPC after role and CAS validation.",
+    "functions": "Reset these four object ACLs; service_role EXECUTE on read/pause-trigger/begin-send only; authenticated EXECUTE on resume only; PUBLIC/anon no EXECUTE. Database object owner administrative rights are unchanged.",
+    "unchanged": [
+      "project default privileges",
+      "global grants",
+      "all non-#168 object ACLs",
+      "function bodies",
+      "RLS policy design",
+      "trigger body",
+      "index",
+      "business logic",
+      "sender/model/transport code",
+      "Production",
+      "Respond",
+      "flags",
+      "PR #161/#163/#167"
+    ],
+    "existingDatabases": "Apply only the additive ACL repair; retain original migration ledger bytes and all audit rows. No DROP/recreation/backfill/ledger rewrite."
+  },
+  "migration": {
+    "freshInstall": {
+      "file": "20261005211304_respond_human_attention_pause.sql",
+      "sha256": "d24f0a766730f08b5d2e621a15a957050b9c48f7b68f73ab2928761596d367a5",
+      "certified": "Disposable PostgreSQL with Production-like defaults; not reapplied over existing DEV objects"
+    },
+    "aclRepair": {
+      "file": "20261005231221_respond_human_attention_acl.sql",
+      "sha256": "265e99a804f5dbda7295b3b8b52af37f43ab3b7f35a1d0e07801a2b76a5d89b5",
+      "bytes": 1009,
+      "appliedOnly": "inmoadmin-dev",
+      "devVersion": "20261005231723",
+      "repoVsAppliedBytes": "EXACT_SHA256_MATCH"
+    },
+    "devLedger": [
+      {
+        "version": "20261005214239",
+        "name": "respond_human_attention_pause",
+        "bytes": 7866,
+        "sha256": "cddb764db2d9b6bdc2a4a1e78194ac033e5794e3236126b2a2e6a275ac5eaecc"
+      },
+      {
+        "version": "20261005231723",
+        "name": "respond_human_attention_acl",
+        "bytes": 1009,
+        "sha256": "265e99a804f5dbda7295b3b8b52af37f43ab3b7f35a1d0e07801a2b76a5d89b5"
+      }
+    ],
+    "productionApplied": false
+  },
+  "postcheck": {
+    "result": "PASS",
+    "catalog": [
+      [
+        {
+          "rls": true,
+          "anon_denied": true,
+          "direct_user_denied": true,
+          "service_read": true,
+          "audit_immutable_for_service": true,
+          "exact_table_acl": true,
+          "no_column_grants": true
+        }
+      ],
+      [
+        {
+          "proname": "begin_sales_human_guarded_send_v1",
+          "anon_denied": true,
+          "explicit_user_boundary": true,
+          "service_internal_only": true,
+          "no_public_execute": true,
+          "exact_function_acl": true,
+          "definer_only_for_authenticated_resume": true,
+          "empty_search_path": true
+        },
+        {
+          "proname": "pause_sales_on_respond_human_v1",
+          "anon_denied": true,
+          "explicit_user_boundary": true,
+          "service_internal_only": true,
+          "no_public_execute": true,
+          "exact_function_acl": true,
+          "definer_only_for_authenticated_resume": true,
+          "empty_search_path": true
+        },
+        {
+          "proname": "read_respond_human_pause_v1",
+          "anon_denied": true,
+          "explicit_user_boundary": true,
+          "service_internal_only": true,
+          "no_public_execute": true,
+          "exact_function_acl": true,
+          "definer_only_for_authenticated_resume": true,
+          "empty_search_path": true
+        },
+        {
+          "proname": "resume_respond_ai_v1",
+          "anon_denied": true,
+          "explicit_user_boundary": true,
+          "service_internal_only": true,
+          "no_public_execute": true,
+          "exact_function_acl": true,
+          "definer_only_for_authenticated_resume": true,
+          "empty_search_path": true
+        }
+      ],
+      [
+        {
+          "enabled": true
+        }
+      ],
+      [
+        {
+          "valid": true
+        }
+      ]
+    ],
+    "effectiveNonOwnerAcl": [
+      {
+        "object": "begin_sales_human_guarded_send_v1",
+        "kind": "function",
+        "role": "service_role",
+        "privilege_type": "EXECUTE",
+        "is_grantable": false
+      },
+      {
+        "object": "pause_sales_on_respond_human_v1",
+        "kind": "function",
+        "role": "service_role",
+        "privilege_type": "EXECUTE",
+        "is_grantable": false
+      },
+      {
+        "object": "read_respond_human_pause_v1",
+        "kind": "function",
+        "role": "service_role",
+        "privilege_type": "EXECUTE",
+        "is_grantable": false
+      },
+      {
+        "object": "respond_ai_resumptions",
+        "kind": "table",
+        "role": "service_role",
+        "privilege_type": "SELECT",
+        "is_grantable": false
+      },
+      {
+        "object": "resume_respond_ai_v1",
+        "kind": "function",
+        "role": "authenticated",
+        "privilege_type": "EXECUTE",
+        "is_grantable": false
+      }
+    ],
+    "fingerprintsUnchanged": {
+      "defaults_hash": "a618d24b5bb5a1942d9831735ddce191",
+      "unrelated_rel_acl_hash": "bd3986e7874695db8f5bceb21048be02",
+      "unrelated_function_acl_hash": "c24c0db65dbb83fa00c504159eec6597",
+      "pr168_function_definitions_hash": "6592287b8e479c50c547cbcdaad4ebc7",
+      "audit_rows": 0,
+      "trigger_hash": "dd4574cea117344b832b425e60bffe69"
+    }
+  },
+  "regression": {
+    "postgres": {
+      "result": "PASS",
+      "checks": 17,
+      "tests": [
+        "regression control: production-like defaults reproduce and repair the old additive-GRANT defect",
+        "ACL repair is idempotent; project defaults and unrelated object grants are unchanged",
+        "catalog postcheck: RLS/ACL, four RPCs, trigger and index",
+        "effective permissions: service read only; anon/auth table denied; exact function role boundary",
+        "1/2: client → generation → human → no send; later inbound still paused; snapshot cannot erase",
+        "3/4: human before processor, duplicated webhook, unknown/nonhuman source never inferred from assignee or journal",
+        "final sender rechecks after claim; trigger cancels only provably pending, evidence retained",
+        "human during context loading prevents model creation at the second generation gate",
+        "5: human transaction and final authorization serialize on actual independent PostgreSQL connections",
+        "6: sent/unknown/in-flight and legacy processing retained; no false cancellation and no retry",
+        "7: pause survives OWNER/LEGAL processors and ADMINISTRATION review routing, no agent/assignee reset",
+        "8: explicit audited return permits only new turns, does not replay old proposals; newer human invalidates old CAS",
+        "OWNER and LEGAL pre-send gates preserve real journal constraints after human during model",
+        "closed episode excludes historical human; opened/inbound/assignee do NOT clear active pause; late old turn blocked",
+        "RLS/ACL: no anon access, no direct authenticated mutation, resume role and CAS enforced",
+        "unavailable/malformed RPC fails closed; uncertain authorization never resets a consumed marker",
+        "ACL-only repair preserves existing audit rows and function bodies"
+      ],
+      "productionLikeDefaults": true,
+      "projectDefaultsUnchanged": true,
+      "modelFixtures": 2,
+      "interceptedSends": 4,
+      "externalCalls": 0,
+      "realRespondDelivery": "NOT_TESTED",
+      "productionTouched": false
+    },
+    "fixtureClusterRemoved": true,
+    "defaults": "Only disposable local PostgreSQL: postgres/public defaults grant ALL TABLE privileges and EXECUTE to anon/authenticated/service_role; PUBLIC EXECUTE inherited by default. Negative control reproduces the prior defect, repair removes it; fresh installation and repair idempotence pass. Project defaults and unrelated grants unchanged.",
+    "focused": {
+      "passed": 476,
+      "failed": 0
+    },
+    "fullSuite": {
+      "passed": 2140,
+      "failed": 3,
+      "total": 2143,
+      "newFailures": 0,
+      "unchangedFailures": [
+        "respondWebhookMultiHmac.test.mjs: data-URL relative-import harness",
+        "shadowAiP3.test.mjs: 19 tools vs expected 18",
+        "shadowReducedOutputSchema.test.mjs: 4383 vs expected 4355 bytes"
+      ]
+    },
+    "build": "Prior f0f29eb build PASS reused; this correction changes only SQL ACLs, checks, local regression and evidence, no runtime source.",
+    "harnessNote": "Catalog result order made deterministic after initial local idempotence assertion differed only in row order; final run passes."
+  },
+  "dev": {
+    "result": "PASS",
+    "functional": {
+      "result": "PASS",
+      "checks": 12,
+      "tests": [
+        "1/2: client → generation → human → no send; later inbound still paused; snapshot cannot erase",
+        "3/4: human before processor, duplicated webhook, unknown/nonhuman source never inferred from assignee or journal",
+        "final sender rechecks after claim; trigger cancels only provably pending, evidence retained",
+        "human during context loading prevents model creation at the second generation gate",
+        "5: human transaction and final authorization serialize on actual independent PostgreSQL connections",
+        "6: sent/unknown/in-flight and legacy processing retained; no false cancellation and no retry",
+        "7: pause survives OWNER/LEGAL processors and ADMINISTRATION review routing, no agent/assignee reset",
+        "8: explicit audited return permits only new turns, does not replay old proposals; newer human invalidates old CAS",
+        "OWNER and LEGAL pre-send gates preserve real journal constraints after human during model",
+        "closed episode excludes historical human; opened/inbound/assignee do NOT clear active pause; late old turn blocked",
+        "RLS/ACL: no anon access, no direct authenticated mutation, resume role and CAS enforced",
+        "unavailable/malformed RPC fails closed; uncertain authorization never resets a consumed marker"
+      ],
+      "modelFixtures": 2,
+      "interceptedSends": 4,
+      "externalCalls": 0,
+      "realRespondDelivery": "NOT_TESTED",
+      "authServiceJWTVerification": "INTERCEPTED; DB role/RLS/auth.uid/profile and CAS real",
+      "productionTouched": false
+    },
+    "api": {
+      "result": "PASS",
+      "baseHead": "f0f29eba050804b4c4c5985fae01ae2b877d1fdc",
+      "change": "ACL-only recertification",
+      "project": "inmoadmin-dev",
+      "scenarios": [
+        11,
+        12,
+        13
+      ],
+      "httpObservations": [
+        {
+          "test": "11 current episode GET",
+          "method": "GET",
+          "actor": "admin",
+          "http": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": null,
+          "blocked": true,
+          "resumed": null
+        },
+        {
+          "test": "11 current episode GET",
+          "method": "GET",
+          "actor": "manager",
+          "http": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": null,
+          "blocked": true,
+          "resumed": null
+        },
+        {
+          "test": "11 current episode GET",
+          "method": "GET",
+          "actor": "advisor",
+          "http": 403,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": "not_authorized",
+          "blocked": null,
+          "resumed": null
+        },
+        {
+          "test": "11 current episode GET",
+          "method": "GET",
+          "actor": "inactive_admin",
+          "http": 403,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": "not_authorized",
+          "blocked": null,
+          "resumed": null
+        },
+        {
+          "test": "11 missing session",
+          "method": "GET",
+          "actor": "anonymous",
+          "http": 401,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": "session_required",
+          "blocked": null,
+          "resumed": null
+        },
+        {
+          "test": "validation unchanged",
+          "method": "GET",
+          "actor": "admin",
+          "http": 400,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": "invalid_contact",
+          "blocked": null,
+          "resumed": null
+        },
+        {
+          "test": "12 unauthorized return",
+          "method": "POST",
+          "actor": "advisor",
+          "http": 403,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": "not_authorized",
+          "blocked": null,
+          "resumed": null
+        },
+        {
+          "test": "12 unauthorized return",
+          "method": "POST",
+          "actor": "inactive_admin",
+          "http": 403,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": "not_authorized",
+          "blocked": null,
+          "resumed": null
+        },
+        {
+          "test": "12 no session",
+          "method": "POST",
+          "actor": "anonymous",
+          "http": 401,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": "session_required",
+          "blocked": null,
+          "resumed": null
+        },
+        {
+          "test": "12 explicit action required",
+          "method": "POST",
+          "actor": "admin",
+          "http": 400,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": "explicit_return_required",
+          "blocked": null,
+          "resumed": null
+        },
+        {
+          "test": "12 explicit return",
+          "method": "POST",
+          "actor": "admin",
+          "http": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": null,
+          "blocked": null,
+          "resumed": true
+        },
+        {
+          "test": "12 idempotent return by manager",
+          "method": "POST",
+          "actor": "manager",
+          "http": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": null,
+          "blocked": null,
+          "resumed": true
+        },
+        {
+          "test": "12 state after return",
+          "method": "GET",
+          "actor": "admin",
+          "http": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": null,
+          "blocked": false,
+          "resumed": null
+        },
+        {
+          "test": "13 stale return after newer human",
+          "method": "POST",
+          "actor": "manager",
+          "http": 409,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": "human_attention_changed",
+          "blocked": null,
+          "resumed": null
+        },
+        {
+          "test": "13 state remains paused",
+          "method": "GET",
+          "actor": "admin",
+          "http": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "error": null,
+          "blocked": true,
+          "resumed": null
+        }
+      ],
+      "io": "Actual loopback HTTP -> unchanged handler -> real DEV profiles/RLS/RPC; Auth identity verification intercepted",
+      "notCertified": [
+        "Supabase Auth/JWT verification",
+        "deployed endpoint",
+        "real Respond delivery"
+      ],
+      "respondCalls": 0,
+      "modelCalls": 0,
+      "productionEffects": 0,
+      "externalCalls": 0
+    },
+    "cleanup": [
+      {
+        "object": "client_reconciliation_candidates",
+        "residues": 0
+      },
+      {
+        "object": "gv_opportunities",
+        "residues": 0
+      },
+      {
+        "object": "gv_respond_contact_snapshots",
+        "residues": 0
+      },
+      {
+        "object": "gv_respond_webhook_events",
+        "residues": 0
+      },
+      {
+        "object": "legal_agent_v1_auto_outbound",
+        "residues": 0
+      },
+      {
+        "object": "legal_agent_v1_handoffs",
+        "residues": 0
+      },
+      {
+        "object": "legal_agent_v1_inbound_messages",
+        "residues": 0
+      },
+      {
+        "object": "owner_agent_v1_auto_outbound",
+        "residues": 0
+      },
+      {
+        "object": "owner_agent_v1_inbound_messages",
+        "residues": 0
+      },
+      {
+        "object": "owner_material_deliveries",
+        "residues": 0
+      },
+      {
+        "object": "respond_ai_resumptions",
+        "residues": 0
+      },
+      {
+        "object": "respond_appointment_sync",
+        "residues": 0
+      },
+      {
+        "object": "respond_identity_audit",
+        "residues": 0
+      },
+      {
+        "object": "respond_identity_links",
+        "residues": 0
+      },
+      {
+        "object": "sales_agent_v2_auto_outbound",
+        "residues": 0
+      },
+      {
+        "object": "sales_agent_v2_handoffs",
+        "residues": 0
+      },
+      {
+        "object": "sales_agent_v2_inbound_messages",
+        "residues": 0
+      },
+      {
+        "object": "shadow_conversations",
+        "residues": 0
+      },
+      {
+        "object": "social_capture_receipts",
+        "residues": 0
+      },
+      {
+        "object": "social_message_routes",
+        "residues": 0
+      }
+    ],
+    "fixtureAuthProfilesAndUsers": 0,
+    "residues": 0,
+    "productionEffects": 0,
+    "modelCalls": 0,
+    "respondCalls": 0,
+    "transport": "INTERCEPTED; no real Respond delivery certified",
+    "auth": "Auth identity service intercepted; actual HTTP handler, DEV profile authorization, database roles, RLS, RPC and CAS tested"
+  },
+  "securityAdvisors": [
+    {
+      "name": "rls_enabled_no_policy",
+      "level": "INFO",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy",
+      "findings": [
+        {
+          "detail": "Table \\`public.respond_ai_resumptions\\` has RLS enabled, but no policies exist",
+          "metadata": {
+            "name": "respond_ai_resumptions",
+            "type": "table",
+            "schema": "public"
+          },
+          "observed_at": "2026-10-05T23:34:42.873Z"
+        }
+      ],
+      "disposition": "Intentional server-only table, no direct client grants/policies. Tested denials; do not add permissive policies."
+    },
+    {
+      "name": "authenticated_security_definer_function_executable",
+      "level": "WARN",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable",
+      "findings": [
+        {
+          "detail": "Function `public.resume_respond_ai_v1(p_contact_id text, p_episode_key text, p_human_event_id text)` can be executed by the `authenticated` role as a `SECURITY DEFINER` function via `/rest/v1/rpc/resume_respond_ai_v1`. Revoke `EXECUTE` or switch it to `SECURITY INVOKER` if that is not intentional.",
+          "metadata": {
+            "name": "resume_respond_ai_v1",
+            "schema": "public",
+            "language": "plpgsql",
+            "arguments": "p_contact_id text, p_episode_key text, p_human_event_id text",
+            "security_definer": true
+          },
+          "observed_at": "2026-10-05T23:34:42.873Z"
+        }
+      ],
+      "disposition": "Intentional authenticated return RPC. SECURITY DEFINER is necessary for append-only audit; active admin/gerente_ventas and auth.uid/CAS are checked inside the function, empty search_path, qualified objects. Unauthorized roles/inactive profiles denied in actual DEV."
+    }
+  ],
+  "publication": {
+    "branchAutoDeploymentDisabled": true,
+    "noVersionedCIPipelines": true,
+    "merge": false,
+    "deployment": false
+  },
+  "rolloutPlan": [
+    "Obtain new explicit authorization for the new HEAD and BOTH reviewed migration hashes; prior f0f29eb production authorization is not used.",
+    "Read-only production preflight: exact PR head/base, health, Social ON, Recovery/SLA OFF, Sales workflow URL absent, #161/#163/#167 separate; snapshot expected object/default ACLs and prior deployment.",
+    "If #168 objects do not exist: apply only corrected initial migration then idempotent ACL repair, exact reviewed bytes. If objects unexpectedly exist, stop and reconcile; do not blindly recreate. Never bulk-apply other migrations.",
+    "Verify table, four functions, trigger, index, RLS and exact effective ACL allowlist; match applied SHA256, prove default privileges and unrelated ACLs unchanged; stop on any mismatch.",
+    "Prove old incompatible workers drained before exact-head merge; do not assume empty queues alone prove zero in-flight remote calls. Wait at least the observed/configured maximum worker duration with fresh logs/queue checks; stop if drain cannot be established without extra authority.",
+    "After explicit go and successful DB/drain checks, squash exact HEAD; use the single automatic production deployment; verify READY, merge SHA and production aliases; no flag/workflow/assignment changes.",
+    "Observe only natural traffic for human sender_source=user pause, later inbound staying paused, no duplicate/uncertain retries, Owner/Legal guard and no new attributable 5xx. No synthetic customer traffic or historical replay.",
+    "On attributable regression roll back code to the verified prior deployment while preserving audit/ledger and restrictive ACLs. Do not restore overbroad grants or drop pause evidence. Report that older code reintroduces the human-attention bug and needs explicit operational review."
+  ],
+  "residualRisks": [
+    "No transaction spans PostgreSQL and Respond; an already authorized dispatch_started/in-flight/unknown transmission cannot be claimed cancelled.",
+    "Human pause depends on confirmed explicit sender_source=user ledger delivery; delayed/missing webhooks cannot be inferred from assignee or absent journal.",
+    "Actual hosted Auth/JWT and real Respond delivery are outside intercepted certification.",
+    "Three inherited full-suite failures remain; the full suite is not globally green."
+  ],
+  "evidenceDirectory": "/private/tmp/pr168-acl-certification.IHTifF",
+  "result": "PASS within ACL/local/DEV scope; no Production rollout performed"
+}
