@@ -4,13 +4,25 @@ Base: `e53c4fb7950a67cf558f789ae8ea8cf145f5fcc8` (#168). Sin #169/#171 ni asigna
 
 ## Dictamen y alcance de la evidencia
 
-**PASS técnico de los escenarios obligatorios**, incluido fallo confirmado de modelo → recuperación de ejecución. No es certificación de entrega real Respond ni de latencia/capacidad productiva.
+**PASS técnico local de los escenarios obligatorios**, incluido fallo confirmado de modelo → recuperación de ejecución. **Cierre global: NO PASS todavía**, por certificación E2E alojada pendiente. No es certificación de entrega real Respond ni de latencia/capacidad productiva.
 
-- 311 pruebas focalizadas Node; build Next 14.
+- 312 pruebas focalizadas Node; build Next 14 (código de aplicación sin cambios desde el build certificado).
 - PostgreSQL efímero real: 48 escenarios de cola/recuperación + 17 de #168; 77 regresiones separadas de #165. Modelos y transporte interceptados, cero llamadas externas.
 - DEV alojado: seis escenarios de procesadores reales bloqueados antes del modelo por #168; 30 escenarios adicionales de transiciones de las RPC reales (10 por lane), RLS/ACL/hash y cleanup 0.
 - El relay de integración DEV tuvo un error de nombre de tabla en el harness, corregido; una repetición sufrió timeout de aprobación del conector y terminó fail-closed en revisión. Ambos cleanups dieron 0. **No se presenta esa repetición como PASS ni como ejecución completa de retry/envío en DEV alojado.** Por ello, las transiciones RPC DEV se certificaron en una transacción corta; el flujo completo con segundo modelo y envío interceptado se certificó localmente con PostgreSQL real.
 - Evidencia: `/private/tmp/respond-durable-ack-cert.Sh4PUM/`. Conserva también los intentos fallidos del harness; `dev-rpc-certification.json` es la certificación RPC final.
+
+### Reintento acotado del cierre DEV — 2026-10-06
+
+La recuperación de aplicación sigue exactamente en `fb5f214a3ad57ecee0c7eee2fd24e57b007a0e48`: no cambian funciones, migración, leases ni permisos. La repetición local volvió a dar 48 escenarios de cola/recuperación + 17 de pausa PASS.
+
+El arnés admite `QUEUE_DEV_FULL_RECOVERY=true`: usa las implementaciones de los tres procesadores y del sender Sales, modelos/HTTP interceptados, y un reloj de aplicación de prueba desplazado siete días. El reloj de DB y su lease de 180 s no se sustituyen. El debounce futuro protege los inputs frente a los pollers y los runs quedan obsoletos para la ventana de edad del sender de fondo; la prueba focalizada comprueba ese descarte con la configuración por defecto. No se modifican flags de ningún despliegue. El transporte interceptado admite exclusivamente refs sintéticas propias.
+
+El relay PTY debe arrancar con `stty -icanon -echo min 1 time 0`; se observó saturación de entrada (BEL) en el modo canónico. Una ejecución anterior fue interrumpida por el coordinador tras interpretar incorrectamente progreso todavía bufferizado; no constituye fallo de aplicación ni de permisos. Su auditoría se conserva en `/private/tmp/respond-durable-ack-cert.96zzLQ9d/`. Otra ejecución documentó expiración del segundo lease antes de verify: claim 12:53:55.480353Z, verify 12:58:17.251174Z, terminal review_required/execution_uncertain, un run, cero outbound; evidencia `/private/tmp/respond-durable-ack-cert.IIHgzC5c/`.
+
+La última ejecución con entrada corregida terminó **FAIL de certificación**: esperaba `complete` y recibió `review_required`. Se completaron 53 consultas del relay sin error SQL, con 479134 ms acumulados dentro de las llamadas al conector y máximo 34174 ms por llamada (no es duración SQL del servidor). Cleanup automático e independiente: 0. Evidencia `/private/tmp/respond-durable-ack-cert.PiP4PSZ9/{dev-result,dev-cleanup,relay-metrics}.json`. No acredita retry→envío completo alojado para ninguna de las tres lanes; el arnés se detuvo al primer caso fallido. Los anteriores 30 casos RPC DEV y los E2E PostgreSQL locales siguen siendo evidencia válida, pero no reemplazan ese cierre.
+
+No se amplía el lease ni se omite una comprobación para acomodar el conector. Para cerrar ese pendiente hace falta una vía de ejecución DEV de baja latencia, con acceso autorizado y la misma intercepción/aislamiento, antes de repetir; no más ciclos por este relay ni acceso a Producción.
 
 ## Arquitectura del acuse y del worker
 

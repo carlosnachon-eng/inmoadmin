@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withCommercialExecution,recoverCommercialExecutionOne } from '../lib/social/commercialExecution.js';
 import { memoryDb,importWithStubs,response } from './helpers/socialFixtures.mjs';
+import { processOneSalesAutoOutbound } from '../lib/agentsV2/salesAutoOutbound.js';
 
 const env={SOCIAL_ROUTING_V1_ENABLED:'true'};
 test('missing claim proof fails closed without entering processor or legacy',async()=>{
@@ -32,6 +33,13 @@ test('confirmed failed model uses only hashed session evidence and halts the att
 });
 test('Social OFF cannot even select execution recovery candidates',async()=>{
   assert.equal((await recoverCommercialExecutionOne({rpc:()=>assert.fail()},{env:{}})).status,'disabled');
+});
+test('hosted certification stale-clock runs cannot be sent by the existing background sender',async()=>{
+  const db=memoryDb({sales_agent_v2_shadow_runs:[{id:'synthetic-run',status:'idle',completed_at:new Date(Date.now()-7*86400000).toISOString(),
+    sales_agent_v2_inbound_messages:{id:'synthetic-inbound',respond_contact_id:'synthetic-dev-only',channel_id:'497382'}}]});
+  const result=await processOneSalesAutoOutbound(db,{env:{SALES_AGENT_V2_AUTO_OUTBOUND_ENABLED:'true',VERCEL_ENV:'production',
+    SUPABASE_ENVIRONMENT:'production',RESPOND_IO_TOKEN:'synthetic-never-used'}});
+  assert.equal(result.status,'idle');assert.ok(db.operations.every(o=>o.op==='select'));
 });
 test('review remains admin-only, read-only, with no payload/token/session leakage',async()=>{
   const mod=await importWithStubs(new URL('../pages/api/operaciones/social-routing.js',import.meta.url),{
