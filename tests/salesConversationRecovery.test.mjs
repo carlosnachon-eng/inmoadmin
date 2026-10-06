@@ -68,7 +68,7 @@ for(const [name,messages,answer] of [
 
 test("Chapulco: real inventory tool + coordination output reaches sender, no fictitious booking",async()=>{
   const {db,inbound}=fixture(["Buen día, disponible para visita la casa de 3 recámaras en Chapulco?"]);
-  db.tables.propiedades=[{id:"synthetic-listing",public_id:"EMP-MUN7BHJX",titulo:"Casa en Venta en Chapulco, Puebla | 3 Recámaras y Vista a la Laguna",status:"published",operacion:"sale",precio:1800000,moneda:"MXN",recamaras:3,colonia:"Chapulco"}];
+  db.tables.propiedades=[{id:"synthetic-listing",public_id:"EMP-MUN7BHJX",titulo:"Casa en Venta en Chapulco, Puebla | 3 Recámaras y Vista a la Laguna",status:"published",operacion:"sale",tipo:"Casa",precio:1800000,moneda:"MXN",recamaras:3,colonia:"Chapulco"}];
   let evidence;
   const output="La publicación EMP-MUN7BHJX indica $1,800,000 MXN. Podemos solicitar una visita con un asesor.";
   const p=await processor(db,{output,tools:["search_sales_inventory"],fulfill:async({socialContext})=>{

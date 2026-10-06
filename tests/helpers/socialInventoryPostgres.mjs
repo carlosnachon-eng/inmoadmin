@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 import { executeSalesTool } from "../../lib/agentsV2/openaiSalesAgent.js";
 import { readSocialSalesContext } from "../../lib/social/salesInventory.js";
+import { explicitSalesSearch } from "../../lib/social/salesSearchContext.js";
 
 // Supabase SDK serializes the real application queries. This local fetch adapter
 // translates only the allowlisted read filters to parameterized PostgreSQL SQL.
@@ -59,6 +60,51 @@ export async function certifySocialInventoryPostgres(pg, check) {
   check("inventory: verified origin precedes textual fallback",()=>{assert.equal(source.sourceConfirmed,true);assert.equal(requests.at(-1).searchParams.get("id"),`eq.${id}`);});
   const budget=await executeSalesTool(client,"search_sales_inventory",{...args,maxPrice:1000000},{socialContext});
   check("inventory: explicit budget preserved, zero rows not global absence",()=>{assert.equal(budget.listings.length,0);assert.equal(budget.searchEvidence.evidence,"no_match_in_bounded_query_not_inventory_absence");});
+  // Exact incident wording, entirely synthetic catalog and identities. Exercise
+  // real SDK query encoding + real PostgreSQL predicate evaluation (not mocks).
+  const messageText="Renta de casa en san Andrés Cholula o alrededores PET friendly máximo 11000 pesos";
+  const insertedSearch=[];
+  for(const [label,price,pets,status,zone,operation,type] of [
+    ["match",10500,true,"published","San Andrés Cholula","rental","Casa"],
+    ["price",12000,true,"published","San Andrés Cholula","rental","Casa"],
+    ["pets",10000,false,"published","San Andrés Cholula","rental","Casa"],
+    ["unknown-pets",10000,null,"published","San Andrés Cholula","rental","Casa"],
+    ["status",10000,true,"draft","San Andrés Cholula","rental","Casa"],
+    ["zone",10000,true,"published","Otra zona","rental","Casa"],
+    ["operation",10000,true,"published","San Andrés Cholula","sale","Casa"],
+    ["type",10000,true,"published","San Andrés Cholula","rental","Departamento"],
+  ]) insertedSearch.push((await pg.query(`insert into propiedades(id,public_id,titulo,operacion,precio,moneda,tipo,colonia,ciudad,status,mascotas_permitidas,updated_at)
+    values(gen_random_uuid(),$1,'Fixture', $2,$3,'MXN',$4,$5,'Puebla',$6,$7,now()) returning id`,
+    [`EMP-QA-${label}`,operation,price,type,zone,status,pets])).rows[0].id);
+  const context={messageText,search:explicitSalesSearch([messageText,"Renta de casa"])};
+  const exact=await executeSalesTool(client,"search_sales_inventory",{zone:messageText,city:"San Andrés Cholula",maxPrice:15000,petsAllowed:false},{socialContext:context});
+  check("inventory incident: actual PostgreSQL respects all explicit constraints and short follow-up",()=>{
+    assert.deepEqual(exact.listings.map(x=>x.publicId),["EMP-QA-match"]);
+    const url=requests.at(-1);
+    assert.equal(url.searchParams.get("precio"),"lte.11000");
+    assert.equal(url.searchParams.get("mascotas_permitidas"),"eq.true");
+    assert.equal(url.searchParams.get("operacion"),"eq.rental");assert.equal(url.searchParams.get("tipo"),"ilike.%Casa%");
+    assert.equal(url.searchParams.has("ciudad"),false);
+    const geography=url.searchParams.getAll("or").join(" ");
+    assert.equal(url.searchParams.getAll("or").length,3);
+    assert.doesNotMatch(geography,/11000|pet|friendly|maximo|máximo|pesos|alrededores/);
+  });
+  await pg.query("delete from propiedades where id=$1",[insertedSearch[0]]);
+  const empty=await executeSalesTool(client,"search_sales_inventory",{},{socialContext:context});
+  check("inventory incident: zero rows remains bounded empty, not technical failure",()=>{
+    assert.equal(empty.searchEvidence.status,"empty");assert.deepEqual(empty.listings,[]);
+    assert.equal(empty.searchEvidence.matchCount,0);
+  });
+  await pg.query("set role anon");
+  try {
+    await assert.rejects(()=>executeSalesTool(client,"search_sales_inventory",{},{socialContext:context}),error=>/permission denied/.test(error.message));
+  } finally { await pg.query("reset role"); }
+  check("inventory incident: real PostgreSQL permission failure is error, never zero matches",()=>{
+    assert.equal(context.inventory.status,"error");assert.equal(context.inventory.matchCount,null);
+  });
+  await pg.query("delete from propiedades where id=any($1::uuid[])",[insertedSearch]);
+  const residues=(await pg.query("select count(*)::int n from propiedades where id=any($1::uuid[])",[insertedSearch])).rows[0].n;
+  check("inventory incident: synthetic catalog cleanup zero",()=>assert.equal(residues,0));
   // Exercise application attribution SELECTs against the actual migration columns,
   // not a mock that would silently accept a nonexistent selected column.
   let previous=null;

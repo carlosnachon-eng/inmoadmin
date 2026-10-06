@@ -2,6 +2,7 @@
   "git": {
     "deploymentEnabled": {
       "codex/respond-durable-ack": false,
+      "codex/sales-inventory-search-outcomes": false,
       "codex/sales-human-attention-pause": false,
       "codex/social-routing-capture-failsafe": false,
       "codex/sales-conversation-context-recovery": false,
