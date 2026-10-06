@@ -1,70 +1,71 @@
-# Acuse durable de Respond — propuesta sin rollout
+# Acuse durable de Respond — revisión de PR #170
 
-Base: `e53c4fb7950a67cf558f789ae8ea8cf145f5fcc8` (#168). No incluye #169 ni asignación protegida #167.
+Base: `e53c4fb7950a67cf558f789ae8ea8cf145f5fcc8` (#168). Sin #169/#171 ni asignación #167. **Sin merge ni Producción.**
 
-**Corte de revisión: NO APTO PARA MERGE.** La mejora de mismo-ciclo está implementada, pero el nuevo escenario obligatorio 5 (fallo dentro del modelo → recuperación automática por lane) queda **BLOQUEADO** por un límite preexistente. Los crons sólo seleccionan `captured`; Sales/Legal quedan `processing` y Owner `failed`. La guarda Social rechaza `processing/failed → captured` con `social_reexecution_requires_review`. No se ha relajado esa guarda, reseteado estados ni añadido otra política de reintentos. Recuperación de captura y recuperación de ejecución no son equivalentes.
+## Dictamen y alcance de la evidencia
 
-## Arquitectura exacta
+**PASS técnico de los escenarios obligatorios**, incluido fallo confirmado de modelo → recuperación de ejecución. No es certificación de entrega real Respond ni de latencia/capacidad productiva.
 
-1. El receptor conserva el parser, límite de body y HMAC multiclave existentes. Para `message.received` en los cuatro canales comerciales prepara un envelope sanitizado: texto acotado, presencia de adjunto, atribución explícita y referencias públicas de catálogo (no URLs ni adjuntos crudos).
-2. `enqueue_respond_commercial_v1` confirma **una transacción**: transporte en `gv_respond_webhook_events`, receipt mediante el trigger existente de #165 y fila en `respond_commercial_jobs`. Una excepción revierte las tres partes. Colisión de identidad falla cerrada.
-3. Sólo la prueba `durable=true` permite HTTP 200. Error, respuesta malformada o timeout de la RPC producen 503. El cliente aborta la espera a los 3500 ms; una confirmación cuyo resultado se perdió se resuelve mediante la misma clave en la siguiente entrega. Esto no es un SLA de cold start/red de Vercel.
-4. `/api/cron/respond-commercial-worker`, cada minuto, usa el `CRON_SECRET` existente. Hasta 20 capturas rápidas dentro de 40 s y **como máximo un intento de lane** por invocación. Función de 180 s: presupuesto de captura + los 120 s de los procesadores existentes + margen; no inicia otro agente después. Claim `SKIP LOCKED`, FIFO de captura por contacto/canal, token y lease de 120 s. Sólo un job no terminal con lease vencido vuelve a ser reclamable.
-5. El worker reconstruye exclusivamente el envelope y llama a la captura Social existente. #165 sigue creando ruta + input especializado + receipt terminal atómicamente, conservando CAS y tardíos. **Después de confirmar `finish` con el token vigente**, sólo si esa captura creó un inbound SALES/OWNER/LEGAL nuevo, llama a `processSocialRouteImmediate` con los procesadores existentes. Conserva debounce/coalescencia, claim atómico de la lane, reglas y #168; ejecuta modelo/envío en **ese mismo worker**, nunca en el request de recepción. Los imports de procesadores sólo están en el cron. No se invocan crons por HTTP ni se usa `waitUntil` como cola.
-6. `finish_respond_commercial_v1` exige el token vigente y deriva el estado terminal del receipt; no confía en que el cliente declare éxito. Si falta confirmación, backoff de 30–150 s; tras cinco fallos finalizados, revisión. Caída antes del finish: lease recuperable. Caída después de capture: la recuperación reutiliza el receipt/ruta/input existente, sin segunda captura especializada.
+- 311 pruebas focalizadas Node; build Next 14.
+- PostgreSQL efímero real: 48 escenarios de cola/recuperación + 17 de #168; 77 regresiones separadas de #165. Modelos y transporte interceptados, cero llamadas externas.
+- DEV alojado: seis escenarios de procesadores reales bloqueados antes del modelo por #168; 30 escenarios adicionales de transiciones de las RPC reales (10 por lane), RLS/ACL/hash y cleanup 0.
+- El relay de integración DEV tuvo un error de nombre de tabla en el harness, corregido; una repetición sufrió timeout de aprobación del conector y terminó fail-closed en revisión. Ambos cleanups dieron 0. **No se presenta esa repetición como PASS ni como ejecución completa de retry/envío en DEV alojado.** Por ello, las transiciones RPC DEV se certificaron en una transacción corta; el flujo completo con segundo modelo y envío interceptado se certificó localmente con PostgreSQL real.
+- Evidencia: `/private/tmp/respond-durable-ack-cert.Sh4PUM/`. Conserva también los intentos fallidos del harness; `dev-rpc-certification.json` es la certificación RPC final.
 
-`complete` significa **captura comercial durable**, no generación ni entrega efectiva. El journal del agente sigue siendo la evidencia de ejecución; `message.sent` es necesario para acreditar entrega real en una futura vigilancia.
+## Arquitectura del acuse y del worker
 
-La cola queda terminal antes del modelo: caída entre finish y claim de lane deja un input `captured` que el cron existente sí retoma; caída o excepción tras consumir el claim conserva exactamente el estado de la lane. Una captura recuperada con `created=false`, un token perdido o un finish incierto nunca vuelve a llamar al modelo desde la cola. El resultado heredado `fallback_to_existing_lane` **no acredita recuperación**: hay que inspeccionar el estado persistido. No existe recuperación automática certificada del fallo de modelo consumido (bloqueo indicado arriba).
+1. HMAC, parser y límite de body sin cambios. En los cuatro canales comerciales, el webhook normaliza un envelope sanitizado y llama a `enqueue_respond_commercial_v1`.
+2. Una transacción confirma evento + receipt de #165 + job. Sólo `durable=true` autoriza HTTP 200. Error/malformed/timeout (3500 ms) → 503, nunca ACK falso; el retry del proveedor resuelve la misma clave durable.
+3. El worker autenticado por `CRON_SECRET` corre cada minuto. Claim de captura con SKIP LOCKED, FIFO por contacto/canal, token y lease de 120 s. Captura reutiliza #165, CAS y tardíos. Finish deriva el terminal del receipt.
+4. Sólo una captura nueva con input especializado llama a los procesadores existentes de Sales/Owner/Legal en ese mismo worker. No hay modelo en el webhook ni segunda espera obligatoria de cron de lane. Preserva debounce, prioridades y #168.
+5. El presupuesto sigue siendo 180 s: hasta 40 s de capturas y **un intento de lane por invocación**. Antes de capturar, el worker puede tomar una recuperación elegible del journal nuevo. No inicia un segundo modelo en esa invocación.
+6. Captura y ejecución son estados distintos. `respond_commercial_jobs.complete` no prueba respuesta ni entrega. Una caída antes del claim de lane deja el input capturado para el mecanismo existente.
 
-## Límites y compatibilidad
+## Recuperación de ejecución acotada
 
-- Claves: event ID y `(canal, contacto, message ID)`. Duplicados conservan el primer envelope y estado terminal, aun si el proveedor cambia el delivery ID.
-- No backfill, barrido histórico, reseteo de inputs ni replay masivo. Un transporte preexistente sin job y sin captura terminal queda en revisión al repetir el mismo evento; no se crea un dispatch histórico.
-- Social OFF: recepción durable y trabajo retenido. **Ya no permite fallback comercial legacy** en esos cuatro canales. No se cambia el valor de ningún flag.
-- Recepción no comercial, snapshots y eventos humanos siguen su camino previo. #168 y sus ACL/funciones/trigger no se modifican. Autoría `sender_source=user`, pausa y retorno explícito se preservan.
-- Ningún cambio al selector comercial de #169, prompts, asignaciones, workflows, Recovery/SLA o handoff URL.
-- Los estados de agente ya consumidos, `dispatch_started`, `sent` o inciertos no se resetean: revisión, nunca retry ciego. Recuperar captura pendiente no equivale a autorizar repetir un efecto remoto incierto.
-- Camino nuevo sin backlog: un turno de cron + debounce existente (hasta 4 s) + modelo/DB/transporte; se elimina la segunda espera de cron para una captura nueva válida. Si `SALES_AGENT_V2_IMMEDIATE_ENABLED=false` o `SALES_AGENT_V2_AUTO_SHADOW_ENABLED` no es `true`, se conserva el gate existente: Sales queda para su lane, sin alterar flags. Bajo carga no se promete ausencia de backlog; cada invocación inicia como máximo un agente. Vigilar antigüedad de ambas colas. El objetivo de menos de 5 s corresponde al **acuse**, no a la respuesta comercial.
-- Falta de identificadores estables o fallo de persistencia responde no-200 y no autoriza agentes. Supervisar esos errores para evitar otra desactivación del webhook; no reactivarlo automáticamente.
+`respond_commercial_executions` pertenece al inbound/ruta/evento exactos, no al contacto de forma indefinida.
 
-## Seguridad de DB
+- Sólo jobs nuevos tras esta migración son elegibles. La nueva columna recibe false para los jobs existentes; el default true afecta únicamente inserts futuros. Sin backfill ni adopción de inbounds processing/failed sin journal.
+- Todos los entrypoints de las tres lanes usan la misma RPC de claim. Lock, token exclusivo y lease de **180 s**; máximo **dos intentos totales**. Ningún reset a captured. La función/trigger `guard_social_inbound_v1` permanece idéntica y sigue rechazando `social_reexecution_requires_review`.
+- Fase `claimed`: aún no se autorizó el modelo. Un fallo de contexto previo o crash/lease vencido puede permitir el segundo intento.
+- Fase `model`: checkpoint durable inmediatamente antes de crear sesión. Sólo un estado terminal **failed explícito del proveedor**, con sessionRef hasheada y sin herramientas/efectos/runs previos, permite retry. Espera mínima de 30 s, retomada por el siguiente ciclo.
+- Antes de cualquier herramienta, publicación de run o efecto se cruza la fase irreversible `effects`. Cualquier run/outbound/handoff existente también impide otra generación. Timeout, respuesta perdida, crash en model/effects o efecto reservado → revisión, **nunca retry ciego**.
+- Nuevo token tras recuperación invalida al trabajador anterior. Se vuelve a verificar token, lease, ruta vigente y #168 antes del modelo/efectos, y antes del envío. Las guardas finales existentes de #168 no se sustituyen.
+- Agotamiento → `review_required/attempts_exhausted`, con los intentos y motivos retenidos. La pantalla y API read-only de Social muestran la revisión sólo a admin activo, sin tokens, texto ni sesiones crudas. No hay botón de replay/retry.
+- Una pausa entre intentos termina esa ejecución como paused; una devolución explícita #168 sólo habilita turnos futuros, no reabre ese inbound.
 
-Una tabla nueva con RLS, tres funciones internas `SECURITY DEFINER` con `search_path=''`, dos índices de cola. Revocación explícita de privilegios heredados sobre esos objetos; service_role sólo SELECT directo y EXECUTE en estas RPC. PUBLIC/anon/authenticated sin acceso. No modifica defaults globales ni ACL de #168. El control por roles y los grants se prueban con defaults equivalentes a Producción.
+| Regresión requerida | Resultado local con DB real y IO interceptado |
+|---|---|
+| Sales falla modelo antes de sender | Dos modelos (uno fallido, uno exitoso), un run y un outbound |
+| Owner igual | PASS |
+| Legal igual | PASS |
+| Crash/concurrencia | Un segundo intento; token anterior rechazado |
+| dispatch_started / sent / incierto / reserva | Cero retry; evidencia outbound inmutable |
+| #168 entre intentos | Cero segundo modelo/envío |
+| Duplicado webhook | Una ruta/input/ejecución; no crea intento adicional |
+| Agotamiento | Revisión visible tras dos fallos; no loop |
 
-## Certificación
+La prueba DEV RPC cubre esas transiciones para las tres lanes, pero no sustituye el E2E de agentes local ni demuestra concurrencia entre conexiones remotas. La concurrencia usa conexiones PostgreSQL locales independientes.
 
-### Recertificación mismo-ciclo (sin merge ni deployment)
+## Latencia medida (no SLA productivo)
 
-- 305 pruebas focalizadas Node PASS. Build Next 14 PASS con configuración sintética de loopback; advertencias de fuentes remotas, sin credenciales.
-- 33 comprobaciones de cola en PostgreSQL efímero: mismo-ciclo Sales/Owner/Legal en los cuatro canales, duplicados, lease/token, crash tras ACK/capture, transacción fallida, pausa antes del modelo y antes del envío, P0001/tardíos, cero handoff/citas. Incluye **tres controles que reproducen el bloqueo del escenario 5**, no tres éxitos de recuperación. El comando de certificación sale no-cero por ese bloqueo.
-- 17 regresiones #168 y 77 regresiones Social/#165 PASS, sin cambiar sus funciones, triggers ni ACL.
-- ACK loopback: 7,96 ms inicial y **5,29 ms con modelo concurrente de 5500 ms**. Recepción→outbound interceptado: **9532,37 ms** con debounce real. Sumando una fase de cron simulada de 60000 ms: **69532,37 ms**; segunda espera de cron = 0. No es latencia medida en Vercel/DEV ni un SLA productivo.
-- 26 llamadas de modelo y 20 intentos de transporte interceptados; uno se fuerza a resultado incierto y no se reintenta. Cero tráfico externo. Cluster eliminado y residuos 0.
-- DEV real: seis escenarios PASS de enqueue/receipt/duplicado y lease/route/input/**procesador mismo-ciclo** para Sales/Owner/Legal. #168 bloqueó los tres antes de modelo/envío. RPC/DB reales por relay SQL; fixtures en cuarentena, cero llamadas externas, cleanup 0. Esto es un PASS del subconjunto DEV, **no PASS global** ni entrega Respond real. Los caminos no pausados y la latencia se certificaron localmente con IO interceptado.
-- Migración DEV `20261006034011` sin reaplicar ni cambiar bytes: SHA repo/aplicado `40f3b60836cd1f563ae98b1992c4da170b235a5580f1720122d8fbe25a4e0f98`. Postcheck real RLS/ACL/3 RPC PASS; sin DDL ni defaults globales modificados.
-- Para cerrar el escenario 5 hace falta acordar aparte una recuperación durable y cercada de **ejecución**, con evidencia de ausencia de efectos/resultado incierto. No basta resetear el inbound ni reutilizar el lease de captura; eso violaría las guardas que deben permanecer intactas.
+HTTP real loopback con HMAC, handler y DB reales: **7.48 ms**; otro ACK durante modelo lento de 5.5 s: **3.56 ms**. Recepción → outbound interceptado: **9.54 s**, incluyendo debounce real de 4 s. Añadir una fase de cron simulada de 60 s da **69.54 s**; segunda espera de cron = 0.
 
-Evidencia de esta revisión: `/private/tmp/respond-durable-ack-cert.kPTOUE/`.
+Sin evidencia aún de cold start, red, permisos de despliegue, throughput o backlog sostenido en Vercel. El límite de un intento de lane por invocación debe considerarse al evaluar capacidad; no se afirma ausencia de backlog bajo carga.
 
-### Certificación previa del acuse durable (antes de la mejora de latencia)
+## Migraciones y permisos DEV
 
-- 274 pruebas focalizadas Node (269 Social/HMAC/pausa + 5 nuevas de envelope, timeout y autenticación del cron).
-- 77 regresiones PostgreSQL de Social/#165 PASS: reservas de handoff/ACK/citas, alias del proveedor, concurrencia, P0001/CAS, empates y eventos tardíos.
-- PostgreSQL efímero real: 28 escenarios de cola + 17 escenarios #168, incluyendo concurrencia independiente, rollback de la transacción por fallo de INSERT, recuperación de lease, crash posterior a capture, 12 combinaciones agente/canal, duplicados, P0001 y tardíos. 19 llamadas de modelo y 16 envíos interceptados en los escenarios de cola; cero llamadas externas. Cluster eliminado, residuos 0.
-- HTTP real en loopback con parser/HMAC/handler y DB real: 200 en **8.01 ms**; otra petición mientras el modelo tarda deliberadamente 5.5 s, **1.46 ms**. Timeout de persistencia no produce ACK falso (3501 ms, rechazado). No son mediciones de Vercel.
-- DEV real `hjfwjnejbcpmknvfpdcq`: seis escenarios (Sales/Owner/Legal: enqueue/receipt/duplicado y recuperación/route/input/pausa). RPC/DB reales mediante relay SQL. Inputs en cuarentena para crons y pausa humana sintética previa; cero modelos y mensajes reales. Envíos no pausados se certifican localmente, no se exponen a senders DEV. Cleanup de fixtures 0.
-- Migración DEV ledger `20261006034011`; archivo `20261006033141_respond_commercial_queue.sql`. SHA-256 repo = ledger: `40f3b60836cd1f563ae98b1992c4da170b235a5580f1720122d8fbe25a4e0f98`. RLS/ACL y las tres RPC PASS; cola DEV vacía al terminar.
-- Build Next 14 PASS con URL/clave sintéticas de loopback, sin credenciales. Advertencias de optimización de fuentes por red restringida. El primer build sin configuración pública falló en la prerenderización de una página existente (`supabaseUrl is required`); no fue un fallo de compilación del parche.
-
-Evidencia sanitizada local: `/private/tmp/respond-durable-ack-cert.zXy59a/` (`local-postgres.json`, `dev-result.json`, `dev-postcheck.json`, `dev-cleanup.json`). No equivale a envío Respond real ni a cobertura natural productiva.
+- Cola original intacta: archivo `20261006033141_respond_commercial_queue.sql`; ledger DEV `20261006034011`; SHA-256 `40f3b60836cd1f563ae98b1992c4da170b235a5580f1720122d8fbe25a4e0f98`.
+- Journal nuevo: archivo `20261006045043_respond_commercial_execution.sql`; ledger DEV **20261006045856**; SHA-256 repo/aplicado **72ac522ebde58fed42db7e9b7fba1c6d851884567bc568f99dbb4bb82afc76cb**.
+- Tabla con RLS; service_role sólo SELECT directo. Tres RPC operativas sólo service_role; helper interno sin EXECUTE de service_role. PUBLIC/anon/authenticated sin EXECUTE ni acceso directo. Sin default privileges globales.
+- Postcheck: `supabase/checks/respond_commercial_execution.sql`. Hashes de las cuatro funciones #168 y de la guarda #165 antes/después idénticos.
+- Advisor INFO [RLS Enabled No Policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy): esperado para esta tabla exclusivamente interna; no se añade política pública para silenciarlo.
+- Fixtures DEV finales: cola, ejecuciones, transporte y rutas = 0. Las pruebas RPC crean y eliminan fixtures en una misma transacción, invisibles para workers externos.
 
 ## Rollout mínimo, NO ejecutado
 
-No iniciar este plan mientras el escenario 5 siga bloqueado y no exista nueva revisión/autorización. La mejora de latencia por sí sola no cierra los requisitos de recuperación solicitados.
-
-1. Revisar HEAD/diff, confirmar salud/flags actuales y preflight de #168. Verificar que el scheduler y `CRON_SECRET` existentes estén disponibles. Acreditar drenaje de workers incompatibles antes del cambio.
-2. Con autorización nueva, aplicar exactamente esta migración en Producción y ejecutar `supabase/checks/respond_commercial_queue.sql`. Comparar hash; no aplicar migraciones ajenas.
-3. Merge autorizado y un deployment; comprobar READY/SHA/aliases. Sin cambios Respond ni configuración de negocio. Esta rama tiene preview automático deshabilitado.
-4. Seguir un inbound natural nuevo: HTTP/TTFB <5000 ms, transporte + job/receipt, captura, input, run y outbound + `message.sent` o pausa justificada. Comprobar Active en Webhook 8 y ausencia de duplicados/backlog persistente. No Send Test/replay.
-5. Si hay regresión atribuible, rollback de código al deployment previo compatible con #168, sin borrar cola/receipts/auditoría/ACL. El código viejo vuelve al acuse síncrono y no drena la nueva cola: conservar pendientes, reportarlos y requerir una corrección compatible autorizada; no repetir efectos ni vaciar tablas para aparentar recuperación.
+1. Revisión/autorización nueva del HEAD y de ambas migraciones exactas. Confirmar salud/configuración vigente y drenaje de workers incompatibles; #168, Social ON, Recovery/SLA OFF y handoff URL ausente.
+2. Aplicar sólo esas migraciones en orden, verificando hashes/ACL/postchecks. Nada de migraciones masivas ni defaults globales.
+3. Merge autorizado y un deployment automático; READY/SHA/aliases. Preview de esta rama deshabilitado. Sin cambios Respond, flags ni asignación.
+4. Seguir un inbound natural nuevo: HTTP/TTFB <5000 ms → evento/receipt/job → ruta/input → run → outbound + message.sent, o pausa debidamente probada. Vigilar Active de Webhook 8, backlog y revisiones. No Send Test ni replay.
+5. Rollback de código sólo ante regresión atribuible y con autorización correspondiente. Conservar jobs, receipts, journal y auditoría/ACL; no resetear estados. El código anterior no drena esta cola y vuelve al acuse síncrono: documentar pendientes sin reenviarlos.

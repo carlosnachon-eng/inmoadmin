@@ -33,7 +33,15 @@ export default function SocialRoutingReview() {
       </table>
       <button onClick={() => load(data.capturePage - 1)} disabled={busy || !data.capturePage}>Anterior</button>
       <span> Página {(data.capturePage || 0) + 1} </span>
-      <button onClick={() => load(data.capturePage + 1)} disabled={busy || !data.captureHasMore}>Siguiente</button>
+      <button onClick={() => load(data.capturePage + 1)} disabled={busy || !(data.captureHasMore || data.executionHasMore)}>Siguiente</button>
+      <h2>Ejecución comercial — recuperación / revisión</h2>
+      <p>Máximo dos intentos. Una revisión no acredita atención humana ni cancelación de un envío incierto.</p>
+      <table><thead><tr><th>Evento</th><th>Área</th><th>Estado / fase</th><th>Intentos</th><th>Motivo</th><th>Revisión manual</th></tr></thead>
+        <tbody>{(data.executionReviews || []).map(r => <tr key={r.eventRef}>
+          <td>{r.eventRef}</td><td>{r.lane}</td><td>{r.state} / {r.phase}</td><td>{r.attempts}</td><td>{r.reason || "—"}</td>
+          <td>{r.inboxUrl && <a href={r.inboxUrl} target="_blank" rel="noreferrer">Abrir Inbox</a>}</td>
+        </tr>)}</tbody>
+      </table>
       <table><thead><tr><th>Referencia</th><th>Origen</th><th>Destino</th><th>Motivo</th><th>Identidad</th><th>Estado</th></tr></thead>
         <tbody>{data.routes.map((r) => <tr key={r.routeRef}><td>{r.routeRef}</td><td>{r.source.platform} / {r.source.channelId}</td><td>{r.destination}</td><td>{r.reason}</td><td>{r.identityStatus}</td><td>{r.status} {r.inboxUrl && <a href={r.inboxUrl} target="_blank" rel="noreferrer">Abrir Inbox</a>}</td></tr>)}</tbody>
       </table></>}

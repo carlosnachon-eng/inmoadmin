@@ -9,6 +9,7 @@ import * as webhook from "../../lib/ejecutivo/respondWebhook.js";
 import { sanitizeShadowText } from "../../lib/shadow/coordinator.js";
 import * as handoffs from "../../lib/agentsV2/salesHandoff.js";
 import * as outbound from "../../lib/agentsV2/salesAutoOutbound.js";
+import { recoverCommercialExecutionOne } from "../../lib/social/commercialExecution.js";
 
 // Shared by disposable PostgreSQL and connected DEV. Only model/provider IO is
 // intercepted; receiver, queue RPCs, routing, lane processors and #168 are real.
@@ -17,6 +18,8 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
   await saveManifest({ prefix });
   const checks=[], timings=[], sends=[], models=[], latency=[], recoveryGaps=[];
   let hook=async()=>{};
+  let modelStatus="idle";
+  const getModel=async()=>({id:"synthetic-session",status:modelStatus});
   let sendHook=async()=>{};
   const env={SOCIAL_ROUTING_V1_ENABLED:"true",SALES_AGENT_V2_AUTO_OUTBOUND_ENABLED:"true",
     SALES_AGENT_V2_AUTO_SHADOW_ENABLED:"true",RESPOND_IO_TOKEN:"synthetic-intercepted-only",
@@ -36,7 +39,7 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
     "../shadow/coordinator":{sanitizeShadowText},"./agentUsage":{safeAgentUsage:async()=>({})}};
   const salesRunner=await importWithStubs(new URL("../../lib/agentsV2/runSalesShadowMessage.js",import.meta.url),{
     ...common,"./openaiSalesAgent":{assertSalesAgentV2ShadowEnvironment:()=>{},createSalesSession:create,
-      getSalesSession:async()=>({id:"synthetic-session",status:"idle"}),fulfillSalesActions:()=>assert.fail(),
+      getSalesSession:getModel,fulfillSalesActions:()=>assert.fail(),
       salesSessionItems:async()=>[],salesAssistantOutput:()=>output},
   });
   const sales=await importWithStubs(new URL("../../lib/agentsV2/processSalesInbound.js",import.meta.url),{
@@ -44,17 +47,20 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
     "./openaiSalesAgent":{salesAgentModel:()=>"synthetic"},
   });
   const owner=await importWithStubs(new URL("../../lib/agentsV2/processOwnerInbound.js",import.meta.url),{
-    ...common,"./openaiOwnerAgent":{createOwnerSession:create,getOwnerSession:async()=>({id:"synthetic-session",status:"idle"}),
+    ...common,"./openaiOwnerAgent":{createOwnerSession:create,getOwnerSession:getModel,
       fulfillOwnerActions:()=>assert.fail(),ownerOutput:async()=>output},
   });
   const legal=await importWithStubs(new URL("../../lib/agentsV2/processLegalInbound.js",import.meta.url),{
-    ...common,"./openaiLegalAgent":{createLegalSession:create,getLegalSession:async()=>({id:"synthetic-session",status:"idle"}),
+    ...common,"./openaiLegalAgent":{createLegalSession:create,getLegalSession:getModel,
       fulfillLegal:()=>assert.fail(),legalOutput:async()=>output},"./legalHandoff":{createAndDispatchLegalHandoff:()=>assert.fail()},
   });
   const processors={SALES:sales.processSalesInboundById,OWNER:owner.processOwnerInboundById,LEGAL:legal.processLegalInboundById};
   // Most scenarios skip wall-clock debounce only; the latency scenario below
   // uses the real 4-second debounce and a deliberately slow intercepted model.
   const work=(client=admin,options={})=>processCommercialQueueOne(client,{env,processors,sleep:async()=>{},...options});
+  const recover=(client=admin)=>recoverCommercialExecutionOne(client,{env,processors});
+  const ready=async f=>db.query("update respond_commercial_executions set next_attempt_at=now()-interval '1 second' where event_id=$1",[f.event.eventId]);
+  const journal=async f=>(await service.query("select * from respond_commercial_executions where event_id=$1",[f.event.eventId])).rows[0];
   const cases={SALES:"Busco departamento en renta",OWNER:"Soy propietario, quiero vender mi casa",LEGAL:"Qué incluye la póliza jurídica"};
   const check=async(label,fn)=>{await fn();checks.push(label);};
   const fixture=(destination="SALES",channel="497382",contact=prefix+"-"+randomUUID(),at=new Date().toISOString())=>{
@@ -107,6 +113,17 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
         not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_denied
         from pg_proc p where pronamespace='public'::regnamespace and proname in ('enqueue_respond_commercial_v1','claim_respond_commercial_v1','finish_respond_commercial_v1')`)).rows;
       assert.equal(functions.length,3);for(const f of functions)for(const [k,v] of Object.entries(f))if(k!=='proname')assert.equal(v,true);
+      const executionAcl=(await db.query(`select relrowsecurity and has_table_privilege('service_role',oid,'SELECT')
+        and not has_table_privilege('service_role',oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+        and not has_table_privilege('anon',oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+        and not has_table_privilege('authenticated',oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') as ok
+        from pg_class where oid='respond_commercial_executions'::regclass`)).rows[0];assert.equal(executionAcl.ok,true);
+      const executionFunctions=(await db.query(`select p.proname,
+        has_function_privilege('service_role',p.oid,'EXECUTE')=(p.proname<>'respond_execution_has_effect_v1') as service_exact,
+        not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('authenticated',p.oid,'EXECUTE')
+        and not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as no_public
+        from pg_proc p where pronamespace='public'::regnamespace and proname in ('respond_execution_has_effect_v1','claim_respond_execution_v1','step_respond_execution_v1','next_respond_execution_v1')`)).rows;
+      assert.equal(executionFunctions.length,4);assert.ok(executionFunctions.every(f=>f.service_exact&&f.no_public));
     });
     await check("atomic ACK and crash after 200 recovered by fresh worker",async()=>{
       const f=fixture();const {res,ms}=await receive(f);assert.equal(res.statusCode,200);assert.ok(ms<5000);timings.push(ms);
@@ -212,19 +229,73 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
       await process(f);assert.equal(models.length,n+1);assert.equal(sends.length,m+1);
       await process(f);assert.equal(sends.length,m+1);
     });
-    for(const lane of Object.keys(cases))await check(`${lane}: known recovery gap after actual model failure is preserved, no blind retry`,async()=>{
+    for(const lane of Object.keys(cases))await check(`${lane}: confirmed failed model → one durable recovery → one run/send`,async()=>{
+      const f=fixture(lane);await receive(f);const n=models.length,m=sends.length;
+      modelStatus='failed';await work();modelStatus='idle';
+      assert.equal((await journal(f)).state,'retryable');assert.equal(sends.length,m);
+      const r=await route(f),table={SALES:'sales_agent_v2',OWNER:'owner_agent_v1',LEGAL:'legal_agent_v1'}[lane];
+      await assert.rejects(service.query(`update ${table}_inbound_messages set status='captured' where id=$1`,[r.inbound_id]),/social_reexecution_requires_review/);
+      await receive(f);await work();assert.equal(models.length,n+1,'provider duplicate is not recovery authority');
+      await ready(f);await recover();assert.equal(models.length,n+2);assert.equal(sends.length,m+1);
+      assert.equal((await journal(f)).state,'complete');assert.equal((await journal(f)).attempts,2);
+      assert.equal((await service.query(`select count(*)::int n from ${lane==='SALES'?table+'_shadow_runs':table+'_runs'} where inbound_message_id=$1`,[r.inbound_id])).rows[0].n,1);
+      await process(f);await recover();assert.equal(models.length,n+2);assert.equal(sends.length,m+1);
+    });
+    for(const lane of Object.keys(cases))await check(`${lane}: ambiguous model create failure → review, never retry`,async()=>{
       const f=fixture(lane);await receive(f);const n=models.length,m=sends.length;
       hook=async()=>{throw Error('synthetic_model_failure');};const result=await work();hook=async()=>{};
-      assert.equal(result.status,'complete');assert.equal(result.laneStatus,'fallback_to_existing_lane');
+      assert.equal(result.status,'complete');assert.equal((await journal(f)).state,'review_required');
       assert.equal(models.length,n+1);assert.equal(sends.length,m);
       const r=await route(f),table={SALES:'sales_agent_v2',OWNER:'owner_agent_v1',LEGAL:'legal_agent_v1'}[lane];
       const state=(await service.query(`select status from ${table}_inbound_messages where id=$1`,[r.inbound_id])).rows[0].status;
-      assert.equal(state,lane==='OWNER'?'failed':'processing');
+      assert.equal(state,'processing');
       await assert.rejects(service.query(`update ${table}_inbound_messages set status='captured' where id=$1`,[r.inbound_id]),/social_reexecution_requires_review/);
       await receive(f);await work();assert.equal((await process(f)).status,'not_claimed');
       assert.equal(models.length,n+1);assert.equal(sends.length,m);
-      recoveryGaps.push({lane,inboundState:state,queueState:'complete',automaticLaneRecovery:false,
-        reason:'social_reexecution_requires_review',newModelCalls:1,newSends:0});
+    });
+    await check('crash before model + concurrent recovery: one second attempt, stale token fenced',async()=>{
+      const f=fixture();await receive(f);await processCommercialQueueOne(admin,{env});const r=await route(f);
+      const args={p_lane:'SALES',p_inbound:r.inbound_id,p_enabled:true};
+      const first=(await admin.rpc('claim_respond_execution_v1',args)).data;assert.equal(first.authorized,true);
+      await db.query("update respond_commercial_executions set lease_until=now()-interval '1 second' where inbound_id=$1",[r.inbound_id]);
+      const n=models.length,m=sends.length;
+      const recovered=await Promise.all([recover(),recover(second)]);
+      assert.equal(models.length,n+1,JSON.stringify({recovered,journal:await journal(f)}));assert.equal(sends.length,m+1);assert.equal((await journal(f)).attempts,2);
+      const stale=await admin.rpc('step_respond_execution_v1',{p_inbound:r.inbound_id,p_token:first.token,p_action:'model'});
+      assert.equal(stale.data.allowed,false);
+    });
+    for(const lane of Object.keys(cases))await check(`${lane}: #168 intervenes between attempts, no model/send`,async()=>{
+      const f=fixture(lane);await receive(f);modelStatus='failed';await work();modelStatus='idle';await human(f);await ready(f);
+      const n=models.length,m=sends.length;await recover();assert.equal((await journal(f)).state,'paused');
+      assert.equal(models.length,n);assert.equal(sends.length,m);
+    });
+    await check('two confirmed model failures exhaust to visible terminal review; no loop',async()=>{
+      const f=fixture();await receive(f);modelStatus='failed';await work();await ready(f);await recover();modelStatus='idle';
+      const e=await journal(f);assert.equal(e.state,'review_required');assert.equal(e.reason,'attempts_exhausted');assert.equal(e.attempts,2);
+      const n=models.length;await ready(f);await recover();await process(f);assert.equal(models.length,n);
+      assert.equal(e.audit.filter(a=>a.action==='model_failed').length,2,'failure evidence retained');
+    });
+    for(const [status,code] of [['processing','dispatch_started'],['sent',null],['failed','respond_delivery_unknown'],['processing','human_guard_pending']])
+      await check(`reserved outbound ${status}/${code}: zero recovery; existing evidence immutable`,async()=>{
+        const f=fixture();await receive(f);modelStatus='failed';await work();modelStatus='idle';const r=await route(f);
+        const run=(await service.query("insert into sales_agent_v2_shadow_runs(inbound_message_id,session_id,status,called_tools,proposed_response) values($1,$2,'idle','[]',$3) returning id",[r.inbound_id,prefix+'-reserved',output])).rows[0];
+        await service.query("insert into sales_agent_v2_auto_outbound(inbound_message_id,shadow_run_id,respond_contact_id,channel_id,case_kind,status,error_code,proposed_message) values($1,$2,$3,'497382','greeting_qualification',$4,$5,$6)",[r.inbound_id,run.id,f.event.respondContactId,status,code,output]);
+        const read=async()=>(await service.query('select * from sales_agent_v2_auto_outbound where inbound_message_id=$1',[r.inbound_id])).rows[0];
+        const before=await read(),n=models.length,m=sends.length;await ready(f);await recover();
+        assert.equal((await journal(f)).reason,'existing_effect');assert.equal(models.length,n);assert.equal(sends.length,m);assert.deepEqual(await read(),before);
+      });
+    for(const lane of Object.keys(cases))await check(`${lane}: crash after model/tools fence never authorizes another model`,async()=>{
+      for(const phase of ['model','tools']){
+        const f=fixture(lane);await receive(f);await processCommercialQueueOne(admin,{env});const r=await route(f);
+        const c=(await admin.rpc('claim_respond_execution_v1',{p_lane:lane,p_inbound:r.inbound_id,p_enabled:true})).data;
+        assert.equal(c.authorized,true);
+        const args={p_inbound:r.inbound_id,p_token:c.token};
+        assert.equal((await admin.rpc('step_respond_execution_v1',{...args,p_action:'model'})).data.allowed,true);
+        if(phase==='tools')assert.equal((await admin.rpc('step_respond_execution_v1',{...args,p_action:'tools'})).data.allowed,true);
+        await db.query("update respond_commercial_executions set lease_until=now()-interval '1 second' where inbound_id=$1",[r.inbound_id]);
+        const n=models.length,m=sends.length;await recover();
+        assert.equal((await journal(f)).state,'review_required');assert.equal(models.length,n);assert.equal(sends.length,m);
+      }
     });
     await check('expired queue lease after dispatch_started cannot duplicate a pending/uncertain send',async()=>{
       const f=fixture();await receive(f);let entered,release;
@@ -234,6 +305,8 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
       const r=await route(f);
       const out=(await service.query('select status,error_code from sales_agent_v2_auto_outbound where inbound_message_id=$1',[r.inbound_id])).rows[0];
       assert.equal(out.error_code,'dispatch_started');
+      await db.query("update respond_commercial_executions set lease_until=now()-interval '1 second' where inbound_id=$1",[r.inbound_id]);
+      await recover(second);assert.equal((await journal(f)).state,'review_required');
       const job=(await service.query('select state,lease_until from respond_commercial_jobs where event_id=$1',[f.event.eventId])).rows[0];
       assert.equal(job.state,'complete');assert.equal(job.lease_until,null);
       // Even a stale lease timestamp cannot reopen a terminal capture job.
@@ -258,6 +331,7 @@ export async function certifyCommercialQueue({ db, service, other, saveManifest 
     await new Promise(ok=>server.close(ok));
     globalThis.fetch=originalFetch;
     // Exact unique synthetic namespace only. Keep this manifest if cleanup fails.
+    await db.query("delete from respond_commercial_executions where respond_contact_id like $1",[prefix+'%']);
     for(const lane of ['sales_agent_v2','owner_agent_v1','legal_agent_v1']){
       await db.query(`delete from ${lane}_auto_outbound where respond_contact_id like $1`,[prefix+'%']);
       await db.query(`delete from ${lane==='sales_agent_v2'?lane+'_shadow_runs':lane+'_runs'} where inbound_message_id in(select id from ${lane}_inbound_messages where respond_contact_id like $1)`,[prefix+'%']);

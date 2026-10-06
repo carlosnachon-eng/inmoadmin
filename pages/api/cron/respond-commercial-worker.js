@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { getAdminSupabase } from "../../../lib/ejecutivo/workCenter";
 import { processCommercialQueueOne } from "../../../lib/social/commercialQueue.js";
+import { recoverCommercialExecutionOne } from "../../../lib/social/commercialExecution.js";
 import { processSalesInboundById } from "../../../lib/agentsV2/processSalesInbound";
 import { processOwnerInboundById } from "../../../lib/agentsV2/processOwnerInbound";
 import { processLegalInboundById } from "../../../lib/agentsV2/processLegalInbound";
@@ -19,6 +20,8 @@ export default async function handler(req, res) {
   const db = getAdminSupabase(), until = Date.now() + 40000;
   const counts = {};
   try {
+    const recovered = await recoverCommercialExecutionOne(db, { processors });
+    if (recovered.laneAttempted) return res.status(200).json({ ok: true, counts: { executionRecovery: 1 } });
     for (let n = 0; n < 20 && Date.now() < until; n++) {
       const { status, laneAttempted, laneStatus } = await processCommercialQueueOne(db, { processors });
       counts[status] = (counts[status] || 0) + 1;

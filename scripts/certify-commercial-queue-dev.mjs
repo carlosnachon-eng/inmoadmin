@@ -1,7 +1,8 @@
 // SQL connector relay, fixed DEV project in the driver. No .env/keys/provider
 // access. Run only with a dedicated, empty DEV queue and no deployed consumer.
-// Unpaused send/model paths are certified in disposable PG, NOT exposed to DEV
-// background senders. DEV lane fixtures are human-paused before capture.
+// Delivery paths are certified in disposable PG, NOT exposed to DEV background
+// senders. Hosted fixtures pause before capture or, for recovery tests with a
+// stubbed model, before publishing any run/output. Provider IO is always denied.
 import assert from "node:assert/strict";
 import readline from "node:readline";
 import { writeFile } from "node:fs/promises";
@@ -10,6 +11,7 @@ import { localPgAdapter } from "../tests/helpers/localPgAdapter.mjs";
 import { importWithStubs } from "../tests/helpers/socialFixtures.mjs";
 import { commercialEnvelope, processCommercialQueueOne } from "../lib/social/commercialQueue.js";
 import { sanitizeShadowText } from "../lib/shadow/coordinator.js";
+import { recoverCommercialExecutionOne } from "../lib/social/commercialExecution.js";
 
 const dir=process.env.QUEUE_DEV_EVIDENCE;
 assert.ok(dir?.startsWith('/private/tmp/respond-durable-ack-cert.'));
@@ -31,10 +33,14 @@ const service=client('service_role'),db=client('postgres'),admin=localPgAdapter(
 const env={SOCIAL_ROUTING_V1_ENABLED:'true',SALES_AGENT_V2_AUTO_SHADOW_ENABLED:'true',RESPOND_IO_TOKEN:'synthetic-intercepted-only'};
 globalThis.fetch=async()=>assert.fail('ALL external/model/provider traffic forbidden in DEV certification');
 const forbidden=async()=>assert.fail('human pause must block before model/send');
-const common={'../ejecutivo/respondSync':{readRespondMessages:forbidden,respondMessageTimestamp:()=>null},'../shadow/coordinator':{sanitizeShadowText},'./agentUsage':{safeAgentUsage:forbidden}};
+let allowModel=false,modelStatus='failed',modelCalls=0,onModel=async()=>{};
+const createModel=async()=>{assert.ok(allowModel,'unexpected model');modelCalls++;await onModel();return{id:'synthetic-dev-session'};};
+const getModel=async()=>({id:'synthetic-dev-session',status:modelStatus});
+const output=()=>"¿Cuál es tu presupuesto?";
+const common={'../ejecutivo/respondSync':{readRespondMessages:async()=>({messages:[]}),respondMessageTimestamp:()=>null},'../shadow/coordinator':{sanitizeShadowText},'./agentUsage':{safeAgentUsage:async()=>({})}};
 const salesRunner=await importWithStubs(new URL('../lib/agentsV2/runSalesShadowMessage.js',import.meta.url),{
-  ...common,'./openaiSalesAgent':{assertSalesAgentV2ShadowEnvironment:()=>{},createSalesSession:forbidden,getSalesSession:forbidden,
-    fulfillSalesActions:forbidden,salesSessionItems:forbidden,salesAssistantOutput:forbidden},
+  ...common,'./openaiSalesAgent':{assertSalesAgentV2ShadowEnvironment:()=>{},createSalesSession:createModel,getSalesSession:getModel,
+    fulfillSalesActions:forbidden,salesSessionItems:async()=>[],salesAssistantOutput:output},
 });
 const sales=await importWithStubs(new URL('../lib/agentsV2/processSalesInbound.js',import.meta.url),{
   './runSalesShadowMessage':salesRunner,
@@ -42,10 +48,10 @@ const sales=await importWithStubs(new URL('../lib/agentsV2/processSalesInbound.j
   './agentUsage':{safeAgentUsage:async()=>({})},'./openaiSalesAgent':{salesAgentModel:()=>null},
 });
 const owner=await importWithStubs(new URL('../lib/agentsV2/processOwnerInbound.js',import.meta.url),{
-  ...common,'./openaiOwnerAgent':{createOwnerSession:forbidden,getOwnerSession:forbidden,fulfillOwnerActions:forbidden,ownerOutput:forbidden},
+  ...common,'./openaiOwnerAgent':{createOwnerSession:createModel,getOwnerSession:getModel,fulfillOwnerActions:forbidden,ownerOutput:output},
 });
 const legal=await importWithStubs(new URL('../lib/agentsV2/processLegalInbound.js',import.meta.url),{
-  ...common,'./openaiLegalAgent':{createLegalSession:forbidden,getLegalSession:forbidden,fulfillLegal:forbidden,legalOutput:forbidden},'./legalHandoff':{createAndDispatchLegalHandoff:forbidden},
+  ...common,'./openaiLegalAgent':{createLegalSession:createModel,getLegalSession:getModel,fulfillLegal:forbidden,legalOutput:output},'./legalHandoff':{createAndDispatchLegalHandoff:forbidden},
 });
 const processors={SALES:sales.processSalesInboundById,OWNER:owner.processOwnerInboundById,LEGAL:legal.processLegalInboundById};
 const test=async(name,fn)=>{await fn();checks.push(name);console.log('DEV_CHECK:'+name);};
@@ -53,7 +59,7 @@ let report;
 try{
   assert.equal((await service.query('select count(*)::int n from respond_commercial_jobs')).rows[0].n,0,'DEV queue must be empty');
   const cases=[['SALES','Busco departamento en renta',sales.processSalesInboundById,lanes[0]],['OWNER','Soy propietario, quiero vender mi casa',owner.processOwnerInboundById,lanes[1]],['LEGAL','Qué incluye la póliza jurídica',legal.processLegalInboundById,lanes[2]]];
-  for(const [lane,text,processor,table] of cases){
+  for(const [lane,text,processor,table] of (process.env.QUEUE_DEV_RECOVERY_ONLY==='true'?[]:cases)){
     const event={eventId:prefix+'-'+lane,eventType:'message.received',respondContactId:prefix+'-'+lane,channelId:'497382',messageId:prefix+'-m-'+lane,eventOccurredAt:new Date().toISOString(),payloadMeta:{channel_id:'497382'}};
     const args={p_event:{event_id:event.eventId,event_type:event.eventType,respond_contact_id:event.respondContactId,channel_id:event.channelId,message_id:event.messageId,event_occurred_at:event.eventOccurredAt,payload_meta:event.payloadMeta},p_envelope:commercialEnvelope({message:{text}},event)};
     await test(lane+': atomic queue, receipt and duplicate',async()=>{
@@ -80,17 +86,43 @@ try{
       assert.equal((await processCommercialQueueOne(admin,{env,processors})).status,'idle');
     });
   }
-  report={result:'PASS',project:'hjfwjnejbcpmknvfpdcq',checks,modelCalls:0,realMessages:0,
-    limitations:['SQL relay exercises real DEV DB/RPC; it is not PostgREST/HTTP latency evidence.','Unpaused models/sends and slow-model HTTP ACK are certified separately in disposable real PostgreSQL with intercepted IO.']};
+  assert.equal(modelCalls,0);
+  for(const [lane,text,processor,table] of cases){
+    await test(lane+': real DEV failed-model journal → second attempt; human pause before publishing output; duplicate inert',async()=>{
+      const contact=prefix+'-retry-'+lane,eventId=contact+'-event';
+      const event={eventId,eventType:'message.received',respondContactId:contact,channelId:'497382',messageId:contact+'-m',eventOccurredAt:new Date().toISOString()};
+      const args={p_event:{event_id:eventId,event_type:event.eventType,respond_contact_id:contact,channel_id:'497382',message_id:event.messageId,event_occurred_at:event.eventOccurredAt,payload_meta:{channel_id:'497382'}},p_envelope:commercialEnvelope({message:{text}},event)};
+      assert.equal((await admin.rpc('enqueue_respond_commercial_v1',args)).data.durable,true);
+      allowModel=true;modelStatus='failed';onModel=async()=>{};const n=modelCalls;
+      await processCommercialQueueOne(admin,{env,processors,sleep:async()=>{}});
+      const read=async()=>(await service.query('select state,attempts,reason,inbound_id,audit from respond_commercial_executions where event_id=$1',[eventId])).rows[0];
+      assert.equal((await read()).state,'retryable');assert.equal(modelCalls,n+1);
+      await admin.rpc('enqueue_respond_commercial_v1',args);await processCommercialQueueOne(admin,{env,processors});assert.equal(modelCalls,n+1);
+      await db.query("update respond_commercial_executions set next_attempt_at=now()-interval '1 second' where event_id=$1",[eventId]);
+      modelStatus='idle';
+      // Hosted DEV may have background senders. Before any idle run/output can
+      // commit, establish real #168 proof. Never leave a sendable synthetic run.
+      onModel=()=>service.query("insert into gv_respond_webhook_events(event_id,event_type,respond_contact_id,event_occurred_at,payload_meta,status,next_attempt_at) values($1,'message.sent',$2,now(),'{\"sender_source\":\"user\"}','processed','2099-01-01')",[contact+'-human',contact]);
+      await recoverCommercialExecutionOne(admin,{env,processors});
+      const e=await read();assert.equal(e.state,'paused');assert.equal(e.attempts,2);assert.equal(modelCalls,n+2);
+      assert.equal((await processor(admin,e.inbound_id,{env})).status,'not_claimed');
+      assert.equal((await service.query(`select count(*)::int n from ${table+(lane==='SALES'?'_shadow_runs':'_runs')} where inbound_message_id=$1`,[e.inbound_id])).rows[0].n,0);
+      assert.equal((await service.query(`select count(*)::int n from ${table+'_auto_outbound'} where respond_contact_id=$1`,[contact])).rows[0].n,0);
+      allowModel=false;onModel=async()=>{};
+    });
+  }
+  report={result:'PASS',project:'hjfwjnejbcpmknvfpdcq',checks,modelCalls,realMessages:0,
+    limitations:['SQL relay exercises real DEV DB/RPC; it is not PostgREST/HTTP latency evidence.','Hosted DEV recovery runs stop at a real human pause before publishing an idle run, protecting against background senders. Full successful retry/send, concurrency and slow-model ACK are certified in disposable PostgreSQL with intercepted IO.']};
 }catch(e){report={result:'FAIL',checks,error:e.message,code:e.code};process.exitCode=1;}
 finally{
   await writeFile(dir+'/dev-result.json',JSON.stringify(report,null,2),{mode:0o600});
   const p=lit(prefix+'%');
   await db.query([...lanes.map(l=>`delete from ${l}_auto_outbound where respond_contact_id like ${p}`),
+    `delete from respond_commercial_executions where respond_contact_id like ${p}`,
     ...lanes.map(l=>`delete from ${l}_inbound_messages where respond_contact_id like ${p}`),
     `delete from respond_commercial_jobs where respond_contact_id like ${p}`,`delete from social_capture_receipts where respond_contact_id like ${p}`,
     `delete from social_message_routes where respond_contact_id like ${p}`,`delete from gv_respond_webhook_events where respond_contact_id like ${p}`].join(';'));
-  const tables=['respond_commercial_jobs','social_capture_receipts','social_message_routes','gv_respond_webhook_events','respond_ai_resumptions',...lanes.flatMap(l=>[l+'_inbound_messages',l+'_auto_outbound'])];
+  const tables=['respond_commercial_executions','respond_commercial_jobs','social_capture_receipts','social_message_routes','gv_respond_webhook_events','respond_ai_resumptions',...lanes.flatMap(l=>[l+'_inbound_messages',l+'_auto_outbound'])];
   const residues=(await db.query(tables.map(t=>`select '${t}' as object,count(*)::int n from ${t} where respond_contact_id like ${p}`).join(' union all '))).rows;
   assert.ok(residues.every(r=>r.n===0));await writeFile(dir+'/dev-cleanup.json',JSON.stringify(residues,null,2),{mode:0o600});
   console.log('DEV_REPORT:'+JSON.stringify(report));console.log('DEV_CLEANUP:0');io.close();

@@ -133,6 +133,13 @@ try{
     "./openaiSalesAgent":{assertSalesAgentV2ShadowEnvironment:()=>{},createSalesSession:async({input})=>{inputs.push(input);await onModel();return{id:"synthetic-session"};},getSalesSession:async()=>({id:"synthetic-session",status:"idle"}),fulfillSalesActions:async()=>assert.fail("unexpected model tools"),salesSessionItems:async()=>[],salesAssistantOutput:()=>output},
     "../ejecutivo/respondSync":contextIO,"../shadow/coordinator":{sanitizeShadowText},
   });
+  await db.query(await file("20261006033141_respond_commercial_queue.sql"));
+  await db.query(`select public.enqueue_respond_commercial_v1(
+    '{"event_id":"synthetic-before-execution-migration","event_type":"message.received","respond_contact_id":"synthetic-before-execution-migration","channel_id":"497382","message_id":"synthetic-old-message"}',
+    '{"version":1,"text":"fixture anterior al journal","references":{"publicIds":[]}}')`);
+  await db.query(await file("20261006045043_respond_commercial_execution.sql"));
+  assert.equal((await db.query("select execution_recovery from respond_commercial_jobs where event_id='synthetic-before-execution-migration'")).rows[0].execution_recovery,false,'migration must not backfill recovery authority');
+  await db.query("delete from respond_commercial_jobs where event_id='synthetic-before-execution-migration';delete from social_capture_receipts where source_event_id='synthetic-before-execution-migration';delete from gv_respond_webhook_events where event_id='synthetic-before-execution-migration'");
   const processor=await importWithStubs(new URL("../lib/agentsV2/processSalesInbound.js",import.meta.url),{
     "./runSalesShadowMessage":runner,"./salesHandoff":handoffs,"./salesAutoOutbound":outbound,"./agentUsage":usage,"./openaiSalesAgent":{salesAgentModel:()=>"synthetic"},
   });
@@ -258,7 +265,6 @@ try{
     assert.deepEqual((await db.query("select * from respond_ai_resumptions order by human_event_id")).rows,audit);
     assert.deepEqual(await definitions(),before);assert.deepEqual(await defaults(),priorDefaults);
   });
-  await db.query(await file("20261006033141_respond_commercial_queue.sql"));
   const queue=await certifyCommercialQueue({db,service,other});
   console.log(JSON.stringify({result:queue.result,queue,checks:checks.length,tests:checks,productionLikeDefaults:true,projectDefaultsUnchanged:true,modelFixtures:inputs.length,interceptedSends:sends.length,externalCalls:0,realRespondDelivery:"NOT_TESTED",productionTouched:false},null,2));
   // Do not turn the newly-required automatic model-failure recovery into a
