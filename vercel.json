@@ -1,6 +1,7 @@
 {
   "git": {
     "deploymentEnabled": {
+      "codex/respond-durable-ack": false,
       "codex/sales-human-attention-pause": false,
       "codex/social-routing-capture-failsafe": false,
       "codex/sales-conversation-context-recovery": false,
@@ -25,6 +26,10 @@
     }
   },
   "crons": [
+    {
+      "path": "/api/cron/respond-commercial-worker",
+      "schedule": "* * * * *"
+    },
     {
       "path": "/api/cron-recordatorios",
       "schedule": "0 14 * * *"

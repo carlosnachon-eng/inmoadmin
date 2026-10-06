@@ -9,6 +9,7 @@ import net from "node:net";
 import { randomUUID } from "node:crypto";
 import { localPgAdapter } from "../tests/helpers/localPgAdapter.mjs";
 import { importWithStubs } from "../tests/helpers/socialFixtures.mjs";
+import { certifyCommercialQueue } from "../tests/helpers/commercialQueuePostgres.mjs";
 import { sanitizeShadowText } from "../lib/shadow/coordinator.js";
 import * as handoffs from "../lib/agentsV2/salesHandoff.js";
 import * as outbound from "../lib/agentsV2/salesAutoOutbound.js";
@@ -254,7 +255,9 @@ try{
     assert.deepEqual((await db.query("select * from respond_ai_resumptions order by human_event_id")).rows,audit);
     assert.deepEqual(await definitions(),before);assert.deepEqual(await defaults(),priorDefaults);
   });
-  console.log(JSON.stringify({result:"PASS",checks:checks.length,tests:checks,productionLikeDefaults:true,projectDefaultsUnchanged:true,modelFixtures:inputs.length,interceptedSends:sends.length,externalCalls:0,realRespondDelivery:"NOT_TESTED",productionTouched:false},null,2));
+  await db.query(await file("20261006033141_respond_commercial_queue.sql"));
+  const queue=await certifyCommercialQueue({db,service,other});
+  console.log(JSON.stringify({result:"PASS",queue,checks:checks.length,tests:checks,productionLikeDefaults:true,projectDefaultsUnchanged:true,modelFixtures:inputs.length,interceptedSends:sends.length,externalCalls:0,realRespondDelivery:"NOT_TESTED",productionTouched:false},null,2));
 }finally{
   globalThis.fetch=originalFetch;
   for(const c of clients){try{await c.query("rollback");}catch{}try{await c.end();}catch{}}
