@@ -9,10 +9,14 @@ import net from "node:net";
 import { createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { createMetaObserverHandler } from "../lib/messaging/metaObserver/receiver.js";
 import { prepareMetaAdminShadow, resolveMetaAdminIdentity } from "../lib/messaging/metaAdminCapture/preflight.js";
-import { scope, syntheticEnv, inbound as observerInbound, change, payload } from "./fixtures/metaObserver.mjs";
+import { syntheticEnv as observerEnv, inbound as observerInbound, change, payload as observerPayload } from "./fixtures/metaObserver.mjs";
 import { normalizeIdentityPhone } from "../lib/shadow/identityBridge.js";
 
 const inbound = (...args) => ({ ...observerInbound(...args), from: "522221234567" });
+const scope={wabaId:'1297760461811288',phoneNumberId:'1198305790026665'};
+const syntheticEnv={...observerEnv,META_ADMIN_WABA_ID:scope.wabaId,META_ADMIN_PHONE_NUMBER_ID:scope.phoneNumberId};
+const payload=(...changes)=>{const b=observerPayload(...changes);b.entry[0].id=scope.wabaId;
+  for(const c of b.entry[0].changes)c.value.metadata.phone_number_id=scope.phoneNumberId;return b;};
 const phoneDigestOnly = process.argv.includes("--phone-digest-only");
 
 assert.ok(path.isAbsolute(process.env.META_CAPTURE_TEST_DEPS || ""),"explicit local dependency directory required");
@@ -34,9 +38,9 @@ async function connection(role){const c=new Client({host:"127.0.0.1",port,user:"
 async function scenario(name,fn){const begin=performance.now();await fn();results.push({scenario:name,result:"PASS",ms:Math.round(performance.now()-begin)});}
 function db(client=service,mutate=a=>a){return{async rpc(name,args){
   try {
-    if(name==="capture_meta_admin_shadow_v1") {const a=mutate(args);return{data:(await client.query(
-      "select public.capture_meta_admin_shadow_v1($1,$2,$3,$4::jsonb,$5,$6::jsonb) r",
-      [a.p_waba_id,a.p_phone_number_id,a.p_body_sha256,JSON.stringify(a.p_events),a.p_not_before,JSON.stringify(a.p_inputs)])).rows[0].r};}
+    if(name==="capture_meta_admin_shadow_subject_v1") {const a=mutate(args);return{data:(await client.query(
+      "select public.capture_meta_admin_shadow_subject_v1($1,$2,$3,$4::jsonb,$5,$6::jsonb,$7::jsonb) r",
+      [a.p_waba_id,a.p_phone_number_id,a.p_body_sha256,JSON.stringify(a.p_events),a.p_not_before,JSON.stringify(a.p_inputs),JSON.stringify(a.p_subjects)])).rows[0].r};}
     if(name==="observe_meta_admin_events_v1")return{data:(await client.query("select public.observe_meta_admin_events_v1($1,$2,$3,$4::jsonb) r",
       [args.p_waba_id,args.p_phone_number_id,args.p_body_sha256,JSON.stringify(args.p_events)])).rows[0].r};
     assert.ok(["resolve_meta_admin_identity_v1","prepare_meta_admin_shadow_v1"].includes(name));
@@ -68,7 +72,7 @@ async function sourceDefinitions(){return(await root.query(`select c.relname,c.r
   from pg_class c where c.oid in ('public.meta_observer_events'::regclass,'public.meta_observer_admin_scope'::regclass,
   'public.client_identities'::regclass,'public.client_source_links'::regclass) order by c.relname`)).rows;}
 async function cleanup(){
-  for(const table of ["meta_admin_private.shadow_preflights","meta_admin_private.inbound_inputs","meta_admin_private.capture_config",
+  for(const table of ["meta_admin_private.native_subject_evidence","meta_admin_private.subject_evidence_epoch","meta_admin_private.shadow_preflights","meta_admin_private.inbound_inputs","meta_admin_private.capture_config",
     "public.meta_observer_events","public.meta_observer_admin_scope","public.client_source_links","public.client_identities","public.profiles"])
     {await root.query(`delete from ${table}`);assert.equal((await root.query(`select count(*)::int n from ${table}`)).rows[0].n,0);}
   cleaned=true;
@@ -87,6 +91,7 @@ try{
   const defaults=(await root.query("select * from pg_default_acl order by oid")).rows;
   const definitions=await sourceDefinitions();
   await root.query(migration);service=await connection("service_role");
+  await root.query(await readFile(new URL('../supabase/migrations/20261008224646_meta_admin_echo_subject_evidence.sql',import.meta.url),'utf8'));
   const cutoff=new Date(Date.now()-1000).toISOString();
   env={...syntheticEnv,META_ADMIN_SHADOW_CAPTURE_ENABLED:"true",META_ADMIN_SHADOW_CAPTURE_NOT_BEFORE:cutoff,
     META_ADMIN_CAPTURE_ENCRYPTION_KEY:"a1".repeat(32),META_ADMIN_CAPTURE_HMAC_KEY:"b2".repeat(32)};
@@ -150,7 +155,7 @@ try{
     const names=["capture_meta_admin_shadow_v1","resolve_meta_admin_identity_v1","prepare_meta_admin_shadow_v1","guard_input_v1"];
     assert.equal((await root.query("select count(*)::int n from pg_proc p,lateral aclexplode(p.proacl) a where p.proname=any($1) and a.grantee=0",[names])).rows[0].n,0);
     assert.equal((await root.query("select count(*)::int n from pg_proc where proname=any($1) and prosecdef",[names])).rows[0].n,0);
-    assert.equal((await root.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='meta_admin_private' and c.relkind='r' and c.relrowsecurity")).rows[0].n,3);
+    assert.equal((await root.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='meta_admin_private' and c.relkind='r' and c.relrowsecurity")).rows[0].n,5);
     for(const role of ["anon","authenticated"]){const c=await connection(role);
       await assert.rejects(c.query("select * from meta_admin_private.inbound_inputs"),e=>e.code==="42501");
       for(const fn of ["resolve_meta_admin_identity_v1","prepare_meta_admin_shadow_v1"])
