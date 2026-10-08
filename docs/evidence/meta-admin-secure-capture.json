@@ -28,7 +28,7 @@
     "storage_schema": "meta_admin_private (no se añade a los esquemas expuestos por Data API)",
     "tables": {
       "capture_config": "Singleton vacío tras migración; enabled=false por defecto. Instalación/cutover/scope exactos. service_role no puede activarlo.",
-      "inbound_inputs": "Texto sanitizado <=2000 caracteres; dirección exacta AES-256-GCM; sender_ref HMAC-SHA256; digest SHA256 privado para igualdad; evidencia signed_from[/and_wa_id]; FK al recibo; wamid/scope/timestamp/tipo; motivo de elegibilidad. Append-only.",
+      "inbound_inputs": "Texto sanitizado <=2000 caracteres; dirección exacta AES-256-GCM; sender_ref HMAC-SHA256 del sujeto crudo; digest SHA256 privado del teléfono canónico existente para igualdad; evidencia signed_from[/and_wa_id]; FK al recibo; wamid/scope/timestamp/tipo; motivo de elegibilidad. Append-only.",
       "shadow_preflights": "Un preflight por input. Sólo blocked; run_id/proposed_response NULL, model_calls/send_calls=0. No se presenta como una ejecución del agente."
     },
     "excluded": [
@@ -47,13 +47,13 @@
     "trust_boundary": "service_role es el backend de confianza compartido. RLS/ACL y esquema no expuesto bloquean usuarios finales; NO son aislamiento criptográfico frente a otro backend que ya posea ese rol. La dirección además requiere clave AES. No se amplían permisos de objetos fuente."
   },
   "identity": {
-    "source": "SHA-256 exacto del from firmado, contrastado por igualdad con client_identities.phone_digest.",
+    "source": "SHA-256 de normalizeIdentityPhone(from), importada sin cambios de lib/shadow/identityBridge.js, contrastado por igualdad con client_identities.phone_digest. Conserva 52 + 10 dígitos; 521 + 10 dígitos pasa a 52 + 10; 10 dígitos recibe 52. Si devuelve null, fail-closed antes de la RPC. El from firmado crudo sólo se conserva cifrado y sigue siendo la entrada del sender_ref HMAC.",
     "matched": "Exactamente una identidad candidata; active y no revocada; al menos un client_source_links confirmado con actor/fecha y no revocado. Devuelve ID existente, nunca lo crea ni enlaza.",
     "ambiguous": "Más de una identidad con el digest exacto, sin escoger la primera.",
     "unmatched": "Ninguna igualdad exacta, identidad revocada/inactiva o ausencia de fuente confirmada.",
     "exclusions": [
       "sin nombres/parecido de teléfonos/sufijos",
-      "sin agregar 52 ni transformar 521",
+      "sin normalización propia ni heurísticas distintas de normalizeIdentityPhone existente",
       "sin timestamps ni texto",
       "sin #174 como identidad",
       "sin convertir Respond channel en contactId",
@@ -156,6 +156,8 @@
     "fail_closed": "Falta config, clave, evidencia o persistencia: no capturar ni responder falsamente durable. Preflight nunca habilita modelo."
   },
   "tests": {
+    "baseline_commit": "7ed26e4e49962f4c57a3469c461741363b755c1c",
+    "baseline_note": "111/111 y 23/23 son la certificación previa, no una repetición sobre la corrección del digest. La recertificación afectada consta en canonical_digest_revision.",
     "unit": {
       "command": "node --test tests/metaAdminCapture.test.mjs tests/metaObserver.test.mjs tests/messagingCorrelation.test.mjs",
       "new_tests": 45,
@@ -187,6 +189,47 @@
       "No build completo ni suites no relacionadas",
       "No certificación funcional del agente por gate nativo sin acreditar"
     ]
+  },
+  "canonical_digest_revision": {
+    "date": "2026-10-08",
+    "scope": "Sólo compatibilidad del índice exact_phone_digest; sin cambiar normalizador canónico, cifrado, sender_ref, migración, permisos ni guardas de atención.",
+    "unit": {
+      "command": "node --test tests/metaAdminCapture.test.mjs",
+      "total": 54,
+      "pass": 54,
+      "fail": 0,
+      "duration_ms": 157.418584
+    },
+    "postgres": {
+      "command": "META_CAPTURE_TEST_DEPS=<local node_modules> node tests/metaAdminCapturePostgres.mjs --phone-digest-only",
+      "version": "18.4",
+      "total": 7,
+      "pass": 7,
+      "elapsed_ms": 1398,
+      "scenarios": [
+        "Meta 521 + 10 dígitos => misma identidad matched; crudo cifrado y sender_ref original",
+        "Meta 52 + 10 dígitos => misma identidad matched; crudo cifrado y sender_ref original",
+        "Meta 10 dígitos => misma identidad matched; crudo cifrado y sender_ref original",
+        "Normalización inválida => 503 fail-closed, cero persistencia y cero digest inventado",
+        "Número canónicamente válido parecido, sufijo compartido o prefijo de área distinto => unmatched",
+        "Identidades, fuentes, definiciones y defaults globales sin cambios",
+        "Cleanup de todos los fixtures locales = 0"
+      ],
+      "additional_assertions": [
+        "RPC real usada como service_role, fixtures sintéticos locales",
+        "Identidad canónica preexistente sembrada independientemente del digest de captura",
+        "Descifrado reproduce from original; ni crudo ni canónico en claro en input, observer, ACK o logs",
+        "Retry conserva input original; matched sigue bloqueado antes de modelo"
+      ]
+    },
+    "migration_unchanged_sha256": "1e6339526fece3934b0885a0726a52632c9aac7ed46afaf325f7b2d8edfe2f76",
+    "cleanup_rows": 0,
+    "models": 0,
+    "sends": 0,
+    "hosted_connections": 0,
+    "production_connections": 0,
+    "verdict": "PASS_LOCAL_CANONICAL_DIGEST_COMPATIBILITY",
+    "not_repeated": "Observer/correlation, suite PostgreSQL completa, build y suites no relacionadas. Sin DEV alojado, sin migración remota, sin Human Attention v1 ni runner."
   },
   "files": {
     "modified": [

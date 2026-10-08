@@ -6,7 +6,14 @@ import { captureMetaAdminInputs, metaAdminCaptureConfig } from "../lib/messaging
 import { metaNativeAttentionGate, prepareMetaAdminShadow, resolveMetaAdminIdentity } from "../lib/messaging/metaAdminCapture/preflight.js";
 import { normalizeMetaObservations } from "../lib/messaging/metaObserver/normalize.js";
 import { createMetaObserverHandler } from "../lib/messaging/metaObserver/receiver.js";
-import { scope, syntheticEnv, inbound, change, payload, fixtures } from "./fixtures/metaObserver.mjs";
+import { scope, syntheticEnv, inbound as observerInbound, change, payload, fixtures as observerFixtures } from "./fixtures/metaObserver.mjs";
+import { normalizeIdentityPhone } from "../lib/shadow/identityBridge.js";
+
+// Capture uses the existing Mexican canonical identity semantics. Keep the
+// generic observer fixtures unchanged: observer-only still accepts other scopes.
+const inbound = (...args) => ({ ...observerInbound(...args), from: "522221234567" });
+const fixtures = { ...observerFixtures, inbound: payload(change({ messages: [inbound()] })),
+  media: payload(change({ messages: [{ ...observerFixtures.media.entry[0].changes[0].value.messages[0], from: inbound().from }] })) };
 
 const env = { ...syntheticEnv, META_ADMIN_SHADOW_CAPTURE_ENABLED: "true",
   META_ADMIN_SHADOW_CAPTURE_NOT_BEFORE: "2026-10-08T00:00:00.000Z",
@@ -66,11 +73,33 @@ test("mutation sharing native ID is an observation, not another shadow input",()
   const m=inbound();const revoke={...m,type:"revoke",text:undefined,revoke:{original_message_id:m.id}};
   assert.equal(capture(payload(change({messages:[m,revoke]}))).length,1);
 });
-test("never repairs a country prefix or fuzzy phone",()=>{
-  const a=capture(payload(change({messages:[{...inbound(),from:"5212221234567"}]})))[0];
-  const b=capture(payload(change({messages:[{...inbound(),from:"522221234567"}]})))[0];
-  assert.notEqual(a.exact_phone_digest,b.exact_phone_digest);
+for(const from of ["5212221234567","522221234567","2221234567"]) test(`canonical phone digest ${from.length} digits; raw address stays encrypted`,async()=>{
+  const body=payload(change({contacts:[{wa_id:from}],messages:[{...inbound(),from}]}));
+  const [row]=capture(body);
+  assert.equal(normalizeIdentityPhone(from),"522221234567");
+  assert.equal(row.exact_phone_digest,createHash("sha256").update("522221234567").digest("hex"));
+  assert.equal(row.sender_ref,createHmac("sha256",Buffer.from(config.hmacKey,"hex")).update(`${scope.wabaId}:${scope.phoneNumberId}:${from}`).digest("hex"));
+  const c=row.sender_ciphertext,decipher=createDecipheriv("aes-256-gcm",Buffer.from(config.encryptionKey,"hex"),Buffer.from(c.iv,"hex"));
+  decipher.setAAD(Buffer.from(`${scope.wabaId}:${scope.phoneNumberId}:${row.event_key}`));decipher.setAuthTag(Buffer.from(c.tag,"hex"));
+  assert.equal(Buffer.concat([decipher.update(Buffer.from(c.data,"hex")),decipher.final()]).toString(),from);
+  const {res,calls,logs}=await http(body);assert.equal(res.statusCode,200);
+  for(const value of [from,"522221234567"])for(const output of [row,calls,res.data,logs])assert.equal(JSON.stringify(output).includes(value),false);
 });
+test("canonical digest does not fuzzy-match similar numbers or wrong area prefixes",()=>{
+  const expected=createHash("sha256").update("522221234567").digest("hex");
+  for(const from of ["522221234568","523221234567","1221234567"]){
+    const [row]=capture(payload(change({messages:[{...inbound(),from}]})));
+    assert.notEqual(row.exact_phone_digest,expected);
+  }
+});
+for(const from of ["12345678","222123456","15555550101","532221234567","5222221234567","52122212345678"])
+  test(`canonical normalization failure is fail-closed (${from.length} digits/${from.slice(0,3)})`,async()=>{
+    assert.equal(normalizeIdentityPhone(from),null);
+    const body=payload(change({messages:[{...inbound(),from}]}));
+    assert.throws(()=>capture(body),/capture_invalid/);
+    const {res,calls,logs}=await http(body);assert.equal(res.statusCode,503);assert.equal(calls.length,0);
+    assert.deepEqual(logs,["persistence_failed"]);assert.equal(JSON.stringify({res,logs}).includes(from),false);
+  });
 for(const from of [undefined,"","+522221234567","222 123 4567",15555550101,"abc","01123456"])
   test(`rejects nonattested address ${String(from)}`,()=>assert.throws(()=>capture(payload(change({messages:[{...inbound(),from}]}))),/capture_invalid/));
 for(const contacts of [[],{},[{wa_id:"15555559999"}],[{wa_id:inbound().from},{wa_id:inbound().from}]])

@@ -6,10 +6,14 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
-import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { createMetaObserverHandler } from "../lib/messaging/metaObserver/receiver.js";
 import { prepareMetaAdminShadow, resolveMetaAdminIdentity } from "../lib/messaging/metaAdminCapture/preflight.js";
-import { scope, syntheticEnv, inbound, change, payload } from "./fixtures/metaObserver.mjs";
+import { scope, syntheticEnv, inbound as observerInbound, change, payload } from "./fixtures/metaObserver.mjs";
+import { normalizeIdentityPhone } from "../lib/shadow/identityBridge.js";
+
+const inbound = (...args) => ({ ...observerInbound(...args), from: "522221234567" });
+const phoneDigestOnly = process.argv.includes("--phone-digest-only");
 
 assert.ok(path.isAbsolute(process.env.META_CAPTURE_TEST_DEPS || ""),"explicit local dependency directory required");
 const require=createRequire(path.join(process.env.META_CAPTURE_TEST_DEPS,"capture-test.cjs"));
@@ -87,6 +91,47 @@ try{
   env={...syntheticEnv,META_ADMIN_SHADOW_CAPTURE_ENABLED:"true",META_ADMIN_SHADOW_CAPTURE_NOT_BEFORE:cutoff,
     META_ADMIN_CAPTURE_ENCRYPTION_KEY:"a1".repeat(32),META_ADMIN_CAPTURE_HMAC_KEY:"b2".repeat(32)};
   await root.query("insert into public.meta_observer_admin_scope(waba_id,phone_number_id,enabled) values($1,$2,true)",[scope.wabaId,scope.phoneNumberId]);
+  if (phoneDigestOnly) {
+    await root.query("insert into meta_admin_private.capture_config(waba_id,phone_number_id,enabled,installed_at,not_before) values($1,$2,true,$3::timestamptz-interval '1 second',$3)",[scope.wabaId,scope.phoneNumberId,cutoff]);
+    const canonicalPhone="522221234567", canonicalId=await confirmed(hash(normalizeIdentityPhone(canonicalPhone)));
+    const sourceBefore=(await root.query("select * from public.client_identities")).rows;
+    const linksBefore=(await root.query("select * from public.client_source_links")).rows;
+    for(const from of ["5212221234567",canonicalPhone,"2221234567"])
+      await scenario(`canonical phone ${from.length} digits => same matched identity; raw encrypted`,async()=>{
+        const body=fresh({from}), response=await receive(body);assert.equal(response.statusCode,200);
+        const i=await one(body), match=await identity(i.id);
+        assert.equal(i.exact_phone_digest,hash(canonicalPhone));assert.equal(match.state,"matched");
+        assert.equal(match.client_identity_id,canonicalId);assert.equal(match.authorizes_business,false);
+        assert.equal(i.sender_ref,createHmac("sha256",Buffer.from(env.META_ADMIN_CAPTURE_HMAC_KEY,"hex")).update(`${scope.wabaId}:${scope.phoneNumberId}:${from}`).digest("hex"));
+        const observer=(await root.query("select * from public.meta_observer_events where id=$1",[i.meta_observer_event_id])).rows[0];
+        const c=i.sender_ciphertext,decipher=createDecipheriv("aes-256-gcm",Buffer.from(env.META_ADMIN_CAPTURE_ENCRYPTION_KEY,"hex"),Buffer.from(c.iv,"hex"));
+        decipher.setAAD(Buffer.from(`${scope.wabaId}:${scope.phoneNumberId}:${observer.event_key}`));decipher.setAuthTag(Buffer.from(c.tag,"hex"));
+        assert.equal(Buffer.concat([decipher.update(Buffer.from(c.data,"hex")),decipher.final()]).toString(),from);
+        const blocked=await preflight(i.id);assert.equal(blocked.reason,"meta_human_attention_unverified");
+        assert.equal(blocked.model_calls,0);assert.equal(blocked.send_calls,0);
+        for(const value of [from,canonicalPhone])assert.equal(JSON.stringify({i,observer,response,blocked,match}).includes(value),false);
+        assert.equal((await receive(body)).statusCode,200);assert.deepEqual(await one(body),i);
+      });
+    await scenario("invalid canonical format fails before persistence; no invented digest",async()=>{
+      for(const from of ["12345678","222123456","15555550101","532221234567","5222221234567","52122212345678"]){
+        assert.equal(normalizeIdentityPhone(from),null);const body=fresh({from}),r=await receive(body);
+        assert.equal(r.statusCode,503);assert.deepEqual(r.logs,["persistence_failed"]);assert.equal(await one(body),undefined);
+        assert.equal((await root.query("select count(*)::int n from public.meta_observer_events where native_message_id=$1",[body.entry[0].changes[0].value.messages[0].id])).rows[0].n,0);
+        assert.equal(JSON.stringify(r).includes(from),false);
+      }
+    });
+    await scenario("similar number / shared suffix / wrong area prefix => unmatched",async()=>{
+      for(const from of ["522221234568","523221234567","1221234567"]){
+        const body=fresh({from});assert.equal((await receive(body)).statusCode,200);
+        const i=await one(body);assert.equal((await identity(i.id)).state,"unmatched");assert.notEqual(i.exact_phone_digest,hash(canonicalPhone));
+      }
+    });
+    await scenario("canonical bridge does not write identities, source definitions or global defaults",async()=>{
+      assert.deepEqual((await root.query("select * from public.client_identities")).rows,sourceBefore);
+      assert.deepEqual((await root.query("select * from public.client_source_links")).rows,linksBefore);
+      assert.deepEqual(await sourceDefinitions(),definitions);assert.deepEqual((await root.query("select * from pg_default_acl order by oid")).rows,defaults);
+    });
+  } else {
   await scenario("empty capture config fails closed; no observation or input committed",async()=>{
     assert.equal((await receive()).statusCode,503);assert.equal((await root.query("select count(*)::int n from public.meta_observer_events")).rows[0].n,0);
   });
@@ -205,8 +250,8 @@ try{
     await root.query("update public.client_source_links set link_status='revoked',revoked_at=now() where client_identity_id=$1",[canonicalId]);
     assert.equal((await identity(first.id)).state,"unmatched");await root.query("update public.client_source_links set link_status='confirmed',revoked_at=null where client_identity_id=$1",[canonicalId]);
   });
-  await scenario("exact address only: suffix, added prefix and similar phone stay unmatched",async()=>{
-    const b=fresh({from:"15555550102"});assert.equal((await receive(b)).statusCode,200);assert.equal((await identity((await one(b)).id)).state,"unmatched");
+  await scenario("different canonical phone stays unmatched",async()=>{
+    const b=fresh({from:"522221234568"});assert.equal((await receive(b)).statusCode,200);assert.equal((await identity((await one(b)).id)).state,"unmatched");
   });
   await scenario("edit and revoke never rewrite input or permit a model",async()=>{
     for(const type of ["edit","revoke"]){
@@ -228,8 +273,10 @@ try{
     const sources=(await root.query("select prosrc from pg_proc where proname in ('capture_meta_admin_shadow_v1','resolve_meta_admin_identity_v1','prepare_meta_admin_shadow_v1')")).rows.map(r=>r.prosrc).join("\n");
     assert.equal(/respond_identity|gv_respond|assess_messaging|http_post|net\./i.test(sources),false);
   });
+  }
   await scenario("cleanup all local fixtures = 0",cleanup);
   console.log(JSON.stringify({verdict:"PASS_LOCAL_CAPTURE_AND_FAIL_CLOSED",postgres_version:(await root.query("show server_version")).rows[0].server_version,
+    suite:phoneDigestOnly?"canonical_phone_digest_focused":"capture_full",
     migration_sha256:hash(migration),results,elapsed_ms:Math.round(performance.now()-started),cleanup_rows:0,
     models:0,sends:0,hosted_connections:0,production_connections:0,agent_execution:"BLOCKED_NATIVE_ATTENTION_UNVERIFIED"},null,2));
 }finally{if(root&&!cleaned)await cleanup().catch(()=>{});await Promise.all(clients.map(c=>c.end().catch(()=>{})));await server.stop();globalThis.fetch=beforeFetch;}
