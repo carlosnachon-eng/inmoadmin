@@ -3,10 +3,6 @@ import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const moduleSource = await readFile(
-  new URL("../lib/ejecutivo/respondWebhook.js", import.meta.url),
-  "utf8",
-);
 const receiverSource = await readFile(
   new URL("../pages/api/webhooks/respond.js", import.meta.url),
   "utf8",
@@ -21,7 +17,7 @@ const {
   isValidRespondWebhookSignature,
   readRespondWebhookBody,
   resolveRespondWebhookSigningKeys,
-} = await import(`data:text/javascript;base64,${Buffer.from(moduleSource).toString("base64")}`);
+} = await import("../lib/ejecutivo/respondWebhook.js");
 
 const BODY = {
   event_id: "qa-event-multi-hmac",
