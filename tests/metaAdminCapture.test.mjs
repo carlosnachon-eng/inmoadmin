@@ -30,7 +30,7 @@ async function http(body=fixtures.inbound, options={}) {
   const handler=createMetaObserverHandler({ env:()=>options.env||env, log:code=>logs.push(code), getDb:()=>({
     async rpc(name,args) { calls.push({name,args}); if(options.error) return {error:{message:"private body must not escape"}};
       return {data: options.result || {durable:true,state:"observed",inserted:args.p_events.length,duplicates:0,
-        captured:args.p_inputs?.length||0,capture_durable:true}}; } }) });
+        captured:args.p_inputs?.length||0,capture_durable:true,subjects_durable:true}}; } }) });
   const req={method:"POST",headers:{"content-type":"application/json","x-hub-signature-256":options.signature??
     "sha256="+createHmac("sha256",env.META_OBSERVER_APP_SECRET).update(raw).digest("hex")},async *[Symbol.asyncIterator](){yield raw;}};
   const res=response(); await handler(req,res); return {res,calls,logs};
@@ -123,7 +123,7 @@ test("scope validation still runs before capture",async()=>{
 });
 test("one atomic durable RPC, no model/sender call",async()=>{
   const {res,calls}=await http();assert.equal(res.statusCode,200);assert.equal(calls.length,1);
-  assert.equal(calls[0].name,"capture_meta_admin_shadow_v1");assert.equal(calls[0].args.p_inputs.length,1);
+  assert.equal(calls[0].name,"capture_meta_admin_shadow_subject_v1");assert.equal(calls[0].args.p_inputs.length,1);
   assert.equal(res.data.observerOnly,true);assert.equal(JSON.stringify(res.data).includes("sender"),false);
 });
 test("capture DB failure gives 503, sanitized log",async()=>{
