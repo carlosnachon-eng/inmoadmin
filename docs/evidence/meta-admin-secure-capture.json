@@ -1,0 +1,214 @@
+{
+  "phase": "Captura segura de inbound Meta Admin para shadow",
+  "branch": "codex/meta-admin-secure-capture",
+  "base_main": "0dcbbcb256c833aeb466ce853d1b406826f123d6",
+  "verdict": {
+    "capture": "PASS_LOCAL",
+    "identity_bridge": "PASS_LOCAL_READ_ONLY",
+    "agent_execution": "BLOCKED_NATIVE_ATTENTION_UNVERIFIED",
+    "hosted_DEV": "NOT_RUN",
+    "production": "UNTOUCHED"
+  },
+  "scope": {
+    "channel": "544519",
+    "waba_id": "1297760461811288",
+    "phone_number_id": "1198305790026665",
+    "note": "Valores informativos. Ningún binding, flag, secreto o caller ha sido configurado por este cambio."
+  },
+  "flow": [
+    "POST existente: HMAC sobre bytes originales y allowlist WABA/phone_number_id sin cambios.",
+    "Captura OFF: misma RPC de observación y mismos argumentos que antes; no se conserva texto ni dirección.",
+    "Captura ON sólo con configuración privada válida y cutover exacto, concordante con tabla administrativa.",
+    "En memoria: selección de inbound; sanitización; cifrado de dirección; seudónimo HMAC y digest exacto privado.",
+    "Una RPC/una transacción: journal existente + input restringido nuevo. Si cualquiera falla, rollback y 503, nunca 200 falso.",
+    "Sólo recibos creados en la transacción/statement actual y timestamp del proveedor posterior al cutover. Retries reutilizan datos originales; no hidratación/backfill.",
+    "Preflight manual de un input: bridge exacto de sólo lectura; resultado bloqueado e idempotente. No caller automático, modelo ni sender."
+  ],
+  "data": {
+    "storage_schema": "meta_admin_private (no se añade a los esquemas expuestos por Data API)",
+    "tables": {
+      "capture_config": "Singleton vacío tras migración; enabled=false por defecto. Instalación/cutover/scope exactos. service_role no puede activarlo.",
+      "inbound_inputs": "Texto sanitizado <=2000 caracteres; dirección exacta AES-256-GCM; sender_ref HMAC-SHA256; digest SHA256 privado para igualdad; evidencia signed_from[/and_wa_id]; FK al recibo; wamid/scope/timestamp/tipo; motivo de elegibilidad. Append-only.",
+      "shadow_preflights": "Un preflight por input. Sólo blocked; run_id/proposed_response NULL, model_calls/send_calls=0. No se presenta como una ejecución del agente."
+    },
+    "excluded": [
+      "payload crudo",
+      "profiles/nombres del payload",
+      "teléfono en claro",
+      "URLs o descargas de media",
+      "tokens/cabeceras/secretos",
+      "copias de journals Respond",
+      "logs de contenido"
+    ],
+    "sanitization": "Reutiliza sanitizeShadowText: email/URL/teléfono/cuenta/identificador; elimina controles y bidi. No es anonimización perfecta del lenguaje natural: nombres/direcciones escritos dentro del texto pueden permanecer; por eso nunca se expone el texto fuera del almacenamiento restringido.",
+    "cryptography": "Claves server-side independientes de 32 bytes para AES-256-GCM y HMAC; IV aleatorio, AAD de scope/evento, formato v1. Sin secretos reales generados. Antes de rotar se necesita estrategia de conservación de la clave v1; no destruirla improvisadamente.",
+    "unsupported": "Media y otros tipos quedan con metadata mínima y unsupported_message_type, sin texto ni interpretación. Edit/revoke/status/app_echo no son inputs nuevos.",
+    "retention": "Sin borrado automático ni backfill. Política de retención/acceso y manejo de claves requiere revisión antes de activar captura real.",
+    "trust_boundary": "service_role es el backend de confianza compartido. RLS/ACL y esquema no expuesto bloquean usuarios finales; NO son aislamiento criptográfico frente a otro backend que ya posea ese rol. La dirección además requiere clave AES. No se amplían permisos de objetos fuente."
+  },
+  "identity": {
+    "source": "SHA-256 exacto del from firmado, contrastado por igualdad con client_identities.phone_digest.",
+    "matched": "Exactamente una identidad candidata; active y no revocada; al menos un client_source_links confirmado con actor/fecha y no revocado. Devuelve ID existente, nunca lo crea ni enlaza.",
+    "ambiguous": "Más de una identidad con el digest exacto, sin escoger la primera.",
+    "unmatched": "Ninguna igualdad exacta, identidad revocada/inactiva o ausencia de fuente confirmada.",
+    "exclusions": [
+      "sin nombres/parecido de teléfonos/sufijos",
+      "sin agregar 52 ni transformar 521",
+      "sin timestamps ni texto",
+      "sin #174 como identidad",
+      "sin convertir Respond channel en contactId",
+      "sin escribir auditoría o vínculos de negocio"
+    ],
+    "limitations": "Una igualdad de teléfono identifica un registro ya establecido, no prueba consentimiento, titularidad actual, contrato activo ni permiso de acceso a herramientas. Cobertura limitada al modelo canónico que tenga phone_digest; proveedores sin esa evidencia quedan unmatched.",
+    "authorizes_business": false
+  },
+  "native_attention_design": {
+    "implemented": "Sólo guardia negativa meta_human_attention_unverified. No ledger positivo, retorno a IA ni override.",
+    "can_be_accredited_now": false,
+    "evidence_gap": [
+      "El normalizador existente etiqueta smb_message_echoes como origen app/dispositivo, con autor desconocido; no equivale a sender_source=user.",
+      "El journal existente no conserva el sujeto/episodio de atención para ese eco ni acredita ciclo de conversación nativo.",
+      "No existe prueba de completitud de ingestión de todos los escritores ni acción Meta nativa auditada de devolución a IA.",
+      "matched de #174 es sólo equivalencia observacional; no autoriza identidad ni consumidor comercial."
+    ],
+    "proposed_episode_key": [
+      "WABA",
+      "phone_number_id",
+      "sender_ref acreditado",
+      "episode_id interno explícito"
+    ],
+    "proposed_states": [
+      "unknown",
+      "human_active",
+      "ai_returned",
+      "closed"
+    ],
+    "proposed_rules": [
+      "Eventos append-only de atención con origen, prueba de autoría/actor, versión de episodio y tiempo de recepción/ocurrencia. No tratar Meta conversation.id de facturación como episodio.",
+      "Eco de app acreditado puede imponer hold conservador; sin actor no afirmar autoría humana comprobada ni inferir permiso de reanudación.",
+      "unknown/human_active bloquean antes de modelo y antes de registrar salida propuesta; ausencia de eco NO equivale a ausencia de humano.",
+      "Nuevo inbound, cron o cambio de especialista no borran el hold.",
+      "Retorno explícito autenticado y autorizado, limitado a episodio, mediante CAS de versión; humano posterior invalida retorno anterior. Sólo turnos futuros.",
+      "Cierre explícito cierra episodio; no libera pendientes históricos. Episodio nuevo requiere autoridad/evidencia, no expiración por timestamp.",
+      "Sin watermark/completitud suficiente, mantener unknown. No derivar estado de la pausa Respond #168 sin puente exacto acreditado."
+    ],
+    "required_before_real_agent": [
+      "Revisión de evidencia y diseño de episodio Meta nativo; autorización separada para implementarlo.",
+      "Consumidor exclusivo cross-provider por equivalencia exacta; #174 no lo implementa. Respond no se modifica en esta fase.",
+      "Adaptador de contexto interno acreditado para las mismas tools Admin, con escrituras de auditoría de negocio deshabilitadas y cualquier mutación denegada.",
+      "Claim manual único para un input futuro matched, gates antes/después del modelo, transporte inexistente/interceptado y journal de proposed response sin enviar."
+    ],
+    "unchanged": [
+      "#168",
+      "routing",
+      "Sales/Owner/Legal/Admin",
+      "Respond",
+      "workflows",
+      "asignaciones"
+    ],
+    "current_result": "Incluso matched produce preflight blocked y cero modelo/envío. No hay run ni proposed response y no se declara PASS del agente."
+  },
+  "migration": {
+    "file": "supabase/migrations/20261008203257_meta_admin_secure_capture.sql",
+    "sha256": "1e6339526fece3934b0885a0726a52632c9aac7ed46afaf325f7b2d8edfe2f76",
+    "created_with": "Supabase CLI migration new",
+    "applied_only": "PostgreSQL local efímero 18.4",
+    "new_tables": 3,
+    "new_functions": 4,
+    "new_triggers": 1,
+    "explicit_indexes": 1,
+    "functions": [
+      "meta_admin_private.guard_input_v1()",
+      "public.capture_meta_admin_shadow_v1(text,text,text,jsonb,timestamptz,jsonb)",
+      "public.resolve_meta_admin_identity_v1(uuid)",
+      "public.prepare_meta_admin_shadow_v1(uuid)"
+    ],
+    "security": "SECURITY INVOKER; search_path vacío; RLS; REVOKE ALL explícito antes de grants; sin PUBLIC EXECUTE; sin cambios de defaults globales.",
+    "acl": {
+      "anon/authenticated/PUBLIC": "Sin schema usage/tablas/functions de esta fase.",
+      "service_role.capture_config": "SELECT",
+      "service_role.inbound_inputs/shadow_preflights": "SELECT, INSERT; sin UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN",
+      "service_role.functions": "EXECUTE; cuatro funciones",
+      "administrador/owner DB": "Conserva capacidad administrativa inherente; no se afirma revocación de superusuario."
+    }
+  },
+  "future_activation_not_performed": {
+    "requirements": [
+      "Migración revisada y aplicada al entorno autorizado",
+      "Config singleton de scope exacto con NOT_BEFORE >= installed_at",
+      "Claves seguras independientes; sin App Secret reutilizado",
+      "Flag y corte exacto concordante con DB"
+    ],
+    "environment": [
+      "META_ADMIN_SHADOW_CAPTURE_ENABLED=true",
+      "META_ADMIN_SHADOW_CAPTURE_NOT_BEFORE=<UTC ISO exacto>",
+      "META_ADMIN_CAPTURE_ENCRYPTION_KEY=<64 hex secreto>",
+      "META_ADMIN_CAPTURE_HMAC_KEY=<64 hex secreto>"
+    ],
+    "no_changes": [
+      "No se alteró META_ADMIN_OBSERVER_ENABLED ni ningún flag existente",
+      "No suscripciones ni callbacks",
+      "No credenciales nuevas",
+      "No datos productivos",
+      "No migración remota"
+    ],
+    "rollback": "Ante futura autorización: apagar sólo nueva captura; mantener observer y registros restringidos/auditoría. No borrar journals, no volver a capturar históricos, no resetear preflights.",
+    "fail_closed": "Falta config, clave, evidencia o persistencia: no capturar ni responder falsamente durable. Preflight nunca habilita modelo."
+  },
+  "tests": {
+    "unit": {
+      "command": "node --test tests/metaAdminCapture.test.mjs tests/metaObserver.test.mjs tests/messagingCorrelation.test.mjs",
+      "new_tests": 45,
+      "observer_regressions": 57,
+      "correlation_regressions": 9,
+      "total": 111,
+      "pass": 111,
+      "fail": 0,
+      "duration_ms": 160.847917
+    },
+    "postgres": {
+      "command": "META_CAPTURE_TEST_DEPS=<local node_modules> node tests/metaAdminCapturePostgres.mjs",
+      "total": 23,
+      "pass": 23,
+      "elapsed_ms": 1446,
+      "cleanup_rows": 0
+    },
+    "effects": {
+      "models": 0,
+      "sends": 0,
+      "workflows": 0,
+      "assignments": 0,
+      "production_mutations": 0,
+      "business_mutations": 0
+    },
+    "limits": [
+      "Fixtures sintéticos; no inbound real ni entrega Meta certificada",
+      "PostgreSQL local 18.4, no DEV alojado",
+      "No build completo ni suites no relacionadas",
+      "No certificación funcional del agente por gate nativo sin acreditar"
+    ]
+  },
+  "files": {
+    "modified": [
+      "lib/messaging/metaObserver/receiver.js"
+    ],
+    "added": [
+      "lib/messaging/metaAdminCapture/capture.js",
+      "lib/messaging/metaAdminCapture/preflight.js",
+      "supabase/migrations/20261008203257_meta_admin_secure_capture.sql",
+      "tests/metaAdminCapture.test.mjs",
+      "tests/metaAdminCapturePostgres.mjs",
+      "docs/evidence/meta-admin-secure-capture.json"
+    ],
+    "not_modified": [
+      "pages/api/webhooks/respond.js",
+      "lib/agentsV2",
+      "lib/social",
+      "lib/messaging/correlation",
+      "#165/#168/#170/#171/#174 migrations",
+      "sender/provider selection",
+      "workflows",
+      "package.json/lockfiles"
+    ]
+  }
+}
