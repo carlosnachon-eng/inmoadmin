@@ -1,0 +1,179 @@
+{
+  "scope": "Admin Meta/Respond correlation, observer-only",
+  "base_main": "20265f91c03752d6abce99914355b2fa9628b6f0",
+  "branch": "codex/meta-respond-correlation",
+  "unit_and_unchanged_provider_regressions": {
+    "passed": 90,
+    "failed": 0,
+    "includes_new_tests": 9,
+    "external_transport": "intercepted/no traffic"
+  },
+  "postgres": {
+    "verdict": "PASS",
+    "database": "isolated_local_postgresql",
+    "postgres_version": "18.4",
+    "results": [
+      {
+        "scenario": "restrictive effective ACL/RLS under broad production-like defaults",
+        "result": "PASS",
+        "ms": 73
+      },
+      {
+        "scenario": "sanitized real event 1: ambiguous, never equivalent",
+        "result": "PASS",
+        "ms": 14
+      },
+      {
+        "scenario": "sanitized real event 2: ambiguous, never equivalent",
+        "result": "PASS",
+        "ms": 5
+      },
+      {
+        "scenario": "sanitized real event 3: ambiguous, never equivalent",
+        "result": "PASS",
+        "ms": 4
+      },
+      {
+        "scenario": "no candidates and new evidence append versions; unchanged evidence reuses",
+        "result": "PASS",
+        "ms": 8
+      },
+      {
+        "scenario": "multiple candidates / same timestamp distinct messages never matched",
+        "result": "PASS",
+        "ms": 6
+      },
+      {
+        "scenario": "exact journal-native identity is not time-window limited",
+        "result": "PASS",
+        "ms": 4
+      },
+      {
+        "scenario": "only exact evidence resolves a noisy temporal candidate set",
+        "result": "PASS",
+        "ms": 4
+      },
+      {
+        "scenario": "claimed metadata wamid / phone / text / assignee never certify identity",
+        "result": "PASS",
+        "ms": 3
+      },
+      {
+        "scenario": "wrong Respond channel is excluded even with exact native ID",
+        "result": "PASS",
+        "ms": 3
+      },
+      {
+        "scenario": "exact ID with conflicting contact or direction fails closed",
+        "result": "PASS",
+        "ms": 7
+      },
+      {
+        "scenario": "edit and late original linkage preserve prior assessments and source rows",
+        "result": "PASS",
+        "ms": 6
+      },
+      {
+        "scenario": "out-of-order read/delivered/failed/sent observations are not new turns",
+        "result": "PASS",
+        "ms": 22
+      },
+      {
+        "scenario": "exact app echo does not infer human authorship or change pause",
+        "result": "PASS",
+        "ms": 4
+      },
+      {
+        "scenario": "concurrent identical evaluations create one assessment/candidate/equivalence",
+        "result": "PASS",
+        "ms": 66
+      },
+      {
+        "scenario": "duplicate provider deliveries reuse observations and no second equivalence",
+        "result": "PASS",
+        "ms": 13
+      },
+      {
+        "scenario": "candidate overflow is explicit, never a truncated matched result",
+        "result": "PASS",
+        "ms": 19
+      },
+      {
+        "scenario": "direct forged equivalence fails its authoritative proof guard",
+        "result": "PASS",
+        "ms": 10
+      },
+      {
+        "scenario": "lost response reuses committed evaluation; rollback leaves no partial write",
+        "result": "PASS",
+        "ms": 24
+      },
+      {
+        "scenario": "append-only ACL; journal definitions/grants/defaults unchanged; no business objects",
+        "result": "PASS",
+        "ms": 4
+      },
+      {
+        "scenario": "cleanup all local fixtures = 0",
+        "result": "PASS",
+        "ms": 10
+      }
+    ],
+    "migration_sha256": "b613e9dbc342010a38ac370238de776efe8f4d8bf68e771e46ddf0802e0f7391",
+    "elapsed_ms": 1482,
+    "cleanup_rows": 0,
+    "production_connections": 0,
+    "hosted_connections": 0,
+    "models": 0,
+    "sends": 0,
+    "workflows": 0,
+    "assignments": 0
+  },
+  "real_evidence": {
+    "source": "sanitized SELECT-only observations already collected on 2026-10-08; no production read or write by this certification",
+    "events_utc": [
+      "2026-10-08T19:17:46Z",
+      "2026-10-08T19:17:55Z",
+      "2026-10-08T19:18:03Z"
+    ],
+    "verdicts": [
+      "ambiguous/temporal_only",
+      "ambiguous/semantic_conflict",
+      "ambiguous/temporal_only"
+    ],
+    "exact_cross_provider_equivalences": 0,
+    "substitutions": "Synthetic IDs preserve equality relations only. Display hashes are not proof or dedupe keys."
+  },
+  "invariant_checks": {
+    "new_tables": 3,
+    "source_journal_rows_unchanged_by_evaluation": true,
+    "source_acl_constraints_and_user_triggers_unchanged": true,
+    "global_defaults_unchanged": true,
+    "service_role_privileges": [
+      "SELECT",
+      "INSERT"
+    ],
+    "anon_direct_access": false,
+    "authenticated_direct_access": false,
+    "public_execute": false,
+    "security_definer": false,
+    "model_or_sender_imports": false,
+    "runtime_entrypoints": 0
+  },
+  "limits": [
+    "Local PostgreSQL 18.4 only, not hosted DEV/Production certification; migration not remotely applied.",
+    "This phase recognizes exact native ID equality in authoritative journal message_id only. No invented provider-certified translation or contact bridge.",
+    "Respond currently lacks typed edit/revoke/delivery/read/failure journal events; those cannot match cross-provider in v1.",
+    "Existing Meta event_type:native_id key collapses sent-status and app echo for the same ID; correlation never reconstructs discarded evidence or infers human authorship.",
+    "Assessment read_at describes the captured MVCC evidence, not completeness of upstream delivery; late evidence appends a new version.",
+    "Temporal window +/-2s is candidate triage only; over 200 candidates returns ambiguous/candidate_limit with a 201-row sentinel.",
+    "No indexes or consumers added to old journals. Exact matching can scan Respond history; profile query plans before any future scheduled use.",
+    "Equivalences are immutable proof artifacts, never business authorization. Inspect latest assessment for later conflicts.",
+    "Source FK references retain audited source rows; source retention/deletion requires a separate review.",
+    "No SQL rollback deleting evidence. Leave additive tables and revoke evaluator access/stop future callers if needed; this PR has no callers."
+  ],
+  "production_mutations": 0,
+  "migrations_applied_to_hosted_projects": 0,
+  "senders_activated": 0,
+  "deployments_triggered": 0
+}
