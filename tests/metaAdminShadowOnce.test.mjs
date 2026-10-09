@@ -26,6 +26,7 @@ function harness({change=()=>{},propose}={}) {
   const store={async snapshot(){const s=snapshot();change(s,++reads);return s;},
     async claim(a){claims++;if(record)return false;record={...a,status:'claimed'};return true;},
     async start(a){if(record.token!==a.token||record.status!=='claimed')return false;record.status='model_started';return true;},
+    async startAdminModel(){return true;},
     async finish(a){assert.equal(a.token,record.token);record={...record,...a};}};
   const run=()=>runMetaAdminShadowOnce({inputId:id,authorizedInputId:id,store,env,now:()=>stamp,
     propose:async context=>{calls++;assert.deepEqual(Object.keys(context).sort(),['identity_state','mode','sanitized_text']);

@@ -15,7 +15,7 @@ function harness({change=()=>{},failure=false}={}){
  native_message_id:'wamid.synthetic',capture_reason:'captured',message_type:'text',observer_only:true,observer_state:'observed',sanitized_text:'Hola'},
  enabled:true,scope_channel:'544519',checked_at:new Date().toISOString(),mutated:false,later_scope_echoes:0,echo_assessments:[],later_scope_uncertain:0,
  identity:{state:'unmatched',reason:'no_exact_identity',candidate_count:0,authorizes_business:false}};change(s,++reads);return s;},
- async claim(a){if(record)return false;record={...a};return true;},async start(){return true;},async finish(a){record={...record,...a};}};
+ async claim(a){if(record)return false;record={...a};return true;},async start(){return true;},async startAdminModel(){return true;},async finish(a){record={...record,...a};}};
  const handler=createShadowOnceOperator({env,makeStore(){stores++;return store;},run:a=>runMetaAdminShadowOnce({...a,propose:async()=>{
  calls++;if(failure)throw Error('SECRET');return{provider:'openai',model:env.OPENAI_ADMIN_AGENT_MODEL,run_id:'synthetic',proposed_response:'¿En qué puedo orientarte?'};}})});
  const invoke=async(overrides={})=>{const res={setHeader(){},status(n){this.code=n;return this;},json(v){this.body=v;return this;}};
@@ -51,9 +51,10 @@ test('Supabase adapter only invokes scoped snapshot/journal RPCs',async()=>{
  const s=await store.snapshot(id);assert.deepEqual(s.echo_assessments,[]);assert.equal(s.transport_health.status,'unknown');
  const a={inputId:id,token:randomUUID(),fingerprint:'a'.repeat(64),identityState:'unmatched',provider:'openai',model:'gpt-6-luna'};
  assert.equal(await store.claim(a),true);assert.equal(await store.start(a),true);
+ assert.equal(await store.startAdminModel(a),true);
  await store.finish({...a,status:'blocked',reason:'synthetic'});
- assert.deepEqual(calls.map(c=>c.name),['meta_admin_shadow_snapshot_v1','meta_admin_shadow_claim_v1','meta_admin_shadow_start_v1','meta_admin_shadow_finish_v1']);
- assert.ok(calls.every(c=>c.args.p_input_id===id));assert.equal(calls[3].args.p_proposal,null);
+ assert.deepEqual(calls.map(c=>c.name),['meta_admin_shadow_snapshot_v1','meta_admin_shadow_claim_v1','meta_admin_shadow_start_v1','meta_admin_shadow_admin_model_start_v1','meta_admin_shadow_finish_v1']);
+ assert.ok(calls.every(c=>c.args.p_input_id===id));assert.equal(calls[4].args.p_proposal,null);
 });
 test('RPC failure is sanitized and never retried',async()=>{
  let calls=0;const s=createShadowOnceSupabaseStore({async rpc(){calls++;return{error:{message:'SECRET'}};}});

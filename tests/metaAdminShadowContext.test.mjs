@@ -56,7 +56,7 @@ function fixture({kind='tenant',change=()=>{},onQuery=()=>{},snapshotChange=()=>
 function integration(f,{afterModel=()=>{}}={}){
  const records=[],requests=[];let claimed=false;
  const env={OPENAI_ADMIN_AGENT_MODEL:'gpt-6-luna'};
- const store={snapshot:f.snapshot,async claim(){if(claimed)return false;claimed=true;return true;},async start(){return true;},async finish(r){records.push(r);}};
+ const store={snapshot:f.snapshot,async claim(){if(claimed)return false;claimed=true;return true;},async start(){return true;},async startAdminModel(){return true;},async finish(r){records.push(r);}};
  const run=()=>runMetaAdminShadowOnceWithContext({db:f.db,inputId:id(10),authorizedInputId:id(10),store,env,now,
    async propose(context){const request=restrictedAdminRequest(context,env);requests.push(request);afterModel(f);
      return {provider:'openai',model:'gpt-6-luna',run_id:'intercepted-fixture',proposed_response:'Propuesta interceptada de fixture'};}});
@@ -179,7 +179,7 @@ for(const mode of ['matched','unmatched','ambiguous','revoked','condo','human-af
  const env={META_ADMIN_SHADOW_OPERATOR_SECRET:'synthetic-secret-for-local-tests-only',META_ADMIN_SHADOW_AUTHORIZED_INPUT_ID:id(10),
    OPENAI_API_KEY:'synthetic',OPENAI_ADMIN_AGENT_MODEL:'gpt-6-luna',SUPABASE_SERVICE_ROLE_KEY:'synthetic',NEXT_PUBLIC_SUPABASE_URL:'https://example.invalid'};
  const store={contextDb:mode==='missing-db'?undefined:f.db,snapshot:f.snapshot,async claim(a){if(record)return false;record=a;return true;},
-   async start(){return true;},async finish(a){record={...record,...a};}};
+   async start(){return true;},async startAdminModel(){return true;},async finish(a){record={...record,...a};}};
  const handler=createShadowOnceOperator({env,makeStore:()=>store,run:a=>runMetaAdminShadowOnceWithContext({...a,now,propose:async context=>{
    calls++;request=restrictedAdminRequest(context,env);if(mode==='human-after')human=true;
    return {provider:'openai',model:env.OPENAI_ADMIN_AGENT_MODEL,run_id:'intercepted',proposed_response:'Propuesta de fixture'};

@@ -107,9 +107,8 @@ for(const contacts of [[],{},[{wa_id:"15555559999"}],[{wa_id:inbound().from},{wa
 test("cutoff rejects prior event, even newly delivered",()=>{
   assert.deepEqual(capture(payload(change({messages:[{...inbound(),timestamp:"1791417599"}]}))),[]);
 });
-test("nontext never loads caption, URL, downloads or fabricates input",()=>{
-  const [row]=capture(fixtures.media);assert.equal(row.sanitized_text,null);assert.equal(row.capture_reason,"unsupported_message_type");
-  assert.equal(JSON.stringify(row).includes("private"),false);
+test("recoverable media rejects a non-Admin scope",()=>{
+  assert.throws(()=>capture(fixtures.media),/media_reference_invalid/);
 });
 for(const key of ["statuses","appEcho","edit","revoke"]) test(`no shadow input for ${key}`,()=>assert.deepEqual(capture(fixtures[key]),[]));
 test("empty sanitized text blocked",()=>assert.equal(capture(payload(change({messages:[{...inbound(),text:{body:" \u0000 "}}]})))[0].capture_reason,"empty_sanitized_text"));
