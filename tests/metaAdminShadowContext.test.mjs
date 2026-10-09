@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
+import {createHash,createHmac,createCipheriv} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {createAdminShadowContextReaders,prepareAdminShadowContext} from '../lib/messaging/metaAdminCapture/shadowContextReadOnly.js';
 import {createRespondCanonicalContextReaders} from '../lib/shadow/canonicalReadOnlyContext.js';
@@ -8,6 +8,8 @@ import {shadowContextTools,validateShadowToolArguments} from '../lib/shadow/cont
 import {runMetaAdminShadowOnceWithContext} from '../lib/messaging/metaAdminCapture/shadowOnceWithContext.js';
 import {restrictedAdminRequest} from '../lib/messaging/metaAdminCapture/shadowOnce.js';
 import {createShadowOnceOperator} from '../lib/messaging/metaAdminCapture/shadowOnceOperator.js';
+import {runControlledAdminOutbound,verifyLowRiskProposal} from '../lib/messaging/metaAdminCapture/controlledOutbound.js';
+import {shadowOnceGate} from '../lib/messaging/metaAdminCapture/shadowOnce.js';
 const id=n=>`${String(n).padStart(8,'0')}-1111-4111-8111-111111111111`;
 const now=()=>Date.parse('2026-10-09T01:30:00Z');
 const phone='525550100001',digest=createHash('sha256').update(phone).digest('hex');
@@ -60,6 +62,61 @@ function integration(f,{afterModel=()=>{}}={}){
      return {provider:'openai',model:'gpt-6-luna',run_id:'intercepted-fixture',proposed_response:'Propuesta interceptada de fixture'};}});
  return {run,records,requests};
 }
+function outboundFixture({mode='accepted'}={}){
+ const env={META_ADMIN_CONTROLLED_OUTBOUND_ENABLED:'true',META_ADMIN_CONTROLLED_OUTBOUND_INPUT_ID:id(10),
+ OPENAI_ADMIN_AGENT_MODEL:'gpt-6-luna',META_ADMIN_OUTBOUND_ACCESS_TOKEN:'synthetic',META_ADMIN_CAPTURE_ENCRYPTION_KEY:'a'.repeat(64),META_ADMIN_CAPTURE_HMAC_KEY:'b'.repeat(64)};
+ const subject=createHmac('sha256',Buffer.from(env.META_ADMIN_CAPTURE_HMAC_KEY,'hex')).update(`1297760461811288:1198305790026665:${phone}`).digest('hex');
+ const cipher=createCipheriv('aes-256-gcm',Buffer.from(env.META_ADMIN_CAPTURE_ENCRYPTION_KEY,'hex'),Buffer.alloc(12));
+ cipher.setAAD(Buffer.from('1297760461811288:1198305790026665:fixture-event'));
+ const ciphertext=Buffer.concat([cipher.update(phone),cipher.final()]);let human=false;
+ const f=fixture({kind:mode==='condo'?'condo':'tenant',change(d){if(mode==='revoked')d.client_source_links[0].link_status='revoked';if(mode==='ambiguous')d.contracts.push({...d.contracts[0],id:id(99)});},snapshotChange(s){
+  s.input.sanitized_text=mode==='risky'?'Quiero negociar un descuento legal':'¿Cuándo vence mi contrato?';
+  s.input.occurred_at=new Date(now()-(mode==='expired'?86400001:60000)).toISOString();s.input.subject_ref=subject;
+  if(mode==='stale')s.checked_at=new Date(now()-5001).toISOString();
+  if(mode==='unmatched')s.identity={state:'unmatched',reason:'no_exact_identity',candidate_count:0,authorizes_business:false};
+  if(human||['same_subject','unknown','conflict'].includes(mode)){s.later_scope_echoes=1;s.echo_assessments=[{state:human?'same_subject':mode}];}
+ }});
+ let record=null,calls=0,request;
+ const store={snapshot:f.snapshot,async load(){return {event_key:'fixture-event',sender_ref:subject,exact_phone_digest:digest,sender_evidence:'signed_from',
+ sender_ciphertext:{v:1,iv:Buffer.alloc(12).toString('hex'),tag:mode==='tampered'?'f'.repeat(32):cipher.getAuthTag().toString('hex'),data:ciphertext.toString('hex')},
+ shadow:{status:'complete',identity_state:'matched',provider:'openai',model:'gpt-6-luna',model_calls:1,send_calls:0,
+ input_fingerprint:shadowOnceGate(await f.snapshot(),now()).fingerprint,proposed_response:mode==='unbacked'?'Tu renta es gratis.':'La fecha de vencimiento registrada de tu contrato es 2026-12-31.'}};},
+ async reserve(a){if(record)return false;record={...a,status:'reserved'};return true;},
+ async start(){record.status='dispatch_started';if(mode==='late-human')human=true;return true;},
+ async finish(i,t,status,wamid){record={...record,status,wamid};},async review(){if(!record)record={status:'review_required'};}};
+ const run=()=>runControlledAdminOutbound({inputId:id(10),env,store,db:f.db,now,fetchImpl:async(url,options)=>{
+  calls++;request={url,options};if(mode==='timeout')throw Error('timeout');
+  if(mode==='failed')return {ok:false,status:400,json:async()=>({error:{code:131047}})};
+  if(mode==='server-error')return {ok:false,status:500,json:async()=>({error:{code:2}})};
+  return {ok:true,status:200,json:async()=>({messages:[{id:'wamid.fixtureAccepted'}]})};
+ }});
+ return {run,env,f,get calls(){return calls;},get request(){return request;},get record(){return record;}};
+}
+for(const mode of ['accepted','unmatched','ambiguous','revoked','condo','risky','unbacked','expired','stale','tampered','same_subject','unknown','conflict','late-human','timeout','failed','server-error'])
+test(`controlled outbound: ${mode}`,async()=>{
+ const h=outboundFixture({mode}),r=await h.run();
+ const sent=['accepted','timeout','failed','server-error'].includes(mode);
+ assert.equal(h.calls,sent?1:0);assert.deepEqual(h.f.writes,[]);assert.ok(h.f.reads.every(x=>!x.table.includes('respond')));
+ assert.equal(r.status,mode==='accepted'?'accepted':mode==='failed'?'failed':['timeout','server-error','late-human'].includes(mode)?'uncertain':'review_required');
+ if(sent){const body=JSON.parse(h.request.options.body);assert.equal(body.to,phone);assert.equal(body.type,'text');assert.ok(!('tools' in body));assert.equal(h.request.options.redirect,'error');}
+ await h.run();assert.equal(h.calls,sent?1:0);
+});
+test('controlled outbound: OFF and unallowlisted perform no reads or sends',async()=>{
+ const h=outboundFixture();delete h.env.META_ADMIN_CONTROLLED_OUTBOUND_ENABLED;
+ assert.equal((await h.run()).status,'disabled');assert.equal(h.f.reads.length,0);
+ h.env.META_ADMIN_CONTROLLED_OUTBOUND_ENABLED='true';h.env.META_ADMIN_CONTROLLED_OUTBOUND_INPUT_ID=id(99);
+ assert.equal((await h.run()).status,'blocked');assert.equal(h.f.reads.length,0);assert.equal(h.calls,0);
+});
+test('controlled outbound: concurrent callers send once',async()=>{
+ const h=outboundFixture();const r=await Promise.all([h.run(),h.run()]);assert.equal(h.calls,1);
+ assert.deepEqual(r.map(x=>x.status).sort(),['accepted','already_consumed']);
+});
+test('controlled outbound: additional unsupported assertions never pass',()=>{
+ const c={state:'ready',agreement:{end_date:'2026-12-31'}};
+ assert.equal(verifyLowRiskProposal('cuando vence mi contrato','La fecha de vencimiento registrada de tu contrato es 2026-12-31. Además tienes 5 días de tolerancia.',c).allowed,false);
+ for(const q of ['quiero una devolucion','mi abogado presenta una queja','horarios','necesito cambiar mi contrato','cuando vence mi contrato y tengo una disputa'])
+ assert.equal(verifyLowRiskProposal(q,'Recibimos tu mensaje.',c).allowed,false);
+});
 test('model boundary rejects private context for unmatched and blocked context',()=>{
  const env={OPENAI_ADMIN_AGENT_MODEL:'gpt-6-luna'};
  assert.throws(()=>restrictedAdminRequest({identity_state:'unmatched',admin_context:{state:'ready'}},env),/private_context_requires_matched/);

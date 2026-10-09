@@ -1,0 +1,13 @@
+{
+  "phase": "Meta Admin Controlled Outbound v1 local review",
+  "base": "20b5c70d053594f5509681a3ec933e3be167bc23",
+  "sender_tests": {"passed":20,"failed":0,"transport":"intercepted","models":0,"real_sends":0,"business_writes":0},
+  "sql_file":"scripts/sql/meta-admin-controlled-outbound.sql",
+  "sql_sha256":"02e4e36a23d71eea95c7e63fd1f5e68e23d44d002ce6177dfb65091a3a23761c",
+  "postgres_local":{"result":"PASS","exact_sql":true,"concurrent_connections":2,"claim_winners":1,"acl_rls_cas_replay_status":true},
+  "hosted_dev":{"project":"hjfwjnejbcpmknvfpdcq","result":"PASS","mode":"isolated fixture schema, identifiers renamed, unchanged SQL logic, transaction rollback","fixture_schemas_after":0,"fixture_functions_after":0,"existing_source_writes":0,"models":0,"sends":0},
+  "not_certified":["production/source-table constraint integration","hosted concurrent independent sessions","real Meta delivery/read","operator endpoint wiring","complete native human attention"],
+  "production_changes":0,
+  "default_enabled":false,
+  "new_caller":false
+}
