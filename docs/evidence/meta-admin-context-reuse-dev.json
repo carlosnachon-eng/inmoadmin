@@ -1,0 +1,113 @@
+{
+  "project": "hjfwjnejbcpmknvfpdcq",
+  "done": true,
+  "results": [
+    {
+      "scenario": "model_chosen_ids_rejected_without_query",
+      "status": "PASS"
+    },
+    {
+      "scenario": "revoked",
+      "status": "PASS"
+    },
+    {
+      "scenario": "expired",
+      "status": "PASS"
+    },
+    {
+      "scenario": "multiple_contracts",
+      "status": "PASS"
+    },
+    {
+      "scenario": "multiple_properties",
+      "status": "PASS"
+    },
+    {
+      "scenario": "unaccredited_condominium_fee",
+      "status": "PASS"
+    },
+    {
+      "scenario": "authorized_payments_month_and_identity_isolation",
+      "status": "PASS"
+    },
+    {
+      "scenario": "valid_owner_rent_and_respond_parity",
+      "status": "PASS"
+    },
+    {
+      "scenario": "valid_tenant_rent_and_respond_parity",
+      "status": "PASS"
+    }
+  ],
+  "queries": 119,
+  "reader_writes": 0,
+  "models": 0,
+  "sends": 0,
+  "fixture_mode": "transaction_rollback",
+  "period": "2026-10",
+  "batches": 38,
+  "elapsed_ms": 467695,
+  "cleanup": [
+    {
+      "source": "client_identities",
+      "residues": 0
+    },
+    {
+      "source": "client_source_links",
+      "residues": 0
+    },
+    {
+      "source": "respond_identity_links",
+      "residues": 0
+    },
+    {
+      "source": "properties",
+      "residues": 0
+    },
+    {
+      "source": "contracts",
+      "residues": 0
+    },
+    {
+      "source": "payments",
+      "residues": 0
+    },
+    {
+      "source": "condominios",
+      "residues": 0
+    },
+    {
+      "source": "unidades_condominio",
+      "residues": 0
+    },
+    {
+      "source": "profiles",
+      "residues": 0
+    },
+    {
+      "source": "client_identity_roles",
+      "residues": 0
+    },
+    {
+      "source": "auth.users",
+      "residues": 0
+    },
+    {
+      "source": "respond_identity_audit",
+      "residues": 0
+    }
+  ],
+  "limitations": [
+    "Real hosted PostgreSQL via Management API; not PostgREST/RLS certification.",
+    "Meta snapshot/matched evidence is a controlled fixture; no real Meta input or model.",
+    "Each batch recreates synthetic rows inside a transaction and rolls back; no persistent fixtures.",
+    "Condominium monetary sources unaccredited: insufficient_context."
+  ],
+  "fixture_setup_adjustment": "DEV lacked inquilino profile role; used existing propietario role for synthetic confirmer only; application code unchanged.",
+  "local_tests": {
+    "pass": 152,
+    "fail": 0
+  },
+  "production_access": false,
+  "reader_mode": "SELECT-only adapter; fixture INSERTs separate and rolled back"
+}
