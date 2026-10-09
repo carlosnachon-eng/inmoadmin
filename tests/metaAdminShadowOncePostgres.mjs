@@ -23,7 +23,11 @@ async function connection(role){const c=new Client({host:'127.0.0.1',port,user:'
 async function scenario(name,fn){const start=performance.now();await fn();results.push({name,result:'PASS',ms:Math.round(performance.now()-start)});}
 const env={OPENAI_ADMIN_AGENT_MODEL:'gpt-6-luna'};
 const proposal=async()=>{modelCalls++;return{provider:'openai',model:env.OPENAI_ADMIN_AGENT_MODEL,run_id:'resp_synthetic',proposed_response:'¿En qué puedo orientarte?'};};
-const health=async()=>({status:'healthy',checked_at:new Date().toISOString()});
+// Synthetic health evidence ONLY for the disposable local SQL harness.
+const health=async()=>({status:'healthy',checked_at:new Date().toISOString(),
+ waba_id:'1297760461811288',phone_number_id:'1198305790026665',receiver_ready:true,subscription_active:true,
+ coverage_complete:true,known_pending:0,in_flight:0,unresolved_failures:0,
+ covered_from:'2020-01-01T00:00:00.000Z',covered_through:new Date().toISOString(),evidence_refs:['synthetic-local-only']});
 let first,second;
 async function fixture(){const id=randomUUID(),event=randomUUID();await root.query(`insert into public.meta_observer_events
  (id,waba_id,phone_number_id,occurred_at,received_at,category,observer_only,state,error_codes)

@@ -27,10 +27,59 @@ proposed response are recorded in the private audit; no sender exists.
 ## Observation gates and limitations
 
 Read-only SQL checks exact Admin scope, enabled capture, future-cutoff input,
-observer state, identity and edit/revoke observations. Freshness requires a query
-at most 5 seconds old, recent same-scope observation within 60 seconds and a fresh
-independently supplied read-only receiver-health check; missing health is unknown.
+observer state, identity and edit/revoke observations. Proposed local revision:
+freshness requires a query at most 5 seconds old and independent transport evidence
+at most 5 seconds old. The age of the latest received message is not a gate.
 Recent DB traffic alone is NOT proof of healthy ingestion or absent human activity.
+
+The trusted `readTransportHealth` contract must return exact `waba_id` and
+`phone_number_id`, `receiver_ready=true`, `subscription_active=true`,
+`known_pending=0`, `in_flight=0`, `unresolved_failures=0`, `coverage_complete=true`,
+`checked_at`, `covered_from`, `covered_through` and nonempty audit `evidence_refs`.
+Coverage must begin no later than the candidate occurrence/capture and end within
+5 seconds of the current snapshot. Missing/unknown coverage blocks. Evidence refs
+are opaque audit references, never tokens, phones or raw payloads.
+
+`transportHealth.js` implements GET-only operational reads, supplied explicitly
+through `transportReaderConfig` on the PostgreSQL store (no secret discovery).
+It checks the production alias deployment before/after the reads, expected SHA,
+READY since before the candidate, exact App membership in WABA subscribed_apps,
+and enumerates Vercel request logs for the interval. It reconciles known failures
+with the durable candidate and journal snapshot. The SQL snapshot is refreshed
+again after these external reads; its boundary is statement_timestamp().
+
+`coverage_complete` means enumeration of these observable sources only, NOT
+guaranteed delivery. Zero known pending/in-flight means none visible in these
+sources. Silent intervals are allowed. Provider events not delivered yet, logs
+not indexed yet, and an unlogged transient alias change cannot be excluded.
+The result explicitly carries basis=observable_operational_evidence_only.
+Known 5xx/timeouts/persistence errors yield unhealthy; malformed, inaccessible,
+truncated, contradictory, unfinished or expired reads yield unknown. Both block.
+No claim of absolute absence of an event not yet delivered is possible.
+
+Sources: Vercel deployment GET and the request-logs endpoint used by its official
+[CLI](https://github.com/vercel/vercel/blob/main/packages/cli/src/util/logs-v2.ts),
+plus Meta v26.0 WABA subscribed_apps. Tokens are explicit operator inputs,
+Bearer headers only, never URLs/output. No retries/redirects. Pagination is capped
+at 20 pages/10,000 rows and total reads at 4.5 seconds; reaching a cap blocks.
+The request-log interface is not a stable public API: access/shape changes block.
+Live access and indexing latency have NOT been certified by these local tests.
+
+Manual window: use the observably healthy interval, not a fixed inbound TTL.
+A 15-minute-old candidate is covered in the focused tests, but 15 minutes is not
+a measured production guarantee or a new timeout. Any gap, expired health proof,
+known pending delivery or applicable echo blocks at any age. No Production
+activation is included.
+
+Focused local reader/freshness/echo verification: 69/69 PASS, all HTTP/DB/model
+dependencies intercepted; zero real model calls/sends or Production reads/writes.
+No migration is introduced by this reader.
+
+Gates also repeat after the durable model-start reservation, immediately before
+the request, so time spent committing cannot silently expire the prior snapshot.
+If this check blocks, no request is made; the reserved journal stays `uncertain`
+(model_calls=1 reservation, not a billed-call assertion), without reset/retry.
+Post-model health loss invalidates the retained proposal. Sender/tools unchanged.
 
 Historical observer receipts have no recipient/subject for `app_echo` and remain
 unknown; no backfill is permitted. The local future extension records a private

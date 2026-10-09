@@ -53,7 +53,11 @@ async function input(m=message()){
  const r=await receive(body([m]));assert.equal(r.statusCode,200,r.errorCode);
  return (await root.query('select * from meta_admin_private.inbound_inputs where native_message_id=$1',[m.id])).rows[0];
 }
-const health=async()=>({status:'healthy',checked_at:new Date().toISOString()});
+// Synthetic health evidence ONLY for the disposable local SQL harness.
+const health=async()=>({status:'healthy',checked_at:new Date().toISOString(),
+ waba_id:'1297760461811288',phone_number_id:'1198305790026665',receiver_ready:true,subscription_active:true,
+ coverage_complete:true,known_pending:0,in_flight:0,unresolved_failures:0,
+ covered_from:'2020-01-01T00:00:00.000Z',covered_through:new Date().toISOString(),evidence_refs:['synthetic-local-only']});
 const defs=async()=>(await root.query(`select c.oid,c.relacl,c.relrowsecurity,
  (select jsonb_agg(pg_get_triggerdef(t.oid) order by t.oid) from pg_trigger t where t.tgrelid=c.oid and not t.tgisinternal) triggers
  from pg_class c where c.oid in ('public.meta_observer_events'::regclass,'meta_admin_private.inbound_inputs'::regclass) order by c.oid`)).rows;
