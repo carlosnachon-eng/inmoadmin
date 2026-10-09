@@ -55,20 +55,7 @@ for(const [name,mutate] of [
   ['unknown echo coverage',s=>{delete s.later_scope_echoes;}],
   ['scope',s=>{s.input.phone_number_id='other';}],
   ['mutated',s=>{s.mutated=true;}],
-  ['missing coverage',s=>{delete s.transport_health.coverage_complete;}],
-  ['pending ingestion',s=>{s.transport_health.known_pending=1;}],
-  ['unknown pending ingestion',s=>{s.transport_health.known_pending=null;}],
-  ['in flight',s=>{s.transport_health.in_flight=1;}],
-  ['receiver unavailable',s=>{s.transport_health.receiver_ready=false;}],
-  ['subscription unknown',s=>{delete s.transport_health.subscription_active;}],
-  ['unresolved failure',s=>{s.transport_health.unresolved_failures=1;}],
-  ['missing evidence refs',s=>{s.transport_health.evidence_refs=[];}],
-  ['wrong scope health',s=>{s.transport_health.phone_number_id='other';}],
-  ['coverage starts too late',s=>{s.transport_health.covered_from=iso(stamp-1000);}],
-  ['coverage ends too early',s=>{s.transport_health.covered_through=iso(stamp-6000);}],
   ['stale query',s=>{s.checked_at=iso(stamp-6000);}],
-  ['unknown transport',s=>{s.transport_health.status='unknown';}],
-  ['stale transport',s=>{s.transport_health.checked_at=iso(stamp-6000);}],
   ['uncertain event',s=>{s.later_scope_uncertain=1;}],
   ['unsanitized text',s=>{s.input.sanitized_text='llama al 2221234567';}],
 ]) test(`${name} blocks before claim/model`,async()=>{
@@ -78,22 +65,30 @@ test('repeats gates after exclusive claim immediately before model',async()=>{
   const h=harness({change:(s,n)=>{if(n===2)s.later_scope_echoes=1;}});
   assert.equal((await h.run()).status,'blocked');assert.equal(h.calls,0);assert.equal(h.record.status,'blocked');
 });
-test('quiet 15-minute inbound is allowed only with complete fresh evidence',async()=>{
+test('quiet 15-minute inbound needs fresh DB snapshot, not transport grant',async()=>{
   const h=harness();assert.equal((await h.run()).status,'complete');assert.equal(h.calls,1);
   const s=snapshot();delete s.latest_received_at;
   assert.equal(shadowOnceGate(s,stamp).allowed,true);
   s.transport_health.coverage_complete=false;
-  assert.equal(shadowOnceGate(s,stamp).reason,'transport_coverage_unverified');
+  assert.equal(shadowOnceGate(s,stamp).allowed,true);
 });
-test('coverage lost after durable start prevents the request without resetting attempt',async()=>{
-  const h=harness({change:(s,n)=>{if(n===3)s.transport_health.known_pending=1;}});
+test('DB snapshot stale after durable start prevents request without resetting attempt',async()=>{
+  const h=harness({change:(s,n)=>{if(n===3)s.checked_at=iso(stamp-5001);}});
   assert.equal((await h.run()).status,'blocked');assert.equal(h.calls,0);
   assert.equal(h.record.status,'uncertain');assert.equal((await h.run()).status,'already_claimed');
 });
-test('transport loss after model invalidates proposal and never sends',async()=>{
+test('transport diagnostic loss after model does not invalidate intercepted proposal',async()=>{
   const h=harness({change:(s,n)=>{if(n===4)s.transport_health.coverage_complete=false;}});
-  const r=await h.run();assert.equal(r.status,'invalidated');assert.equal(h.calls,1);assert.equal(r.send_calls,0);
+  const r=await h.run();assert.equal(r.status,'complete');assert.equal(h.calls,1);assert.equal(r.send_calls,0);
 });
+for (const health of [undefined,null,{status:'unknown'},{status:'unhealthy'},
+  {status:'healthy',checked_at:iso(stamp-900000)},
+  {status:'unknown',known_pending:1,in_flight:1,unresolved_failures:1}]) {
+  test(`transport diagnostic ${JSON.stringify(health)} is not a shadow grant`,async()=>{
+    const h=harness({change:s=>{s.transport_health=health;}});
+    const r=await h.run();assert.equal(r.status,'complete');assert.equal(h.calls,1);assert.equal(r.send_calls,0);
+  });
+}
 test('only individually proven other_subject echoes are excluded',async()=>{
   const h=harness({change:s=>{s.later_scope_echoes=1;s.echo_assessments=[{event_id:'synthetic',state:'other_subject'}];}});
   assert.equal((await h.run()).status,'complete');assert.equal(h.calls,1);
