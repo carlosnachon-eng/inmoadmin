@@ -14,7 +14,39 @@ test('request echoes, arbitrary PII and secrets never survive in fields or extra
  }
 });
 test('even allowlisted prose is removed if it echoes a known request value',()=>{
- assert.equal(sanitizeManualMetaHttpError(403,error,['Permissions error']).message,'[REDACTED]');
+ assert.equal(sanitizeManualMetaHttpError(403,error,['Permissions error']).message,'(#200) [REDACTED]');
+});
+test('new technical wording survives without a full-sentence allowlist',()=>{
+ const message='(#200) You do not have the necessary permissions required to send messages on behalf of this WhatsApp Business Account.';
+ assert.equal(sanitizeManualMetaHttpError(403,{error:{code:200,message}}).message,message);
+});
+test('unknown fragments redact individually without erasing surrounding technical cause',()=>{
+ const message='(#200) Application EmporioFixture cannot send messages: permission denied for account 123456789.';
+ const out=sanitizeManualMetaHttpError(403,{error:{code:200,message}}).message;
+ assert.match(out,/Application \[REDACTED\] cannot send messages/);assert.match(out,/permission denied/);
+ assert.ok(!out.includes('EmporioFixture'));assert.ok(!out.includes('123456789'));
+});
+test('technical details preserved independently of message',()=>{
+ const details='Application does not have whatsapp_business_messaging permission for this account.';
+ assert.equal(sanitizeManualMetaHttpError(403,{error:{error_data:{details}}}).details,details);
+});
+test('quoted request text, bearer secrets, URLs, phones and email removed',()=>{
+ const value='Permission denied: "private customer data" EAASecretFixture https://example.test/secret person@example.test +52 222 999 7777';
+ const out=sanitizeManualMetaHttpError(403,{error:{message:value}}).message;
+ for(const v of ['private','customer','data','EAASecretFixture','example','person','222','999','7777'])assert.ok(!out.includes(v));
+ assert.match(out,/Permission denied/);
+});
+test('known secrets and request text removed case-insensitively before normalization/truncation',()=>{
+ const out=sanitizeManualMetaHttpError(403,{error:{message:'PERMISSIONS ERROR '+ 'X'.repeat(1000)}},['permissions error']).message;
+ assert.ok(!out.includes('PERMISSIONS'));assert.ok(out.length<=500);
+});
+test('structured non-text diagnostic data never becomes prose',()=>{
+ const out=sanitizeManualMetaHttpError(403,{error:{message:{private:'value'},error_data:{details:['private']}}});
+ assert.equal(out.message,null);assert.equal(out.details,null);
+});
+test('unrecognized numeric prefix is not preserved as an identifier',()=>{
+ const out=sanitizeManualMetaHttpError(403,{error:{code:200,message:'(#5212221234567) Permission denied'}}).message;
+ assert.ok(!out.includes('5212221234567'));assert.match(out,/Permission denied/);
 });
 test('absent/malformed structured fields stay null, never copied as raw objects',()=>{
  assert.deepEqual(sanitizeManualMetaHttpError(502,{error:{code:'200',error_subcode:{token:'x'},message:{secret:'x'}}}),{http_status:502,code:null,subcode:null,type:null,message:null,details:null});
