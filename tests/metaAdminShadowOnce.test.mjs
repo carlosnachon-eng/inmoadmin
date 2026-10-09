@@ -66,6 +66,17 @@ test('repeats gates after exclusive claim immediately before model',async()=>{
   const h=harness({change:(s,n)=>{if(n===2)s.later_scope_echoes=1;}});
   assert.equal((await h.run()).status,'blocked');assert.equal(h.calls,0);assert.equal(h.record.status,'blocked');
 });
+test('manual reservation blocks shadow before model without resume',async()=>{
+  const h=harness({change:s=>{s.manual_attention=true;}});
+  assert.equal((await h.run()).reason,'human_manual_reply');assert.equal(h.calls,0);assert.equal(h.claims,0);
+});
+test('durable manual pause during model invalidates proposal at post-gate',async()=>{
+  let paused=false;
+  const h=harness({change:s=>{s.manual_attention=paused;},propose:async()=>{
+    paused=true;return {provider:'openai',model:env.OPENAI_ADMIN_AGENT_MODEL,run_id:'fixture',proposed_response:'Propuesta interceptada.'};
+  }});
+  const r=await h.run();assert.equal(r.status,'invalidated');assert.equal(r.reason,'human_manual_reply');assert.equal(h.calls,1);assert.equal(r.send_calls,0);
+});
 test('quiet 15-minute inbound needs fresh DB snapshot, not transport grant',async()=>{
   const h=harness();assert.equal((await h.run()).status,'complete');assert.equal(h.calls,1);
   const s=snapshot();delete s.latest_received_at;
