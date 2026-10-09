@@ -1,0 +1,26 @@
+{
+  "status": "PASS_LOCAL",
+  "base_head": "322890227a4cf8ac8d468176de83e6babb46940b",
+  "focused": {
+    "pass": 72,
+    "fail": 0,
+    "deidentified_replay": 10,
+    "intercepted_dev_source_replay": 5
+  },
+  "postgres_rpc": {
+    "pass": 20,
+    "fail": 0,
+    "concurrency": "independent sessions; one CAS winner",
+    "cleanup": 0,
+    "server_stopped": true
+  },
+  "models_real": 0,
+  "sends": 0,
+  "outbound_claims": 0,
+  "limits": [
+    "Hosted concurrent sessions not certified by connector.",
+    "No productive caller supplies optional memory capability.",
+    "Echo body unavailable: explicit incomplete marker, no invented authorship/text.",
+    "Deidentified replay annotations are synthetic, not original contact identity certification."
+  ]
+}

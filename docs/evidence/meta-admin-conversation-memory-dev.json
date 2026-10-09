@@ -1,0 +1,50 @@
+{
+  "status": "PASS_FUNCTIONAL_ACL_RLS_ADAPTER_WITH_HOSTED_CONCURRENCY_LIMIT",
+  "project": "inmoadmin-dev",
+  "project_ref": "hjfwjnejbcpmknvfpdcq",
+  "migrations": [
+    {
+      "file": "20261009130447_meta_admin_conversation_memory.sql",
+      "ledger": "20261009130523",
+      "sha256": "683e9b5b66b74e9dd12f45d63af05603ed3b7ab1fe385501dff27782f4774d86"
+    },
+    {
+      "file": "20261009131426_meta_admin_memory_provenance.sql",
+      "ledger": "20261009131910",
+      "sha256": "a61650145ce6e6f18edf6c634b5f79406701a1ea0d9b5eb52ed0310a35d10606"
+    }
+  ],
+  "defaults_before_and_after": "d5c6f1f13376720be871336c96e8dbc7",
+  "rls_tables": 2,
+  "service_only_rpcs": [
+    "meta_admin_memory_read_v1",
+    "meta_admin_memory_append_v1",
+    "meta_admin_memory_evidence_v1",
+    "meta_admin_memory_history_v1"
+  ],
+  "service_direct_table_access": false,
+  "hosted_checks": [
+    "append/read/idempotency/conflicting replay/version guard/direct access denial",
+    "exact native subject/scope/receipt",
+    "external positive: two inbounds returned",
+    "staff blocked; unknown history empty",
+    "history authorizes_private_data=false"
+  ],
+  "shadow": "5/5 local intercepted replays using synthetic source rows and RPC results returned from hosted DEV; not a live hosted runner/model",
+  "concurrency": {
+    "local": "PASS independent PostgreSQL sessions, concurrent CAS one winner",
+    "hosted": "NOT CERTIFIED: connector did not establish overlapping sessions in two bounded attempts; limitation of certification, no observed concurrency failure"
+  },
+  "cleanup": 0,
+  "final_counts": {
+    "episodes": 0,
+    "revisions": 0,
+    "inbound_inputs": 0
+  },
+  "models_real": 0,
+  "sends": 0,
+  "business_writes": 0,
+  "dev_writes": "authorized migrations retained; synthetic source/config/memory fixtures transaction-rolled back",
+  "production_access": false,
+  "publication": "Draft authorized with hosted concurrency limitation; no new tests in publication turn"
+}

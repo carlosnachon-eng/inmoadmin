@@ -1,0 +1,157 @@
+{
+  "proof": {
+    "key_tag": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "audience": "external_verified",
+    "input_id": "c0000000-0000-4000-8000-000000000002",
+    "checked_at": "2026-10-09T13:20:52.015639+00:00",
+    "subject_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "scope_verified": true,
+    "audience_reason": "confirmed_external_canonical_role",
+    "native_verified": true,
+    "human_authorized": false,
+    "authorizes_private_data": false
+  },
+  "source": "inmoadmin-dev synthetic transaction",
+  "tables": {
+    "contracts": [
+      {
+        "id": "a0000000-0000-4000-8000-000000000003",
+        "notes": null,
+        "status": "activo",
+        "end_date": "2027-09-04",
+        "tenant_id": null,
+        "created_at": "2026-10-09T13:20:52.015639+00:00",
+        "owner_name": null,
+        "start_date": "2026-09-09",
+        "payment_day": 5,
+        "property_id": "a0000000-0000-4000-8000-000000000002",
+        "tenant_name": null,
+        "monthly_rent": 1234,
+        "tenant_email": null,
+        "tenant_phone": null,
+        "property_name": null,
+        "rent_receiver": "inmobiliaria",
+        "commission_who": "propietario_descuento",
+        "deposit_amount": null,
+        "commission_type": "porcentaje",
+        "commission_value": 0,
+        "tenant_client_id": "a0000000-0000-4000-8000-000000000001",
+        "commission_status": "pendiente_cobro",
+        "co_responsable_nombre": null,
+        "co_responsable_telefono": null
+      }
+    ],
+    "properties": [
+      {
+        "id": "a0000000-0000-4000-8000-000000000002",
+        "name": "Memory DEV synthetic property",
+        "notes": null,
+        "status": "ocupada",
+        "address": null,
+        "owner_id": null,
+        "created_at": "2026-10-09T13:20:52.015639+00:00",
+        "owner_email": null,
+        "owner_phone": null,
+        "rent_amount": null,
+        "contrato_url": null,
+        "property_type": null,
+        "owner_client_id": null,
+        "administration_ended_at": null
+      }
+    ],
+    "client_identities": [
+      {
+        "id": "a0000000-0000-4000-8000-000000000001",
+        "status": "active",
+        "created_at": "2026-10-09T13:20:52.015639+00:00",
+        "revoked_at": null,
+        "updated_at": "2026-10-09T13:20:52.015639+00:00",
+        "auth_user_id": null,
+        "phone_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    ],
+    "client_source_links": [
+      {
+        "id": "f17fa6cf-c21d-474e-815e-04c58346981b",
+        "role_kind": "tenant",
+        "source_id": "a0000000-0000-4000-8000-000000000003",
+        "created_at": "2026-10-09T13:20:52.015639+00:00",
+        "revoked_at": null,
+        "updated_at": "2026-10-09T13:20:52.015639+00:00",
+        "link_status": "confirmed",
+        "source_type": "active_contract_tenant",
+        "match_method": "human_resolution",
+        "condominium_id": null,
+        "source_version": null,
+        "client_identity_id": "a0000000-0000-4000-8000-000000000001"
+      }
+    ],
+    "client_identity_roles": [
+      {
+        "status": "active",
+        "role_kind": "tenant",
+        "created_at": "2026-10-09T13:20:52.015639+00:00",
+        "revoked_at": null,
+        "updated_at": "2026-10-09T13:20:52.015639+00:00",
+        "client_identity_id": "a0000000-0000-4000-8000-000000000001"
+      }
+    ]
+  },
+  "history": [
+    {
+      "id": "c0000000-0000-4000-8000-000000000001",
+      "mutated": false,
+      "provenance": "customer_inbound",
+      "captured_at": "2026-10-09T13:20:52.030404+00:00",
+      "occurred_at": "2026-10-09T13:20:52.029761+00:00",
+      "message_type": "text",
+      "sanitized_text": "Tengo una pregunta del contrato",
+      "content_missing": false
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000002",
+      "mutated": false,
+      "provenance": "customer_inbound",
+      "captured_at": "2026-10-09T13:20:52.037963+00:00",
+      "occurred_at": "2026-10-09T13:20:52.037842+00:00",
+      "message_type": "text",
+      "sanitized_text": "Cuándo vence mi contrato",
+      "content_missing": false
+    }
+  ],
+  "snapshot": {
+    "input": {
+      "id": "c0000000-0000-4000-8000-000000000002",
+      "key_tag": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "waba_id": "1297760461811288",
+      "captured_at": "2026-10-09T13:20:52.038569+00:00",
+      "occurred_at": "2026-10-09T13:20:52.037842+00:00",
+      "subject_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "message_type": "text",
+      "observer_only": true,
+      "capture_reason": "captured",
+      "observer_state": "observed",
+      "sanitized_text": "Cuándo vence mi contrato",
+      "phone_number_id": "1198305790026665",
+      "native_message_id": "wamid.memorydev2"
+    },
+    "enabled": true,
+    "mutated": false,
+    "identity": {
+      "state": "matched",
+      "reason": "exact_existing_canonical_phone",
+      "candidate_count": 1,
+      "client_identity_id": "a0000000-0000-4000-8000-000000000001",
+      "authorizes_business": false
+    },
+    "checked_at": "2026-10-09T13:20:52.015639+00:00",
+    "echo_roots": [],
+    "scope_channel": "544519",
+    "subject_nodes": [],
+    "later_scope_echoes": 0,
+    "latest_received_at": "2026-10-09T13:20:52.040511+00:00",
+    "later_scope_uncertain": 0
+  },
+  "checked_at": "2026-10-09T13:20:52.090517+00:00",
+  "sql_checks": "PASS external/unknown/staff/native history"
+}

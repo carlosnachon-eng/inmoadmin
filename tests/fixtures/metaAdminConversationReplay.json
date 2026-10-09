@@ -1,0 +1,411 @@
+{
+  "provenance": "Subset of SELECT-deidentified 107-thread/2407-message corpus. Text/order/direction unchanged from deidentified view. No raw IDs or native reply relationships. Canonical scopes, episode seeds and audience annotations are local test fixtures, not production identity/authorization evidence. Not a replay of all 2407 messages.",
+  "cases": [
+    {
+      "case": "H14_los_otros",
+      "h": 14,
+      "seq": [
+        23,
+        26,
+        36,
+        37
+      ],
+      "expect": "antecedent_not_explicit",
+      "seeds": [],
+      "messages": [
+        {
+          "seq": 23,
+          "relative_minutes": "4439.8",
+          "direction": "inbound",
+          "text": "cuando [DATO_91] el efectivo tambien me tiene que llevar llaves de los departamentos que estan disponibles por favor , gracias",
+          "attachment": false
+        },
+        {
+          "seq": 26,
+          "relative_minutes": "4455.5",
+          "direction": "inbound",
+          "text": "necesito las llaves hoy",
+          "attachment": false
+        },
+        {
+          "seq": 36,
+          "relative_minutes": "4656.8",
+          "direction": "inbound",
+          "text": "solo llegaron [NUMERO_O_MONTO]",
+          "attachment": false
+        },
+        {
+          "seq": 37,
+          "relative_minutes": "4657.0",
+          "direction": "inbound",
+          "text": "los otros ya estan [DATO_114] ?",
+          "attachment": false
+        }
+      ]
+    },
+    {
+      "case": "H12_alguna_novedad",
+      "h": 12,
+      "seq": [
+        1,
+        2,
+        5,
+        6
+      ],
+      "expect": "antecedent_not_explicit",
+      "seeds": [
+        {
+          "family": "payments",
+          "topic": "payments",
+          "seq": [
+            1,
+            2
+          ]
+        }
+      ],
+      "messages": [
+        {
+          "seq": 1,
+          "relative_minutes": "0.0",
+          "direction": "inbound",
+          "text": "hola buen dia te [DATO_15] la renta de este mes",
+          "attachment": false
+        },
+        {
+          "seq": 2,
+          "relative_minutes": "25.8",
+          "direction": "outbound_unknown",
+          "text": "buenas tardes , claro ya lo verificamos y se estaria realizando el dia de manana",
+          "attachment": false
+        },
+        {
+          "seq": 5,
+          "relative_minutes": "5491.4",
+          "direction": "inbound",
+          "text": "hola buenos dias alguna [DATO_28] ? aun no recibo el deposito gracias",
+          "attachment": false
+        },
+        {
+          "seq": 6,
+          "relative_minutes": "14230.6",
+          "direction": "inbound",
+          "text": "hola alguna [DATO_28]",
+          "attachment": false
+        }
+      ]
+    },
+    {
+      "case": "H83_cambio_pago_a_fuga",
+      "h": 83,
+      "seq": [
+        2,
+        3,
+        6,
+        7,
+        8
+      ],
+      "expect": "episode_selected",
+      "topic": "maintenance_water",
+      "seeds": [
+        {
+          "family": "payments",
+          "topic": "payments",
+          "seq": [
+            2,
+            3
+          ]
+        },
+        {
+          "family": "clarification",
+          "topic": "clarification",
+          "seq": [
+            6
+          ]
+        }
+      ],
+      "messages": [
+        {
+          "seq": 2,
+          "relative_minutes": "0.1",
+          "direction": "inbound",
+          "text": "buenas tardes envio [DATO_52] de este mes",
+          "attachment": false
+        },
+        {
+          "seq": 3,
+          "relative_minutes": "14.3",
+          "direction": "outbound_unknown",
+          "text": "muchas gracias , lo registro en [DATO_79]",
+          "attachment": false
+        },
+        {
+          "seq": 6,
+          "relative_minutes": "8669.3",
+          "direction": "outbound_unknown",
+          "text": "hola , buen dia [DATO_20] [DATO_75] al contrato de [DATO_80] , si ya cuenta con el documento podria enviarlo para pasar el reporte y poder [DATO_35] [DATO_6] [DATO_17] en el [DATO_76] . gracias .",
+          "attachment": false
+        },
+        {
+          "seq": 7,
+          "relative_minutes": "8673.0",
+          "direction": "inbound",
+          "text": "hola si ya no estoy en mi casa momento te lo envio ya lo tengo",
+          "attachment": false
+        },
+        {
+          "seq": 8,
+          "relative_minutes": "8673.3",
+          "direction": "inbound",
+          "text": "e tambien le [DATO_67] preguntar con quien puedo ver el tema de el tinaco tiene una fuga y [DATO_50] del departamento",
+          "attachment": false
+        }
+      ]
+    },
+    {
+      "case": "H59_agua_a_gas",
+      "h": 59,
+      "seq": [
+        1,
+        2,
+        5,
+        6,
+        11
+      ],
+      "expect": "episode_selected",
+      "topic": "maintenance_gas",
+      "seeds": [
+        {
+          "family": "maintenance",
+          "topic": "maintenance_water",
+          "seq": [
+            1,
+            2,
+            5,
+            6
+          ]
+        }
+      ],
+      "messages": [
+        {
+          "seq": 1,
+          "relative_minutes": "0.0",
+          "direction": "inbound",
+          "text": "hola buen dia disculpe desde el dia jueves me [DATO_97] sin agua",
+          "attachment": false
+        },
+        {
+          "seq": 2,
+          "relative_minutes": "0.4",
+          "direction": "inbound",
+          "text": "y el dia de hoy llego el agua pero casi no [DATO_115] en la cisterna",
+          "attachment": false
+        },
+        {
+          "seq": 5,
+          "relative_minutes": "2.6",
+          "direction": "outbound_unknown",
+          "text": "gracias por [DATO_12] . por lo que nos comenta , y considerando que [DATO_10] el suministro de la casa [DATO_47] con [DATO_70] , parece [DATO_121] de un tema de suministro o [DATO_13] [DATO_89] de la [DATO_101] , ya que hoy si [DATO_24] a [DATO_53] agua , aunque en poca cantidad . le pedimos por favor estar pendiente durante el dia para ver si [DATO_28] [DATO_100] el [DATO_68] de la cisterna . si el suministro se [DATO_71] en la zona pero la cisterna [DATO_111] sin [DATO_62] , entonces si coordinamos una revision de la instalacion .",
+          "attachment": false
+        },
+        {
+          "seq": 6,
+          "relative_minutes": "3.5",
+          "direction": "inbound",
+          "text": "pues esta [DATO_99] por que la casa de al lado tiene su cisterna [DATO_61]",
+          "attachment": false
+        },
+        {
+          "seq": 11,
+          "relative_minutes": "10084.3",
+          "direction": "inbound",
+          "text": "hoy vinieron los del gas y me [DATO_23] que en el [DATO_118] estacionamiento tiene una fuga el [DATO_103]",
+          "attachment": false
+        }
+      ]
+    },
+    {
+      "case": "H105_pago_y_cobranza",
+      "h": 105,
+      "seq": [
+        1,
+        2
+      ],
+      "expect": "contradiction_observed",
+      "seeds": [
+        {
+          "family": "payments",
+          "topic": "payments",
+          "seq": [
+            1
+          ]
+        }
+      ],
+      "messages": [
+        {
+          "seq": 1,
+          "relative_minutes": "0.0",
+          "direction": "inbound",
+          "text": "imagen",
+          "attachment": true
+        },
+        {
+          "seq": 2,
+          "relative_minutes": "5295.4",
+          "direction": "inbound",
+          "text": "hola buena tarde disculpe , el pago de la renta ya lo realice desde el [NUMERO_O_MONTO] de septiembre y me [DATO_37] enviando mensaje a otro numero y al correo",
+          "attachment": false
+        }
+      ]
+    },
+    {
+      "case": "H65_varias_rentas",
+      "h": 65,
+      "seq": [
+        1,
+        2
+      ],
+      "expect": "multiple_entities_mentioned",
+      "seeds": [],
+      "messages": [
+        {
+          "seq": 1,
+          "relative_minutes": "0.0",
+          "direction": "inbound",
+          "text": "buenas tardes",
+          "attachment": false
+        },
+        {
+          "seq": 2,
+          "relative_minutes": "0.2",
+          "direction": "inbound",
+          "text": "no han realizado el pago de las rentas ?",
+          "attachment": false
+        }
+      ]
+    },
+    {
+      "case": "H34_adjunto",
+      "h": 34,
+      "seq": [
+        1
+      ],
+      "expect": "antecedent_not_explicit",
+      "seeds": [],
+      "messages": [
+        {
+          "seq": 1,
+          "relative_minutes": "0.0",
+          "direction": "inbound",
+          "text": "imagen",
+          "attachment": true
+        }
+      ]
+    },
+    {
+      "case": "H47_interno",
+      "h": 47,
+      "seq": [
+        455,
+        456,
+        457,
+        458
+      ],
+      "expect": "audience_unverified_or_internal",
+      "audience": "internal",
+      "seeds": [],
+      "messages": [
+        {
+          "seq": 455,
+          "relative_minutes": "16233.2",
+          "direction": "outbound_unknown",
+          "text": "pero sino mal recuerdo ella [DATO_340] a [DATO_394] de septiembre",
+          "attachment": false
+        },
+        {
+          "seq": 456,
+          "relative_minutes": "16233.4",
+          "direction": "inbound",
+          "text": "si , pero entonces su renta",
+          "attachment": false
+        },
+        {
+          "seq": 457,
+          "relative_minutes": "16233.6",
+          "direction": "inbound",
+          "text": "[DATO_321] el [NUMERO_O_MONTO] o [NUMERO_O_MONTO] de septiembre",
+          "attachment": false
+        },
+        {
+          "seq": 458,
+          "relative_minutes": "16233.8",
+          "direction": "inbound",
+          "text": "pero en la [DATO_177] su primer pago aparece hasta octubre",
+          "attachment": false
+        }
+      ]
+    },
+    {
+      "case": "H79_reporte_anonimo",
+      "h": 79,
+      "seq": [
+        1
+      ],
+      "expect": "episode_selected",
+      "topic": "maintenance_water",
+      "identity": "unmatched",
+      "seeds": [],
+      "messages": [
+        {
+          "seq": 1,
+          "relative_minutes": "0.0",
+          "direction": "inbound",
+          "text": "buen dia . mi [DATO_50] es [DATO_42] y me [DATO_24] su contacto para cuando [DATO_68] [DATO_7] [DATO_38] en la propiedad que estoy [DATO_62] en cerrada [NUMERO_O_MONTO] a [DATO_55] [NUMERO_O_MONTO] [DATO_10] . el dia de ayer [DATO_13] una muy [DATO_32] lluvia y cuando [DATO_66] a una habitacion me [DATO_28] con que habia mucha agua . aunque no [DATO_59] [DATO_21] de donde [DATO_58] la filtracion . le adjunto video .",
+          "attachment": false
+        }
+      ]
+    },
+    {
+      "case": "H52_acuerdo_fuera_de_ventana",
+      "h": 52,
+      "seq": [
+        1,
+        2,
+        4
+      ],
+      "expect": "antecedent_not_explicit",
+      "seeds": [
+        {
+          "family": "agreement",
+          "topic": "agreement",
+          "seq": [
+            1,
+            2
+          ]
+        }
+      ],
+      "messages": [
+        {
+          "seq": 1,
+          "relative_minutes": "0.0",
+          "direction": "outbound_unknown",
+          "text": "hola [DATO_54] buen dia , solo para comentarle que el [NUMERO_O_MONTO] de octubre estaria [DATO_103] el contrato",
+          "attachment": false
+        },
+        {
+          "seq": 2,
+          "relative_minutes": "1.2",
+          "direction": "outbound_unknown",
+          "text": "en caso que le [DATO_52] renovar la renta quedaria en [NUMERO_O_MONTO] y la poliza en [NUMERO_O_MONTO] , y se [DATO_96] que [DATO_21] la diferencia de [NUMERO_O_MONTO] para el deposito",
+          "attachment": false
+        },
+        {
+          "seq": 4,
+          "relative_minutes": "2.5",
+          "direction": "inbound",
+          "text": "no se si no tengan tanto contacto entre ustedes pero [DATO_53] yo habia [DATO_59] mensaje hace meses en donde les [DATO_29] que me [DATO_27] permiso de [DATO_84] hasta diciembre y me [DATO_30] que si",
+          "attachment": false
+        }
+      ]
+    }
+  ]
+}

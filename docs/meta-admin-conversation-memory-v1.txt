@@ -1,0 +1,77 @@
+Meta Admin Conversation Memory v1 — Draft review
+
+Scope
+Four bounded families: agreement/rent dates, recorded payments, maintenance,
+clarification. No outbound, sender, productive caller, real model or deployment.
+Memory changes comprehension, NEVER private-data authorization.
+
+History provenance
+Same WABA/phone_number_id/subject_ref/key_tag, exact native receipt and known source.
+Meta messages inbound => customer_inbound.
+Signed recipient app echo => business_outbound_unattributed.
+Unknown source is not usable. Echo proves neither human authorship, authorization,
+registration/reporting, nor promises. Commitment inference is disabled.
+No phone/text/time matching or Respond lookup. No historical backfill.
+Existing echo body is unavailable; explicit incomplete marker, never invented text.
+
+Audience and data authorization
+External audience: exact existing canonical identity bridge, active owner/tenant
+role and confirmed source link. Exact staff profile auth identity or canonical
+phone digest vetoes customer history. Missing/revoked evidence => unknown.
+Unknown may request anonymous clarification without history/private facts.
+Staff is blocked. Matched alone never grants private history or financial facts.
+Per-message private authorization is NOT required. Current canonical
+identity/roles/property/contract/unit/period gates alone authorize response facts.
+Revocation removes private context; ambiguity clarifies before financial data.
+
+Private persistence
+meta_admin_memory_private.episodes: immutable subject/identity/entity scope/topic.
+revisions: append-only versioned state, pending, contradiction, source references.
+No duplicated message text/phone/amount in memory tables.
+CAS + subject transaction lock + source idempotence; contradictions sticky.
+No update/delete/reset/reclaim. RLS, no direct service-role table access.
+Four fixed service-only RPCs:
+- meta_admin_memory_read_v1(text)
+- meta_admin_memory_append_v1(jsonb,integer,text)
+- meta_admin_memory_evidence_v1(uuid)
+- meta_admin_memory_history_v1(uuid)
+PUBLIC/anon/authenticated excluded. No arbitrary SQL or global default changes.
+The initial migration's conservative evidence function is replaced by the
+following provenance migration; apply in order. Exact SHA/DEV ledgers in evidence.
+
+Episode selection / projection
+Up to eight relevant chronological messages. Bounded source and episode reads;
+overflow fails closed. Multiple active topics/entities remain separate.
+Time alone never selects an episode. Exact native reply can resolve an antecedent;
+otherwise vague 'los otros/alguna novedad' clarifies. No fabricated reply links.
+Attachments/missing/edited/revoked references prevent confident reuse.
+Unmatched receives anonymous markers, never quoted private history.
+Model projection strips subject/identity/native IDs. Server-derived scope only.
+
+Shadow integration
+Optional trusted readConversation seam; existing productive callers unchanged.
+Fresh <=5s snapshot, existing claim and pre/request/post gates preserved.
+Memory/context change => invalidated; uncertainty never authorizes retry.
+tools=[]; no writes inside reader or model request. Explicit memory append separate.
+No sender or authorization of delivery by memory.
+
+Certification already completed; no suites repeated for publication
+72/72 focused local PASS, including ten deidentified sequence replays and five
+intercepted replays using synthetic source/RPC results returned from hosted DEV.
+20/20 PostgreSQL RPC PASS, including actual independent-session CAS concurrency.
+DEV functional/ACL/RLS/adapter PASS: positive external history, staff/unknown
+denial, idempotence, versions, replay and direct-access guards; cleanup 0.
+DEV simultaneous concurrency NOT CERTIFIED due connector limitation: two bounded
+attempts did not establish overlap. No observed concurrency failure.
+User explicitly permits Draft with this limitation. No global concurrency claim.
+Shadow replay is local/intercepted, not live hosted model execution.
+Models real 0; sends 0; business actions 0. Synthetic DEV fixture writes rolled
+back; authorized additive migrations remain. Production untouched.
+
+Limits
+No readable echo bodies or complete Human Attention implementation.
+Roles without accredited external evidence remain unknown.
+Memory does not prove an action occurred, a maintenance ticket exists, or fees
+are authorized. Canonical facts remain separate and revalidated.
+Ten historical replay sequences use deidentified observed text/order but synthetic
+scope/audience/seed annotations, not full 2,407-message or identity certification.
