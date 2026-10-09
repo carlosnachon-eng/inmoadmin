@@ -14,7 +14,7 @@ function harness({profile={active:true,role_id:'admin'},fail=false,prior=false,c
  native_message_id:'wamid.synthetic',capture_reason:'captured',message_type:'text',observer_only:true,observer_state:'observed',sanitized_text:'Hola'},
  enabled:true,scope_channel:'544519',checked_at:new Date().toISOString(),mutated:false,later_scope_echoes:0,echo_assessments:[],later_scope_uncertain:0,
  identity:{state:'unmatched',reason:'no_exact_identity',candidate_count:0,authorizes_business:false}};change(s,++reads);return s;},
- async claim(){if(claimed)return false;claimed=true;return true;},async start(){return true;},async finish(){}};
+ async claim(){if(claimed)return false;claimed=true;return true;},async start(){return true;},async startAdminModel(){return true;},async finish(){}};
  const original=createShadowOnceOperator({env,makeStore:()=>store,run:a=>runMetaAdminShadowOnce({...a,propose:async()=>{
  calls++;if(fail)throw Error(secret);return {provider:'openai',model:env.OPENAI_ADMIN_AGENT_MODEL,run_id:'synthetic',proposed_response:'¿Cómo puedo orientarte?'};}})});
  const handler=createShadowOnceSelfInvoke({env,authorize:async()=>profile,operator:async(req,res)=>{

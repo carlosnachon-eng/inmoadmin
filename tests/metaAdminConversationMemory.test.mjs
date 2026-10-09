@@ -116,9 +116,9 @@ for(const change of ['none','during','before','blocked'])test('runner seam '+cha
  later_scope_echoes:0,echo_assessments:[],later_scope_uncertain:0,identity:{state:'unmatched',reason:'no_exact_identity',candidate_count:0,authorizes_business:false},
  input:{id,waba_id:ADMIN_SCOPE.wabaId,phone_number_id:ADMIN_SCOPE.phoneNumberId,capture_reason:'captured',message_type:'text',observer_only:true,observer_state:'observed',sanitized_text:'Hola'}};
  const result=await runMetaAdminShadowOnce({inputId:id,authorizedInputId:id,now:()=>now,env:{OPENAI_ADMIN_AGENT_MODEL:'gpt-4.1-mini'},
- store:{snapshot:async()=>snap,claim:async()=>{claim++;return true;},start:async()=>true,finish:async x=>{finished=x;}},
- readConversation:async()=>{reads++;return {status:change==='blocked'?'blocked':'ready',projection,fingerprint:memoryHash(change==='before'&&reads>=2||change==='during'&&reads>=3?'changed':'same')};},
+ store:{snapshot:async()=>snap,claim:async()=>{claim++;return true;},start:async()=>true,startAdminModel:async()=>true,finish:async x=>{finished=x;}},
+ readConversation:async()=>{reads++;return {status:change==='blocked'?'blocked':'ready',projection,fingerprint:memoryHash(change==='before'&&reads>=2||change==='during'&&calls>0?'changed':'same')};},
  propose:async context=>{calls++;assert.ok(context.conversation_memory);return {provider:'openai',model:'gpt-4.1-mini',run_id:'fixture',proposed_response:'¿Qué deseas aclarar?'};}});
  assert.equal(claim,1);assert.equal(calls,['before','blocked'].includes(change)?0:1);assert.equal(result.send_calls,0);
- assert.equal(finished.status,change==='during'?'invalidated':change==='before'?'uncertain':change==='blocked'?'blocked':'complete');
+ assert.equal(finished.status,change==='during'?'invalidated':['before','blocked'].includes(change)?'blocked':'complete');
 });

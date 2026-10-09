@@ -56,8 +56,8 @@ test('payment validated semantics rejected without fallback',async()=>{
 });
 for(const mode of ['valid','failure','unmatched','unknown'])test('shadow media '+mode,async()=>{
  let reserves=0,models=0;const bytes=png(),now=()=>100000;
- const db={rpc:async name=>name==='meta_admin_memory_evidence_v1'?{data:{...binding,checked_at:new Date(now()).toISOString(),native_verified:true,scope_verified:true,audience:mode==='unknown'?'unknown':'external_verified'}}:(reserves++,{data:envelope()})};
- const read=createShadowMediaReader({db,env,now,retrieve:async()=>{if(mode==='failure')throw Error('secret');return {buffer:bytes};},interpret:async()=>{models++;return {summary:'Posible comprobante observado.'};}});
+ const db={rpc:async name=>name==='meta_admin_memory_evidence_v1'?{data:{...binding,checked_at:new Date(now()).toISOString(),native_verified:true,scope_verified:true,audience:mode==='unknown'?'unknown':'external_verified'}}:name==='meta_admin_shadow_media_model_start_v1'?{data:true}:(reserves++,{data:envelope()})};
+ const read=createShadowMediaReader({db,env,now,retrieve:async()=>{if(mode==='failure')throw Error('secret');return {buffer:bytes};},interpret:async(_media,{beforeRequest})=>{await beforeRequest();models++;return {summary:'Posible comprobante observado.'};}});
  const result=await read({inputId:binding.input_id,token:'synthetic',messageType:'image',identityState:mode==='unmatched'?'unmatched':'matched',authorizeInterpretation:async()=>true});
  assert.equal(result.incomplete,true);assert.equal(models,mode==='valid'?1:0);assert.equal(reserves,['unknown','unmatched'].includes(mode)?0:1);assert.ok(!result.text.includes('secret'));if(mode==='valid'){assert.ok(bytes.every(b=>b===0));assert.match(result.text,/no acredita pago conciliado/i);}
 });

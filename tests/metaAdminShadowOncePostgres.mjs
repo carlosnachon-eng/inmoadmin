@@ -53,6 +53,8 @@ try{
  $$select '{"state":"unmatched","reason":"no_exact_identity","candidate_count":0,"authorizes_business":false}'::jsonb$$;`);
  const defaults=(await root.query('select * from pg_default_acl order by oid')).rows;
  await root.query(await readFile(new URL('../scripts/sql/meta-admin-shadow-once-journal.sql',import.meta.url),'utf8'));
+ await root.query('create table meta_admin_private.media_shadow_attempts(input_id uuid primary key)');
+ await root.query(await readFile(new URL('../supabase/migrations/20261009141006_meta_admin_shadow_model_accounting.sql',import.meta.url),'utf8'));
  first=createShadowOncePostgresStore(await connection('service_role'),{readTransportHealth:health});
  second=createShadowOncePostgresStore(await connection('service_role'),{readTransportHealth:health});
  await scenario('ACL and defaults unchanged',async()=>{

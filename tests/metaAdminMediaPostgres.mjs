@@ -11,6 +11,7 @@ import { createMetaObserverHandler } from "../lib/messaging/metaObserver/receive
 import { prepareMetaAdminShadow, resolveMetaAdminIdentity } from "../lib/messaging/metaAdminCapture/preflight.js";
 import { syntheticEnv as observerEnv, inbound as observerInbound, change, payload as observerPayload } from "./fixtures/metaObserver.mjs";
 import { normalizeIdentityPhone } from "../lib/shadow/identityBridge.js";
+import {certifyModelAccounting} from './helpers/metaAdminModelAccounting.mjs';
 
 const inbound = (...args) => ({ ...observerInbound(...args), from: "522221234567" });
 const scope={wabaId:'1297760461811288',phoneNumberId:'1198305790026665'};
@@ -100,6 +101,8 @@ try{
     await root.query(await readFile(new URL('../'+file,import.meta.url),'utf8'));
   const mediaMigration=await readFile(new URL('../supabase/migrations/20261009135000_meta_admin_media_capture.sql',import.meta.url),'utf8');
   await root.query(mediaMigration);
+  const accountingMigration=await readFile(new URL('../supabase/migrations/20261009141006_meta_admin_shadow_model_accounting.sql',import.meta.url),'utf8');
+  await root.query(accountingMigration);
   const cutoff=new Date(Date.now()-2000).toISOString();
   env={...syntheticEnv,META_ADMIN_SHADOW_CAPTURE_ENABLED:'true',META_ADMIN_SHADOW_CAPTURE_NOT_BEFORE:cutoff,META_ADMIN_CAPTURE_ENCRYPTION_KEY:'a1'.repeat(32),META_ADMIN_CAPTURE_HMAC_KEY:'b2'.repeat(32)};
   await root.query("insert into public.meta_observer_admin_scope(waba_id,phone_number_id,enabled) values($1,$2,true)",[scope.wabaId,scope.phoneNumberId]);
@@ -140,13 +143,14 @@ try{
     await assert.rejects(service.query('select public.meta_admin_shadow_media_claim_v1($1,$2)',[input.id,token]),/consumed/);
     await assert.rejects(root.query('delete from meta_admin_private.media_shadow_attempts'),/append_only/);
   });
+  await certifyModelAccounting({root,service,connection,receive,fresh,one,scenario});
   await scenario('historical no backfill even if provider retries',async()=>{
     await root.query("update meta_admin_private.media_capture_epoch set installed_at=clock_timestamp()+interval '1 minute'");
     const body=fresh({type:'image',text:undefined,image:{id:'900000000000004'}});
     assert.equal((await receive(body)).statusCode,200);const row=await one(body);
     assert.equal(row.capture_reason,'unsupported_message_type');assert.equal(row.media_ciphertext,null);
   });
-  console.log(JSON.stringify({status:'PASS',sha256:hash(mediaMigration),results,models:0,sends:0,remoteWrites:0}));
+  console.log(JSON.stringify({status:'PASS',sha256:hash(mediaMigration),accounting_sha256:hash(accountingMigration),results,models:0,sends:0,remoteWrites:0}));
 }finally{
   // Entire disposable database removed by embedded-postgres; never a remote cleanup.
   await Promise.all(clients.map(c=>c.end().catch(()=>{})));await server.stop();globalThis.fetch=beforeFetch;

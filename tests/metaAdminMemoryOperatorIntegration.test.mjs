@@ -53,8 +53,8 @@ for(const variant of ['complete','canonical_revoked','audience_unknown','interna
  if(variant==='canonical_revoked')b.tables.client_identity_roles[0].status='revoked';
  let terminal;
  const result=await runMetaAdminShadowOnceWithContext({db:admin,inputId,authorizedInputId:inputId,now,env:{OPENAI_ADMIN_AGENT_MODEL:'gpt-4.1-mini'},
-  store:{snapshot,claim:async()=>true,start:async()=>true,finish:async x=>{terminal=x.status;}},
-  readMedia:async({authorizeInterpretation})=>{assert.equal(await authorizeInterpretation(),true);return {text:'[IMAGEN] Posible comprobante observado; no acredita pago conciliado.',incomplete:true,model_calls:1};},
+  store:{snapshot,claim:async()=>true,start:async()=>true,startAdminModel:async()=>true,finish:async x=>{terminal=x.status;}},
+  readMedia:async({authorizeInterpretation})=>{assert.equal(await authorizeInterpretation(),true);return {status:'complete',text:'[IMAGEN] Posible comprobante observado; no acredita pago conciliado.',incomplete:true,model_calls:1};},
   propose:async context=>{
    modelCalls++;const request=restrictedAdminRequest(context,{OPENAI_ADMIN_AGENT_MODEL:'gpt-4.1-mini'}),payload=JSON.parse(request.input);
    assert.deepEqual(request.tools,[]);

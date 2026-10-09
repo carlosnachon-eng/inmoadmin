@@ -54,6 +54,8 @@ try{
  const defaults=(await root.query('select * from pg_default_acl order by oid')).rows;
  await root.query(await readFile(new URL('../scripts/sql/meta-admin-shadow-once-journal.sql',import.meta.url),'utf8'));
  await root.query(await readFile(new URL('../scripts/sql/meta-admin-shadow-once-runtime.sql',import.meta.url),'utf8'));
+ await root.query('create table meta_admin_private.media_shadow_attempts(input_id uuid primary key)');
+ await root.query(await readFile(new URL('../supabase/migrations/20261009141006_meta_admin_shadow_model_accounting.sql',import.meta.url),'utf8'));
  function adapter(client){return createShadowOnceSupabaseStore({async rpc(name,args){
  const keys=Object.keys(args),r=await client.query('select public.'+name+'('+keys.map((k,i)=>k+'=> $'+(i+1)).join(',')+') data',Object.values(args));return {data:r.rows[0].data,error:null};}});}
  first=adapter(await connection('service_role'));
@@ -91,7 +93,7 @@ try{
  });
  await scenario('RPC ACL, direct access denied, invalid transitions and replay',async()=>{
    const funcs=(await root.query("select oid::regprocedure::text sig,prosecdef from pg_proc where proname like 'meta_admin_shadow_%_v1'")).rows;
-   assert.equal(funcs.length,4);
+   assert.equal(funcs.length,6);
    for(const f of funcs){assert.equal(f.prosecdef,true);for(const role of ['anon','authenticated'])
      assert.equal((await root.query("select has_function_privilege($1,$2,'EXECUTE') ok",[role,f.sig])).rows[0].ok,false);}
    const c=await connection('service_role'),id=await fixture(),token=randomUUID();
