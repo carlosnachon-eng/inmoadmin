@@ -16,6 +16,21 @@ const colors = {
   success: "#065f46", successBg: "#f0fdf4",
 };
 
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_FILE_EXTENSIONS = ["pdf", "jpg", "jpeg", "png"];
+
+const fileValidationError = (file) => {
+  if (!file) return null;
+  const extension = file.name?.split(".").pop()?.toLowerCase();
+  if (!ALLOWED_FILE_EXTENSIONS.includes(extension)) {
+    return `El archivo ${file.name || "seleccionado"} debe ser PDF, JPG o PNG.`;
+  }
+  if (file.size > MAX_FILE_BYTES) {
+    return `El archivo ${file.name || "seleccionado"} supera el máximo de 10 MB.`;
+  }
+  return null;
+};
+
 const Field = ({ label, required, hint, error, children }) => (
   <div style={{ marginBottom: 20 }}>
     <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: colors.text, marginBottom: 4 }}>
@@ -220,8 +235,16 @@ export default function SolicitudInquilino() {
   const handleFile = (key, e) => {
     const file = e.target.files[0];
     if (file) {
+      const validationError = fileValidationError(file);
+      if (validationError) {
+        e.target.value = "";
+        setErrors(prev => ({ ...prev, [key]: validationError }));
+        setError(validationError);
+        return;
+      }
       setFiles(f => ({ ...f, [key]: file }));
       setErrors(prev => ({ ...prev, [key]: undefined }));
+      setError("");
     }
   };
 
@@ -299,8 +322,13 @@ export default function SolicitudInquilino() {
     if (!file) { resolve(null); return; }
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    reader.onerror = () => reject(new Error(`No pudimos leer ${file.name}. Vuelve a seleccionarlo e intenta nuevamente.`));
+    reader.onabort = () => reject(new Error(`La lectura de ${file.name} fue cancelada. Vuelve a seleccionarlo.`));
+    try {
+      reader.readAsDataURL(file);
+    } catch {
+      reject(new Error(`No pudimos abrir ${file.name}. Vuelve a seleccionarlo e intenta nuevamente.`));
+    }
   });
 
   const handleSubmit = async () => {
@@ -316,13 +344,30 @@ export default function SolicitudInquilino() {
       setErrors({ personas_detalle: "Este campo es requerido" });
       return;
     }
-    if (externalPaymentEnabled && (submitLock.current || recovery.blocked)) return
-    if (externalPaymentEnabled) submitLock.current = true
+    if (submitLock.current || (externalPaymentEnabled && recovery.blocked)) return
+    submitLock.current = true
     let receivedId = null, externalOrigin = null
     setSubmitting(true);
     setError("");
 
     try {
+      const selectedFiles = [
+        files.identidad_fisica || files.identidad_moral || null,
+        files.ingresos || files.empresa || null,
+        files.ingresos_extra[0] || null,
+        files.ingresos_extra[1] || null,
+        files.carta_laboral || null,
+        files.constancia_fiscal || null,
+      ];
+      const invalidFile = selectedFiles.map(fileValidationError).find(Boolean);
+      if (invalidFile) throw new Error(invalidFile);
+
+      // Read every attachment before creating the row. If the browser can no
+      // longer access a selected file, no partial or duplicate request exists.
+      const [b64Ident, b64Ingresos1, b64Ingresos2, b64Ingresos3, b64CartaLaboral, b64ConstanciaFiscal] = await Promise.all(
+        selectedFiles.map(fileToBase64)
+      );
+
       const payload = {
         ...origenMetadata(origenEnabled || secureInvitation, partnerStatus, origenSelection),
         inmueble_interes: form.direccion_inmueble,
@@ -374,6 +419,12 @@ export default function SolicitudInquilino() {
         detalle_mascotas: form.mascotas_detalle,
         personal_servicio: form.personal_servicio === "Sí",
         personal_servicio_detalle: form.personal_servicio_detalle,
+        doc_identificacion_b64: b64Ident,
+        doc_comprobante_ingresos_b64: b64Ingresos1,
+        doc_ingresos_b64_2: b64Ingresos2,
+        doc_ingresos_b64_3: b64Ingresos3,
+        doc_carta_laboral_b64: b64CartaLaboral,
+        doc_constancia_fiscal_b64: b64ConstanciaFiscal,
         status: "pendiente",
       };
 
@@ -391,25 +442,6 @@ export default function SolicitudInquilino() {
 
       if (insertError) throw insertError;
       receivedId = data.id
-
-      // ── Convertir archivos a base64 ──
-      const [b64Ident, b64Ingresos1, b64Ingresos2, b64Ingresos3, b64CartaLaboral, b64ConstanciaFiscal] = await Promise.all([
-        fileToBase64(files.identidad_fisica || files.identidad_moral || null),
-        fileToBase64(files.ingresos || files.empresa || null),
-        fileToBase64(files.ingresos_extra[0] || null),
-        fileToBase64(files.ingresos_extra[1] || null),
-        fileToBase64(files.carta_laboral || null),
-        fileToBase64(files.constancia_fiscal || null),
-      ]);
-
-      await supabase.from("solicitudes_inquilino").update({
-        doc_identificacion_b64: b64Ident,
-        doc_comprobante_ingresos_b64: b64Ingresos1,
-        doc_ingresos_b64_2: b64Ingresos2,
-        doc_ingresos_b64_3: b64Ingresos3,
-        doc_carta_laboral_b64: b64CartaLaboral,
-        doc_constancia_fiscal_b64: b64ConstanciaFiscal,
-      }).eq("id", data.id);
 
       setSubmitId(data.id);
 
@@ -484,7 +516,8 @@ export default function SolicitudInquilino() {
         return
       }
       console.error(e)
-      setError("Error al enviar: " + e.message);
+      const message = e?.message || e?.details || e?.error_description || "No pudimos completar el envío. Revisa tus archivos e intenta nuevamente.";
+      setError("Error al enviar: " + message);
     } finally {
       submitLock.current = false
       setSubmitting(false);
@@ -759,6 +792,14 @@ export default function SolicitudInquilino() {
                             onChange={e => {
                               const file = e.target.files[0];
                               if (!file) return;
+                              const validationError = fileValidationError(file);
+                              if (validationError) {
+                                e.target.value = "";
+                                setErrors(previous => ({ ...previous, ingresos: validationError }));
+                                setError(validationError);
+                                return;
+                              }
+                              setError("");
                               if (idx === 0) { setFiles(f => ({ ...f, ingresos: file })); setErrors(p => ({ ...p, ingresos: undefined })); }
                               else { setFiles(f => { const extra = [...f.ingresos_extra]; extra[idx-1] = file; return { ...f, ingresos_extra: extra }; }); }
                             }}
