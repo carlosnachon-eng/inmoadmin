@@ -13,9 +13,12 @@ after(() => { globalThis.fetch = beforeFetch; });
 function snapshot() {
   return { input: { id, waba_id:'1297760461811288', phone_number_id:'1198305790026665',
     capture_reason:'captured', message_type:'text', sanitized_text:'Hola, necesito orientación.',
-    native_message_id:'wamid.SYNTHETIC', observer_only:true, observer_state:'observed' },
+    native_message_id:'wamid.SYNTHETIC', occurred_at:iso(stamp-900000),captured_at:iso(stamp-899000), observer_only:true, observer_state:'observed' },
     enabled:true, scope_channel:'544519', mutated:false, later_scope_echoes:0,echo_assessments:[],later_scope_uncertain:0,
-    checked_at:iso(stamp),latest_received_at:iso(stamp-1000),transport_health:{status:'healthy',checked_at:iso(stamp)},
+    checked_at:iso(stamp),latest_received_at:iso(stamp-899000),transport_health:{status:'healthy',checked_at:iso(stamp),
+      waba_id:'1297760461811288',phone_number_id:'1198305790026665',receiver_ready:true,subscription_active:true,
+      coverage_complete:true,known_pending:0,in_flight:0,unresolved_failures:0,
+      covered_from:iso(stamp-900000),covered_through:iso(stamp),evidence_refs:['synthetic-intercepted-evidence']},
     identity:{state:'unmatched',reason:'no_exact_identity',candidate_count:0,authorizes_business:false} };
 }
 function harness({change=()=>{},propose}={}) {
@@ -52,10 +55,7 @@ for(const [name,mutate] of [
   ['unknown echo coverage',s=>{delete s.later_scope_echoes;}],
   ['scope',s=>{s.input.phone_number_id='other';}],
   ['mutated',s=>{s.mutated=true;}],
-  ['stale observation',s=>{s.latest_received_at=iso(stamp-61000);}],
   ['stale query',s=>{s.checked_at=iso(stamp-6000);}],
-  ['unknown transport',s=>{s.transport_health.status='unknown';}],
-  ['stale transport',s=>{s.transport_health.checked_at=iso(stamp-6000);}],
   ['uncertain event',s=>{s.later_scope_uncertain=1;}],
   ['unsanitized text',s=>{s.input.sanitized_text='llama al 2221234567';}],
 ]) test(`${name} blocks before claim/model`,async()=>{
@@ -65,6 +65,30 @@ test('repeats gates after exclusive claim immediately before model',async()=>{
   const h=harness({change:(s,n)=>{if(n===2)s.later_scope_echoes=1;}});
   assert.equal((await h.run()).status,'blocked');assert.equal(h.calls,0);assert.equal(h.record.status,'blocked');
 });
+test('quiet 15-minute inbound needs fresh DB snapshot, not transport grant',async()=>{
+  const h=harness();assert.equal((await h.run()).status,'complete');assert.equal(h.calls,1);
+  const s=snapshot();delete s.latest_received_at;
+  assert.equal(shadowOnceGate(s,stamp).allowed,true);
+  s.transport_health.coverage_complete=false;
+  assert.equal(shadowOnceGate(s,stamp).allowed,true);
+});
+test('DB snapshot stale after durable start prevents request without resetting attempt',async()=>{
+  const h=harness({change:(s,n)=>{if(n===3)s.checked_at=iso(stamp-5001);}});
+  assert.equal((await h.run()).status,'blocked');assert.equal(h.calls,0);
+  assert.equal(h.record.status,'uncertain');assert.equal((await h.run()).status,'already_claimed');
+});
+test('transport diagnostic loss after model does not invalidate intercepted proposal',async()=>{
+  const h=harness({change:(s,n)=>{if(n===4)s.transport_health.coverage_complete=false;}});
+  const r=await h.run();assert.equal(r.status,'complete');assert.equal(h.calls,1);assert.equal(r.send_calls,0);
+});
+for (const health of [undefined,null,{status:'unknown'},{status:'unhealthy'},
+  {status:'healthy',checked_at:iso(stamp-900000)},
+  {status:'unknown',known_pending:1,in_flight:1,unresolved_failures:1}]) {
+  test(`transport diagnostic ${JSON.stringify(health)} is not a shadow grant`,async()=>{
+    const h=harness({change:s=>{s.transport_health=health;}});
+    const r=await h.run();assert.equal(r.status,'complete');assert.equal(h.calls,1);assert.equal(r.send_calls,0);
+  });
+}
 test('only individually proven other_subject echoes are excluded',async()=>{
   const h=harness({change:s=>{s.later_scope_echoes=1;s.echo_assessments=[{event_id:'synthetic',state:'other_subject'}];}});
   assert.equal((await h.run()).status,'complete');assert.equal(h.calls,1);
@@ -74,13 +98,13 @@ test('only individually proven other_subject echoes are excluded',async()=>{
   }
 });
 test('same_subject arriving after claim or during model is rechecked',async()=>{
-  for(const phase of [2,3]){
+  for(const phase of [2,4]){
     const h=harness({change:(s,n)=>{if(n===phase){s.later_scope_echoes=1;s.echo_assessments=[{event_id:'synthetic',state:'same_subject'}];}}});
     assert.equal((await h.run()).status,phase===2?'blocked':'invalidated');assert.equal(h.calls,phase===2?0:1);
   }
 });
 test('human/uncertain evidence during model invalidates retained proposal; never sends',async()=>{
-  const h=harness({change:(s,n)=>{if(n===3)s.later_scope_echoes=1;}});
+  const h=harness({change:(s,n)=>{if(n===4)s.later_scope_echoes=1;}});
   const r=await h.run();assert.equal(r.status,'invalidated');assert.equal(r.proposal_valid,false);
   assert.equal(r.send_calls,0);assert.equal(h.calls,1);assert.ok(h.record.proposed_response);
 });
