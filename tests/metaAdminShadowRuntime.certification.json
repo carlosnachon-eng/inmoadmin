@@ -1,0 +1,22 @@
+{
+  "environment": "DEV hjfwjnejbcpmknvfpdcq",
+  "ledger": "20261009004122",
+  "migration": "20261009003936_meta_admin_shadow_once_runtime.sql",
+  "repo_sha256": "31b31b9d2636ca92a9f053a6e49c09febde5560d765eb2a453d43e4a4faf04d0",
+  "submitted_sql_sha256": "f3bb17ac97b667085843bc3c9a99695d6f93d34401bfdf541fe776acf90cce6d",
+  "hash_note": "Ledger equals submitted SQL exactly; repository includes one final LF. Ledger plus final LF matches repository SHA.",
+  "local_postgres_scenarios_passed": 7,
+  "focused_unit_tests_passed": 65,
+  "dev_concurrent_claim_results": [true, false],
+  "dev_valid_terminal": "complete",
+  "dev_journal_model_calls": 1,
+  "dev_journal_model_calls_note": "Synthetic transition counter only; no model called.",
+  "dev_invalid_transitions_replay_stale_token": "PASS",
+  "dev_anon_authenticated_public_execute": false,
+  "dev_service_role_direct_journal_access": false,
+  "dev_rls": true,
+  "cleanup": {"journals":0,"inputs":0,"evidence":0,"observer":0,"configs":0,"bindings":0},
+  "real_model_calls": 0,
+  "sends": 0,
+  "production_changes": 0
+}
