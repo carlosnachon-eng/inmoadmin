@@ -56,6 +56,7 @@ const PROPIEDAD_VACIA = {
   tipo: "Casa", recamaras: "", banos: "", estacionamientos: "",
   m2_construccion: "", m2_terreno: "",
   direccion: "", colonia: "", ciudad: "Puebla", estado: "Puebla",
+  plaza_id: "",
   lat: null, lng: null,
   mostrar_ubicacion_exacta: false,
   fotos: [], amenidades: [],
@@ -578,6 +579,9 @@ export default function PropiedadesAdmin() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [asesores, setAsesores] = useState([]);
+  const [plazas, setPlazas] = useState([]);
+  const [plazasLoading, setPlazasLoading] = useState(true);
+  const [plazasError, setPlazasError] = useState("");
   const [authLoading, setAuthLoading] = useState(true);
   const [propiedades, setPropiedades] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -748,7 +752,25 @@ export default function PropiedadesAdmin() {
     setLoading(false);
   };
 
+  const loadPlazas = async () => {
+    setPlazasLoading(true);
+    setPlazasError("");
+    try {
+      const { data, error } = await supabase.from("commercial_plazas")
+        .select("id, code, name").eq("active", true).order("name");
+      if (error) throw error;
+      setPlazas(data || []);
+      if (!data?.length) setPlazasError("No hay plazas comerciales activas disponibles.");
+    } catch {
+      setPlazas([]);
+      setPlazasError("No se pudo cargar el catálogo de plazas. Reintenta para guardar.");
+    } finally {
+      setPlazasLoading(false);
+    }
+  };
+
   useEffect(() => { if (session) loadPropiedades(); }, [session]);
+  useEffect(() => { if (session?.user?.id) loadPlazas(); }, [session?.user?.id]);
 
   useEffect(() => {
     if (!router.isReady || propiedades.length === 0) return;
@@ -812,6 +834,7 @@ export default function PropiedadesAdmin() {
     setForm({
       ...PROPIEDAD_VACIA,
       ...p,
+      plaza_id: p.plaza_id || "",
       precio: p.precio || "",
       recamaras: p.recamaras || "",
       banos: p.banos || "",
@@ -892,10 +915,16 @@ export default function PropiedadesAdmin() {
   const guardarPropiedad = async () => {
     if (!form.titulo.trim()) { showToast("Falta el título de la propiedad", false); return; }
     if (!form.precio) { showToast("Falta el precio", false); return; }
+    if (plazasLoading) { showToast("Espera a que cargue el catálogo de plazas", false); return; }
+    if (plazasError) { showToast(plazasError, false); return; }
+    const plaza = plazas.find(p => p.id === form.plaza_id);
+    if (!plaza) { showToast("Selecciona una plaza comercial activa", false); return; }
+    if (!session?.user?.id) { showToast("Tu sesión no está disponible. Inicia sesión nuevamente", false); return; }
 
     setSaving(true);
     const payload = {
       ...form,
+      plaza_id: plaza.id,
       precio: Number(form.precio) || 0,
       recamaras: Number(form.recamaras) || 0,
       banos: Number(form.banos) || 0,
@@ -913,6 +942,13 @@ export default function PropiedadesAdmin() {
     delete payload.id;
     delete payload.created_at;
     delete payload.updated_at;
+
+    if (modalForm === "nueva" || modalForm.plaza_id !== plaza.id) {
+      payload.plaza_assignment_source = "propiedades_admin:manual_selection";
+      payload.plaza_assignment_confidence = "manual";
+      payload.plaza_assigned_at = new Date().toISOString();
+      payload.plaza_assigned_by = session.user.id;
+    }
 
     let error;
     if (modalForm === "nueva") {
@@ -1309,6 +1345,26 @@ export default function PropiedadesAdmin() {
             <input style={inputStyle} value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Casa en privada, Lomas de Angelópolis" />
           </Campo>
 
+          <Campo label="Plaza comercial *">
+            <select aria-label="Plaza comercial" required style={inputStyle} value={form.plaza_id || ""}
+              disabled={plazasLoading || !!plazasError}
+              onChange={e => setForm(f => ({ ...f, plaza_id: e.target.value }))}>
+              <option value="">{plazasLoading ? "Cargando plazas…" : "Selecciona una plaza comercial"}</option>
+              {form.plaza_id && !plazas.some(p => p.id === form.plaza_id) && (
+                <option value={form.plaza_id} disabled>Plaza actual no disponible en el catálogo</option>
+              )}
+              {plazas.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            {plazasError ? (
+              <div role="alert" style={{ marginTop: 8, color: "#b91c1c", fontSize: 12 }}>
+                {plazasError}{" "}
+                <button type="button" onClick={loadPlazas} style={{ color: "#b91c1c", background: "none", border: "none", textDecoration: "underline", cursor: "pointer" }}>Reintentar</button>
+              </div>
+            ) : (
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#6b7280" }}>Selecciona la plaza a la que pertenece el inmueble para registrar sus operaciones y KPIs.</p>
+            )}
+          </Campo>
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Campo label="Operación">
               <select style={inputStyle} value={form.operacion} onChange={e => setForm(f => ({ ...f, operacion: e.target.value }))}>
@@ -1624,7 +1680,7 @@ export default function PropiedadesAdmin() {
               {puedeEditar ? "Cancelar" : "Cerrar"}
             </button>
             {puedeEditar && (
-              <button onClick={guardarPropiedad} disabled={saving} style={{ flex: 1, background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>
+              <button onClick={guardarPropiedad} disabled={saving || plazasLoading || !!plazasError} style={{ flex: 1, background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, cursor: "pointer" }}>
                 {saving ? "Guardando…" : "Guardar propiedad"}
               </button>
             )}
