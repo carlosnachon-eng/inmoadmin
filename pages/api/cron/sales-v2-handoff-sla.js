@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { RESPOND_COMMERCIAL_HOLD, commercialHeld } from "../../../lib/respondDegradedMode.js";
 import { getAdminSupabase } from "../../../lib/ejecutivo/workCenter";
 import { processSalesHandoffSla } from "../../../lib/agentsV2/salesHandoff";
 
@@ -12,6 +13,7 @@ export default async function handler(req,res){
   if(process.env.SALES_AGENT_V2_HANDOFF_SLA_ENABLED!=="true")return res.status(200).json({ok:true,status:"disabled"});
 
   try{
+  if(RESPOND_COMMERCIAL_HOLD)return res.status(200).json({ok:true,...commercialHeld()});
     const admin=getAdminSupabase();
     const result=await processSalesHandoffSla(admin,{env:process.env});
     return res.status(200).json({ok:true,...result});

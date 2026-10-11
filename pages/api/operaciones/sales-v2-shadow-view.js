@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { respondFreshness } from "../../../lib/respondDegradedMode.js";
 import { getAdminSupabase, respondInboxLink } from "../../../lib/ejecutivo/workCenter";
 import { safeSalesAttentionReason, salesAttentionDelivery } from "../../../lib/agentsV2/salesAttentionView.js";
 
@@ -83,12 +84,13 @@ export default async function handler(req,res){
 
   return res.status(200).json({
     ok:true,
+    respondFreshness:respondFreshness(snapshots.data||[]),
     reviewOffset,
     reviewsHasMore:(reviews||[]).length>100,
     reviews:reviewPage.map(row=>({
       ...row,
       assignment_error_code:safeSalesAttentionReason(row.assignment_error_code),
-      operationalOwner:byContact.get(row.respond_contact_id)?.respond_assignee_id?"Responsable actual en Respond; Gerencia de Ventas supervisa":"Gerencia de Ventas",
+      operationalOwner:"Responsable actual no acreditado; consultar Inbox de Respond",
       assignmentVerifiedAt:byContact.get(row.respond_contact_id)?.respond_last_synced_at||null,
       inboxUrl:respondInboxLink(row.respond_contact_id),
     })),

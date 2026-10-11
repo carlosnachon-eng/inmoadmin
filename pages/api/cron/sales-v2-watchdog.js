@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { RESPOND_COMMERCIAL_HOLD, commercialHeld } from "../../../lib/respondDegradedMode.js";
 import { getAdminSupabase } from "../../../lib/ejecutivo/workCenter";
 import { processSalesAutoOutboundRun } from "../../../lib/agentsV2/salesAutoOutbound";
 import { createSalesAutomationFallbackHandoff, dispatchSalesHandoff } from "../../../lib/agentsV2/salesHandoff";
@@ -11,6 +12,7 @@ export default async function handler(req,res){
   if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"method_not_allowed"});
   if(!process.env.CRON_SECRET||!equal(req.headers.authorization,"Bearer "+process.env.CRON_SECRET))return res.status(401).json({ok:false,error:"not_authorized"});
 
+  if(RESPOND_COMMERCIAL_HOLD)return res.status(200).json({ok:true,...commercialHeld()});
   const admin=getAdminSupabase();
   const olderThan=new Date(Date.now()-75_000).toISOString();
   const newerThan=new Date(Date.now()-15*60_000).toISOString();

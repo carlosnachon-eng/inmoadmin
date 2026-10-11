@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { PageHeader, brand } from "../components/Layout";
+import RespondFreshnessNotice from "../components/RespondFreshnessNotice";
 
 const fmtTime=(value)=>{
   if(!value)return "—";
@@ -11,6 +12,7 @@ const fmtTime=(value)=>{
 export default function VentasIaSombra(){
   const [session,setSession]=useState(null);
   const [rows,setRows]=useState([]);
+  const [freshness,setFreshness]=useState(null);
   const [reviews,setReviews]=useState([]);
   const [reviewOffset,setReviewOffset]=useState(0);
   const [reviewsHasMore,setReviewsHasMore]=useState(false);
@@ -29,6 +31,7 @@ export default function VentasIaSombra(){
       const body=await response.json();
       if(!response.ok)throw new Error(body.error||"No se pudo cargar");
       setRows(body.rows||[]);
+      setFreshness(body.respondFreshness||null);
       setReviews(body.reviews||[]);
       setReviewOffset(body.reviewOffset||0);
       setReviewsHasMore(Boolean(body.reviewsHasMore));
@@ -62,6 +65,7 @@ export default function VentasIaSombra(){
   return <div style={{minHeight:"100vh",background:brand.bg,fontFamily:"system-ui,sans-serif"}}>
     <PageHeader title="Ventas IA — Sombra" icon="🤖" actions={<button onClick={()=>load()} style={{background:brand.red,color:"#fff",border:"none",borderRadius:9,padding:"9px 14px",fontWeight:800,cursor:"pointer"}}>Actualizar</button>}/>
     <div style={{maxWidth:1100,margin:"0 auto",padding:"22px 18px"}}>
+      <RespondFreshnessNotice lastUpdatedAt={freshness?.lastUpdatedAt}/>
       <div style={{background:"#fff",borderRadius:12,padding:14,marginBottom:16,border:"1px solid #e5e7eb"}}>
         <p style={{margin:"0 0 10px",fontSize:13,color:"#374151"}}>Aquí ves lo que habría contestado Sales V2. <strong>No se envía nada desde esta pantalla.</strong></p>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
