@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { RESPOND_COMMERCIAL_HOLD, commercialHeld } from "../../../lib/respondDegradedMode.js";
 import { getAdminSupabase } from "../../../lib/ejecutivo/workCenter";
 import { processCommercialQueueOne } from "../../../lib/social/commercialQueue.js";
 import { recoverCommercialExecutionOne } from "../../../lib/social/commercialExecution.js";
@@ -17,6 +18,7 @@ export default async function handler(req, res) {
   const expected = Buffer.from("Bearer " + (process.env.CRON_SECRET || ""));
   if (!process.env.CRON_SECRET || actual.length !== expected.length || !timingSafeEqual(actual, expected))
     return res.status(401).json({ ok: false });
+  if(RESPOND_COMMERCIAL_HOLD)return res.status(200).json({ok:true,...commercialHeld()});
   const db = getAdminSupabase(), until = Date.now() + 40000;
   const counts = {};
   try {

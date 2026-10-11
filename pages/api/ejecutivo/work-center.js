@@ -1,3 +1,4 @@
+import { RESPOND_COMMERCIAL_HOLD, respondFreshness } from "../../../lib/respondDegradedMode.js";
 import {
   ADVISOR_ROLE,
   MANAGEMENT_ROLES,
@@ -356,8 +357,9 @@ export default async function handler(req, res) {
       }))
       .filter((cierre) => cierre.advisor_profile_id);
     const scopedCierres = [...structuredCierres, ...textMatchedCierres];
-    const scopedSnapshots = snapshotsMissing ? [] : (snapshotsRes.data || []);
-    const unassignedSnapshots = snapshotsMissing ? [] : (unassignedSnapshotsRes.data || []).filter(isSalesUnassignedSnapshot);
+    const frozenRespond = respondFreshness([...(snapshotsRes.data || []), ...(unassignedSnapshotsRes.data || [])]);
+    const scopedSnapshots = RESPOND_COMMERCIAL_HOLD || snapshotsMissing ? [] : (snapshotsRes.data || []);
+    const unassignedSnapshots = RESPOND_COMMERCIAL_HOLD || snapshotsMissing ? [] : (unassignedSnapshotsRes.data || []).filter(isSalesUnassignedSnapshot);
     const managementSnapshots = [...scopedSnapshots, ...unassignedSnapshots];
     const activeSignalContactIds = [...new Set(interventions
       .filter((intervention) => ACTIVE_INTERVENTION_STATUSES.has(intervention.status))
@@ -377,7 +379,7 @@ export default async function handler(req, res) {
     );
     const interventionsWithSignalState = interventions.map((intervention) => ({
       ...intervention,
-      signalState: ACTIVE_INTERVENTION_STATUSES.has(intervention.status)
+      signalState: !RESPOND_COMMERCIAL_HOLD && ACTIVE_INTERVENTION_STATUSES.has(intervention.status)
         ? resolveInterventionSignalState(intervention, interventionSignalSnapshots)
         : null,
     }));
@@ -563,15 +565,27 @@ export default async function handler(req, res) {
       oportunidadesEnRiesgo: summary.riskOpportunities,
       seguimientosVencidos: summary.overdueActions,
       conversacionesAbiertas: summary.openConversations,
-      respondLastSyncedAt: maxIso(targetSnapshots, "respond_last_synced_at"),
+      respondLastSyncedAt: frozenRespond.lastUpdatedAt,
       closureCoverage,
       waitingResponseStats: summary.waitingResponseStats,
       unassignedSalesRule: "Solo se muestran contactos sin asignar cuando atn_area = ventas.",
       availabilityOverlaps: availabilityOverlaps(availability),
     };
 
+    // Unknown is not zero. Frozen Respond data must not produce live KPIs.
+    if (RESPOND_COMMERCIAL_HOLD) {
+      summary.openConversations = null;
+      summary.waitingResponses = null;
+      managementSummary.clientesEsperandoRespuesta = null;
+      managementSummary.conversacionesAbiertas = null;
+      for (const row of advisorRows) {
+        row.summary.openConversations = null;
+        row.summary.waitingResponses = null;
+      }
+    }
     return res.status(200).json({
       ok: true,
+      respondFreshness: frozenRespond,
       environment: process.env.APP_ENV || process.env.VERCEL_ENV || "preview",
       viewer: profile,
       capabilities: {

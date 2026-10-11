@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { RESPOND_COMMERCIAL_HOLD, respondFreshness } from "../../../lib/respondDegradedMode.js";
 import { authorizeShadowAdministrator } from "../../../lib/shadow/ai/apiAuth.js";
 import { socialRouteReview, socialRoutingEnabled } from "../../../lib/social/routing.js";
 import { socialCaptureReview } from "../../../lib/social/captureReceipt.js";
@@ -22,7 +23,8 @@ export function createSocialRoutingReviewHandler({ authorize = authorizeShadowAd
     const db = createAdmin();
     const page = Number(req.query?.capturePage || 0);
     if (!Number.isSafeInteger(page) || page < 0 || page > 1000000) return res.status(400).json({ error: "invalid_review_page" });
-    const [{ data, error }, receipts, executions] = await Promise.all([
+    const [freshness, { data, error }, receipts, executions] = await Promise.all([
+      db.from("gv_respond_contact_snapshots").select("respond_last_synced_at").order("respond_last_synced_at", { ascending: false }).limit(1),
       db.from("social_message_routes").select("*").order("created_at", { ascending: false }).limit(100),
       db.from("social_capture_receipts").select("*,transport:gv_respond_webhook_events(status,processed_at)")
         .in("routing_state", ["pending", "review_required"])
@@ -32,7 +34,8 @@ export function createSocialRoutingReviewHandler({ authorize = authorizeShadowAd
     ]);
     if (error || receipts.error || executions.error) return res.status(503).json({ error: "social_review_unavailable" });
     const inbox = row => /^\d{1,20}$/.test(row.respond_contact_id || "") ? respondInboxLink(row.respond_contact_id) : null;
-    return res.status(200).json({ enabled: socialRoutingEnabled(env),
+    return res.status(200).json({ enabled: !RESPOND_COMMERCIAL_HOLD && socialRoutingEnabled(env),
+      commercialHeld: RESPOND_COMMERCIAL_HOLD, respondFreshness: respondFreshness(freshness.error ? [] : freshness.data || []),
       routes: (data || []).map(row => ({ ...socialRouteReview(row), inboxUrl: row.inbound_id ? null : inbox(row) })),
       captureReviews: (receipts.data || []).slice(0,100).map(row => ({ ...socialCaptureReview(row), inboxUrl: inbox(row) })),
       executionReviews: (executions.data || []).slice(0,100).map(row => ({

@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { RESPOND_COMMERCIAL_HOLD } from "../../../lib/respondDegradedMode.js";
 import { getAdminSupabase } from "../../../lib/ejecutivo/workCenter";
 import { readHumanAttention } from "../../../lib/agentsV2/humanAttention.js";
 
@@ -22,6 +23,7 @@ export default async function handler(req,res){
     if(req.method==="GET")return res.status(200).json({ok:true,...await readHumanAttention(getAdminSupabase(),{respond_contact_id:contactId,occurred_at:new Date().toISOString()})});
     if(input?.action!=="return_to_ai"||typeof input.episodeKey!=="string"||typeof input.humanEventId!=="string"||input.episodeKey.length>200||input.humanEventId.length>200)
       return res.status(400).json({ok:false,error:"explicit_return_required"});
+    if(RESPOND_COMMERCIAL_HOLD)return res.status(409).json({ok:false,error:"respond_commercial_hold"});
     const {data,error}=await client.rpc("resume_respond_ai_v1",{p_contact_id:contactId,p_episode_key:input.episodeKey,p_human_event_id:input.humanEventId});
     if(error)return res.status(error.code==="40001"?409:error.code==="42501"?403:503).json({ok:false,error:error.code==="40001"?"human_attention_changed":"resume_not_completed"});
     return res.status(200).json({ok:true,...data});

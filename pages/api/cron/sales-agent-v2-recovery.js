@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { RESPOND_COMMERCIAL_HOLD, commercialHeld } from "../../../lib/respondDegradedMode.js";
 import { getAdminSupabase } from "../../../lib/ejecutivo/workCenter";
 import { readRespondMessages, latestRespondRelevantMessage, respondMessageTimestamp } from "../../../lib/ejecutivo/respondSync";
 import { sanitizeShadowText } from "../../../lib/shadow/coordinator";
@@ -48,6 +49,7 @@ export default async function handler(req,res){
   if(!["GET","POST"].includes(req.method)) return res.status(405).json({ok:false,error:"method_not_allowed"});
   if(!process.env.CRON_SECRET||!equal(req.headers.authorization,"Bearer "+process.env.CRON_SECRET)) return res.status(401).json({ok:false,error:"not_authorized"});
   if(process.env.SALES_AGENT_V2_RECOVERY_ENABLED!=="true") { console.info("[sales-v2-recovery] disabled", { value: process.env.SALES_AGENT_V2_RECOVERY_ENABLED || null }); return res.status(200).json({ok:true,status:"disabled"}); }
+  if(RESPOND_COMMERCIAL_HOLD)return res.status(200).json({ok:true,...commercialHeld()});
 
   const admin=getAdminSupabase();
   try{

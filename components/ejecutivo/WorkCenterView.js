@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import RespondFreshnessNotice from "../RespondFreshnessNotice";
 import Head from "next/head";
 import Layout, { brand } from "../Layout";
 import { supabase } from "../../lib/supabase";
@@ -776,6 +777,7 @@ export default function WorkCenterView({ type = "advisor" }) {
               Actualizado: {fmtDateTimeShort(lastUpdatedAt)} · Última sincronización Respond.io: {fmtDateTimeShort(lastSyncedAt)}
             </div>
           </header>
+          <RespondFreshnessNotice lastUpdatedAt={data?.respondFreshness?.lastUpdatedAt}/>
 
           {error && <Panel style={{ borderColor: "#fecaca", color: "#991b1b", marginBottom: 16 }}>{error}</Panel>}
           {syncNotice && <Panel style={{ borderColor: "#fde68a", background: "#fffbeb", color: "#92400e", marginBottom: 16 }}>{syncNotice}</Panel>}
@@ -796,7 +798,7 @@ export default function WorkCenterView({ type = "advisor" }) {
                 />
                 <Card label="Pipeline comisión estimada" value={fmtMoney(management.pipeline)} sub="Comisión estimada en oportunidades abiertas." />
                 <Card label="Citas efectivas acumuladas" value={`${management.citasEquipo || 0} de ${management.citasRequeridasAcumuladas || 0}`} sub="Realizadas vs requeridas acumuladas." />
-                <Card label="Clientes esperando respuesta" value={management.clientesEsperandoRespuesta || 0} strong={management.clientesEsperandoRespuesta > 0} />
+                <Card label="Clientes esperando respuesta (sin dato actual)" value="—" />
               </div>
             </section>
           )}
@@ -806,7 +808,7 @@ export default function WorkCenterView({ type = "advisor" }) {
               <h2 style={{ ...h2, marginBottom: 10 }}>Indicadores operativos</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
                 <Card label="Citas de hoy" value={`${management.citasHoy || 0} de ${management.citasRequeridasHoy || 0}`} sub="Agendadas vs requeridas hoy." />
-                <Card label="Conversaciones abiertas" value={management.conversacionesAbiertas || 0} />
+                <Card label="Conversaciones abiertas (sin dato actual)" value="—" />
                 <Card label="Seguimientos vencidos" value={management.seguimientosVencidos || 0} strong={management.seguimientosVencidos > 0} />
                 <Card label="Oportunidades en riesgo" value={management.oportunidadesEnRiesgo || 0} strong={management.oportunidadesEnRiesgo > 0} />
                 <Card label="Intervenciones" value={`${management.intervencionesPorRegistrar || 0} por registrar`} sub={`${management.intervencionesActivas || 0} activas/en seguimiento.`} />
@@ -817,8 +819,8 @@ export default function WorkCenterView({ type = "advisor" }) {
           {!isManagerView && <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 16 }}>
             <Card label="Citas de hoy" value={summary.todayCitas || 0} />
             <Card label="Citas efectivas acumuladas" value={summary.effectiveCitas || 0} />
-            <Card label="Conversaciones abiertas" value={summary.openConversations || 0} />
-            <Card label="Esperando respuesta" value={summary.waitingResponses || 0} strong={summary.waitingResponses > 0} />
+            <Card label="Conversaciones abiertas (sin dato actual)" value="—" />
+            <Card label="Esperando respuesta (sin dato actual)" value="—" />
             <Card label="Seguimientos vencidos" value={summary.overdueActions || 0} strong={summary.overdueActions > 0} />
             <Card label="Pipeline comisión estimada" value={fmtMoney(summary.pipeline)} />
           </section>}
@@ -949,7 +951,7 @@ function AdvisorTable({ advisors, onPick }) {
               <td style={td}><strong>{row.name}</strong><div style={muted}>{row.email}</div></td>
               <td style={td}><strong>{row.citasEffective || 0}/{row.citasRequired || 0}</strong></td>
               <td style={td}>{row.kpiCitasPct === null || row.kpiCitasPct === undefined ? <span style={{ color: "#6b7280", fontWeight: 900 }}>No evaluable</span> : <Badge variant={kpiTone(row.kpiCitasPct)}>{fmtPct(row.kpiCitasPct)}</Badge>}</td>
-              <td style={td}>{row.summary.waitingResponses}</td>
+              <td style={td}>{row.summary.waitingResponses ?? "—"}</td>
               <td style={td}>{row.summary.overdueActions}</td>
               <td style={td}>{row.summary.riskOpportunities}</td>
               <td style={td}>{fmtMoney(row.summary.pipeline)}</td>

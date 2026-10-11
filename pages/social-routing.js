@@ -1,4 +1,5 @@
 import { useState } from "react";
+import RespondFreshnessNotice from "../components/RespondFreshnessNotice";
 import { supabase } from "../lib/supabase";
 
 export default function SocialRoutingReview() {
@@ -18,6 +19,7 @@ export default function SocialRoutingReview() {
   }
   return <main style={{ padding: 24 }}>
     <h1>Social Routing — revisión</h1>
+    <RespondFreshnessNotice lastUpdatedAt={data?.respondFreshness?.lastUpdatedAt}/>
     <p>Sólo lectura. No envía mensajes, reasigna contactos ni habilita Administración.</p>
     <button onClick={() => load()} disabled={busy}>{busy ? "Consultando…" : "Consultar decisiones"}</button>
     {error && <p role="alert">{error}</p>}

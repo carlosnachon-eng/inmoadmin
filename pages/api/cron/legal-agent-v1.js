@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { RESPOND_COMMERCIAL_HOLD, commercialHeld } from "../../../lib/respondDegradedMode.js";
 import { getAdminSupabase } from "../../../lib/ejecutivo/workCenter";
 import { processLegalInboundById } from "../../../lib/agentsV2/processLegalInbound";
 
@@ -9,6 +10,7 @@ export default async function handler(req,res){
   res.setHeader("Cache-Control","private, no-store, max-age=0");
   if(!["GET","POST"].includes(req.method))return res.status(405).json({ok:false,error:"method_not_allowed"});
   if(!process.env.CRON_SECRET||!equal(req.headers.authorization,"Bearer "+process.env.CRON_SECRET))return res.status(401).json({ok:false,error:"not_authorized"});
+  if(RESPOND_COMMERCIAL_HOLD)return res.status(200).json({ok:true,...commercialHeld()});
   const admin=getAdminSupabase(),now=new Date().toISOString();
   const {data,error}=await admin.from("legal_agent_v1_inbound_messages").select("id")
     .eq("status","captured").or("debounce_until.is.null,debounce_until.lte."+now)
