@@ -6,6 +6,7 @@ import { usePermiso, SinAcceso } from "../lib/permisos";
 import { contextualRecordStyle } from "../lib/useContextualRecord";
 import {
   administrationCommission,
+  administrationCommissionForPeriod,
   calculateOwnerLiquidation,
   contractActiveInPeriod,
   maintenanceOwnerBalance,
@@ -870,6 +871,9 @@ export default function Liquidaciones() {
     const pagosCobradosMes = liquidation.collectedRents;
     const totalRent = liquidation.totalRent;
     const totalCom = liquidation.totalCommission;
+    const saldoAnterior = liquidation.priorBalance;
+    const deudaPropietario = liquidation.ownerDebt;
+    const comisionExentaRenovacion = liquidation.totalCommissionWaivedByRenewal;
     const gastosOpMes = liquidation.totalExpenses;
     const mantenimientoDescontadoMes = liquidation.totalDiscountedMaintenance;
     const propNamesOwner = propsProp.map(p => p.name);
@@ -892,7 +896,7 @@ export default function Liquidaciones() {
       total_rent: totalRent.toString(), total_commission: totalCom.toString(),
       total_liquid: totalLiq.toString(), amount_paid: montoFinal.toString(),
       payment_method: "transferencia", payment_date: today, status: "pagado",
-      notes: `Propiedades: ${propNames}${gastosOpMes > 0 ? ` · Gastos propietario: ${fmt(gastosOpMes)}` : ""}${mantenimientoDescontadoMes > 0 ? ` · Mantenimiento descontado: ${fmt(mantenimientoDescontadoMes)}` : ""}${saldoMantAnt > 0 ? ` · Mantenimiento anterior: ${fmt(saldoMantAnt)}` : ""}${saldoMantMesPendiente > 0 ? ` · Mantenimiento del periodo pendiente para próximo corte: ${fmt(saldoMantMesPendiente)}` : ""}`, rent_receiver: dominant
+      notes: `Propiedades: ${propNames}${saldoAnterior < 0 ? ` · Saldo anterior a favor de Emporio: ${fmt(Math.abs(saldoAnterior))}` : saldoAnterior > 0 ? ` · Saldo anterior a favor del propietario: ${fmt(saldoAnterior)}` : ""}${comisionExentaRenovacion > 0 ? ` · Administración exenta por renovación: ${fmt(comisionExentaRenovacion)}` : ""}${gastosOpMes > 0 ? ` · Gastos propietario: ${fmt(gastosOpMes)}` : ""}${mantenimientoDescontadoMes > 0 ? ` · Mantenimiento descontado: ${fmt(mantenimientoDescontadoMes)}` : ""}${saldoMantAnt > 0 ? ` · Mantenimiento anterior: ${fmt(saldoMantAnt)}` : ""}${saldoMantMesPendiente > 0 ? ` · Mantenimiento del periodo pendiente para próximo corte: ${fmt(saldoMantMesPendiente)}` : ""}${deudaPropietario > 0 ? ` · Saldo actual a favor de Emporio: ${fmt(deudaPropietario)}` : ""}`, rent_receiver: dominant
     });
     setShowModal(true);
   };
@@ -1108,8 +1112,9 @@ export default function Liquidaciones() {
     const contratosComisionPendiente = contratosPagados.filter(c =>
       !(comisionesAdminMes || []).some(ca => ca.contract_id === c.id)
     );
-    const totalComProp = contratosComisionPendiente.reduce((a, c) => a + calcComision(c), 0);
-    const totalComYaCobrada = contratosPagados.reduce((a, c) => a + calcComision(c), 0) - totalComProp;
+    const commissionForReport = (contract) => administrationCommissionForPeriod(contract, propertyExpenses, periodKey);
+    const totalComProp = contratosComisionPendiente.reduce((a, c) => a + commissionForReport(c), 0);
+    const totalComYaCobrada = contratosPagados.reduce((a, c) => a + commissionForReport(c), 0) - totalComProp;
     // Para el reporte del propietario se muestra toda la comisión devengada
     // sobre rentas pagadas. La comisión retenible se conserva separada porque
     // sólo corresponde al dinero que pasó físicamente por Emporio.
@@ -1121,8 +1126,12 @@ export default function Liquidaciones() {
     const costoMantProp = liquidation.totalDiscountedMaintenance;
     const gastosOpProp = liquidation.totalExpenses;
     const totalLiqProp = liquidation.totalLiquid;
-    // Balance real considerando solo el dinero que Emporio tiene en su poder
-    const balanceEmporio = rentaEmporio - totalComisionRetenible - costoMantProp - gastosOpProp - saldoPendienteAnteriores;
+    const saldoAnteriorProp = liquidation.priorBalance;
+    const deudaPropietario = liquidation.ownerDebt;
+    const comisionExentaRenovacion = liquidation.totalCommissionWaivedByRenewal;
+    // Balance real considerando sólo el dinero que Emporio tiene en su poder,
+    // incluido el saldo neto arrastrado del corte anterior.
+    const balanceEmporio = liquidation.netBeforePayments;
     const liqDelMes = liqProp.filter(l => {
       const desc = (l.period_description || "").toLowerCase();
       const mesMes = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
@@ -1172,7 +1181,7 @@ export default function Liquidaciones() {
       const mesMes2 = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
       return desc.includes(mesMes2) && desc.includes(String(anioCorte)) && l.status === "pagado";
     });
-    const extraLines = (costoMantPropTotal > 0 ? 1 : 0) + (anticipoMantProp > 0 ? 2 : 0) + (saldoPendienteAnteriores > 0 ? 1 : 0) + (saldoPendienteMesActual > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 && !yaLiquidadoPre ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0) + (totalComYaCobrada > 0 ? 1 : 0) + (totalComProp > 0 ? 1 : 0);
+    const extraLines = (costoMantPropTotal > 0 ? 1 : 0) + (anticipoMantProp > 0 ? 2 : 0) + (saldoPendienteAnteriores > 0 ? 1 : 0) + (saldoPendienteMesActual > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 && !yaLiquidadoPre ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0) + (totalComYaCobrada > 0 ? 1 : 0) + (totalComProp > 0 ? 1 : 0) + (saldoAnteriorProp !== 0 ? 1 : 0) + (comisionExentaRenovacion > 0 ? 1 : 0);
     const boxH = 28 + extraLines * 7;
 
     doc.setFillColor(185, 28, 60); doc.rect(14, y, 182, 7, "F");
@@ -1213,6 +1222,20 @@ export default function Liquidaciones() {
       lineY += 7;
     }
     doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+    if (saldoAnteriorProp !== 0) {
+      doc.text(saldoAnteriorProp < 0 ? "Saldo anterior a favor de Emporio:" : "Saldo anterior a favor del propietario:", 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(saldoAnteriorProp < 0 ? 185 : 6, saldoAnteriorProp < 0 ? 28 : 95, saldoAnteriorProp < 0 ? 60 : 70);
+      doc.text(`${saldoAnteriorProp < 0 ? "-" : "+"}${fmt(Math.abs(saldoAnteriorProp))}`, 105, lineY);
+      lineY += 7;
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+    }
+    if (comisionExentaRenovacion > 0) {
+      doc.text("Administración exenta por renovación:", 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
+      doc.text(fmt(comisionExentaRenovacion), 105, lineY);
+      lineY += 7;
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+    }
     if (totalComProp > 0) {
       doc.text(`Comisión administración:`, 18, lineY);
       doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
@@ -1294,6 +1317,10 @@ export default function Liquidaciones() {
         montoLiq = Math.abs(balanceFinal);
         boxColor = [185, 28, 60];
       }
+    } else if (deudaPropietario > 0) {
+      labelLiq = "Saldo a pagar a Emporio:";
+      montoLiq = deudaPropietario;
+      boxColor = [185, 28, 60];
     } else {
       labelLiq = totalAdelanto > 0 ? "Pendiente por pagar:" : "Líquido a recibir:";
       montoLiq = totalAdelanto > 0 ? totalPendiente : totalLiqProp;
@@ -1338,7 +1365,7 @@ export default function Liquidaciones() {
       head: [["Propiedad", "Inquilino", "Renta", "Comisión", "Líquido", "Vence", "Pagado el", "Estado"]],
       body: propsProp.map(prop => {
         const c = contratosProp.find(c => c.property_name === prop.name);
-        const com = c ? calcComision(c) : 0;
+        const com = c ? administrationCommissionForPeriod(c, propertyExpenses, periodKey) : 0;
         // La relación financiera estable es el contrato. El nombre de la propiedad
         // puede contener errores históricos o haber cambiado después de crear pagos.
         const pago = c
