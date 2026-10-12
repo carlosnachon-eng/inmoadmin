@@ -12,7 +12,7 @@ export default function InstagramManualDev() {
   const attempted=useRef(false),inflight=useRef(false),action=useRef(null);
   async function request(op,body) {
     const {data:{session}}=await supabase.auth.getSession();
-    if(!session)throw Error('session_required');
+    if(!session)return {status:'session_required'};
     const response=await fetch('/api/operaciones/instagram-inbox-manual-dev'+(body?'':`?op=${op}`),{
       method:body?'POST':'GET',cache:'no-store',headers:{Authorization:`Bearer ${session.access_token}`,
         ...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -40,6 +40,7 @@ export default function InstagramManualDev() {
       <p>El destinatario se verifica en el servidor; no puede editarse.</p>
     </section>
     <p role="status" aria-live="polite">Estado: {busy?'pending':result?.status||'Verificando sesión y vínculo…'}</p>
+    {result?.status==='session_required'&&<p>Este Preview requiere iniciar sesión en su propio origen. <a href="/">Abrir login de Inmoadmin DEV</a>. Después vuelve a esta página. No se copian sesiones entre previews.</p>}
     {result?.binding_verified&&<p>Vínculo cifrado verificado. Administrador autorizado.</p>}
     {result?.paused&&<p>IA pausada por atención humana.</p>}
     {result?.status==='ready'&&!result?.sender_enabled&&<p>Sender deshabilitado. No se puede enviar.</p>}
