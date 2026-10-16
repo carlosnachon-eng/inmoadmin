@@ -6,7 +6,18 @@ import {projectBusinessHistory,pilotInboxRows,loadBusinessImage} from '../lib/me
 import {beginBusinessOAuth,completeBusinessOAuth as complete,health,tokenForSend,maintainBusinessToken as maintain} from '../lib/messaging/instagram/business/tokenLifecycle.js';
 import {withResponseText} from './fixtures/instagramResponseText.mjs';
 const completeBusinessOAuth=args=>withResponseText(complete,args),maintainBusinessToken=args=>withResponseText(maintain,args);
-import {runBusinessReply} from '../lib/messaging/instagram/business/manual.js';
+import {runBusinessReply,businessManualText,sendBusinessTextOnce} from '../lib/messaging/instagram/business/manual.js';
+import {instagramManualText} from '../lib/messaging/instagram/manualSender.js';
+const blockedManualFixture='Confirmación manual de Emporio — IGDURABLE-REPLY-20261016-01: recibimos tu prueba TEXT y respondemos por este mismo hilo mediante Instagram Login durable. Sin IA.';
+test('Business manual reference is not subjected to legacy AI redaction',()=>{
+ assert.equal(instagramManualText(blockedManualFixture),false);
+ assert.equal(businessManualText(blockedManualFixture),true);
+ assert.equal(businessManualText('Referencia 20261016-01 — respuesta manual.'),true);
+});
+test('Business manual text preserves format and byte limits',()=>{
+ for(const value of [null,undefined,{},[],42,'',' ',' x','x ','<script>','a\nb','a\rb','a\tb','a\u0000b','a\u007fb','a\u202eb','a\u2066b','a'.repeat(1000),'🙂'.repeat(251)])assert.equal(businessManualText(value),false);
+ for(const value of ['Respuesta manual.','a'.repeat(999),'🙂'.repeat(250)])assert.equal(businessManualText(value),true);
+});
 export const env={APP_ENV:'test',VERCEL_ENV:'preview',NEXT_PUBLIC_SUPABASE_URL:'https://hjfwjnejbcpmknvfpdcq.supabase.co',INSTAGRAM_BUSINESS_ENABLED:'true',
  INSTAGRAM_BUSINESS_CONNECTION_ID:'10000000-0000-4000-8000-000000000001',INSTAGRAM_BUSINESS_APP_ID:'100',INSTAGRAM_BUSINESS_INSTAGRAM_APP_ID:'200',INSTAGRAM_BUSINESS_ACCOUNT_ID:'300',
  INSTAGRAM_BUSINESS_INSTAGRAM_APP_SECRET:'a'.repeat(32),INSTAGRAM_BUSINESS_VERIFY_TOKEN:'b'.repeat(32),INSTAGRAM_BUSINESS_INDEX_KEY:'c'.repeat(64),INSTAGRAM_BUSINESS_DATA_KEY:'d'.repeat(64),INSTAGRAM_BUSINESS_TOKEN_KEY:'e'.repeat(64),INSTAGRAM_BUSINESS_OAUTH_REDIRECT_URI:'https://dev.example.invalid/oauth',INSTAGRAM_BUSINESS_MANUAL_SEND_ENABLED:'true'};
@@ -48,6 +59,18 @@ test('failed refresh requires reauthorization and never retries transport',async
  const r=credential();let calls=0,failed=0;const h=await maintainBusinessToken({config:c,now,store:{loadCredential:async()=>r,claimMaintenance:async()=>true,failMaintenance:async(g,l,s)=>{assert.equal(s,'reauthorization_required');failed++;}},fetchImpl:async()=>{calls++;throw Error('fixture transport');}});assert.equal(h.status,'reauthorization_required');assert.equal(calls,1);assert.equal(failed,1);assert.equal(h.send_allowed,false);
 });
 function manualFixture(){const e=row(),cred=credential();let reserved=false,dispatches=0,finished;return {args:{config:c,actor,body:{input:e.event_ref,action:randomUUID(),text:'Respuesta de prueba'},store:{loadInput:async()=>e,loadCredential:async()=>cred,reserveAndPause:async()=>{if(reserved)return false;reserved=true;return true;},start:async()=>true,finish:async(a,o)=>{finished=o;return true;}},fetchImpl:async(url,opts)=>{assert.ok(reserved);dispatches++;assert.equal(url,'https://graph.instagram.com/v26.0/300/messages');assert.equal(JSON.parse(opts.body).recipient.id,'400');return {ok:true,status:200,json:async()=>({recipient_id:'400',message_id:'outbound'})};},now:()=>now},get dispatches(){return dispatches},get finished(){return finished}};}
+test('blocked real-text regression passes both gates once using mock transport only',async()=>{
+ const f=manualFixture();f.args.body.text=blockedManualFixture;const transport=f.args.fetchImpl;
+ f.args.fetchImpl=async(url,opts)=>{assert.equal(JSON.parse(opts.body).message.text,blockedManualFixture);return transport(url,opts);};
+ assert.equal((await runBusinessReply(f.args)).status,'accepted');
+ assert.equal((await runBusinessReply(f.args)).status,'already_consumed_or_blocked');assert.equal(f.dispatches,1);
+});
+test('invalid Business text fails before claim and at transport guard',async()=>{
+ const f=manualFixture();f.args.diagnostics=true;f.args.body.text='x\ny';
+ f.args.store.loadInput=async()=>assert.fail('must not load input');
+ assert.deepEqual(await runBusinessReply(f.args),{status:'blocked',diagnostic:{stage:'pre_claim',validation:'manual_text'}});assert.equal(f.dispatches,0);
+ await assert.rejects(()=>sendBusinessTextOnce({config:c,recipient:'400',text:'<x>',token:'fixture',fetchImpl:async()=>assert.fail('must not dispatch')}),/send_denied/);
+});
 test('pre-claim diagnostic exposes fixed labels only and never exception values',async()=>{
  const cases=[
   ['actor_active',f=>{f.args.actor={...actor,active:false};}],
