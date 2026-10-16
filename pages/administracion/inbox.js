@@ -2,12 +2,15 @@ import {useRef,useState} from 'react';
 import Head from 'next/head';
 import Layout from '../../components/Layout';
 import {supabase} from '../../lib/supabase';
+import InstagramBusinessInbox from '../../components/InstagramBusinessInbox';
+
+export async function getServerSideProps(){return {props:{businessDev:process.env.VERCEL_ENV==='preview'&&process.env.INSTAGRAM_BUSINESS_ENABLED==='true'}};}
 
 const provenance={customer_inbound:'Entrada del contacto',business_outbound_unattributed:'Salida observada · autor no acreditado',human_confirmed:'Humano confirmado',system_outbound_confirmed:'Sistema confirmado'};
 const attachment={not_available:'Adjunto no disponible',interpretation_pending:'Referencia recibida · interpretación pendiente'};
 const time=value=>new Intl.DateTimeFormat('es-MX',{timeZone:'America/Mexico_City',dateStyle:'short',timeStyle:'short'}).format(new Date(value));
 
-export default function AdminInbox(){
+export default function AdminInbox({businessDev=false}){
  const [rows,setRows]=useState([]),[detail,setDetail]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const generation=useRef(0);
  const [manual,setManual]=useState(null),[draft,setDraft]=useState(''),[sending,setSending]=useState(false),[sendStatus,setSendStatus]=useState('');
@@ -51,6 +54,7 @@ export default function AdminInbox(){
  }
  return <Layout><Head><title>Administración · Inbox Meta</title></Head><main style={{padding:24}}>
   <h1>Inbox de Administración</h1>
+  {businessDev&&<InstagramBusinessInbox/>}
   <p>Meta directo · respuestas manuales autorizadas · sin respuesta automática.</p>
   <button onClick={()=>load()} disabled={busy||sending}>Cargar / actualizar conversaciones</button>
   {error&&<p role="alert">{error}</p>}
