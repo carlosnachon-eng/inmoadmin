@@ -20,4 +20,23 @@ for(const expected of [...stages,'success'])test(expected,async()=>{
  await assert.rejects(()=>completeBusinessOAuth(args),e=>{const d=businessOAuthDiagnostic(e);assert.equal(d.stage,expected);assert.ok(!JSON.stringify(d).includes('PRIVATE'));if(expected.endsWith('_exchange'))assert.deepEqual(d,{stage:expected,http_status:400,code:100,subcode:33});return true;});
  assert.equal(saved,undefined);
 });
+test('short token shape diagnostic exposes only field names, types and data length',async()=>{
+ const args={config:c,state:'a'.repeat(43),code:'PRIVATE',actor:'operator',sessionBinding:'PRIVATE',store:{consumeState:async()=>true,saveCredential:async()=>{}},fetchImpl:async()=>({ok:true,status:200,json:async()=>({data:{access_token:'PRIVATE',user_id:'400',permissions:SCOPES.join(',')},unexpected:'PRIVATE'})})};
+ await assert.rejects(()=>completeBusinessOAuth(args),e=>{
+  const d=businessOAuthDiagnostic(e);
+  assert.equal(d.stage,'short_token_shape');
+  assert.deepEqual(d.short_token_response_shape,{
+   root_type:'object',
+   top_level_keys:['data','unexpected'],
+   top_level_types:[{key:'data',type:'object'},{key:'unexpected',type:'string'}],
+   data_present:true,
+   data_type:'object',
+   data_length:null,
+   data_items:[]
+  });
+  assert.ok(!JSON.stringify(d).includes('PRIVATE'));
+  assert.ok(!JSON.stringify(d).includes(SCOPES[0]));
+  return true;
+ });
+});
 test('arbitrary exception metadata never exported',()=>assert.equal(businessOAuthDiagnostic(Object.assign(Error('PRIVATE'),{diagnostic:{stage:'PRIVATE'}})),null));
