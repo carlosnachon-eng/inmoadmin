@@ -3,7 +3,9 @@ import {businessConfig,SCOPES,PROVIDER} from '../lib/messaging/instagram/busines
 import {normalizeBusinessReceipt,persistBusinessReceipt} from '../lib/messaging/instagram/business/observer.js';
 import {openRecipient,seal,open,eventBinding} from '../lib/messaging/instagram/business/crypto.js';
 import {projectBusinessHistory,pilotInboxRows,loadBusinessImage} from '../lib/messaging/instagram/business/inbox.js';
-import {beginBusinessOAuth,completeBusinessOAuth,health,tokenForSend,maintainBusinessToken} from '../lib/messaging/instagram/business/tokenLifecycle.js';
+import {beginBusinessOAuth,completeBusinessOAuth as complete,health,tokenForSend,maintainBusinessToken as maintain} from '../lib/messaging/instagram/business/tokenLifecycle.js';
+import {withResponseText} from './fixtures/instagramResponseText.mjs';
+const completeBusinessOAuth=args=>withResponseText(complete,args),maintainBusinessToken=args=>withResponseText(maintain,args);
 import {runBusinessReply} from '../lib/messaging/instagram/business/manual.js';
 export const env={APP_ENV:'test',VERCEL_ENV:'preview',NEXT_PUBLIC_SUPABASE_URL:'https://hjfwjnejbcpmknvfpdcq.supabase.co',INSTAGRAM_BUSINESS_ENABLED:'true',
  INSTAGRAM_BUSINESS_CONNECTION_ID:'10000000-0000-4000-8000-000000000001',INSTAGRAM_BUSINESS_APP_ID:'100',INSTAGRAM_BUSINESS_INSTAGRAM_APP_ID:'200',INSTAGRAM_BUSINESS_ACCOUNT_ID:'300',

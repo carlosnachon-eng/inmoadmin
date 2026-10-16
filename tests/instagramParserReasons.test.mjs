@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {completeBusinessOAuth,businessOAuthDiagnostic} from '../lib/messaging/instagram/business/tokenLifecycle.js';
+import {completeBusinessOAuth as complete,businessOAuthDiagnostic} from '../lib/messaging/instagram/business/tokenLifecycle.js';
+import {withResponseText} from './fixtures/instagramResponseText.mjs';
+const completeBusinessOAuth=args=>withResponseText(complete,args);
 import {projectOAuthShapeDiagnostic} from '../lib/messaging/instagram/business/diagnosticDisplay.js';
 import {PARSER_REASONS} from '../lib/messaging/instagram/business/parserReasons.js';
 const valid=()=>({access_token:'PRIVATE_TOKEN',user_id:300,permissions:['instagram_business_basic','instagram_business_manage_messages']});
@@ -10,9 +12,8 @@ const cases=[
  ...['access_token','user_id','permissions'].map(k=>[`${k}_missing`,b=>{delete b[k];return b;}]),
  ['access_token_type',b=>({...b,access_token:123})],['access_token_empty',b=>({...b,access_token:''})],
  ['access_token_whitespace',b=>({...b,access_token:' PRIVATE_TOKEN '})],
- ['user_id_type',b=>({...b,user_id:'PRIVATE_ID'})],
- ['user_id_not_safe_integer',b=>({...b,user_id:Number.MAX_SAFE_INTEGER+1})],
- ['user_id_not_positive',b=>({...b,user_id:0})],
+ ['user_id_type',b=>({...b,user_id:null})],
+ ['user_id_format',b=>({...b,user_id:'PRIVATE_ID'})],
  ['permissions_not_array',b=>({...b,permissions:'PRIVATE_PERMISSION'})],
  ['permissions_empty',b=>({...b,permissions:[]})],
  ['permission_item_type',b=>({...b,permissions:[{permission:'PRIVATE_PERMISSION'}]})],

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {completeBusinessOAuth,businessOAuthDiagnostic} from '../lib/messaging/instagram/business/tokenLifecycle.js';
+import {completeBusinessOAuth as complete,businessOAuthDiagnostic} from '../lib/messaging/instagram/business/tokenLifecycle.js';
+import {withResponseText} from './fixtures/instagramResponseText.mjs';
+const completeBusinessOAuth=args=>withResponseText(complete,args);
 import {SCOPES} from '../lib/messaging/instagram/business/config.js';
 const c={connection:'fixture',app:'100',instagramApp:'200',account:'300',secret:'PRIVATE',tokenKey:'e'.repeat(64),redirect:'https://example.invalid/callback',version:'v26.0'};
 const stages=['callback_input','state_validation','short_token_exchange','short_token_shape','granted_scopes','short_token_identity','long_token_exchange','long_token_type_expiry','long_token_identity','credential_encryption','credential_persistence'];
