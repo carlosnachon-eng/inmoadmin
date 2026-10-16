@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import Head from 'next/head';
 import {supabase} from '../../lib/supabase';
+import {projectOAuthShapeDiagnostic} from '../../lib/messaging/instagram/business/diagnosticDisplay';
 
 // No OAuth code/state is serialized into page props or rendered as text.
 export async function getServerSideProps({res}){
@@ -22,7 +23,8 @@ async function request(op,body){
   const stages=['callback_input','state_validation','short_token_exchange','short_token_shape','granted_scopes','short_token_presence','short_token_identity','long_token_exchange','long_token_type_expiry','long_token_identity','credential_encryption','credential_persistence'];
   if(op==='oauth-complete'&&stages.includes(d?.stage)){
    const fields=['http_status','code','subcode'].filter(k=>Number.isSafeInteger(d[k])).map(k=>`${k}=${d[k]}`);
-   throw Error(`OAuth bloqueado: ${d.stage}${fields.length?' · '+fields.join(' · '):''}. Sin reintento automático.`);
+   const error=Error(`OAuth bloqueado: ${d.stage}${fields.length?' · '+fields.join(' · '):''}. Sin reintento automático.`);
+   error.safeShape=projectOAuthShapeDiagnostic(d);throw error;
   }
   throw Error('Validación bloqueada. No se reintentará automáticamente.');
  }
@@ -30,9 +32,10 @@ async function request(op,body){
 }
 export default function InstagramBusinessSetup(){
  const [busy,setBusy]=useState(false),[status,setStatus]=useState('Configuración Instagram Login DEV'),[health,setHealth]=useState(null);
+ const [shape,setShape]=useState(null);
  const lock=useRef(false),processed=useRef(false);
  async function run(op,body){
-  if(lock.current)return;lock.current=true;setBusy(true);
+  if(lock.current)return;lock.current=true;setBusy(true);setShape(null);
   try{
    const result=await request(op,body);
    if(op==='oauth-start'){
@@ -41,7 +44,7 @@ export default function InstagramBusinessSetup(){
     window.location.assign(target.href);return;
    }
    setHealth(result);setStatus(op==='oauth-complete'?'OAuth verificado; credencial cifrada server-side.':'Estado actualizado.');
-  }catch(e){setStatus(e.message);}finally{lock.current=false;setBusy(false);}
+  }catch(e){setStatus(e.message);setShape(e.safeShape||null);}finally{lock.current=false;setBusy(false);}
  }
  useEffect(()=>{
   if(processed.current)return;processed.current=true;
@@ -61,6 +64,7 @@ export default function InstagramBusinessSetup(){
   <button disabled={busy} onClick={()=>run('health')}>Consultar salud</button>{' '}
   <button disabled={busy} onClick={()=>run('maintain',{})}>Verificar / renovar credencial</button>
   <p role="status">{status}</p>
+  {shape&&<section aria-label="Diagnóstico sanitizado OAuth"><h2>Estructura de respuesta · sin valores</h2><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(shape,null,2)}</pre></section>}
   {health&&<dl><dt>Estado</dt><dd>{health.status}</dd><dt>Vencimiento</dt><dd>{health.expires_at||'No acreditado'}</dd><dt>Última verificación</dt><dd>{health.verified_at||'No acreditada'}</dd></dl>}
   <p>La renovación no habilita el sender. Ante resultado incierto no se reintenta automáticamente.</p>
   <a href="/administracion/inbox">Volver a Inbox DEV</a>
