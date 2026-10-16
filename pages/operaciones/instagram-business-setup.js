@@ -17,7 +17,15 @@ async function request(op,body){
   method:body?'POST':'GET',cache:'no-store',redirect:'error',
   headers:{Authorization:`Bearer ${data.session.access_token}`,...(body?{'Content-Type':'application/json'}:{})},
   ...(body?{body:JSON.stringify(body)}:{})});
- if(!r.ok)throw Error('Validación bloqueada. No se reintentará automáticamente.');
+ if(!r.ok){
+  const result=await r.json().catch(()=>null),d=result?.diagnostic;
+  const stages=['callback_input','state_validation','short_token_exchange','short_token_shape','granted_scopes','short_token_presence','short_token_identity','long_token_exchange','long_token_type_expiry','long_token_identity','credential_encryption','credential_persistence'];
+  if(op==='oauth-complete'&&stages.includes(d?.stage)){
+   const fields=['http_status','code','subcode'].filter(k=>Number.isSafeInteger(d[k])).map(k=>`${k}=${d[k]}`);
+   throw Error(`OAuth bloqueado: ${d.stage}${fields.length?' · '+fields.join(' · '):''}. Sin reintento automático.`);
+  }
+  throw Error('Validación bloqueada. No se reintentará automáticamente.');
+ }
  return r.json();
 }
 export default function InstagramBusinessSetup(){
