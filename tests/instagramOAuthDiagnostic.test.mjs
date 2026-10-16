@@ -9,9 +9,9 @@ for(const expected of [...stages,'success'])test(expected,async()=>{
  const args={config:expected==='credential_encryption'?{...c,tokenKey:undefined}:c,state:expected==='callback_input'?'bad':'a'.repeat(43),code:'PRIVATE',actor:'operator',sessionBinding:'PRIVATE',store:{consumeState:async()=>expected!=='state_validation',saveCredential:async r=>{if(expected==='credential_persistence')throw Error('PRIVATE');saved=r;}},fetchImpl:async()=>{
   calls++;
   if((expected==='short_token_exchange'&&calls===1)||(expected==='long_token_exchange'&&calls===3))return {ok:false,status:400,json:async()=>({error:{code:100,error_subcode:33,message:'PRIVATE',details:'PRIVATE'}})};
-  let b=calls===1?{data:[{access_token:'PRIVATE',user_id:'400',permissions:SCOPES.join(',')}]}:calls===3?{access_token:'PRIVATE',token_type:'bearer',expires_in:5184000}:{user_id:c.account};
+  let b=calls===1?{access_token:'PRIVATE',user_id:400,permissions:[...SCOPES]}:calls===3?{access_token:'PRIVATE',token_type:'bearer',expires_in:5184000}:{user_id:c.account};
   if(expected==='short_token_shape'&&calls===1)b={access_token:'PRIVATE'};
-  if(expected==='granted_scopes'&&calls===1)b.data[0].permissions='unapproved_scope';
+  if(expected==='granted_scopes'&&calls===1)b.permissions=['unapproved_scope'];
   if((expected==='short_token_identity'&&calls===2)||(expected==='long_token_identity'&&calls===4))b.user_id='999';
   if(expected==='long_token_type_expiry'&&calls===3)b.expires_in=0;
   return {ok:true,status:200,json:async()=>b};
