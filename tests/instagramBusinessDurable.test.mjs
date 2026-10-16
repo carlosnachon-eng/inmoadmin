@@ -48,6 +48,31 @@ test('failed refresh requires reauthorization and never retries transport',async
  const r=credential();let calls=0,failed=0;const h=await maintainBusinessToken({config:c,now,store:{loadCredential:async()=>r,claimMaintenance:async()=>true,failMaintenance:async(g,l,s)=>{assert.equal(s,'reauthorization_required');failed++;}},fetchImpl:async()=>{calls++;throw Error('fixture transport');}});assert.equal(h.status,'reauthorization_required');assert.equal(calls,1);assert.equal(failed,1);assert.equal(h.send_allowed,false);
 });
 function manualFixture(){const e=row(),cred=credential();let reserved=false,dispatches=0,finished;return {args:{config:c,actor,body:{input:e.event_ref,action:randomUUID(),text:'Respuesta de prueba'},store:{loadInput:async()=>e,loadCredential:async()=>cred,reserveAndPause:async()=>{if(reserved)return false;reserved=true;return true;},start:async()=>true,finish:async(a,o)=>{finished=o;return true;}},fetchImpl:async(url,opts)=>{assert.ok(reserved);dispatches++;assert.equal(url,'https://graph.instagram.com/v26.0/300/messages');assert.equal(JSON.parse(opts.body).recipient.id,'400');return {ok:true,status:200,json:async()=>({recipient_id:'400',message_id:'outbound'})};},now:()=>now},get dispatches(){return dispatches},get finished(){return finished}};}
+test('pre-claim diagnostic exposes fixed labels only and never exception values',async()=>{
+ const cases=[
+  ['actor_active',f=>{f.args.actor={...actor,active:false};}],
+  ['request_fields',f=>{f.args.body.recipient='sensitive-native-id';}],
+  ['input_present',f=>{f.args.store.loadInput=async()=>null;}],
+  ['input_lookup',f=>{f.args.store.loadInput=async()=>{throw Error('secret-token-sensitive-native-id');};}],
+  ['input_unambiguous',f=>{const e=row();f.args.store.loadInput=async()=>({...e,ambiguous:true});}],
+  ['recipient_event_binding',f=>{const e=row();f.args.store.loadInput=async()=>({...e,provider:'legacy'});}],
+  ['recipient_cipher_envelope',f=>{const e=row();f.args.store.loadInput=async()=>({...e,recipient_box:null});}],
+  ['recipient_cipher_authentication',f=>{const e=row();f.args.store.loadInput=async()=>({...e,recipient_box:{...e.recipient_box,tag:'0'.repeat(32)}});}],
+  ['credential_lookup',f=>{f.args.store.loadCredential=async()=>{throw Error('secret-token');};}],
+  ['credential_provider',f=>{f.args.store.loadCredential=async()=>({...credential(),provider:'legacy'});}],
+  ['credential_freshness',f=>{f.args.store.loadCredential=async()=>({...credential(),expires_at:new Date(now-1).toISOString()});}],
+  ['token_cipher_authentication',f=>{const k=credential();f.args.store.loadCredential=async()=>({...k,token_box:{...k.token_box,tag:'0'.repeat(32)}});}],
+ ];
+ for(const [validation,mutate] of cases){const f=manualFixture();f.args.diagnostics=true;mutate(f);const result=await runBusinessReply(f.args);assert.deepEqual(result,{status:'blocked',diagnostic:{stage:'pre_claim',validation}});assert.equal(f.dispatches,0);assert.equal(f.finished,undefined);}
+});
+test('pre-claim diagnostics off by default, sender OFF unchanged',async()=>{
+ const f=manualFixture();f.args.store.loadInput=async()=>{throw Error('sensitive');};assert.deepEqual(await runBusinessReply(f.args),{status:'blocked'});
+ f.args.config={...c,senderEnabled:false};f.args.diagnostics=true;assert.deepEqual(await runBusinessReply(f.args),{status:'disabled'});assert.equal(f.dispatches,0);
+});
+test('diagnostics do not alter accepted or post-claim uncertainty contracts',async()=>{
+ const f=manualFixture();f.args.diagnostics=true;const r=await runBusinessReply(f.args);assert.equal(r.status,'accepted');assert.equal(r.diagnostic,undefined);assert.equal(f.dispatches,1);
+ const g=manualFixture();g.args.diagnostics=true;g.args.store.start=async()=>{throw Error('sensitive');};assert.deepEqual(await runBusinessReply(g.args),{status:'uncertain',paused:true});assert.equal(g.dispatches,0);
+});
 test('one manual action accepted, encrypted outgoing ID',async()=>{const f=manualFixture();assert.equal((await runBusinessReply(f.args)).status,'accepted');assert.equal(f.dispatches,1);assert.ok(f.finished.outbound_box);assert.ok(!JSON.stringify(f.finished).includes('"outbound"'));});
 test('double click two sessions only one dispatch',async()=>{const f=manualFixture();await Promise.all([runBusinessReply(f.args),runBusinessReply(f.args)]);assert.equal(f.dispatches,1);});
 test('client recipient field forbidden',async()=>{const f=manualFixture();f.args.body.recipient='999';assert.equal((await runBusinessReply(f.args)).status,'blocked');assert.equal(f.dispatches,0);});
