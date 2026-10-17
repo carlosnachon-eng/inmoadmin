@@ -6,14 +6,15 @@ import { READ_ONLY_SHADOW_TOOLS } from "../lib/shadow/context";
 
 export default function ManualShadowTurnReview({ supabase, profile, messageRef }) {
   const [local,setLocal]=useState(false),[result,setResult]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
-  const flight=useRef(false),executed=useRef(new Set());
+  const [production,setProduction]=useState(false),[closing,setClosing]=useState(false);
+  const flight=useRef(false),closeFlight=useRef(false),executed=useRef(new Set());
   const selection=useRef(messageRef);selection.current=messageRef;
-  useEffect(()=>setLocal(["localhost","127.0.0.1"].includes(window.location.hostname)),[]);
+  useEffect(()=>{setLocal(["localhost","127.0.0.1"].includes(window.location.hostname));setProduction(window.location.origin==="https://app.emporioinmobiliario.com.mx");},[]);
   useEffect(()=>{setResult(null);setError("");},[messageRef]);
-  if (!local || profile?.active!==true || profile?.role_id!=="admin") return null;
+  if ((!local&&!production) || profile?.active!==true || profile?.role_id!=="admin") return null;
   async function request(action) {
-    if(flight.current || (action==="execute" && executed.current.has(result?.authorizationRef))) return;
-    flight.current=true;setBusy(true);setError("");
+    if(action==="close" ? closeFlight.current : flight.current || (action==="execute" && executed.current.has(result?.authorizationRef))) return;
+    if(action==="close"){closeFlight.current=true;setClosing(true);}else{flight.current=true;setBusy(true);}setError("");
     const authorizationRef=result?.authorizationRef;
     const selectedAtStart=messageRef;
     if(action==="execute") executed.current.add(authorizationRef);
@@ -29,7 +30,7 @@ export default function ManualShadowTurnReview({ supabase, profile, messageRef }
       if(!response.ok || !value.ok) throw new Error(value.error || "Solicitud rechazada");
       if(selection.current===selectedAtStart)setResult(value);
     } catch(e) { if(selection.current===selectedAtStart)setError(action==="execute"?"Resultado incierto o rechazado. No repetir ejecución; consultar estado read-only.":e.message); }
-    finally {flight.current=false;setBusy(false);}
+    finally {if(action==="close"){closeFlight.current=false;setClosing(false);}else{flight.current=false;setBusy(false);}}
   }
   const diagnostics=sanitizedOutputPrivacyDiagnostics(result?.telemetry?.failure)||sanitizedStructuredOutputDiagnostics(result?.telemetry?.failure);
   const rounds=(result?.telemetry?.rounds||[]).slice(0,2).map(r=>({round:[1,2].includes(r.round)?r.round:null,
@@ -41,19 +42,24 @@ export default function ManualShadowTurnReview({ supabase, profile, messageRef }
     duration_ms:Number.isSafeInteger(t.duration_ms)?t.duration_ms:null,
     source:["model","policy","model_proposed","policy_required","both"].includes(t.source)?t.source:null,
     ...(typeof t.identity_resolved==="boolean"?{identity_resolved:t.identity_resolved}:{})}));
-  return <section aria-label="Manual Real Shadow DEV" style={{border:"1px solid #aaa",padding:16,marginBottom:16}}>
-    <h2>Manual Real Shadow · DEV · un turno</h2>
+  return <section aria-label={production?"Manual Real Shadow Producción 1/1":"Manual Real Shadow DEV"} style={{border:"1px solid #aaa",padding:16,marginBottom:16}}>
+    <h2>Manual Real Shadow · {production?"Producción 1/1":"DEV · un turno"}</h2>
     <p>Mensaje capturado seleccionado: {messageRef || "selecciona un mensaje"}. Sin captura nueva, sin envío y sin retry.</p>
-    <button disabled={busy||!messageRef||(Boolean(result)&&result.status!=="not_authorized")} onClick={()=>request("authorize")}>Autorizar este turno una vez</button>{" "}
-    <button disabled={busy||result?.status!=="authorized"||executed.current.has(result?.authorizationRef)} onClick={()=>request("execute")}>Ejecutar autorización única</button>{" "}
+    <button disabled={busy||closing||!messageRef||(production?result?.capabilities?.authorize!==true:(Boolean(result)&&result.status!=="not_authorized"))} onClick={()=>request("authorize")}>Autorizar este turno una vez</button>{" "}
+    <button disabled={busy||closing||result?.status!=="authorized"||(production&&result?.capabilities?.execute!==true)||executed.current.has(result?.authorizationRef)} onClick={()=>request("execute")}>Ejecutar autorización única</button>{" "}
     <button disabled={busy||!messageRef} onClick={()=>request("read")}>Consultar estado read-only</button>
+    {production&&<button disabled={closing||result?.capabilities?.close!==true} onClick={()=>request("close")}>Cerrar ventana sin reabrir ni enviar</button>}
     {error&&<p role="alert">{error}</p>}
     {result&&<div aria-live="polite">
       <p>Estado: {result.status} · Persistencia completa acreditada: {result.certified===true?"sí":"no"}</p>
+      {production&&<pre>{JSON.stringify({runtime:{sha:/^[a-f0-9]{40}$/.test(result.runtime?.sha||"")?result.runtime.sha:null,
+        deployment:/^dpl_[A-Za-z0-9]{10,80}$/.test(result.runtime?.deployment||"")?result.runtime.deployment:null},
+        closed:Boolean(result.closed_at),reserved_transmissions:[0,1,2].includes(result.reserved_transmissions)?result.reserved_transmissions:null,
+        execution_available:result.capabilities?.execute===true},null,2)}</pre>}
       <p>Decisión: {String(result.decision_persisted===true)} · 3A: {String(result.operational_resolution_persisted===true)} · 3B: {String(result.conversation_action_persisted===true)}</p>
       <pre>{JSON.stringify({receipts:sanitizedModelPrivacyChecks(result.telemetry?.rounds?.map(r=>r.receipt)),diagnostics},null,2)}</pre>
       <pre>{JSON.stringify({rounds,tools},null,2)}</pre>
-      {result.operational_resolution&&<p>3A: {result.operational_resolution.case_domain || "sin dominio"} · {result.operational_resolution.case_status} · would_resolve_without_human: {String(result.operational_resolution.would_resolve_without_human===true)}</p>}
+      {result.operational_resolution&&<p>3A: {result.operational_resolution.case_domain || "sin dominio"} · {result.operational_resolution.case_status} · would_resolve_without_human: {String(result.operational_resolution.would_resolve_without_human ?? "unknown")}</p>}
       {result.conversation_action&&<><p>3B: {result.conversation_action.conversation_action}</p><p>Propuesta: {result.conversation_action.proposed_message || "sin mensaje"}</p>
         <p>requires_human: {String(result.conversation_action.requires_human)} · auto_send_eligible: {String(result.conversation_action.auto_send_eligible)} · message_safe: {String(result.conversation_action.message_safe)}</p></>}
       <strong>Revisión humana pendiente. Esta vista no autoriza ni ofrece envío.</strong>

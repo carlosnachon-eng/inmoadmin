@@ -279,7 +279,7 @@ test("a previously eligible synthetic 3B response remains exactly eligible, with
   }
 });
 
-test("adapter imports stay confined to Replay, scoped DEV manual decoding and transport, without I/O", () => {
+test("adapter imports stay confined to Replay, branded manual decoding and transport, without I/O", () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   function walk(dir) {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? walk(path.join(dir, entry.name)) : [path.join(dir, entry.name)]);
@@ -295,6 +295,9 @@ test("adapter imports stay confined to Replay, scoped DEV manual decoding and tr
   assert.match(transport, /function createAnthropicShadowResponse\(messages, options = \{\}\) \{\s*return createAnthropicResponse\(messages, options, false\)/);
   assert.doesNotMatch(transport, /decodeReducedShadowAiDecision/);
   const state = fs.readFileSync(new URL("../lib/shadow/ai/stateMachine.js", import.meta.url), "utf8");
-  assert.match(state, /assertManualTurnContext\(options\.manualTurnContext\); assertManualTurnDev\(env\)/);
+  assert.match(state, /assertManualTurnExecution\(options\.manualTurnContext,env\)/);
+  const capability = fs.readFileSync(new URL("../lib/shadow/ai/manualTurnContext.js", import.meta.url), "utf8");
+  assert.match(capability, /assertManualTurnContext\(context\);\s*if \(production\.has\(context\)\) \{ assertManualTurnProduction\(env\)/);
+  assert.match(capability, /assertManualTurnDev\(env\); return MANUAL_TURN_MODE/);
   assert.match(state, /if \(manual\) \{\s*manualStage = "json_parsing"/);
 });

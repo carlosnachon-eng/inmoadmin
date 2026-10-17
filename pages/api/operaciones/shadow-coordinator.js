@@ -62,13 +62,14 @@ export default async function handler(req, res) {
     const canaryUnavailable = adminOutboundCanaries.error?.code === "42P01";
     const failure = [messages, conversations, events, matches, evaluations, operationalEvents, aiRuns, aiDecisions, toolAudit, manualAuthorizations, conversationActions, outboundUnavailable ? { error: null } : adminOutboundMessages, canaryUnavailable ? { error: null } : adminOutboundCanaries].find((result) => result.error)?.error;
     if (failure) throw failure;
-    // Manual DEV diagnostics have a separate allowlisted GET. Never route their
+    // Manual DEV/production diagnostics have a separate allowlisted GET. Never route their
     // internal decision/tool arguments through the legacy general dashboard.
-    const manualRunIds = new Set((aiRuns.data || []).filter((r) => r.telemetry_json?.input_mode === "manual_dev_one_turn").map((r) => r.id));
+    const manualRunIds = new Set((aiRuns.data || []).filter((r) => ["manual_dev_one_turn","manual_prod_one_turn"].includes(r.telemetry_json?.input_mode)
+      || ["manual-dev-one-turn-v1","manual-prod-one-turn-v1"].includes(r.prompt_version)).map((r) => r.id));
     aiRuns.data = (aiRuns.data || []).filter((r) => !manualRunIds.has(r.id));
     aiDecisions.data = (aiDecisions.data || []).filter((r) => !manualRunIds.has(r.ai_run_id));
     conversationActions.data = (conversationActions.data || []).filter((r) => !manualRunIds.has(r.ai_run_id));
-    manualAuthorizations.data = (manualAuthorizations.data || []).filter((r) => r.prompt_version !== "manual-dev-one-turn-v1");
+    manualAuthorizations.data = (manualAuthorizations.data || []).filter((r) => !["manual-dev-one-turn-v1","manual-prod-one-turn-v1"].includes(r.prompt_version));
     const counts = (events.data || []).reduce((acc, item) => ({ ...acc, [item.status]: (acc[item.status] || 0) + 1, duplicate: acc.duplicate + Number(item.duplicate_count || 0), sanitized: acc.sanitized + (item.sanitization_changed ? 1 : 0) }), { accepted: 0, duplicate: 0, rejected: 0, error: 0, sanitized: 0 });
     const messageMatches = new Map();
     for (const match of matches.data || []) messageMatches.set(match.message_id, (messageMatches.get(match.message_id) || 0) + 1);
