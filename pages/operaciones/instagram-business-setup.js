@@ -60,13 +60,19 @@ export default function InstagramBusinessSetup({environment='DEV'}){
  return <main style={{maxWidth:700,margin:'40px auto',padding:24}}>
   <Head><title>Instagram Login · {environment}</title><meta name="referrer" content="no-referrer"/></Head>
   <h1>Instagram Login · {environment}</h1>
-  <p>Usa la sesión del operador autorizado en este entorno. No se solicitan permisos WhatsApp ni se modifica Respond. Esta pantalla no envía mensajes.</p>
-  <button disabled={busy} onClick={()=>run('oauth-start',{})}>Autorizar Emporio Social Business</button>{' '}
+  <p>Usa la sesión del operador autorizado en este entorno. Esta autorización conserva mensajes y agrega comentarios de Instagram. No modifica Respond ni WhatsApp.</p>
+  <button disabled={busy} onClick={()=>run('oauth-start',{})}>Autorizar mensajes + comentarios</button>{' '}
   <button disabled={busy} onClick={()=>run('health')}>Consultar salud</button>{' '}
   <button disabled={busy} onClick={()=>run('maintain',{})}>Verificar / renovar credencial</button>
   <p role="status">{status}</p>
   {shape&&<section aria-label="Diagnóstico sanitizado OAuth"><h2>Estructura de respuesta · sin valores</h2><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(shape,null,2)}</pre></section>}
-  {health&&<dl><dt>Estado</dt><dd>{health.status}</dd><dt>Vencimiento</dt><dd>{health.expires_at||'No acreditado'}</dd><dt>Última verificación</dt><dd>{health.verified_at||'No acreditada'}</dd></dl>}
+  {health&&<dl>
+   <dt>Estado</dt><dd>{health.status}</dd>
+   <dt>Mensajes</dt><dd>{health.send_allowed?'✅ Autorizados':'⚠️ No disponibles'}</dd>
+   <dt>Comentarios</dt><dd>{health.comments_allowed?'✅ Autorizados':'⚠️ Falta autorización'}</dd>
+   <dt>Vencimiento</dt><dd>{health.expires_at||'No acreditado'}</dd>
+   <dt>Última verificación</dt><dd>{health.verified_at||'No acreditada'}</dd>
+  </dl>}
   <p>La renovación no habilita el sender. Ante resultado incierto no se reintenta automáticamente.</p>
   <a href="/administracion/inbox">Volver a Inbox</a>
  </main>;
