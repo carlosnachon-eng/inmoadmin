@@ -35,6 +35,7 @@ export default function InstagramCommentsPanel({open,onClose}){
  const [selected,setSelected]=useState(null);
  const [search,setSearch]=useState('');
  const [kind,setKind]=useState('all');
+ const [mediaInfo,setMediaInfo]=useState({});
 
  async function load(){
   setBusy(true);setStatus('');
@@ -52,6 +53,13 @@ export default function InstagramCommentsPanel({open,onClose}){
  }
 
  useEffect(()=>{if(open)void load();},[open]);
+ useEffect(()=>{if(!open||!selected||mediaInfo[selected])return;
+  let cancelled=false;
+  request('comment-media',{body:{comment:selected}}).then(data=>{
+   if(!cancelled)setMediaInfo(prev=>({...prev,[selected]:data}));
+  }).catch(()=>{if(!cancelled)setMediaInfo(prev=>({...prev,[selected]:{available:false}}));});
+  return()=>{cancelled=true};
+ },[open,selected,mediaInfo]);
 
  const filtered=useMemo(()=>{
   const q=search.trim().toLowerCase();
@@ -129,6 +137,7 @@ export default function InstagramCommentsPanel({open,onClose}){
      <div><strong>{active.username?('@'+active.username):'Usuario de Instagram'}</strong><span>{active.media_product_type||'Publicación'} · {STAMP(active.occurred_at)}</span></div>
     </header>
     <div className="detailScroll">
+     <section className="sourceMedia"><strong>Publicación de origen</strong>{mediaInfo[active.comment_ref]?.permalink?<a href={mediaInfo[active.comment_ref].permalink} target="_blank" rel="noopener noreferrer">Ver publicación o Reel en Instagram ↗</a>:<span>{mediaInfo[active.comment_ref]?'No fue posible obtener el enlace de esta publicación.':'Consultando publicación…'}</span>}{mediaInfo[active.comment_ref]?.caption&&<p>{mediaInfo[active.comment_ref].caption}</p>}</section>
      <section className="originalComment">
       <small>Comentario recibido</small>
       <p>{active.text||'Comentario sin texto'}</p>
@@ -154,8 +163,8 @@ export default function InstagramCommentsPanel({open,onClose}){
   </main>
 
   <style jsx>{`
-   .commentsInbox{height:calc(100dvh - 112px);max-height:calc(100dvh - 112px);display:grid;grid-template-columns:340px minmax(0,1fr);background:#fff;border-top:1px solid #e5e7eb;overflow:hidden}
-   .commentListPane{min-width:0;display:flex;flex-direction:column;border-right:1px solid #e5e7eb;overflow:hidden}
+   .commentsInbox{height:100%;max-height:100%;min-height:0;display:grid;grid-template-columns:340px minmax(0,1fr);background:#fff;border-top:1px solid #e5e7eb;overflow:hidden}
+   .commentListPane{min-width:0;min-height:0;display:flex;flex-direction:column;border-right:1px solid #e5e7eb;overflow:hidden}
    .listHeader,.detailHeader{height:68px;box-sizing:border-box;padding:0 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e7eb}
    .listHeader strong,.detailHeader strong{display:block;font-size:18px}.listHeader span,.detailHeader span{display:block;color:#9ca3af;font-size:11px;margin-top:2px}
    .headerActions{display:flex;gap:7px}.headerActions button,.mobileBack{width:34px;height:34px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;cursor:pointer;font-size:18px}
@@ -165,8 +174,8 @@ export default function InstagramCommentsPanel({open,onClose}){
    .permissionRow{display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px}.permissionRow span{font-size:10px;font-weight:900;border-radius:999px;padding:5px 8px}.permissionRow small{font-size:10px;color:#9ca3af}.ok{background:#dcfce7;color:#166534}.warn{background:#fef3c7;color:#92400e}
    .status{margin:0 14px 10px;padding:8px 9px;background:#f9fafb;border-radius:9px;font-size:11px;color:#6b7280}
    .commentRows{min-height:0;overflow-y:auto;flex:1}.commentRow{width:100%;border:0;border-top:1px solid #f3f4f6;background:#fff;padding:13px 14px;text-align:left;cursor:pointer}.commentRow:hover,.commentRow.selected{background:#f9fafb}.commentRow.selected{box-shadow:inset 3px 0 #b91c3c}.rowTop{display:flex;justify-content:space-between;gap:8px}.rowTop strong{font-size:12px}.rowTop time{font-size:9px;color:#9ca3af;text-align:right}.commentRow p{margin:5px 0 4px;font-size:12px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.commentRow small{font-size:9px;color:#9ca3af;text-transform:uppercase}.rowBadges{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.state{font-style:normal;font-size:9px;font-weight:800;border-radius:999px;padding:3px 6px}.state-dm_sent{background:#dcfce7;color:#166534}.state-review{background:#fef3c7;color:#92400e}.state-failed,.state-uncertain{background:#fee2e2;color:#991b1b}.state-ignored,.state-expired{background:#f3f4f6;color:#6b7280}
-   .commentDetailPane{min-width:0;display:flex;flex-direction:column;background:#f9fafb}.detailHeader{justify-content:flex-start;gap:8px;background:#fff}.mobileBack{display:none}
-   .detailScroll{overflow-y:auto;padding:28px;display:grid;gap:18px}.originalComment,.replyBox{max-width:760px;width:100%;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px;box-sizing:border-box}.originalComment small{font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:800}.originalComment p{font-size:18px;line-height:1.5;margin:10px 0 0}
+   .commentDetailPane{min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;background:#f9fafb}.detailHeader{justify-content:flex-start;gap:8px;background:#fff}.mobileBack{display:none}
+   .detailScroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:28px;display:grid;align-content:start;gap:18px}.sourceMedia{max-width:760px;width:100%;margin:0 auto;box-sizing:border-box;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 18px;display:flex;flex-direction:column;gap:6px}.sourceMedia strong{font-size:12px}.sourceMedia a{color:#b91c3c;font-size:13px;font-weight:700}.sourceMedia span{font-size:12px;color:#6b7280}.sourceMedia p{margin:0;font-size:12px;color:#6b7280;line-height:1.4}.originalComment,.replyBox{max-width:760px;width:100%;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px;box-sizing:border-box}.originalComment small{font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:800}.originalComment p{font-size:18px;line-height:1.5;margin:10px 0 0}
    .automationNotice{max-width:760px;width:100%;margin:0 auto;border-radius:14px;padding:14px 16px;box-sizing:border-box;display:grid;gap:4px}.automationNotice strong{font-size:13px}.automationNotice span{font-size:11px}.automationNotice.success{background:#ecfdf5;color:#166534}.automationNotice.review{background:#fffbeb;color:#92400e}.automationNotice.pending{background:#f3f4f6;color:#4b5563}.replyHead{display:flex;justify-content:space-between;gap:10px;align-items:center}.replyHead strong{font-size:14px}.replyHead span{font-size:10px;color:#9ca3af}.canned{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 10px}.canned button{border:0;background:#fce8ed;color:#b91c3c;border-radius:999px;padding:7px 10px;font-size:10px;font-weight:800;cursor:pointer}
    textarea{width:100%;box-sizing:border-box;min-height:140px;resize:vertical;border:1px solid #d1d5db;border-radius:11px;padding:12px;font:inherit;font-size:13px}.replyFooter{display:flex;justify-content:space-between;align-items:center;margin-top:10px}.replyFooter span{font-size:10px;color:#9ca3af}.replyButton{border:0;background:#b91c3c;color:#fff;border-radius:9px;padding:10px 13px;font-weight:800;cursor:pointer}.replyButton:disabled{opacity:.45}
    .empty,.emptyDetail{color:#9ca3af;text-align:center}.empty{padding:38px 12px}.emptyDetail{margin:auto;display:grid;gap:6px}.emptyDetail div{font-size:38px}.emptyDetail strong{color:#6b7280}.emptyDetail span{font-size:12px}
