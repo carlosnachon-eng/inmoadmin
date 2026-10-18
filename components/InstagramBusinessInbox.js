@@ -117,7 +117,7 @@ export default function InstagramBusinessInbox(){
   }catch(e){
    try{
     const msg=String(e?.message||'');
-    setHistoryStatus(msg.includes('history_list')?'Meta no permitió listar conversaciones':msg.includes('history_detail')?'Meta listó conversaciones pero no permitió leer sus mensajes':msg.includes('history_message')?'Meta permitió listar el hilo pero no leer uno de sus mensajes':msg.includes('history_not_durable')?'Meta devolvió historial pero no pudo guardarse de forma durable':msg.includes('history_unknown_stage')?'El historial falló en una etapa interna no clasificada':'No fue posible recuperar el historial reciente');
+    setHistoryStatus(msg.includes('history_internal_credential')?'El historial falló al validar la credencial':msg.includes('history_internal_list')?'El historial falló al preparar/listar conversaciones':msg.includes('history_internal_detail')?'El historial falló al abrir una conversación':msg.includes('history_internal_message')?'El historial falló al procesar un mensaje':msg.includes('history_internal_persist')?'El historial falló al guardar los mensajes':msg.includes('history_list')?'Meta no permitió listar conversaciones':msg.includes('history_detail')?'Meta listó conversaciones pero no permitió leer sus mensajes':msg.includes('history_message')?'Meta permitió listar el hilo pero no leer uno de sus mensajes':msg.includes('history_not_durable')?'Meta devolvió historial pero no pudo guardarse de forma durable':msg.includes('history_unknown_stage')?'El historial falló en una etapa interna no clasificada':'No fue posible recuperar el historial reciente');
    }catch{setHistoryStatus('No fue posible recuperar el historial reciente');}
   }
   finally{setSyncing(false);}
