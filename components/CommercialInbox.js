@@ -18,7 +18,7 @@ export async function inboxRequest(channel,op,{thread,body}={}){
 }
 
 export default function CommercialInbox({instagramAvailable}){
- const [filter,setFilter]=useState('all'),[threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState('');
+ const [filter,setFilter]=useState('all'),[query,setQuery]=useState(''),[threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState('');
  const generation=useRef(0);
  async function load(){
   const gen=++generation.current;
@@ -32,25 +32,41 @@ export default function CommercialInbox({instagramAvailable}){
   setError(results.filter(r=>r.error).map(r=>`${r.error}: no disponible`).join(' · '));
  }
  useEffect(()=>{void load();return()=>{generation.current++;};},[instagramAvailable]);
- const visible=threads.filter(t=>filter==='all'||t.channel===filter);
+ const visible=threads.filter(t=>(filter==='all'||t.channel===filter)&&`${t.alias||''} ${t.profile_name||''} ${t.profile_username||''} ${t.channel}`.toLocaleLowerCase('es-MX').includes(query.toLocaleLowerCase('es-MX').trim()));
  return <section aria-label="Inbox comercial omnicanal" className="commercialInbox">
-  <header><h1>Inbox</h1><nav aria-label="Canales">{[['all','Todos'],['instagram','Instagram'],['facebook','Facebook'],['comments','Comentarios']].map(([id,label])=>
-   <button type="button" key={id} aria-pressed={filter===id} onClick={()=>{setFilter(id);setSelected(null);}}>{label}</button>)}<button type="button" onClick={load}>Actualizar</button></nav></header>
-  {error&&<p role="status">{error}</p>}
+  <header className="inboxHeader"><div><span className="eyebrow">EMPORIO · MENSAJERÍA</span><h1>Inbox</h1><p className="subtitle">Conversaciones y atención desde un solo lugar</p></div>
+  <button type="button" className="refresh" onClick={load} aria-label="Actualizar conversaciones">↻ Actualizar</button></header>
+  <nav aria-label="Canales" className="channelTabs">{[['all','Todos'],['instagram','Instagram'],['facebook','Facebook'],['comments','Comentarios']].map(([id,label])=>
+   <button type="button" key={id} className={filter===id?'active':''} aria-pressed={filter===id} onClick={()=>{setFilter(id);setSelected(null);}}>{label}{id==='all'&&<span className="counter">{threads.length}</span>}{(id==='instagram'||id==='facebook')&&<span className="counter">{threads.filter(t=>t.channel===id).length}</span>}</button>)}</nav>
+  {error&&<p role="status" className="loadWarning">Algunos canales no están disponibles: {error}</p>}
   {filter==='comments'?<InstagramCommentsPanel open onClose={()=>setFilter('all')}/>:<div className={'workspace '+(selected?'hasSelection':'')}>
-   <aside aria-label="Conversaciones"><h2>Conversaciones</h2>{!visible.length&&<p>No hay hilos autorizados para esta vista.</p>}
-    {visible.map((t,i)=><button type="button" key={t.key} aria-pressed={selected?.key===t.key} onClick={()=>setSelected(t)}>
-     <b>{t.channel==='facebook'?'Facebook':'Instagram'}</b><span>{t.alias||t.profile_name||t.profile_username||`Conversación ${i+1}`}</span>
-    </button>)}
+   <aside aria-label="Conversaciones" className="threadsPane"><div className="paneHeading"><strong>Conversaciones</strong><span>{visible.length}</span></div>
+    <label className="searchBox"><span aria-hidden="true">⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar conversaciones" aria-label="Buscar conversaciones"/></label>
+    <div className="threadList">{!visible.length&&<p className="emptyThreads">{query?'No hay coincidencias.':'No hay conversaciones autorizadas en este canal.'}</p>}
+     {visible.map((t,i)=><button type="button" key={t.key} className="thread" aria-pressed={selected?.key===t.key} onClick={()=>setSelected(t)}>
+      <span className={'avatar '+(t.channel==='facebook'?'fb':'ig')}>{t.channel==='facebook'?'f':'◎'}</span>
+      <span className="threadCopy"><strong>{t.alias||t.profile_name||t.profile_username||'Conversación'}</strong><small>{t.channel==='facebook'?'Facebook Messenger':'Instagram Direct'}</small></span>
+      <span className="threadArrow" aria-hidden="true">›</span>
+     </button>)}</div>
    </aside>
-   <main><button type="button" className="back" onClick={()=>setSelected(null)}>← Conversaciones</button>
-    {!selected?<p>Selecciona una conversación.</p>:selected.channel==='facebook'
+   <main className="conversationPane"><button type="button" className="back" onClick={()=>setSelected(null)}>← Conversaciones</button>
+    {!selected?<div className="emptyConversation"><span className="emptyIcon" aria-hidden="true">✉</span><h2>Tu bandeja, en un solo lugar</h2><p>Elige una conversación para consultar sus mensajes y dar seguimiento.</p></div>:selected.channel==='facebook'
      ?<FacebookMessengerConversation key={selected.key} thread={selected.thread_ref}/>
      :<InstagramBusinessInbox key={selected.key} embedded externalThread={selected.thread_ref} onBack={()=>setSelected(null)}/>}
    </main>
   </div>}
   <style jsx>{`
-   .commercialInbox{background:white;color:#1f2937;min-width:0}.commercialInbox header{padding:16px;border-bottom:1px solid #ddd}h1{margin:0 0 12px}nav{display:flex;flex-wrap:wrap;gap:8px}button{cursor:pointer;min-height:44px;border:1px solid #ddd;border-radius:8px;background:white;padding:10px}button[aria-pressed=true]{background:#eef2ff;border-color:#6366f1}.workspace{display:grid;grid-template-columns:270px minmax(0,1fr)}aside{padding:12px;border-right:1px solid #ddd;max-height:75vh;overflow:auto}aside button{display:flex;flex-direction:column;width:100%;text-align:left;gap:5px;margin-bottom:8px}aside b{font-size:12px}main{min-width:0;padding:12px}.back{display:none}@media(max-width:760px){.workspace{grid-template-columns:1fr}.workspace main{display:none}.workspace.hasSelection aside{display:none}.workspace.hasSelection main{display:block}.back{display:block;margin-bottom:12px}}
+  .commercialInbox{height:calc(100dvh - 120px);max-height:calc(100dvh - 120px);display:flex;flex-direction:column;overflow:hidden;background:#fff;color:#202b3c;min-width:0;border:1px solid #e8e9ec;border-radius:14px;overflow:hidden}
+  .inboxHeader{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px 26px 16px;background:white}
+  .eyebrow{font-size:10px;letter-spacing:1.5px;font-weight:800;color:#a4a9b4}.inboxHeader h1{margin:4px 0 2px;font-size:27px;letter-spacing:-.7px}.subtitle{font-size:12px;color:#87909c;margin:0}
+  button{font:inherit;cursor:pointer}.refresh{border:1px solid #e8e9ef;border-radius:9px;padding:9px 13px;background:white;color:#657081;font-size:12px;font-weight:700}
+  .channelTabs{display:flex;gap:7px;flex-wrap:wrap;padding:0 26px 16px;border-bottom:1px solid #eff0f3}.channelTabs button{display:flex;align-items:center;gap:7px;border:1px solid transparent;border-radius:9px;background:transparent;color:#788291;padding:9px 12px;font-size:12px;font-weight:700;min-height:39px}.channelTabs button.active{color:#a51d40;background:#fff2f5;border-color:#f4d8df}.counter{font-size:10px;color:inherit;background:#f1f2f5;border-radius:15px;padding:2px 6px}.active .counter{background:#f8dfe6}
+  .loadWarning{background:#fff7ed;color:#9a3412;padding:10px 24px;font-size:12px;margin:0}.workspace{display:grid;grid-template-columns:minmax(255px,310px) minmax(0,1fr);flex:1;min-height:0;overflow:hidden}
+  .threadsPane{display:flex;flex-direction:column;border-right:1px solid #eceef2;overflow:hidden;min-width:0}.paneHeading{display:flex;justify-content:space-between;align-items:center;padding:20px 17px 12px}.paneHeading strong{font-size:14px}.paneHeading span{color:#9299a4;font-size:11px}
+  .searchBox{margin:0 13px 12px;display:flex;gap:6px;align-items:center;background:#f6f7f9;border:1px solid #edf0f2;padding:8px 11px;border-radius:10px;color:#98a1ac}.searchBox input{background:transparent;border:0;outline:none;width:100%;font-size:12px;color:#253245}.threadList{overflow-y:auto;flex:1;padding:0 8px 16px}
+  .thread{width:100%;border:0;display:flex;align-items:center;gap:10px;text-align:left;padding:12px 10px;border-radius:11px;background:transparent;min-height:67px}.thread:hover{background:#f7f8fa}.thread[aria-pressed=true]{background:#fff0f4}.avatar{width:38px;height:38px;flex:0 0 38px;border-radius:50%;display:grid;place-items:center;color:white;font-size:20px;font-weight:800}.avatar.ig{background:linear-gradient(135deg,#884dda,#f14980,#f8a553)}.avatar.fb{background:#1877f2}.threadCopy{display:flex;min-width:0;flex:1;flex-direction:column;gap:5px}.threadCopy strong{font-size:12px;color:#263348;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.threadCopy small{font-size:10px;color:#929aab}.threadArrow{font-size:21px;color:#adb4c1}.emptyThreads{padding:20px 12px;color:#7d8796;font-size:12px}
+  .conversationPane{min-width:0;min-height:0;overflow:hidden;background:#fafbfc;padding:0;display:flex;flex-direction:column}.conversationPane :global(.inboxShell){height:100%!important;max-height:100%!important;min-height:0}.conversationPane :global(.fbConversation){flex:1;min-height:0}.emptyConversation{height:100%;min-height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;color:#8791a2}.emptyIcon{display:grid;place-items:center;background:#fff1f4;color:#bb3155;border-radius:50%;width:58px;height:58px;font-size:28px}.emptyConversation h2{color:#303e51;font-size:17px;margin:20px 0 5px}.emptyConversation p{max-width:300px;font-size:12px;line-height:1.5}.back{display:none;background:transparent;border:0;color:#9b2042;padding:12px;font-weight:700}
+  @media(max-width:760px){.commercialInbox{border-radius:0}.inboxHeader{padding:17px 15px 12px}.inboxHeader h1{font-size:23px}.subtitle{display:none}.channelTabs{padding:0 12px 12px;flex-wrap:nowrap;overflow-x:auto}.channelTabs button{white-space:nowrap}.commercialInbox{height:calc(100dvh - 75px);max-height:calc(100dvh - 75px)}.workspace{display:block;min-height:0;flex:1;overflow:hidden}.threadsPane{height:100%;min-height:0;border:0}.conversationPane{display:none}.workspace.hasSelection .threadsPane{display:none}.workspace.hasSelection .conversationPane{display:flex;min-height:0;height:100%}.back{display:block}}
   `}</style>
  </section>;
 }
