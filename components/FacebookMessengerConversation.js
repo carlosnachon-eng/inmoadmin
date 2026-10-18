@@ -20,7 +20,7 @@ export default function FacebookMessengerConversation({thread}){
   finally{if(mounted.current){setBusy(false);setText('');await refresh();}}
   // Remains locked after every attempt; refresh never dispatches or unlocks.
  }
- return <section aria-label="Conversación Facebook Messenger"><h2>Facebook Messenger</h2>
+ return <section className="fbConversation" aria-label="Conversación Facebook Messenger"><h2>Facebook Messenger</h2>
   <p>Sender {enabled?'habilitado':'OFF'} · Atención manual · Sin IA</p>
   <button type="button" onClick={refresh}>Actualizar historial</button>
   <div className="history">{rows.map(r=><article key={r.input} className={r.kind==='echo'?'outgoing':''}>
@@ -32,6 +32,6 @@ export default function FacebookMessengerConversation({thread}){
   <form onSubmit={send}><label>Respuesta manual Facebook<textarea value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={!enabled||busy||locked.current}/></label>
    <button type="submit" disabled={!enabled||busy||locked.current||!input||!text.trim()}>Enviar una vez</button></form>
   <p role="status">{status}</p>
-  <style jsx>{`.history{max-height:55vh;overflow:auto}article{padding:12px;margin:10px 0;background:#f1f5f9;border-radius:12px;overflow-wrap:anywhere}.outgoing{background:#e0e7ff}p{white-space:pre-wrap}textarea{display:block;width:100%;min-height:100px;box-sizing:border-box}button{min-height:44px;margin:5px 0}form{margin-top:16px}`}</style>
+  <style jsx>{`.fbConversation{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:14px 18px;box-sizing:border-box}.fbConversation h2{font-size:16px;margin:3px 0}.fbConversation>p{font-size:11px;color:#6b7280;margin:5px 0}.fbConversation>button{align-self:flex-start}.history{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}.fbConversation form{flex-shrink:0;background:#fff;padding:11px 12px;border:1px solid #e5e7eb;border-radius:12px;margin-top:8px}.fbConversation form textarea{min-height:54px;max-height:110px;resize:vertical}article{padding:12px;margin:10px 0;background:#f1f5f9;border-radius:12px;overflow-wrap:anywhere}.outgoing{background:#e0e7ff}p{white-space:pre-wrap}textarea{display:block;width:100%;min-height:100px;box-sizing:border-box}button{min-height:44px;margin:5px 0}form{margin-top:16px}`}</style>
  </section>;
 }
