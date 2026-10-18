@@ -27,10 +27,20 @@ begin
    where id=p_connection and enabled) then return false; end if;
  if not exists(select 1 from facebook_messenger_private.events
    where connection_id=p_connection and thread_ref=p_thread and kind='inbound') then return false; end if;
- -- Serialize manager changes per thread and avoid two advisors with simultaneous access.\n perform pg_advisory_xact_lock(hashtextextended(p_connection::text||':'||p_thread,0));\n delete from facebook_messenger_private.thread_grants g\n where g.connection_id=p_connection and g.thread_ref=p_thread\n   and g.actor_id in (select advisor_id from facebook_messenger_private.thread_assignments\n                      where connection_id=p_connection and thread_ref=p_thread)\n   and g.actor_id<>p_advisor;\n insert into facebook_messenger_private.thread_assignments(connection_id,thread_ref,advisor_id,assigned_by)
+ -- Serialize manager changes per thread and avoid two advisors with simultaneous access.
+ perform pg_advisory_xact_lock(hashtextextended(p_connection::text||':'||p_thread,0));
+ delete from facebook_messenger_private.thread_grants g
+ where g.connection_id=p_connection and g.thread_ref=p_thread
+   and g.actor_id in (select advisor_id from facebook_messenger_private.thread_assignments
+                      where connection_id=p_connection and thread_ref=p_thread)
+   and g.actor_id<>p_advisor;
+ insert into facebook_messenger_private.thread_assignments(connection_id,thread_ref,advisor_id,assigned_by)
  values(p_connection,p_thread,p_advisor,p_actor)
  on conflict(connection_id,thread_ref) do update
  set advisor_id=excluded.advisor_id,assigned_by=excluded.assigned_by,assigned_at=clock_timestamp();
+ insert into facebook_messenger_private.thread_grants(connection_id,thread_ref,actor_id,expires_at,can_reply)
+ values(p_connection,p_thread,p_advisor,now()+interval '7 days',true)
+ on conflict(connection_id,thread_ref,actor_id) do update set expires_at=excluded.expires_at,can_reply=true;
  return true;
 end $$;
 revoke all on function public.fb_messenger_assign_thread_v1(uuid,text,uuid,uuid) from public,anon,authenticated;
