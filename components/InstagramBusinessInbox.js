@@ -479,6 +479,8 @@ export default function InstagramBusinessInbox(){
  const selectedIndex=Math.max(0,threads.findIndex(t=>t.thread_ref===selected));
  const replyTarget=input?rows.find(r=>r.input===input):null;
 
+ if(commentsOpen)return <InstagramCommentsPanel open onClose={()=>setCommentsOpen(false)}/>;
+
  return <section aria-label="Instagram Business Inbox" className="inboxShell">
   <aside className="conversationPane">
    <div className="paneHeader">
