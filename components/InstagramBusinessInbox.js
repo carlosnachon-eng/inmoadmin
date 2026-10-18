@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {supabase} from '../lib/supabase';
+import {submitBusinessReply} from '../lib/messaging/instagram/business/replyResult';
 async function request(op,{query={},body,binary=false}={}){
  const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('Sesión requerida');
  const r=await fetch('/api/operaciones/instagram-business?'+new URLSearchParams({op,...query}),{
@@ -21,7 +22,7 @@ export default function InstagramBusinessInbox(){
  }catch(e){setStatus(e.message);}finally{if(gen===generation.current)setBusy(false);}}
  async function send(e){e.preventDefault();if(lock.current||!enabled||!input||consumed.current.has(input))return;
   lock.current=true;consumed.current.add(input);setBusy(true);setStatus('pending');
-  try{const r=await request('reply',{body:{input,action:crypto.randomUUID(),text:text.trim()}});setStatus(r.status+(r.diagnostic?.stage==='pre_claim'&&/^[a-z_]{1,64}$/.test(r.diagnostic.validation)?` · pre_claim / ${r.diagnostic.validation}`:''));}
+  try{const r=await submitBusinessReply({request,thread:selected,input,action:crypto.randomUUID(),text:text.trim()});setStatus(r.status+(r.status==='uncertain'?' · no reenviar':r.source==='journal'?' · journal confirmado':'')+(r.diagnostic?.stage==='pre_claim'&&/^[a-z_]{1,64}$/.test(r.diagnostic.validation)?` · pre_claim / ${r.diagnostic.validation}`:''));}
   catch{setStatus('uncertain · no reenviar');}finally{lock.current=false;setBusy(false);}
  }
  return <section aria-label="Instagram Business Inbox"><h2>Instagram · Emporio</h2>
