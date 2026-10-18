@@ -18,6 +18,6 @@ test('bounds output and accepts only nonnegative integer data length',()=>{
 test('Setup UI remains rollout-gated and renders diagnostics without raw HTML or logging',()=>{
  const source=readFileSync(new URL('../pages/operaciones/instagram-business-setup.js',import.meta.url),'utf8');
  assert.ok(source.includes("process.env.INSTAGRAM_BUSINESS_ROLLOUT==='closed_canary'"));assert.ok(source.includes('error.safeShape=projectOAuthShapeDiagnostic(d)'));assert.ok(source.includes('JSON.stringify(shape,null,2)'));
- const api=readFileSync(new URL('../lib/messaging/instagram/business/api.js',import.meta.url),'utf8');assert.ok(api.includes("env().VERCEL_ENV==='preview'&&req.query?.op==='oauth-complete'"));
+ const api=readFileSync(new URL('../lib/messaging/instagram/business/api.js',import.meta.url),'utf8');assert.ok(api.includes("env().VERCEL_ENV==='preview'?businessOAuthDiagnostic(e):businessOAuthSafeDiagnostic(e)"));
  assert.ok(!source.includes('dangerouslySetInnerHTML'));assert.ok(!source.includes('console.'));
 });

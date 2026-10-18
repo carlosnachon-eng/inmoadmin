@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import Head from 'next/head';
 import {supabase} from '../../lib/supabase';
-import {projectOAuthShapeDiagnostic} from '../../lib/messaging/instagram/business/diagnosticDisplay';
+import {projectOAuthShapeDiagnostic,projectOAuthScopeDiagnostic} from '../../lib/messaging/instagram/business/diagnosticDisplay';
 
 // No OAuth code/state is serialized into page props or rendered as text.
 export async function getServerSideProps({res}){
@@ -25,7 +25,7 @@ async function request(op,body){
   if(op==='oauth-complete'&&stages.includes(d?.stage)){
    const fields=['http_status','code','subcode'].filter(k=>Number.isSafeInteger(d[k])).map(k=>`${k}=${d[k]}`);
    const error=Error(`OAuth bloqueado: ${d.stage}${fields.length?' · '+fields.join(' · '):''}. Sin reintento automático.`);
-   error.safeShape=projectOAuthShapeDiagnostic(d);throw error;
+   error.safeShape=projectOAuthShapeDiagnostic(d);error.safeScopes=projectOAuthScopeDiagnostic(d);throw error;
   }
   throw Error('Validación bloqueada. No se reintentará automáticamente.');
  }
@@ -34,18 +34,23 @@ async function request(op,body){
 export default function InstagramBusinessSetup({environment='DEV'}){
  const [busy,setBusy]=useState(false),[status,setStatus]=useState('Configuración Instagram Login · '+environment),[health,setHealth]=useState(null);
  const [shape,setShape]=useState(null);
+ const [scopes,setScopes]=useState(null),[preflight,setPreflight]=useState(null);
  const lock=useRef(false),processed=useRef(false);
  async function run(op,body){
-  if(lock.current)return;lock.current=true;setBusy(true);setShape(null);
+  if(lock.current)return;lock.current=true;setBusy(true);setShape(null);setScopes(null);
   try{
    const result=await request(op,body);
+   if(op==='oauth-preflight'){
+    setScopes(projectOAuthScopeDiagnostic(result));setPreflight(result.authorization_url_without_state);
+    setStatus('URL verificado server-side. No se inició OAuth ni se modificó la credencial.');return;
+   }
    if(op==='oauth-start'){
     const target=new URL(result.url);
     if(target.origin!=='https://www.instagram.com'||target.pathname!=='/oauth/authorize')throw Error('Destino OAuth no autorizado.');
     window.location.assign(target.href);return;
    }
-   setHealth(result);setStatus(op==='oauth-complete'?'OAuth verificado; credencial cifrada server-side.':'Estado actualizado.');
-  }catch(e){setStatus(e.message);setShape(e.safeShape||null);}finally{lock.current=false;setBusy(false);}
+   setHealth(result);setScopes(projectOAuthScopeDiagnostic(result.oauth_scopes));setStatus(op==='oauth-complete'?'OAuth verificado; credencial cifrada server-side.':'Estado actualizado.');
+  }catch(e){setStatus(e.message);setShape(e.safeShape||null);setScopes(e.safeScopes||null);}finally{lock.current=false;setBusy(false);}
  }
  useEffect(()=>{
   if(processed.current)return;processed.current=true;
@@ -63,8 +68,11 @@ export default function InstagramBusinessSetup({environment='DEV'}){
   <p>Usa la sesión del operador autorizado en este entorno. Esta autorización conserva mensajes y agrega comentarios de Instagram. No modifica Respond ni WhatsApp.</p>
   <button disabled={busy} onClick={()=>run('oauth-start',{})}>Autorizar mensajes + comentarios</button>{' '}
   <button disabled={busy} onClick={()=>run('health')}>Consultar salud</button>{' '}
+  <button disabled={busy} onClick={()=>run('oauth-preflight')}>Verificar scopes solicitados (sin iniciar OAuth)</button>{' '}
   <button disabled={busy} onClick={()=>run('maintain',{})}>Verificar / renovar credencial</button>
   <p role="status">{status}</p>
+  {preflight&&<section aria-label="URL OAuth sin state"><h2>Solicitud OAuth · sin iniciar autorización</h2><code style={{overflowWrap:'anywhere'}}>{preflight}</code></section>}
+  {scopes&&<section aria-label="Scopes OAuth sanitizados"><h2>Scopes solicitados y concedidos</h2><pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(scopes,null,2)}</pre><p>Un valor null significa no observado; no equivale a permiso denegado.</p></section>}
   {shape&&<section aria-label="Diagnóstico sanitizado OAuth"><h2>Estructura de respuesta · sin valores</h2><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(shape,null,2)}</pre></section>}
   {health&&<dl>
    <dt>Estado</dt><dd>{health.status}</dd>
