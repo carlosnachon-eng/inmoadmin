@@ -230,8 +230,8 @@ export default function InstagramBusinessInbox(){
 
  function chooseMediaFile(file){
   if(!file||lock.current||!enabled||!replyAnchor||uncertainLocked)return;
-  const isVideo=['video/mp4','video/quicktime'].includes(file.type);
-  if(!['image/jpeg','image/png','image/webp','video/mp4','video/quicktime'].includes(file.type)){setStatus('Formato no compatible');if(mediaInputRef.current)mediaInputRef.current.value='';return;}
+  const isVideo=['video/mp4','video/quicktime'].includes(file.type),isAudio=file.type==='audio/mp4';
+  if(!['image/jpeg','image/png','image/webp','video/mp4','video/quicktime','audio/mp4'].includes(file.type)){setStatus('Formato no compatible');if(mediaInputRef.current)mediaInputRef.current.value='';return;}
   const limit=(isVideo||isAudio)?26214400:8388608;
   if(file.size<=0||file.size>limit){setStatus(isVideo?'Instagram permite videos de hasta 25 MB':'Instagram permite imágenes de hasta 8 MB');if(mediaInputRef.current)mediaInputRef.current.value='';return;}
   if(pendingMedia?.url)URL.revokeObjectURL(pendingMedia.url);
