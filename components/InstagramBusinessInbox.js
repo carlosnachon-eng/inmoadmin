@@ -19,6 +19,7 @@ async function request(op,{query={},body,binary=false}={}){
 
 const clock=value=>new Intl.DateTimeFormat('es-MX',{timeZone:'America/Mexico_City',hour:'numeric',minute:'2-digit'}).format(new Date(value));
 const day=value=>new Intl.DateTimeFormat('es-MX',{timeZone:'America/Mexico_City',day:'2-digit',month:'short'}).format(new Date(value));
+const money=value=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',maximumFractionDigits:0}).format(Number(value)||0);
 const messageStamp=value=>{
  const d=new Date(value),now=new Date();
  const key=x=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Mexico_City',year:'numeric',month:'2-digit',day:'2-digit'}).format(x);
@@ -69,6 +70,7 @@ export default function InstagramBusinessInbox(){
  const [aliasDraft,setAliasDraft]=useState(''),[aliasBusy,setAliasBusy]=useState(false),[mobileAliasEditing,setMobileAliasEditing]=useState(false);
  const [profile,setProfile]=useState(null),[syncing,setSyncing]=useState(false),[uncertainLocked,setUncertainLocked]=useState(false);
  const [phoneDraft,setPhoneDraft]=useState(''),[emailDraft,setEmailDraft]=useState(''),[contactBusy,setContactBusy]=useState(false),[lightbox,setLightbox]=useState(null),[pendingMedia,setPendingMedia]=useState(null),[optimistic,setOptimistic]=useState([]),[recording,setRecording]=useState(false),[recordSeconds,setRecordSeconds]=useState(0);
+ const [propertyPicker,setPropertyPicker]=useState(false),[propertyRows,setPropertyRows]=useState([]),[propertySearch,setPropertySearch]=useState(''),[propertyChoice,setPropertyChoice]=useState(null),[propertyBusy,setPropertyBusy]=useState(false);
  const lock=useRef(false),generation=useRef(0),chatRef=useRef(null),bottomRef=useRef(null),mediaInputRef=useRef(null),polling=useRef(false),selectedRef=useRef(null),recorderRef=useRef(null),recordChunksRef=useRef([]),recordTimerRef=useRef(null),recordStreamRef=useRef(null);
 
  const filtered=useMemo(()=>{
@@ -76,6 +78,12 @@ export default function InstagramBusinessInbox(){
   if(!q)return threads;
   return threads.filter((t,i)=>`instagram conversación ${i+1} ${t.thread_ref} ${t.alias||''} ${t.profile_name||''} ${t.profile_username||''}`.toLowerCase().includes(q));
  },[threads,search]);
+
+ const filteredProperties=useMemo(()=>{
+  const q=propertySearch.trim().toLowerCase();
+  if(!q)return propertyRows;
+  return propertyRows.filter(p=>[p.public_id,p.titulo,p.tipo,p.colonia,p.ciudad,p.operacion].filter(Boolean).join(' ').toLowerCase().includes(q));
+ },[propertyRows,propertySearch]);
 
  async function load(thread,{quiet=false}={}){
   if(lock.current)return;
@@ -143,6 +151,42 @@ export default function InstagramBusinessInbox(){
   const id=setInterval(tick,15000);
   return()=>clearInterval(id);
  },[]);
+
+ async function openPropertyPicker(){
+  if(!enabled||!replyAnchor||uncertainLocked||busy)return;
+  setPropertyPicker(true);setPropertyChoice(null);setPropertySearch('');
+  if(propertyRows.length)return;
+  setPropertyBusy(true);
+  try{const r=await request('properties');setPropertyRows(r.rows||[]);}
+  catch{setStatus('No fue posible cargar las propiedades');setPropertyPicker(false);}
+  finally{setPropertyBusy(false);}
+ }
+
+ const propertyMessage=p=>{
+  const url=`https://www.emporioinmobiliario.com.mx/propiedades/${p.public_id}`;
+  const place=[p.colonia,p.ciudad].filter(Boolean).join(', ');
+  const op=p.operacion==='sale'?'Venta':'Renta';
+  return `Te comparto esta propiedad:\n\n${p.titulo}\n${money(p.precio)} · ${op}${place?`\n📍 ${place}`:''}\n\n${url}`;
+ };
+
+ async function sendProperty(){
+  if(!propertyChoice||lock.current||!enabled||!replyAnchor||uncertainLocked)return;
+  const message=propertyMessage(propertyChoice),action=crypto.randomUUID();
+  lock.current=true;setPropertyBusy(true);setStatus('Enviando propiedad…');
+  try{
+   const r=await submitBusinessReply({request,thread:selected,input:replyAnchor,action,text:message});
+   if(r.status==='accepted'){
+    const nowIso=new Date().toISOString();
+    setOptimistic(list=>[...list,{id:'local-'+action,kind:'text',text:message,occurred_at:nowIso,sentAt:Date.now(),status:'Enviado'}]);
+    setPropertyPicker(false);setPropertyChoice(null);setPropertySearch('');
+    setInput(null);setStatus('Propiedad enviada');setUncertainLocked(false);scrollChatBottom('smooth');
+    void load(null,{quiet:true});
+   }else if(r.status==='uncertain'){
+    setUncertainLocked(true);setStatus('Resultado incierto · revisa Instagram antes de enviar otro mensaje');
+   }else setStatus(r.status||'No fue posible enviar la propiedad');
+  }catch{setUncertainLocked(true);setStatus('Resultado incierto · revisa Instagram antes de enviar otro mensaje');}
+  finally{lock.current=false;setPropertyBusy(false);}
+ }
 
  async function syncHistory(){
   if(syncing)return;
@@ -395,6 +439,7 @@ export default function InstagramBusinessInbox(){
      </div>}
      {replyTarget&&<div className="replyContext"><span>Respondiendo al mensaje de las {clock(replyTarget.occurred_at)}</span><button type="button" onClick={()=>setInput(null)}>×</button></div>}
      <div className="composerRow">
+      <button type="button" className="propertyButton" title="Enviar propiedad" disabled={busy||recording||!!pendingMedia||!enabled||!replyAnchor||uncertainLocked} onClick={openPropertyPicker}>🏠</button>
       <input ref={mediaInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,.mov" hidden onChange={e=>chooseMediaFile(e.target.files?.[0])}/>
       <button type="button" className="attachButton" title="Adjuntar foto o video" disabled={busy||recording||!enabled||!replyAnchor||uncertainLocked} onClick={()=>mediaInputRef.current?.click()}>＋</button>
       {recording?<div className="recordingBar"><span>● {recordSeconds}s</span><button type="button" onClick={cancelRecording}>Cancelar</button><button type="button" onClick={stopRecording}>Detener</button></div>:<button type="button" className="micButton" title="Grabar nota de voz" disabled={busy||!!pendingMedia||!enabled||!replyAnchor||uncertainLocked} onClick={startRecording}>🎤</button>}
@@ -421,6 +466,29 @@ export default function InstagramBusinessInbox(){
    </div>:<div className="detailsBody muted">Selecciona una conversación para ver su contexto.</div>}
   </aside>
 
+  {propertyPicker&&<div className="propertyPickerBackdrop" onClick={()=>!propertyBusy&&setPropertyPicker(false)}>
+   <section className="propertyPickerSheet" onClick={e=>e.stopPropagation()}>
+    <div className="propertyPickerHead"><div><strong>Enviar propiedad</strong><span>Sólo propiedades publicadas</span></div><button type="button" onClick={()=>setPropertyPicker(false)} disabled={propertyBusy}>×</button></div>
+    {!propertyChoice?<><input className="propertySearchInput" value={propertySearch} onChange={e=>setPropertySearch(e.target.value)} placeholder="Buscar por clave, colonia, tipo o título…"/>
+     <div className="propertyResults">
+      {propertyBusy&&<div className="propertyEmpty">Cargando propiedades…</div>}
+      {!propertyBusy&&!filteredProperties.length&&<div className="propertyEmpty">No encontré propiedades publicadas.</div>}
+      {filteredProperties.map(p=><button type="button" className="propertyCard" key={p.id} onClick={()=>setPropertyChoice(p)}>
+       {p.foto?<img src={p.foto} alt=""/>:<div className="propertyNoPhoto">🏠</div>}
+       <div><strong>{p.titulo}</strong><span>{money(p.precio)} · {p.operacion==='sale'?'Venta':'Renta'}</span><small>{[p.colonia,p.ciudad].filter(Boolean).join(', ')} · {p.public_id}</small></div>
+      </button>)}
+     </div>
+    </>:<div className="propertyConfirm">
+      {propertyChoice.foto&&<img src={propertyChoice.foto} alt="Propiedad seleccionada"/>}
+      <strong>{propertyChoice.titulo}</strong>
+      <span>{money(propertyChoice.precio)} · {propertyChoice.operacion==='sale'?'Venta':'Renta'}</span>
+      <small>{[propertyChoice.colonia,propertyChoice.ciudad].filter(Boolean).join(', ')}</small>
+      <div className="propertyMessagePreview"><LinkifiedText text={propertyMessage(propertyChoice)}/></div>
+      <div className="propertyConfirmActions"><button type="button" onClick={()=>setPropertyChoice(null)} disabled={propertyBusy}>Atrás</button><button type="button" className="propertySend" onClick={sendProperty} disabled={propertyBusy}>{propertyBusy?'Enviando…':'Enviar propiedad'}</button></div>
+     </div>}
+   </section>
+  </div>}
+
   {lightbox&&<div className="lightbox" role="dialog" aria-modal="true" onClick={()=>setLightbox(null)}><button type="button" className="lightboxClose" onClick={()=>setLightbox(null)}>×</button><img src={lightbox} alt="Imagen de Instagram ampliada" onClick={e=>e.stopPropagation()}/></div>}
   {status&&status.includes('no disponible')&&<div className="globalError" role="alert">{status}</div>}
 
@@ -440,8 +508,8 @@ export default function InstagramBusinessInbox(){
    .bubble{border-radius:18px;padding:10px 13px;box-shadow:0 1px 2px rgba(0,0,0,.06);max-width:100%;overflow:hidden}.incoming .bubble{background:#fff;border-bottom-left-radius:5px}.outgoing .bubble{background:#fce8ed;border-bottom-right-radius:5px}.bubble p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45}.bubble a{color:#2563eb;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}.bubbleMeta{margin-top:5px;color:#9ca3af;font-size:9px;text-align:right}.optimisticMessage .bubble{box-shadow:0 1px 2px rgba(0,0,0,.06),inset 0 0 0 1px rgba(185,28,60,.06)}.replyChip{margin-top:5px;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:700;cursor:pointer;padding:3px 5px}
    .mediaButton{border:0;background:transparent;padding:0;cursor:zoom-in;max-width:100%}.inboxMedia{display:block;width:auto;height:auto;max-width:220px;max-height:170px;object-fit:contain;background:#f3f4f6;border-radius:12px;margin-bottom:7px}.chatBottomSentinel{height:1px;flex:none}.mediaPlaceholder{background:#f3f4f6;color:#9ca3af;padding:20px;border-radius:10px;font-size:12px}
    .composer{background:#fff;border-top:1px solid #e5e7eb;padding:12px 18px}.mediaPreview{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;margin-bottom:10px;border:1px solid #e5e7eb;border-radius:14px;background:#f9fafb}.mediaPreviewImage{width:96px;height:96px;border-radius:12px;overflow:hidden;background:#eef2f7;display:flex;align-items:center;justify-content:center;flex:none}.mediaPreviewImage img,.mediaPreviewImage video{width:100%;height:100%;object-fit:cover}.mediaPreviewImage audio{width:100%;max-width:260px}.mediaPreviewActions{display:flex;gap:8px;margin-left:auto}.previewCancel,.previewSend{height:40px;border-radius:10px;padding:0 14px;font-weight:800;cursor:pointer}.previewCancel{border:1px solid #d1d5db;background:#fff;color:#4b5563}.previewSend{border:0;background:#b91c3c;color:#fff}.previewCancel:disabled,.previewSend:disabled{opacity:.55;cursor:not-allowed}.replyContext{display:flex;justify-content:space-between;align-items:center;background:#f9fafb;border-left:3px solid #b91c3c;padding:7px 10px;margin-bottom:8px;font-size:11px;color:#6b7280}.replyContext button{border:0;background:transparent;font-size:18px;color:#6b7280;cursor:pointer}
-   .composerRow{display:flex;gap:10px;align-items:flex-end}.micButton{width:42px;height:42px;flex:none;border:1px solid #d1d5db;border-radius:10px;background:#fff;font-size:20px;cursor:pointer}.micButton:disabled{opacity:.45;cursor:not-allowed}.recordingBar{display:flex;align-items:center;gap:8px;min-height:42px;padding:0 8px;border:1px solid #fecaca;background:#fff1f2;border-radius:10px;color:#b91c3c;font-size:12px;font-weight:800}.recordingBar button{border:0;border-radius:8px;padding:7px 9px;background:#fff;color:#b91c3c;font-weight:800}.attachButton{width:42px;height:42px;flex:none;border:1px solid #d1d5db;border-radius:10px;background:#fff;color:#b91c3c;font-size:24px;line-height:1;font-weight:700;cursor:pointer}.attachButton:disabled{color:#cbd5e1;background:#f9fafb;cursor:not-allowed}.composer textarea{flex:1;resize:none;min-height:58px;max-height:130px;border:1px solid #d1d5db;border-radius:14px;padding:11px 12px;font:inherit;outline:0}.composer textarea:focus{border-color:#b91c3c}.sendButton{height:42px;border:0;border-radius:10px;padding:0 18px;background:#b91c3c;color:#fff;font-weight:800;cursor:pointer}.sendButton:disabled{background:#e5e7eb;color:#9ca3af;cursor:not-allowed}.composerFoot{display:flex;justify-content:space-between;color:#9ca3af;font-size:10px;margin-top:6px}
-   .detailsHeader h3{margin:0;font-size:15px}.detailsBody{padding:20px}.profileCard{text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px;padding-bottom:20px;border-bottom:1px solid #e5e7eb}.profileCard strong{margin-top:5px}.profileCard span{font-size:11px;color:#9ca3af}.detailBlock{padding:15px 0;border-bottom:1px solid #f3f4f6}.detailBlock label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:800}.detailBlock p{font-size:12px;line-height:1.45;margin:5px 0 0}.detailBlock small{display:block;color:#9ca3af;font-size:10px;margin-top:6px}.aliasEditor{display:flex;gap:6px;margin-top:7px}.aliasEditor input{min-width:0;flex:1;border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:12px}.aliasEditor button{border:0;border-radius:8px;background:#b91c3c;color:#fff;padding:0 10px;font-size:11px;font-weight:800}.contactEditor{display:grid;gap:7px;margin-top:7px}.contactEditor input{border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:12px}.contactEditor button{border:0;border-radius:8px;background:#b91c3c;color:#fff;padding:8px 10px;font-size:11px;font-weight:800}.contactSheetBackdrop{display:none;position:fixed;inset:0;z-index:950;background:rgba(17,24,39,.45);align-items:flex-end;justify-content:center}.contactSheet{width:min(100%,520px);background:#fff;border-radius:20px 20px 0 0;padding:18px 18px 24px;box-shadow:0 -10px 30px rgba(0,0,0,.15);display:grid;gap:9px}.contactSheetHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}.contactSheetHead strong{font-size:18px}.contactSheetHead span{display:block;color:#9ca3af;font-size:11px;margin-top:2px}.contactSheetHead button{border:0;background:#f3f4f6;border-radius:50%;width:34px;height:34px;font-size:22px}.contactSheet label{font-size:11px;font-weight:800;color:#6b7280;margin-top:5px}.contactSheet input{width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:11px;padding:11px 12px;font-size:15px}.sheetPrimary{border:0;border-radius:10px;background:#b91c3c;color:#fff;padding:11px 12px;font-size:13px;font-weight:800}.contactSheet small{color:#9ca3af;font-size:10px;line-height:1.35}.lightbox{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.86);display:flex;align-items:center;justify-content:center;padding:24px}.lightbox img{max-width:95vw;max-height:90vh;object-fit:contain;border-radius:10px}.lightboxClose{position:absolute;top:18px;right:18px;width:42px;height:42px;border:0;border-radius:50%;background:#fff;color:#111827;font-size:28px;line-height:1;cursor:pointer}.muted{color:#9ca3af}.emptyChat{margin:auto;text-align:center;color:#6b7280}.emptyIcon{font-size:38px}.emptyChat h3{margin:10px 0 4px}.emptyChat p{margin:0;font-size:13px}.globalError{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#7f1d1d;color:#fff;padding:10px 15px;border-radius:10px;font-size:12px}
+   .composerRow{display:flex;gap:10px;align-items:flex-end}.propertyButton{width:42px;height:42px;flex:none;border:1px solid #d1d5db;border-radius:10px;background:#fff;font-size:19px;cursor:pointer}.propertyButton:disabled{opacity:.45;cursor:not-allowed}.micButton{width:42px;height:42px;flex:none;border:1px solid #d1d5db;border-radius:10px;background:#fff;font-size:20px;cursor:pointer}.micButton:disabled{opacity:.45;cursor:not-allowed}.recordingBar{display:flex;align-items:center;gap:8px;min-height:42px;padding:0 8px;border:1px solid #fecaca;background:#fff1f2;border-radius:10px;color:#b91c3c;font-size:12px;font-weight:800}.recordingBar button{border:0;border-radius:8px;padding:7px 9px;background:#fff;color:#b91c3c;font-weight:800}.attachButton{width:42px;height:42px;flex:none;border:1px solid #d1d5db;border-radius:10px;background:#fff;color:#b91c3c;font-size:24px;line-height:1;font-weight:700;cursor:pointer}.attachButton:disabled{color:#cbd5e1;background:#f9fafb;cursor:not-allowed}.composer textarea{flex:1;resize:none;min-height:58px;max-height:130px;border:1px solid #d1d5db;border-radius:14px;padding:11px 12px;font:inherit;outline:0}.composer textarea:focus{border-color:#b91c3c}.sendButton{height:42px;border:0;border-radius:10px;padding:0 18px;background:#b91c3c;color:#fff;font-weight:800;cursor:pointer}.sendButton:disabled{background:#e5e7eb;color:#9ca3af;cursor:not-allowed}.composerFoot{display:flex;justify-content:space-between;color:#9ca3af;font-size:10px;margin-top:6px}
+   .detailsHeader h3{margin:0;font-size:15px}.detailsBody{padding:20px}.profileCard{text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px;padding-bottom:20px;border-bottom:1px solid #e5e7eb}.profileCard strong{margin-top:5px}.profileCard span{font-size:11px;color:#9ca3af}.detailBlock{padding:15px 0;border-bottom:1px solid #f3f4f6}.detailBlock label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:800}.detailBlock p{font-size:12px;line-height:1.45;margin:5px 0 0}.detailBlock small{display:block;color:#9ca3af;font-size:10px;margin-top:6px}.aliasEditor{display:flex;gap:6px;margin-top:7px}.aliasEditor input{min-width:0;flex:1;border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:12px}.aliasEditor button{border:0;border-radius:8px;background:#b91c3c;color:#fff;padding:0 10px;font-size:11px;font-weight:800}.contactEditor{display:grid;gap:7px;margin-top:7px}.contactEditor input{border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:12px}.contactEditor button{border:0;border-radius:8px;background:#b91c3c;color:#fff;padding:8px 10px;font-size:11px;font-weight:800}.propertyPickerBackdrop{position:fixed;inset:0;z-index:970;background:rgba(17,24,39,.48);display:flex;align-items:flex-end;justify-content:center}.propertyPickerSheet{width:min(100%,620px);max-height:86vh;background:#fff;border-radius:20px 20px 0 0;padding:18px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;box-shadow:0 -10px 30px rgba(0,0,0,.16)}.propertyPickerHead{display:flex;align-items:center;justify-content:space-between}.propertyPickerHead strong{font-size:18px}.propertyPickerHead span{display:block;color:#9ca3af;font-size:11px;margin-top:2px}.propertyPickerHead button{border:0;background:#f3f4f6;width:34px;height:34px;border-radius:50%;font-size:22px}.propertySearchInput{width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:11px;padding:11px 12px;font-size:15px}.propertyResults{min-height:0;overflow-y:auto;display:grid;gap:8px}.propertyCard{border:1px solid #e5e7eb;background:#fff;border-radius:12px;padding:8px;display:flex;gap:10px;text-align:left;cursor:pointer}.propertyCard img,.propertyNoPhoto{width:72px;height:62px;object-fit:cover;border-radius:9px;flex:none;background:#f3f4f6}.propertyNoPhoto{display:flex;align-items:center;justify-content:center;font-size:24px}.propertyCard>div:last-child{min-width:0;display:flex;flex-direction:column;gap:3px}.propertyCard strong{font-size:12px;line-height:1.25}.propertyCard span{font-size:12px;font-weight:800;color:#b91c3c}.propertyCard small{font-size:10px;color:#6b7280}.propertyEmpty{padding:30px;text-align:center;color:#9ca3af}.propertyConfirm{display:grid;gap:8px}.propertyConfirm>img{width:100%;height:190px;object-fit:cover;border-radius:14px}.propertyConfirm>strong{font-size:16px}.propertyConfirm>span{font-weight:800;color:#b91c3c}.propertyConfirm>small{color:#6b7280}.propertyMessagePreview{background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:12px;font-size:13px}.propertyMessagePreview :global(p){margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.propertyConfirmActions{display:flex;gap:8px;justify-content:flex-end}.propertyConfirmActions button{height:40px;border-radius:10px;padding:0 14px;border:1px solid #d1d5db;background:#fff;font-weight:800}.propertyConfirmActions .propertySend{border:0;background:#b91c3c;color:#fff}.contactSheetBackdrop{display:none;position:fixed;inset:0;z-index:950;background:rgba(17,24,39,.45);align-items:flex-end;justify-content:center}.contactSheet{width:min(100%,520px);background:#fff;border-radius:20px 20px 0 0;padding:18px 18px 24px;box-shadow:0 -10px 30px rgba(0,0,0,.15);display:grid;gap:9px}.contactSheetHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}.contactSheetHead strong{font-size:18px}.contactSheetHead span{display:block;color:#9ca3af;font-size:11px;margin-top:2px}.contactSheetHead button{border:0;background:#f3f4f6;border-radius:50%;width:34px;height:34px;font-size:22px}.contactSheet label{font-size:11px;font-weight:800;color:#6b7280;margin-top:5px}.contactSheet input{width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:11px;padding:11px 12px;font-size:15px}.sheetPrimary{border:0;border-radius:10px;background:#b91c3c;color:#fff;padding:11px 12px;font-size:13px;font-weight:800}.contactSheet small{color:#9ca3af;font-size:10px;line-height:1.35}.lightbox{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.86);display:flex;align-items:center;justify-content:center;padding:24px}.lightbox img{max-width:95vw;max-height:90vh;object-fit:contain;border-radius:10px}.lightboxClose{position:absolute;top:18px;right:18px;width:42px;height:42px;border:0;border-radius:50%;background:#fff;color:#111827;font-size:28px;line-height:1;cursor:pointer}.muted{color:#9ca3af}.emptyChat{margin:auto;text-align:center;color:#6b7280}.emptyIcon{font-size:38px}.emptyChat h3{margin:10px 0 4px}.emptyChat p{margin:0;font-size:13px}.globalError{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#7f1d1d;color:#fff;padding:10px 15px;border-radius:10px;font-size:12px}
    @media(max-width:1100px){.inboxShell{grid-template-columns:300px 1fr}.detailsPane{display:none}}
    @media(max-width:760px){.inboxShell{height:calc(100dvh - 56px);max-height:calc(100dvh - 56px);overflow:hidden;grid-template-columns:1fr}.conversationPane{display:${selected?'none':'flex'}}.chatPane{display:${selected?'flex':'none'}}.detailsPane{display:none}.messageRow{max-width:88%}.messages{padding:16px}.backButton{display:block}.chatHeader{justify-content:flex-start;gap:6px}.contactTitle{min-width:0;flex:1}.contactTitle>div:last-child{min-width:0}.contactTitle strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mobileAliasButton{display:block}.senderBadge{display:none}.contactSheetBackdrop{display:flex}.inboxMedia{width:auto;height:auto;max-width:160px;max-height:140px;object-fit:contain}.mediaPreview{align-items:stretch}.mediaPreviewImage{width:84px;height:84px}.mediaPreviewActions{flex:1;justify-content:flex-end;align-items:flex-end}.previewCancel,.previewSend{padding:0 12px}}
   `}</style>
