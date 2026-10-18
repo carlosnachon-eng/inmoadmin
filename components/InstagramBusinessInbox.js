@@ -43,8 +43,8 @@ export default function InstagramBusinessInbox(){
  const [busy,setBusy]=useState(false);
  const [search,setSearch]=useState('');
  const [aliasDraft,setAliasDraft]=useState(''),[aliasBusy,setAliasBusy]=useState(false);
- const [profile,setProfile]=useState(null),[syncing,setSyncing]=useState(false);
- const lock=useRef(false),consumed=useRef(new Set()),generation=useRef(0),chatRef=useRef(null),polling=useRef(false),selectedRef=useRef(null);
+ const [profile,setProfile]=useState(null),[syncing,setSyncing]=useState(false),[uncertainLocked,setUncertainLocked]=useState(false);
+ const lock=useRef(false),generation=useRef(0),chatRef=useRef(null),polling=useRef(false),selectedRef=useRef(null);
 
  const filtered=useMemo(()=>{
   const q=search.trim().toLowerCase();
@@ -69,6 +69,7 @@ export default function InstagramBusinessInbox(){
     const current=threads.find(t=>t.thread_ref===thread);
     setAliasDraft(current?.alias||'');
     setInput(null);
+    setUncertainLocked(false);
     setText('');
     requestAnimationFrame(()=>chatRef.current?.scrollTo({top:chatRef.current.scrollHeight,behavior:'smooth'}));
    }else{
@@ -133,19 +134,29 @@ export default function InstagramBusinessInbox(){
   finally{setAliasBusy(false);}
  }
 
+ const eligibleInbound=[...rows].reverse().find(r=>r.direction==='customer_inbound'&&!r.deleted&&Date.now()-Date.parse(r.occurred_at)>=0&&Date.now()-Date.parse(r.occurred_at)<23*3600000)||null;
+ const replyAnchor=input||eligibleInbound?.input||null;
+
  async function send(e){
   e.preventDefault();
-  if(lock.current||!enabled||!input||!text.trim()||consumed.current.has(input))return;
+  if(lock.current||!enabled||!replyAnchor||!text.trim()||uncertainLocked)return;
   lock.current=true;
-  consumed.current.add(input);
   setBusy(true);
   setStatus('Enviando…');
+  const action=crypto.randomUUID();
   try{
-   const r=await submitBusinessReply({request,thread:selected,input,action:crypto.randomUUID(),text:text.trim()});
-   setStatus(r.status==='accepted'?'Enviado':r.status==='uncertain'?'Resultado incierto · no reenviar':r.source==='journal'?`${r.status} · confirmado en journal`:r.status);
-   if(r.status==='accepted'){setText('');setInput(null);await load(selected,{quiet:true});await load(null,{quiet:true});}
-  }catch{setStatus('Resultado incierto · no reenviar');}
-  finally{lock.current=false;setBusy(false);}
+   const r=await submitBusinessReply({request,thread:selected,input:replyAnchor,action,text:text.trim()});
+   if(r.status==='accepted'){
+    setStatus('Enviado');setText('');setInput(null);setUncertainLocked(false);
+    await load(selected,{quiet:true});await load(null,{quiet:true});
+   }else if(r.status==='uncertain'){
+    setUncertainLocked(true);setStatus('Resultado incierto · revisa Instagram antes de enviar otro mensaje');
+   }else{
+    setStatus(r.source==='journal'?`${r.status} · confirmado en journal`:r.status);
+   }
+  }catch{
+   setUncertainLocked(true);setStatus('Resultado incierto · revisa Instagram antes de enviar otro mensaje');
+  }finally{lock.current=false;setBusy(false);}
  }
 
  const selectedIndex=Math.max(0,threads.findIndex(t=>t.thread_ref===selected));
@@ -196,7 +207,7 @@ export default function InstagramBusinessInbox(){
         {r.text&&<p>{r.text}</p>}
         <div className="bubbleMeta"><time>{clock(r.occurred_at)}</time>{r.status&&<span> · {r.status}</span>}</div>
        </article>
-       {inbound&&!r.deleted&&!r.status&&<button className="replyChip" disabled={busy||consumed.current.has(r.input)} onClick={()=>setInput(r.input)}>{input===r.input?'✓ Respondiendo':'Responder'}</button>}
+       {inbound&&!r.deleted&&<button className="replyChip" disabled={busy||uncertainLocked} onClick={()=>setInput(r.input)}>{input===r.input?'✓ Respondiendo aquí':'Responder aquí'}</button>}
       </div>;
      })}
     </div>
@@ -204,11 +215,11 @@ export default function InstagramBusinessInbox(){
      {replyTarget&&<div className="replyContext"><span>Respondiendo al mensaje de las {clock(replyTarget.occurred_at)}</span><button type="button" onClick={()=>setInput(null)}>×</button></div>}
      <div className="composerRow">
       <textarea id="business-reply" value={text} onChange={e=>setText(e.target.value)} maxLength={999}
-       placeholder={enabled?(input?'Escribe una respuesta…':'Selecciona “Responder” en un mensaje del cliente'):'Sender apagado'}
-       disabled={busy||!enabled||!input||consumed.current.has(input)}/>
-      <button className="sendButton" disabled={busy||!enabled||!input||!text.trim()||consumed.current.has(input)}>Enviar</button>
+       placeholder={!enabled?'Sender apagado':uncertainLocked?'Verifica el último envío antes de continuar':replyAnchor?'Escribe un mensaje…':'Fuera de la ventana de respuesta'}
+       disabled={busy||!enabled||!replyAnchor||uncertainLocked}/>
+      <button className="sendButton" disabled={busy||!enabled||!replyAnchor||!text.trim()||uncertainLocked}>Enviar</button>
      </div>
-     <div className="composerFoot"><span>{status||'Atención manual · sin IA automática'}</span><span>{text.length}/999</span></div>
+     <div className="composerFoot"><span>{status||(replyAnchor?'Ventana de respuesta activa · sin IA automática':'Sin mensaje entrante elegible en las últimas 23 h')}</span><span>{text.length}/999</span></div>
     </form>
    </>:<div className="emptyChat"><div className="emptyIcon">💬</div><h3>Selecciona una conversación</h3><p>Los mensajes de Instagram aparecerán aquí automáticamente.</p></div>}
   </main>
