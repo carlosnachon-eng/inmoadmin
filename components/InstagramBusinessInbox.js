@@ -40,6 +40,7 @@ export default function InstagramBusinessInbox(){
  const [input,setInput]=useState(null);
  const [enabled,setEnabled]=useState(false);
  const [status,setStatus]=useState('');
+ const [historyStatus,setHistoryStatus]=useState('');
  const [busy,setBusy]=useState(false);
  const [search,setSearch]=useState('');
  const [aliasDraft,setAliasDraft]=useState(''),[aliasBusy,setAliasBusy]=useState(false);
@@ -107,17 +108,17 @@ export default function InstagramBusinessInbox(){
 
  async function syncHistory(){
   if(syncing)return;
-  setSyncing(true);setStatus('Recuperando historial reciente…');
+  setSyncing(true);setHistoryStatus('Recuperando historial reciente…');
   try{
    const r=await request('history-sync',{body:{}});
-   setStatus(`Meta encontró ${r.conversation_candidates??r.conversations??0} conversaciones · ${r.scanned??0} mensajes revisados · ${r.inserted??0} nuevos · ${r.duplicates??0} ya existentes${r.truncated_to_recent_20?' · algunas conversaciones exceden los 20 mensajes recuperables':''}`);
+   setHistoryStatus(`Meta encontró ${r.conversation_candidates??r.conversations??0} conversaciones · ${r.scanned??0} mensajes revisados · ${r.inserted??0} nuevos · ${r.duplicates??0} ya existentes${r.truncated_to_recent_20?' · algunas conversaciones exceden los 20 mensajes recuperables':''}`);
    await load(null,{quiet:true});
    if(selected)await load(selected,{quiet:true});
   }catch(e){
    try{
     const msg=String(e?.message||'');
-    setStatus(msg.includes('history_list')?'Meta no permitió listar conversaciones':msg.includes('history_detail')?'Meta listó conversaciones pero no permitió leer sus mensajes':'No fue posible recuperar el historial reciente');
-   }catch{setStatus('No fue posible recuperar el historial reciente');}
+    setHistoryStatus(msg.includes('history_list')?'Meta no permitió listar conversaciones':msg.includes('history_detail')?'Meta listó conversaciones pero no permitió leer sus mensajes':msg.includes('history_message')?'Meta permitió listar el hilo pero no leer uno de sus mensajes':'No fue posible recuperar el historial reciente');
+   }catch{setHistoryStatus('No fue posible recuperar el historial reciente');}
   }
   finally{setSyncing(false);}
  }
@@ -171,6 +172,7 @@ export default function InstagramBusinessInbox(){
     <div><h2>Inbox</h2><span>Instagram</span></div>
     <div className="headerActions"><button className="historyButton" disabled={busy||syncing} onClick={syncHistory}>{syncing?'Recuperando…':'7 días'}</button><button className="iconButton" title="Actualizar" disabled={busy||syncing} onClick={()=>load()}>↻</button></div>
    </div>
+   {historyStatus&&<div className="historyStatus" role="status">{historyStatus}</div>}
    <div className="channelTabs">
     <button className="channel active"><span className="igDot">◎</span> Instagram</button>
     <button className="channel" disabled><span>f</span> Facebook <small>próximamente</small></button>
