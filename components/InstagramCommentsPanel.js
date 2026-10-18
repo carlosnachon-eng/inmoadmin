@@ -163,7 +163,7 @@ export default function InstagramCommentsPanel({open,onClose}){
   </main>
 
   <style jsx>{`
-   .commentsInbox{height:100%;max-height:100%;min-height:0;display:grid;grid-template-columns:340px minmax(0,1fr);background:#fff;border-top:1px solid #e5e7eb;overflow:hidden}
+   .commentsInbox{flex:1;height:auto;max-height:100%;min-height:0;display:grid;grid-template-columns:340px minmax(0,1fr);background:#fff;border-top:1px solid #e5e7eb;overflow:hidden}
    .commentListPane{min-width:0;min-height:0;display:flex;flex-direction:column;border-right:1px solid #e5e7eb;overflow:hidden}
    .listHeader,.detailHeader{height:68px;box-sizing:border-box;padding:0 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e7eb}
    .listHeader strong,.detailHeader strong{display:block;font-size:18px}.listHeader span,.detailHeader span{display:block;color:#9ca3af;font-size:11px;margin-top:2px}
