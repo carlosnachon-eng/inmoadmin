@@ -68,6 +68,7 @@ export default function InstagramBusinessInbox(){
  const [busy,setBusy]=useState(false);
  const [search,setSearch]=useState('');
  const [threadFilter,setThreadFilter]=useState('all');
+ const [notifications,setNotifications]=useState({rows:[],unread_count:0});
  const [aliasDraft,setAliasDraft]=useState(''),[aliasBusy,setAliasBusy]=useState(false),[mobileAliasEditing,setMobileAliasEditing]=useState(false);
  const [profile,setProfile]=useState(null),[syncing,setSyncing]=useState(false),[uncertainLocked,setUncertainLocked]=useState(false);
  const [phoneDraft,setPhoneDraft]=useState(''),[emailDraft,setEmailDraft]=useState(''),[contactBusy,setContactBusy]=useState(false),[lightbox,setLightbox]=useState(null),[pendingMedia,setPendingMedia]=useState(null),[optimistic,setOptimistic]=useState([]),[recording,setRecording]=useState(false),[recordSeconds,setRecordSeconds]=useState(0);
@@ -88,6 +89,8 @@ export default function InstagramBusinessInbox(){
    return matchesText&&matchesFilter;
   });
  },[threads,search,threadFilter]);
+
+ const unreadThreads=useMemo(()=>new Set((notifications.rows||[]).filter(n=>!n.read_at).map(n=>n.thread_ref)),[notifications]);
 
  const filteredProperties=useMemo(()=>{
   const q=propertySearch.trim().toLowerCase();
@@ -110,6 +113,10 @@ export default function InstagramBusinessInbox(){
     setAssignment(r.assignment||{advisor_id:null,advisor_name:null,source:null});
     setAssignmentDraft(r.assignment?.advisor_id||'');
     setSelected(thread);
+    if(unreadThreads.has(thread)){
+     setNotifications(v=>({...v,rows:(v.rows||[]).map(n=>n.thread_ref===thread?{...n,read_at:new Date().toISOString()}:n),unread_count:Math.max(0,(v.unread_count||0)-1)}));
+     void request('notification-read',{body:{thread}}).catch(()=>{});
+    }
     setProfile(r.profile||null);
     if(r.profile) setThreads(list=>list.map(t=>t.thread_ref===thread?{...t,profile_name:r.profile.name||null,profile_username:r.profile.username||null,profile_pic:r.profile.profile_pic||null}:t));
     const current=threads.find(t=>t.thread_ref===thread);
@@ -122,6 +129,7 @@ export default function InstagramBusinessInbox(){
     scrollChatBottom('auto');
    }else{
     setThreads(r.rows||[]);
+    try{const n=await request('notifications');setNotifications(n||{rows:[],unread_count:0});}catch{}
     if(!selected&&r.rows?.length){if(!quiet)setBusy(false);void load(r.rows[0].thread_ref,{quiet:true});}
    }
   }catch(e){if(gen===generation.current)setStatus(e.message);}
@@ -148,9 +156,10 @@ export default function InstagramBusinessInbox(){
    if(polling.current||lock.current||document.visibilityState!=='visible')return;
    polling.current=true;
    try{
-    const t=await request('threads');
+    const [t,n]=await Promise.all([request('threads'),request('notifications').catch(()=>null)]);
     setEnabled(!!t.sender_enabled);
     setThreads(t.rows||[]);
+    if(n)setNotifications(n);
     const current=selectedRef.current;
     if(current){
      const h=await request('history',{query:{thread:current}});
@@ -471,7 +480,7 @@ export default function InstagramBusinessInbox(){
  return <section aria-label="Instagram Business Inbox" className="inboxShell">
   <aside className="conversationPane">
    <div className="paneHeader">
-    <div><h2>Inbox</h2><span>Instagram</span></div>
+    <div><h2>Inbox {notifications.unread_count>0&&<b className="notificationCount">{notifications.unread_count}</b>}</h2><span>Instagram</span></div>
     <div className="headerActions"><button className="historyButton" disabled={busy||syncing} onClick={syncHistory}>{syncing?'Recuperando…':'7 días'}</button><button className="iconButton" title="Actualizar" disabled={busy||syncing} onClick={()=>load()}>↻</button></div>
    </div>
    {historyStatus&&<div className="historyStatus" role="status">{historyStatus}</div>}
@@ -492,10 +501,10 @@ export default function InstagramBusinessInbox(){
     {filtered.map((t,i)=>{
      const active=t.thread_ref===selected;
      const n=threads.indexOf(t)+1;
-     return <button key={t.thread_ref} className={`threadCard ${active?'selected':''}`} onClick={()=>load(t.thread_ref)} disabled={busy}>
+     return <button key={t.thread_ref} className={`threadCard ${active?'selected':''} ${unreadThreads.has(t.thread_ref)?'unread':''}`} onClick={()=>load(t.thread_ref)} disabled={busy}>
       {t.profile_pic?<img src={t.profile_pic} alt="" className="threadAvatarPic"/>:<div className="avatar">IG</div>}
       <div className="threadCopy">
-       <div className="threadTop"><strong>{t.alias||(t.profile_username?`@${t.profile_username}`:t.profile_name)||`Conversación Instagram ${n}`}</strong><time>{clock(t.last_activity)}</time></div>
+       <div className="threadTop"><strong>{t.alias||(t.profile_username?`@${t.profile_username}`:t.profile_name)||`Conversación Instagram ${n}`}</strong><div className="threadTimeWrap">{unreadThreads.has(t.thread_ref)&&<em>Nuevo</em>}<time>{clock(t.last_activity)}</time></div></div>
        <p>{t.department==='sales'?'Ventas':t.department==='legal'?'Jurídico':t.department==='administration'?'Administración':'Por clasificar'} · {t.plaza_name||'Sin plaza'} · {t.assigned_advisor_name||'Sin asignar'}</p>
        <small>{day(t.last_activity)}</small>
       </div>
@@ -658,7 +667,7 @@ export default function InstagramBusinessInbox(){
    .paneHeader h2{margin:0;font-size:22px}.paneHeader span,.contactTitle span{display:block;color:#6b7280;font-size:12px;margin-top:2px}
    .headerActions{display:flex;gap:7px;align-items:center}.historyButton{height:34px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:0 10px;font-size:11px;font-weight:800;color:#4b5563;cursor:pointer}.iconButton{width:34px;height:34px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;font-size:18px;cursor:pointer}
    .channelTabs{display:flex;gap:6px;padding:12px 14px 6px}.channel{border:0;background:#f3f4f6;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:700;color:#6b7280}.channel.active{background:#fce8ed;color:#b91c3c}.channel small{font-size:9px;font-weight:600}.igDot{font-size:16px}
-   .searchWrap{margin:8px 14px 8px;background:#f3f4f6;border-radius:10px;padding:9px 12px;display:flex;gap:8px;align-items:center}.searchWrap input{width:100%;border:0;outline:0;background:transparent;font-size:13px}.threadFilters{display:flex;gap:6px;padding:0 14px 10px;overflow-x:auto}.threadFilters button{border:0;background:#f3f4f6;color:#6b7280;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:800;white-space:nowrap}.threadFilters button.active{background:#fce8ed;color:#b91c3c}
+   .searchWrap{margin:8px 14px 8px;background:#f3f4f6;border-radius:10px;padding:9px 12px;display:flex;gap:8px;align-items:center}.searchWrap input{width:100%;border:0;outline:0;background:transparent;font-size:13px}.threadFilters{display:flex;gap:6px;padding:0 14px 10px;overflow-x:auto}.threadFilters button{border:0;background:#f3f4f6;color:#6b7280;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:800;white-space:nowrap}.threadFilters button.active{background:#fce8ed;color:#b91c3c}.notificationCount{display:inline-flex;min-width:19px;height:19px;padding:0 5px;box-sizing:border-box;align-items:center;justify-content:center;border-radius:999px;background:#b91c3c;color:#fff;font-size:10px;vertical-align:2px}.threadCard.unread{background:#fff7f8}.threadTimeWrap{display:flex;align-items:center;gap:6px}.threadTimeWrap em{font-style:normal;font-size:9px;font-weight:900;color:#b91c3c;background:#fce8ed;border-radius:999px;padding:3px 6px}
    .threadList{min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;flex:1}.threadCard{width:100%;border:0;border-top:1px solid #f3f4f6;background:#fff;padding:13px 14px;display:flex;gap:11px;text-align:left;cursor:pointer}.threadCard:hover,.threadCard.selected{background:#f9fafb}.threadCard.selected{box-shadow:inset 3px 0 #b91c3c}
    .profilePic{width:64px;height:64px;border-radius:50%;object-fit:cover}.threadAvatarPic{width:38px;height:38px;border-radius:50%;object-fit:cover;flex:none}.avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#ec4899,#f59e0b);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:none}.avatar.large{width:42px;height:42px}.avatar.xlarge{width:64px;height:64px;font-size:16px}
    .threadCopy{min-width:0;flex:1}.threadTop{display:flex;justify-content:space-between;gap:8px;align-items:center}.threadTop strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.threadTop time{font-size:10px;color:#9ca3af}.threadCopy p{margin:4px 0 2px;color:#6b7280;font-size:12px}.threadCopy small{color:#9ca3af;font-size:10px}.emptyList{padding:28px 18px;color:#9ca3af;font-size:13px;text-align:center}
