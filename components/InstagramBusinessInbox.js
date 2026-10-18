@@ -25,6 +25,13 @@ const messageStamp=value=>{
  return key(d)===key(now)?clock(value):`${day(value)} · ${clock(value)}`;
 };
 
+function LinkifiedText({text}){
+ const parts=String(text||'').split(/(https?:\/\/[^\s]+)/g);
+ return <p>{parts.map((part,i)=>/^https?:\/\/[^\s]+$/i.test(part)
+  ?<a key={i} href={part} target="_blank" rel="noopener noreferrer">{part}</a>
+  :part)}</p>;
+}
+
 function Media({thread,input,index,type,onOpen,onLoaded}){
  const [url,setUrl]=useState(null);
  useEffect(()=>{
@@ -254,7 +261,7 @@ export default function InstagramBusinessInbox(){
       return <div key={r.input} className={`messageRow ${inbound?'incoming':'outgoing'}`}>
        <article className="bubble">
         {r.attachments?.map(a=>['image','audio','video'].includes(a.type)?<Media key={a.index} thread={selected} input={r.input} index={a.index} type={a.type} onOpen={setLightbox} onLoaded={()=>scrollChatBottom('auto')}/>:<div key={a.index} className="mediaPlaceholder">Adjunto no soportado</div>)}
-        {r.text&&<p>{r.text}</p>}
+        {r.text&&<LinkifiedText text={r.text}/>}
         <div className="bubbleMeta"><time>{messageStamp(r.occurred_at)}</time>{r.status&&<span> · {r.status}</span>}</div>
        </article>
        {inbound&&!r.deleted&&<button className="replyChip" disabled={busy||uncertainLocked} onClick={()=>setInput(r.input)}>{input===r.input?'✓ Respondiendo aquí':'Responder aquí'}</button>}
@@ -304,7 +311,7 @@ export default function InstagramBusinessInbox(){
    .threadCopy{min-width:0;flex:1}.threadTop{display:flex;justify-content:space-between;gap:8px;align-items:center}.threadTop strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.threadTop time{font-size:10px;color:#9ca3af}.threadCopy p{margin:4px 0 2px;color:#6b7280;font-size:12px}.threadCopy small{color:#9ca3af;font-size:10px}.emptyList{padding:28px 18px;color:#9ca3af;font-size:13px;text-align:center}
    .chatPane{min-width:0;min-height:0;height:100%;overflow:hidden;background:#f7f8fa;display:flex;flex-direction:column}.chatHeader{background:#fff}.backButton{display:none;border:0;background:transparent;font-size:28px;line-height:1;color:#b91c3c;padding:0 4px;cursor:pointer}.mobileAliasButton{display:none;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}.contactSheetBackdrop{display:none}.contactTitle{display:flex;align-items:center;gap:10px}.contactTitle strong{font-size:14px}.senderBadge{font-size:11px;font-weight:800;border-radius:999px;padding:6px 9px}.senderBadge.on{background:#dcfce7;color:#166534}.senderBadge.off{background:#f3f4f6;color:#6b7280}
    .messages{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:24px 28px;display:flex;flex-direction:column;gap:14px}.messageRow{display:flex;flex-direction:column;max-width:72%}.messageRow.incoming{align-self:flex-start;align-items:flex-start}.messageRow.outgoing{align-self:flex-end;align-items:flex-end}
-   .bubble{border-radius:18px;padding:10px 13px;box-shadow:0 1px 2px rgba(0,0,0,.06);max-width:100%;overflow:hidden}.incoming .bubble{background:#fff;border-bottom-left-radius:5px}.outgoing .bubble{background:#fce8ed;border-bottom-right-radius:5px}.bubble p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45}.bubbleMeta{margin-top:5px;color:#9ca3af;font-size:9px;text-align:right}.replyChip{margin-top:5px;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:700;cursor:pointer;padding:3px 5px}
+   .bubble{border-radius:18px;padding:10px 13px;box-shadow:0 1px 2px rgba(0,0,0,.06);max-width:100%;overflow:hidden}.incoming .bubble{background:#fff;border-bottom-left-radius:5px}.outgoing .bubble{background:#fce8ed;border-bottom-right-radius:5px}.bubble p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45}.bubble a{color:#2563eb;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}.bubbleMeta{margin-top:5px;color:#9ca3af;font-size:9px;text-align:right}.replyChip{margin-top:5px;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:700;cursor:pointer;padding:3px 5px}
    .mediaButton{border:0;background:transparent;padding:0;cursor:zoom-in;max-width:100%}.inboxMedia{display:block;width:auto;height:auto;max-width:220px;max-height:170px;object-fit:contain;background:#f3f4f6;border-radius:12px;margin-bottom:7px}.chatBottomSentinel{height:1px;flex:none}.mediaPlaceholder{background:#f3f4f6;color:#9ca3af;padding:20px;border-radius:10px;font-size:12px}
    .composer{background:#fff;border-top:1px solid #e5e7eb;padding:12px 18px}.replyContext{display:flex;justify-content:space-between;align-items:center;background:#f9fafb;border-left:3px solid #b91c3c;padding:7px 10px;margin-bottom:8px;font-size:11px;color:#6b7280}.replyContext button{border:0;background:transparent;font-size:18px;color:#6b7280;cursor:pointer}
    .composerRow{display:flex;gap:10px;align-items:flex-end}.composer textarea{flex:1;resize:none;min-height:58px;max-height:130px;border:1px solid #d1d5db;border-radius:14px;padding:11px 12px;font:inherit;outline:0}.composer textarea:focus{border-color:#b91c3c}.sendButton{height:42px;border:0;border-radius:10px;padding:0 18px;background:#b91c3c;color:#fff;font-weight:800;cursor:pointer}.sendButton:disabled{background:#e5e7eb;color:#9ca3af;cursor:not-allowed}.composerFoot{display:flex;justify-content:space-between;color:#9ca3af;font-size:10px;margin-top:6px}
