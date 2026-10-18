@@ -36,7 +36,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   setNameStatus('Guardando…');
   try{const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('auth');
    const r=await fetch('/api/operaciones/facebook-messenger-names',{method:'POST',cache:'no-store',redirect:'error',headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},body:JSON.stringify({thread,alias})});
-   if(!r.ok)throw Error('save');setEditing(false);setNameStatus('Nombre guardado');if(onNameSaved)await onNameSaved();
+   if(!r.ok)throw Error('save');setNameStatus('Nombre guardado');if(onNameSaved)await onNameSaved();
   }catch{setNameStatus('No se pudo guardar el nombre.');}
  }
 
@@ -58,7 +58,6 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
  }
  return <section className="fbConversation" aria-label="Conversación Facebook Messenger">
   <div className="fbWorkspace"><div className="fbChat"><header className="fbHeader"><div><strong>{displayName||'Contacto de Facebook'}</strong><span>Facebook Messenger · </span><span>{enabled?'Atención manual habilitada':'Sólo lectura · Envío desactivado'} · Sin IA</span></div><div className="fbActions"><button type="button" className="mobileDetails" onClick={()=>setDetailsOpen(v=>!v)}>Ficha</button><button type="button" onClick={refresh}>↻ Actualizar</button></div></header>
-  {editing&&<div className="nameEditor"><input aria-label="Nombre interno del contacto" placeholder="Nombre del contacto" value={nameDraft} onChange={e=>setNameDraft(e.target.value)} maxLength={90}/><button disabled={nameDraft.trim().length<2} type="button" onClick={saveName}>Guardar nombre</button></div>}
   {nameStatus&&<p role="status" className="nameStatus">{nameStatus}</p>}
   <div className="history" role="log" aria-label="Mensajes de Facebook">
    {!rows.length&&<p className="emptyHistory">No hay mensajes disponibles para esta conversación.</p>}
