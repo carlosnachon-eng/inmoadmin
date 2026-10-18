@@ -40,6 +40,7 @@ export default function InstagramBusinessInbox(){
  const [busy,setBusy]=useState(false);
  const [search,setSearch]=useState('');
  const [aliasDraft,setAliasDraft]=useState(''),[aliasBusy,setAliasBusy]=useState(false);
+ const [profile,setProfile]=useState(null),[syncing,setSyncing]=useState(false);
  const lock=useRef(false),consumed=useRef(new Set()),generation=useRef(0),chatRef=useRef(null);
 
  const filtered=useMemo(()=>{
@@ -60,6 +61,7 @@ export default function InstagramBusinessInbox(){
    if(thread){
     setRows(r.rows||[]);
     setSelected(thread);
+    setProfile(r.profile||null);
     const current=threads.find(t=>t.thread_ref===thread);
     setAliasDraft(current?.alias||'');
     setInput(null);
@@ -74,6 +76,18 @@ export default function InstagramBusinessInbox(){
  }
 
  useEffect(()=>{void load();},[]);
+
+ async function syncHistory(){
+  if(syncing)return;
+  setSyncing(true);setStatus('Recuperando historial reciente…');
+  try{
+   const r=await request('history-sync',{body:{}});
+   setStatus(`Historial: ${r.inserted} nuevos · ${r.duplicates} ya existentes${r.truncated_to_recent_20?' · algunas conversaciones exceden los 20 mensajes recuperables':''}`);
+   await load(null,{quiet:true});
+   if(selected)await load(selected,{quiet:true});
+  }catch{setStatus('No fue posible recuperar el historial reciente');}
+  finally{setSyncing(false);}
+ }
 
  async function saveAlias(){
   if(!selected||aliasBusy)return;
@@ -109,7 +123,7 @@ export default function InstagramBusinessInbox(){
   <aside className="conversationPane">
    <div className="paneHeader">
     <div><h2>Inbox</h2><span>Instagram</span></div>
-    <button className="iconButton" title="Actualizar" disabled={busy} onClick={()=>load()}>↻</button>
+    <div className="headerActions"><button className="historyButton" disabled={busy||syncing} onClick={syncHistory}>{syncing?'Recuperando…':'7 días'}</button><button className="iconButton" title="Actualizar" disabled={busy||syncing} onClick={()=>load()}>↻</button></div>
    </div>
    <div className="channelTabs">
     <button className="channel active"><span className="igDot">◎</span> Instagram</button>
@@ -137,7 +151,7 @@ export default function InstagramBusinessInbox(){
   <main className="chatPane">
    {selected?<>
     <header className="chatHeader">
-     <div className="contactTitle"><div className="avatar large">IG</div><div><strong>{threads.find(t=>t.thread_ref===selected)?.alias||`Conversación Instagram ${selectedIndex+1}`}</strong><span>Instagram · Meta directo</span></div></div>
+     <div className="contactTitle"><div className="avatar large">IG</div><div><strong>{threads.find(t=>t.thread_ref===selected)?.alias||(profile?.username?`@${profile.username}`:profile?.name)||`Conversación Instagram ${selectedIndex+1}`}</strong><span>{profile?.username&&profile?.name?`${profile.name} · `:''}Instagram · Meta directo</span></div></div>
      <div className={`senderBadge ${enabled?'on':'off'}`}>{enabled?'Envío habilitado':'Sender OFF'}</div>
     </header>
     <div className="messages" ref={chatRef}>
@@ -169,7 +183,7 @@ export default function InstagramBusinessInbox(){
   <aside className="detailsPane">
    <div className="detailsHeader"><h3>Detalles</h3></div>
    {selected?<div className="detailsBody">
-    <div className="profileCard"><div className="avatar xlarge">IG</div><strong>{threads.find(t=>t.thread_ref===selected)?.alias||'Contacto de Instagram'}</strong><span>Nombre interno de Emporio</span></div>
+    <div className="profileCard">{profile?.profile_pic?<img src={profile.profile_pic} alt="" className="profilePic"/>:<div className="avatar xlarge">IG</div>}<strong>{threads.find(t=>t.thread_ref===selected)?.alias||(profile?.username?`@${profile.username}`:profile?.name)||'Contacto de Instagram'}</strong><span>{threads.find(t=>t.thread_ref===selected)?.alias?(profile?.username?`Instagram: @${profile.username}`:'Alias interno de Emporio'):(profile?.name||'Identidad no disponible')}</span></div>
     <div className="detailBlock"><label>Nombre interno</label><div className="aliasEditor"><input value={aliasDraft} onChange={e=>setAliasDraft(e.target.value)} maxLength={80} placeholder="Ej. Cliente Depa Angelópolis"/><button disabled={aliasBusy} onClick={saveAlias}>{aliasBusy?'…':'Guardar'}</button></div><small>Visible sólo dentro de Inmoadmin; no cambia el nombre en Instagram.</small></div>
     <div className="detailBlock"><label>Canal</label><p>Instagram Direct</p></div>
     <div className="detailBlock"><label>Estado</label><p>{enabled?'Atención manual habilitada':'Lectura disponible · sender OFF'}</p></div>
@@ -185,11 +199,11 @@ export default function InstagramBusinessInbox(){
    .conversationPane,.detailsPane{min-width:0;background:#fff}.conversationPane{border-right:1px solid #e5e7eb;display:flex;flex-direction:column}.detailsPane{border-left:1px solid #e5e7eb}
    .paneHeader,.chatHeader,.detailsHeader{height:68px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e7eb;box-sizing:border-box}
    .paneHeader h2{margin:0;font-size:22px}.paneHeader span,.contactTitle span{display:block;color:#6b7280;font-size:12px;margin-top:2px}
-   .iconButton{width:34px;height:34px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;font-size:18px;cursor:pointer}
+   .headerActions{display:flex;gap:7px;align-items:center}.historyButton{height:34px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:0 10px;font-size:11px;font-weight:800;color:#4b5563;cursor:pointer}.iconButton{width:34px;height:34px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;font-size:18px;cursor:pointer}
    .channelTabs{display:flex;gap:6px;padding:12px 14px 6px}.channel{border:0;background:#f3f4f6;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:700;color:#6b7280}.channel.active{background:#fce8ed;color:#b91c3c}.channel small{font-size:9px;font-weight:600}.igDot{font-size:16px}
    .searchWrap{margin:8px 14px 12px;background:#f3f4f6;border-radius:10px;padding:9px 12px;display:flex;gap:8px;align-items:center}.searchWrap input{width:100%;border:0;outline:0;background:transparent;font-size:13px}
    .threadList{overflow:auto;flex:1}.threadCard{width:100%;border:0;border-top:1px solid #f3f4f6;background:#fff;padding:13px 14px;display:flex;gap:11px;text-align:left;cursor:pointer}.threadCard:hover,.threadCard.selected{background:#f9fafb}.threadCard.selected{box-shadow:inset 3px 0 #b91c3c}
-   .avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#ec4899,#f59e0b);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:none}.avatar.large{width:42px;height:42px}.avatar.xlarge{width:64px;height:64px;font-size:16px}
+   .profilePic{width:64px;height:64px;border-radius:50%;object-fit:cover}.avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#ec4899,#f59e0b);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:none}.avatar.large{width:42px;height:42px}.avatar.xlarge{width:64px;height:64px;font-size:16px}
    .threadCopy{min-width:0;flex:1}.threadTop{display:flex;justify-content:space-between;gap:8px;align-items:center}.threadTop strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.threadTop time{font-size:10px;color:#9ca3af}.threadCopy p{margin:4px 0 2px;color:#6b7280;font-size:12px}.threadCopy small{color:#9ca3af;font-size:10px}.emptyList{padding:28px 18px;color:#9ca3af;font-size:13px;text-align:center}
    .chatPane{min-width:0;background:#f7f8fa;display:flex;flex-direction:column}.chatHeader{background:#fff}.contactTitle{display:flex;align-items:center;gap:10px}.contactTitle strong{font-size:14px}.senderBadge{font-size:11px;font-weight:800;border-radius:999px;padding:6px 9px}.senderBadge.on{background:#dcfce7;color:#166534}.senderBadge.off{background:#f3f4f6;color:#6b7280}
    .messages{flex:1;overflow:auto;padding:24px 28px;display:flex;flex-direction:column;gap:14px}.messageRow{display:flex;flex-direction:column;max-width:72%}.messageRow.incoming{align-self:flex-start;align-items:flex-start}.messageRow.outgoing{align-self:flex-end;align-items:flex-end}
