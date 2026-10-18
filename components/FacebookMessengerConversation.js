@@ -28,7 +28,8 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   finally{setContactBusy(false);}
  }
 
- const [canRename,setCanRename]=useState(false),[editing,setEditing]=useState(false),[nameDraft,setNameDraft]=useState(''),[nameStatus,setNameStatus]=useState('');
+ const [canRename,setCanRename]=useState(false),[nameDraft,setNameDraft]=useState(displayName),[nameStatus,setNameStatus]=useState('');
+ useEffect(()=>{setNameDraft(displayName||'')},[displayName,thread]);
  useEffect(()=>{let live=true;supabase.auth.getUser().then(async({data})=>{if(!data?.user)return;const {data:profile}=await supabase.from('profiles').select('active,role_id').eq('id',data.user.id).maybeSingle();if(live)setCanRename(profile?.active===true&&profile?.role_id==='admin');}).catch(()=>{});return()=>{live=false};},[]);
  async function saveName(){
   const alias=nameDraft.trim();if(alias.length<2||alias.length>90)return;
