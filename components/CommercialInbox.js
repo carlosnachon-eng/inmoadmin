@@ -50,10 +50,24 @@ export default function CommercialInbox({instagramAvailable}){
   }catch{setSyncStatus('No se pudo recuperar el historial. No se enviaron mensajes.');}
   finally{setSyncBusy(false)}
  }
+ async function recoverFacebookHistory(){
+  if(syncBusy)return;setSyncBusy(true);setSyncStatus('Recuperando 7 días de Facebook…');
+  try{
+   const {data}=await supabase.auth.getSession();
+   if(!data?.session)throw Error('Sesión requerida');
+   const response=await fetch('/api/operaciones/facebook-messenger-history',{method:'POST',cache:'no-store',redirect:'error',
+    headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},body:'{}'});
+   if(!response.ok)throw Error('No disponible');
+   const result=await response.json();
+   setSyncStatus(`Facebook: ${result.inserted??0} mensajes incorporados, ${result.duplicates??0} duplicados evitados.${result.truncated?' El historial puede estar incompleto por límites de Meta.':''}`);
+   await load();
+  }catch{setSyncStatus('No se pudo recuperar Facebook: comprueba permisos de Meta y vigencia de la conexión. No se enviaron mensajes.');}
+  finally{setSyncBusy(false)}
+ }
  const visible=threads.filter(t=>(filter==='all'||t.channel===filter)&&`${t.alias||''} ${t.profile_name||''} ${t.profile_username||''} ${t.channel}`.toLocaleLowerCase('es-MX').includes(query.toLocaleLowerCase('es-MX').trim()));
  return <section aria-label="Inbox comercial omnicanal" className="commercialInbox">
   <header className="inboxHeader"><div><span className="eyebrow">EMPORIO · MENSAJERÍA</span><h1>Inbox</h1><p className="subtitle">Conversaciones y atención desde un solo lugar</p></div>
-  <div className="inboxActions">{instagramAvailable&&canSyncHistory&&<button type="button" className="refresh" disabled={syncBusy} onClick={recoverHistory}>{syncBusy?'Recuperando…':'↻ Recuperar 7 días IG'}</button>}<button type="button" className="refresh" onClick={load} aria-label="Actualizar conversaciones">↻ Actualizar</button></div></header>
+  <div className="inboxActions">{instagramAvailable&&canSyncHistory&&<button type="button" className="refresh" disabled={syncBusy} onClick={recoverHistory}>{syncBusy?'Recuperando…':'↻ Recuperar 7 días IG'}</button>}{canSyncHistory&&<button type="button" className="refresh" disabled={syncBusy} onClick={recoverFacebookHistory}>{syncBusy?'Recuperando…':'↻ Recuperar 7 días FB'}</button>}<button type="button" className="refresh" onClick={load} aria-label="Actualizar conversaciones">↻ Actualizar</button></div></header>
   <nav aria-label="Canales" className="channelTabs">{[['all','Todos'],['instagram','Instagram'],['facebook','Facebook'],['comments','Comentarios']].map(([id,label])=>
    <button type="button" key={id} className={filter===id?'active':''} aria-pressed={filter===id} onClick={()=>{setFilter(id);setSelected(null);}}>{label}{id==='all'&&<span className="counter">{threads.length}</span>}{(id==='instagram'||id==='facebook')&&<span className="counter">{threads.filter(t=>t.channel===id).length}</span>}</button>)}</nav>
   {syncStatus&&<p role="status" className="loadWarning">{syncStatus}</p>}
