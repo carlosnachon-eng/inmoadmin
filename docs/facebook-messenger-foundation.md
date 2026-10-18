@@ -145,3 +145,15 @@ Aplicadas sólo en `inmoadmin-dev` (`hjfwjnejbcpmknvfpdcq`): foundation y provis
 6. Inbox omnicanal posterior reutiliza `/administracion/inbox`; este cambio no agrega una bandeja ni modifica UI Instagram.
 
 Fuente introspección: https://developers.facebook.com/docs/graph-api/reference/debug_token/ (v26.0, inspeccionada en navegador). App Review/Advanced Access para usuarios no-role continúa pendiente; no interpretar Standard como permiso general para clientes.
+# Inbox único DEV — lectura y composer manual
+
+`/administracion/inbox` monta `CommercialInbox` sólo cuando Messenger está habilitado fuera de Production. Los filtros Todos/Instagram/Facebook/Comentarios comparten un listado con clave `canal:thread_ref`. El detalle de Instagram sigue siendo el componente existente mediante props opcionales; la ruta productiva mantiene su comportamiento anterior.
+
+Facebook usa `fb_messenger_inbox_v1`, exclusivo de service_role, con identidad obtenida por `authorizeInboxStaff`. Mantiene grants exactos, vigentes, incluso para administradores. No hereda asignaciones ni identificadores Instagram. La respuesta HTTP excluye ciphertext, recipient, token y IDs nativos; el contenido se descifra server-side. Una anulación oculta contenido y una acción terminal impide volver a ofrecer respuesta sobre ese inbound.
+
+El composer envía texto al sender durable ya certificado. Bloquea doble click y conserva bloqueo tras resultado incierto; refrescar sólo hace GET. El kill-switch y claim siguen siendo definitivos en DB. No se habilitó sender ni se hicieron envíos reales en esta etapa.
+
+Validación: 37 tests JS, 70 checks PostgreSQL efímero, prueba JSX real con APIs sintéticas en desktop y móvil 390px (1 POST por doble click, 0 por refresh), build Next completo con configuración sintética. La migración adicional se aplica únicamente en DEV. Carlos recibe sólo lectura del único hilo controlado existente por 24 horas, sin `can_reply`.
+
+Pendiente: autorización expresa para grant de respuesta y sender temporal en prueba real; verificar health/freshness antes del envío. Multimedia Messenger, gestión de asignación desde UI, propiedades y citas Facebook aún requieren adaptadores propios; no se invocan APIs de Instagram con refs Facebook. No se presentan esas funcionalidades como certificadas.
+

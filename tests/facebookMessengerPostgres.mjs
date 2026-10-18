@@ -36,6 +36,7 @@ try {
  db=await client();
  await q('create role anon;create role authenticated;create role service_role;create table public.profiles(id uuid primary key,active boolean,role_id text);');
  await q(await readFile(new URL('../supabase/migrations/20261018165210_facebook_messenger_foundation.sql',import.meta.url),'utf8'));checks++;
+ await q(await readFile(new URL('../supabase/migrations/20261018194000_facebook_messenger_inbox.sql',import.meta.url),'utf8'));checks++;
  await q('insert into public.profiles values($1,true,\'asesor\'),($2,true,\'admin\')',[actor.id,other]);
  await q('insert into facebook_messenger_private.connections(id,app_id,page_id) values($1,$2,$3)',[c.connection,c.app,c.page]);
  check((await q('select enabled,sender_enabled from facebook_messenger_private.connections')).rows[0],{enabled:false,sender_enabled:false});
@@ -63,6 +64,16 @@ try {
  check(await read(actor.id),null);check(await read(other),null);
  await q("insert into facebook_messenger_private.thread_grants values($1,$2,$3,now()+interval '1 hour',true)",[c.connection,e.thread_ref,actor.id]);
  check((await read(actor.id)).provider,'facebook_messenger');check(await read(other),null);
+ const inbox=(who,thread=null)=>call(service,'fb_messenger_inbox_v1',{p_connection:c.connection,p_actor:who,p_thread:thread});
+ check((await inbox(actor.id)).rows.length,1);check((await inbox(other)).rows.length,0);
+ check((await inbox(actor.id,e.thread_ref)).rows.length,1);check(await inbox(other,e.thread_ref),null);
+ check(await inbox(actor.id,'f'.repeat(64)),null);
+ await q('update public.profiles set active=false where id=$1',[actor.id]);check(await inbox(actor.id),null);
+ await q('update public.profiles set active=true where id=$1',[actor.id]);
+ for(const role of ['anon','authenticated']){
+  const cl=await client(role);
+  await assert.rejects(()=>call(cl,'fb_messenger_inbox_v1',{p_connection:c.connection,p_actor:actor.id,p_thread:null}),x=>x.code==='42501');checks++;
+ }
  const validUntil=new Date(Date.now()+3600000).toISOString();
  await q("insert into facebook_messenger_private.credentials values($1,'PAGE',1,array['pages_messaging'],$2,now(),$3)",[c.connection,seal(c,'token',[1,validUntil],'local-token'),validUntil]);
  const action=()=>({connection:c.connection,actor:actor.id,input:e.event_ref,action:randomUUID(),lease:randomUUID(),generation:1,text_box:box});
