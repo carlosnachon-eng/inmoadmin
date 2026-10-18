@@ -117,7 +117,7 @@ export default function InstagramCommentsPanel({open,onClose}){
     {filtered.map(row=><button type="button" key={row.id} className={`commentRow ${active?.comment_ref===row.comment_ref?'selected':''}`} onClick={()=>setSelected(row.comment_ref)}>
       <div className="rowTop"><strong>{row.username?('@'+row.username):'Usuario de Instagram'}</strong><time>{STAMP(row.occurred_at)}</time></div>
       <p>{row.text||'Comentario sin texto'}</p>
-      <div className="rowBadges"><small>{row.media_product_type||'Publicación'}</small>{row.automation_status&&<em className={`state state-${row.automation_status}`}>{row.automation_status==='dm_sent'?'Inbox enviado':row.automation_status==='review'?'Revisión humana':row.automation_status==='ignored'?'Sin acción':row.automation_status==='expired'?'Vencido':row.automation_status==='failed'?'Falló':row.automation_status==='uncertain'?'Por verificar':row.automation_status}</em>}</div>
+      <div className="rowBadges"><small>{row.media_product_type||'Publicación'}</small>{row.automation_status&&<em className={`state state-${row.automation_status}`}>{row.automation_status==='reserved'?'Shadow · comercial':row.automation_status==='dm_sent'?'Inbox enviado':row.automation_status==='review'?'Revisión humana':row.automation_status==='ignored'?'Sin acción':row.automation_status==='expired'?'Vencido':row.automation_status==='failed'?'Falló':row.automation_status==='uncertain'?'Por verificar':row.automation_status}</em>}</div>
     </button>)}
    </div>
   </aside>
@@ -136,6 +136,7 @@ export default function InstagramCommentsPanel({open,onClose}){
 
      {active.automation_status==='dm_sent'&&<section className="automationNotice success"><strong>Inbox enviado automáticamente</strong><span>El prospecto ya recibió un mensaje privado. Si responde, continuará en la bandeja normal de DMs.</span></section>}
      {active.automation_status==='review'&&<section className="automationNotice review"><strong>Revisión humana</strong><span>El sistema no respondió automáticamente porque detectó un caso sensible, anidado o ambiguo.</span></section>}
+     {active.automation_status==='reserved'&&<section className="automationNotice pending"><strong>Clasificado en Shadow · Comercial</strong><span>No se ha enviado ningún mensaje privado. Pendiente de aprobación de Outbound.</span></section>}
      {!active.automation_status&&<section className="automationNotice pending"><strong>Pendiente de clasificación</strong><span>El worker automático todavía no ha procesado este comentario.</span></section>}
      <section className="replyBox">
       <div className="replyHead"><strong>Respuesta pública manual</strong><span>Disponible sólo como excepción · IA desactivada</span></div>
