@@ -27,7 +27,7 @@ begin
    where id=p_connection and enabled) then return false; end if;
  if not exists(select 1 from facebook_messenger_private.events
    where connection_id=p_connection and thread_ref=p_thread and kind='inbound') then return false; end if;
- insert into facebook_messenger_private.thread_assignments(connection_id,thread_ref,advisor_id,assigned_by)
+ -- Serialize manager changes per thread and avoid two advisors with simultaneous access.\n perform pg_advisory_xact_lock(hashtextextended(p_connection::text||':'||p_thread,0));\n delete from facebook_messenger_private.thread_grants g\n where g.connection_id=p_connection and g.thread_ref=p_thread\n   and g.actor_id in (select advisor_id from facebook_messenger_private.thread_assignments\n                      where connection_id=p_connection and thread_ref=p_thread)\n   and g.actor_id<>p_advisor;\n insert into facebook_messenger_private.thread_assignments(connection_id,thread_ref,advisor_id,assigned_by)
  values(p_connection,p_thread,p_advisor,p_actor)
  on conflict(connection_id,thread_ref) do update
  set advisor_id=excluded.advisor_id,assigned_by=excluded.assigned_by,assigned_at=clock_timestamp();
