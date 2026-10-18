@@ -68,7 +68,7 @@ export default function InstagramBusinessInbox(){
  const [search,setSearch]=useState('');
  const [aliasDraft,setAliasDraft]=useState(''),[aliasBusy,setAliasBusy]=useState(false),[mobileAliasEditing,setMobileAliasEditing]=useState(false);
  const [profile,setProfile]=useState(null),[syncing,setSyncing]=useState(false),[uncertainLocked,setUncertainLocked]=useState(false);
- const [phoneDraft,setPhoneDraft]=useState(''),[emailDraft,setEmailDraft]=useState(''),[contactBusy,setContactBusy]=useState(false),[lightbox,setLightbox]=useState(null),[pendingMedia,setPendingMedia]=useState(null);
+ const [phoneDraft,setPhoneDraft]=useState(''),[emailDraft,setEmailDraft]=useState(''),[contactBusy,setContactBusy]=useState(false),[lightbox,setLightbox]=useState(null),[pendingMedia,setPendingMedia]=useState(null),[optimistic,setOptimistic]=useState([]);
  const lock=useRef(false),generation=useRef(0),chatRef=useRef(null),bottomRef=useRef(null),mediaInputRef=useRef(null),polling=useRef(false),selectedRef=useRef(null);
 
  const filtered=useMemo(()=>{
@@ -107,7 +107,17 @@ export default function InstagramBusinessInbox(){
  }
 
  useEffect(()=>{selectedRef.current=selected;},[selected]);
- useEffect(()=>{if(selected&&rows.length)scrollChatBottom('auto');},[selected,rows.length]);
+ useEffect(()=>{
+  if(!optimistic.length)return;
+  setOptimistic(list=>list.filter(o=>!rows.some(r=>{
+   if(r.direction==='customer_inbound')return false;
+   const when=Date.parse(r.occurred_at);
+   if(!Number.isFinite(when)||when<o.sentAt-5000)return false;
+   if(o.kind==='text')return r.text===o.text;
+   return o.kind==='image'&&r.attachments?.some(a=>a.type==='image');
+  })));
+ },[rows]);
+ useEffect(()=>{if(selected&&(rows.length||optimistic.length))scrollChatBottom('auto');},[selected,rows.length,optimistic.length]);
  useEffect(()=>{void load();},[]);
  useEffect(()=>{
   const tick=async()=>{
@@ -206,7 +216,14 @@ export default function InstagramBusinessInbox(){
    setStatus('Enviando foto…');
    const action=crypto.randomUUID();
    const r=await request('media-reply',{body:{input:replyAnchor,action,path,mime:file.type,size:file.size}});
-   if(r.status==='accepted'){setStatus('Foto enviada');cancelPendingMedia();await load(selected,{quiet:true});await load(null,{quiet:true});}
+   if(r.status==='accepted'){
+    const nowIso=new Date().toISOString(),previewUrl=pendingMedia?.url;
+    setOptimistic(list=>[...list,{id:'local-'+action,kind:'image',url:previewUrl,occurred_at:nowIso,sentAt:Date.now(),status:'Enviado'}]);
+    setPendingMedia(null);if(mediaInputRef.current)mediaInputRef.current.value='';
+    setStatus('Foto enviada');setInput(null);setUncertainLocked(false);
+    scrollChatBottom('smooth');
+    void load(null,{quiet:true});
+   }
    else if(r.status==='uncertain'){setUncertainLocked(true);setStatus('Resultado incierto · revisa Instagram antes de enviar otro mensaje');}
    else{const validation=r?.diagnostic?.validation;setStatus(validation?`${r.status} · ${validation}`:r.status);}
   }catch{setStatus('No fue posible enviar la foto');}
@@ -223,8 +240,11 @@ export default function InstagramBusinessInbox(){
   try{
    const r=await submitBusinessReply({request,thread:selected,input:replyAnchor,action,text:text.trim()});
    if(r.status==='accepted'){
+    const sentText=text.trim(),nowIso=new Date().toISOString();
+    setOptimistic(list=>[...list,{id:'local-'+action,kind:'text',text:sentText,occurred_at:nowIso,sentAt:Date.now(),status:'Enviado'}]);
     setStatus('Enviado');setText('');setInput(null);setUncertainLocked(false);
-    await load(selected,{quiet:true});await load(null,{quiet:true});
+    scrollChatBottom('smooth');
+    void load(null,{quiet:true});
    }else if(r.status==='uncertain'){
     setUncertainLocked(true);setStatus('Resultado incierto · revisa Instagram antes de enviar otro mensaje');
    }else{
@@ -305,6 +325,15 @@ export default function InstagramBusinessInbox(){
        {inbound&&!r.deleted&&<button className="replyChip" disabled={busy||uncertainLocked} onClick={()=>setInput(r.input)}>{input===r.input?'✓ Respondiendo aquí':'Responder aquí'}</button>}
       </div>;
      })}
+     {optimistic.map(o=><div key={o.id} className="messageRow outgoing optimisticMessage">
+      <article className="bubble">
+       {o.kind==='image'&&o.url&&<button type="button" onClick={()=>setLightbox(o.url)} style={{border:0,background:'transparent',padding:0,cursor:'zoom-in',maxWidth:'100%',display:'block'}}>
+        <img src={o.url} alt="Foto enviada" style={{display:'block',width:'auto',height:'auto',maxWidth:'160px',maxHeight:'140px',objectFit:'contain',background:'#f3f4f6',borderRadius:'12px',marginBottom:'7px'}}/>
+       </button>}
+       {o.kind==='text'&&<LinkifiedText text={o.text}/>}
+       <div className="bubbleMeta"><time>{messageStamp(o.occurred_at)}</time><span> · ✓ Enviado</span></div>
+      </article>
+     </div>)}
      <div ref={bottomRef} className="chatBottomSentinel" aria-hidden="true"/>
     </div>
     <form className="composer" onSubmit={send}>
@@ -358,7 +387,7 @@ export default function InstagramBusinessInbox(){
    .threadCopy{min-width:0;flex:1}.threadTop{display:flex;justify-content:space-between;gap:8px;align-items:center}.threadTop strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.threadTop time{font-size:10px;color:#9ca3af}.threadCopy p{margin:4px 0 2px;color:#6b7280;font-size:12px}.threadCopy small{color:#9ca3af;font-size:10px}.emptyList{padding:28px 18px;color:#9ca3af;font-size:13px;text-align:center}
    .chatPane{min-width:0;min-height:0;height:100%;overflow:hidden;background:#f7f8fa;display:flex;flex-direction:column}.chatHeader{background:#fff}.backButton{display:none;border:0;background:transparent;font-size:28px;line-height:1;color:#b91c3c;padding:0 4px;cursor:pointer}.mobileAliasButton{display:none;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}.contactSheetBackdrop{display:none}.contactTitle{display:flex;align-items:center;gap:10px}.contactTitle strong{font-size:14px}.senderBadge{font-size:11px;font-weight:800;border-radius:999px;padding:6px 9px}.senderBadge.on{background:#dcfce7;color:#166534}.senderBadge.off{background:#f3f4f6;color:#6b7280}
    .messages{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:24px 28px;display:flex;flex-direction:column;gap:14px}.messageRow{display:flex;flex-direction:column;max-width:72%}.messageRow.incoming{align-self:flex-start;align-items:flex-start}.messageRow.outgoing{align-self:flex-end;align-items:flex-end}
-   .bubble{border-radius:18px;padding:10px 13px;box-shadow:0 1px 2px rgba(0,0,0,.06);max-width:100%;overflow:hidden}.incoming .bubble{background:#fff;border-bottom-left-radius:5px}.outgoing .bubble{background:#fce8ed;border-bottom-right-radius:5px}.bubble p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45}.bubble a{color:#2563eb;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}.bubbleMeta{margin-top:5px;color:#9ca3af;font-size:9px;text-align:right}.replyChip{margin-top:5px;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:700;cursor:pointer;padding:3px 5px}
+   .bubble{border-radius:18px;padding:10px 13px;box-shadow:0 1px 2px rgba(0,0,0,.06);max-width:100%;overflow:hidden}.incoming .bubble{background:#fff;border-bottom-left-radius:5px}.outgoing .bubble{background:#fce8ed;border-bottom-right-radius:5px}.bubble p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45}.bubble a{color:#2563eb;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}.bubbleMeta{margin-top:5px;color:#9ca3af;font-size:9px;text-align:right}.optimisticMessage .bubble{box-shadow:0 1px 2px rgba(0,0,0,.06),inset 0 0 0 1px rgba(185,28,60,.06)}.replyChip{margin-top:5px;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:700;cursor:pointer;padding:3px 5px}
    .mediaButton{border:0;background:transparent;padding:0;cursor:zoom-in;max-width:100%}.inboxMedia{display:block;width:auto;height:auto;max-width:220px;max-height:170px;object-fit:contain;background:#f3f4f6;border-radius:12px;margin-bottom:7px}.chatBottomSentinel{height:1px;flex:none}.mediaPlaceholder{background:#f3f4f6;color:#9ca3af;padding:20px;border-radius:10px;font-size:12px}
    .composer{background:#fff;border-top:1px solid #e5e7eb;padding:12px 18px}.mediaPreview{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;margin-bottom:10px;border:1px solid #e5e7eb;border-radius:14px;background:#f9fafb}.mediaPreviewImage{width:96px;height:96px;border-radius:12px;overflow:hidden;background:#eef2f7;display:flex;align-items:center;justify-content:center;flex:none}.mediaPreviewImage img{width:100%;height:100%;object-fit:cover}.mediaPreviewActions{display:flex;gap:8px;margin-left:auto}.previewCancel,.previewSend{height:40px;border-radius:10px;padding:0 14px;font-weight:800;cursor:pointer}.previewCancel{border:1px solid #d1d5db;background:#fff;color:#4b5563}.previewSend{border:0;background:#b91c3c;color:#fff}.previewCancel:disabled,.previewSend:disabled{opacity:.55;cursor:not-allowed}.replyContext{display:flex;justify-content:space-between;align-items:center;background:#f9fafb;border-left:3px solid #b91c3c;padding:7px 10px;margin-bottom:8px;font-size:11px;color:#6b7280}.replyContext button{border:0;background:transparent;font-size:18px;color:#6b7280;cursor:pointer}
    .composerRow{display:flex;gap:10px;align-items:flex-end}.attachButton{width:42px;height:42px;flex:none;border:1px solid #d1d5db;border-radius:10px;background:#fff;color:#b91c3c;font-size:24px;line-height:1;font-weight:700;cursor:pointer}.attachButton:disabled{color:#cbd5e1;background:#f9fafb;cursor:not-allowed}.composer textarea{flex:1;resize:none;min-height:58px;max-height:130px;border:1px solid #d1d5db;border-radius:14px;padding:11px 12px;font:inherit;outline:0}.composer textarea:focus{border-color:#b91c3c}.sendButton{height:42px;border:0;border-radius:10px;padding:0 18px;background:#b91c3c;color:#fff;font-weight:800;cursor:pointer}.sendButton:disabled{background:#e5e7eb;color:#9ca3af;cursor:not-allowed}.composerFoot{display:flex;justify-content:space-between;color:#9ca3af;font-size:10px;margin-top:6px}
