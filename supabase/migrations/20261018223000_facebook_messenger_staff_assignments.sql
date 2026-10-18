@@ -47,7 +47,7 @@ revoke all on function public.fb_messenger_assign_thread_v1(uuid,text,uuid,uuid)
 grant execute on function public.fb_messenger_assign_thread_v1(uuid,text,uuid,uuid) to service_role;
 -- Read-only supervisory visibility for unassigned threads; does not grant reply rights.
 create or replace function public.fb_messenger_inbox_v1(p_connection uuid,p_actor uuid,p_thread text default null) returns jsonb
-language plpgsql stable security definer set search_path=pg_catalog as $
+language plpgsql stable security definer set search_path=pg_catalog as $inbox$
 declare result jsonb; is_supervisor boolean;
 begin
  if not exists(select 1 from public.profiles where id=p_actor and active and role_id in ('admin','coord_operaciones','gerente_ventas','asesor','juridico'))
@@ -72,7 +72,7 @@ begin
   ) t;
  end if;
  return jsonb_build_object('rows',result,'sender_enabled',(select sender_enabled from facebook_messenger_private.connections where id=p_connection));
-end $;
+end $inbox$;
 revoke all on function public.fb_messenger_inbox_v1(uuid,uuid,text) from public,anon,authenticated;
 grant execute on function public.fb_messenger_inbox_v1(uuid,uuid,text) to service_role;
 
