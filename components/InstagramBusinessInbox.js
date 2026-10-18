@@ -46,7 +46,7 @@ export default function InstagramBusinessInbox(){
  const filtered=useMemo(()=>{
   const q=search.trim().toLowerCase();
   if(!q)return threads;
-  return threads.filter((t,i)=>`instagram conversación ${i+1} ${t.thread_ref}`.toLowerCase().includes(q));
+  return threads.filter((t,i)=>`instagram conversación ${i+1} ${t.thread_ref} ${t.alias||''} ${t.profile_name||''} ${t.profile_username||''}`.toLowerCase().includes(q));
  },[threads,search]);
 
  async function load(thread,{quiet=false}={}){
@@ -62,6 +62,7 @@ export default function InstagramBusinessInbox(){
     setRows(r.rows||[]);
     setSelected(thread);
     setProfile(r.profile||null);
+    if(r.profile) setThreads(list=>list.map(t=>t.thread_ref===thread?{...t,profile_name:r.profile.name||null,profile_username:r.profile.username||null,profile_pic:r.profile.profile_pic||null}:t));
     const current=threads.find(t=>t.thread_ref===thread);
     setAliasDraft(current?.alias||'');
     setInput(null);
@@ -137,9 +138,9 @@ export default function InstagramBusinessInbox(){
      const active=t.thread_ref===selected;
      const n=threads.indexOf(t)+1;
      return <button key={t.thread_ref} className={`threadCard ${active?'selected':''}`} onClick={()=>load(t.thread_ref)} disabled={busy}>
-      <div className="avatar">IG</div>
+      {t.profile_pic?<img src={t.profile_pic} alt="" className="threadAvatarPic"/>:<div className="avatar">IG</div>}
       <div className="threadCopy">
-       <div className="threadTop"><strong>{t.alias||`Conversación Instagram ${n}`}</strong><time>{clock(t.last_activity)}</time></div>
+       <div className="threadTop"><strong>{t.alias||(t.profile_username?`@${t.profile_username}`:t.profile_name)||`Conversación Instagram ${n}`}</strong><time>{clock(t.last_activity)}</time></div>
        <p>Mensaje directo de Instagram</p>
        <small>{day(t.last_activity)}</small>
       </div>
@@ -204,7 +205,7 @@ export default function InstagramBusinessInbox(){
    .channelTabs{display:flex;gap:6px;padding:12px 14px 6px}.channel{border:0;background:#f3f4f6;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:700;color:#6b7280}.channel.active{background:#fce8ed;color:#b91c3c}.channel small{font-size:9px;font-weight:600}.igDot{font-size:16px}
    .searchWrap{margin:8px 14px 12px;background:#f3f4f6;border-radius:10px;padding:9px 12px;display:flex;gap:8px;align-items:center}.searchWrap input{width:100%;border:0;outline:0;background:transparent;font-size:13px}
    .threadList{overflow:auto;flex:1}.threadCard{width:100%;border:0;border-top:1px solid #f3f4f6;background:#fff;padding:13px 14px;display:flex;gap:11px;text-align:left;cursor:pointer}.threadCard:hover,.threadCard.selected{background:#f9fafb}.threadCard.selected{box-shadow:inset 3px 0 #b91c3c}
-   .profilePic{width:64px;height:64px;border-radius:50%;object-fit:cover}.avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#ec4899,#f59e0b);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:none}.avatar.large{width:42px;height:42px}.avatar.xlarge{width:64px;height:64px;font-size:16px}
+   .profilePic{width:64px;height:64px;border-radius:50%;object-fit:cover}.threadAvatarPic{width:38px;height:38px;border-radius:50%;object-fit:cover;flex:none}.avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#ec4899,#f59e0b);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:none}.avatar.large{width:42px;height:42px}.avatar.xlarge{width:64px;height:64px;font-size:16px}
    .threadCopy{min-width:0;flex:1}.threadTop{display:flex;justify-content:space-between;gap:8px;align-items:center}.threadTop strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.threadTop time{font-size:10px;color:#9ca3af}.threadCopy p{margin:4px 0 2px;color:#6b7280;font-size:12px}.threadCopy small{color:#9ca3af;font-size:10px}.emptyList{padding:28px 18px;color:#9ca3af;font-size:13px;text-align:center}
    .chatPane{min-width:0;background:#f7f8fa;display:flex;flex-direction:column}.chatHeader{background:#fff}.backButton{display:none;border:0;background:transparent;font-size:28px;line-height:1;color:#b91c3c;padding:0 4px;cursor:pointer}.contactTitle{display:flex;align-items:center;gap:10px}.contactTitle strong{font-size:14px}.senderBadge{font-size:11px;font-weight:800;border-radius:999px;padding:6px 9px}.senderBadge.on{background:#dcfce7;color:#166534}.senderBadge.off{background:#f3f4f6;color:#6b7280}
    .messages{flex:1;overflow:auto;padding:24px 28px;display:flex;flex-direction:column;gap:14px}.messageRow{display:flex;flex-direction:column;max-width:72%}.messageRow.incoming{align-self:flex-start;align-items:flex-start}.messageRow.outgoing{align-self:flex-end;align-items:flex-end}
