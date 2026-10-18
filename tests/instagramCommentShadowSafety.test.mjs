@@ -7,7 +7,7 @@ const cron=readFileSync(new URL('../pages/api/cron/instagram-comment-automation.
 const fold=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const snippet=code.match(/export function classifyBusinessCommentAutomation\([\s\S]*?(?=\nexport async function sendBusinessPrivateCommentReplyOnce)/)?.[0];
 assert.ok(snippet,'classifier export exists');
-const classify=new Function('open','binding','fold',snippet+'; return classifyBusinessCommentAutomation;')((_c,_purpose,_binding,box)=>box,()=>[],fold);
+const classify=new Function('open','binding','fold',snippet.replace(/^export /,'')+'; return classifyBusinessCommentAutomation;')((_c,_purpose,_binding,box)=>box,()=>[],fold);
 const row=(text,overrides={})=>({occurred_at:'2026-10-18T12:00:00.000Z',content_box:{text,...overrides}});
 const classifyText=(text,overrides={})=>classify({config:{},row:row(text,overrides),now:Date.parse('2026-10-18T13:00:00.000Z')});
 test('only exact safe commercial questions are commercial',()=>{
