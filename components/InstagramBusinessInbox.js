@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import {submitBusinessReply} from '../lib/messaging/instagram/business/replyResult';
+import InstagramCommentsPanel from './InstagramCommentsPanel';
 
 async function request(op,{query={},body,binary=false}={}){
  const {data}=await supabase.auth.getSession();
@@ -68,6 +69,7 @@ export default function InstagramBusinessInbox(){
  const [busy,setBusy]=useState(false);
  const [search,setSearch]=useState('');
  const [threadFilter,setThreadFilter]=useState('all');
+ const [commentsOpen,setCommentsOpen]=useState(false);
  const [notifications,setNotifications]=useState({rows:[],unread_count:0});
  const [aliasDraft,setAliasDraft]=useState(''),[aliasBusy,setAliasBusy]=useState(false),[mobileAliasEditing,setMobileAliasEditing]=useState(false);
  const [profile,setProfile]=useState(null),[syncing,setSyncing]=useState(false),[uncertainLocked,setUncertainLocked]=useState(false);
@@ -486,6 +488,7 @@ export default function InstagramBusinessInbox(){
    {historyStatus&&<div className="historyStatus" role="status">{historyStatus}</div>}
    <div className="channelTabs">
     <button className="channel active"><span className="igDot">◎</span> Instagram</button>
+    <button className="channel" type="button" onClick={()=>setCommentsOpen(true)}><span>💬</span> Comentarios</button>
     <button className="channel" disabled><span>f</span> Facebook <small>próximamente</small></button>
    </div>
    <div className="searchWrap"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar conversaciones"/></div>
@@ -681,5 +684,6 @@ export default function InstagramBusinessInbox(){
    @media(max-width:1100px){.inboxShell{grid-template-columns:300px 1fr}.detailsPane{display:none}}
    @media(max-width:760px){.inboxShell{height:calc(100dvh - 56px);max-height:calc(100dvh - 56px);overflow:hidden;grid-template-columns:1fr}.conversationPane{display:${selected?'none':'flex'}}.chatPane{display:${selected?'flex':'none'}}.detailsPane{display:none}.messageRow{max-width:88%}.messages{padding:16px}.backButton{display:block}.chatHeader{justify-content:flex-start;gap:6px}.contactTitle{min-width:0;flex:1}.contactTitle>div:last-child{min-width:0}.contactTitle strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mobileAliasButton{display:block}.senderBadge{display:none}.contactSheetBackdrop{display:flex}.appointmentTwo{grid-template-columns:1fr}.inboxMedia{width:auto;height:auto;max-width:160px;max-height:140px;object-fit:contain}.mediaPreview{align-items:stretch}.mediaPreviewImage{width:84px;height:84px}.mediaPreviewActions{flex:1;justify-content:flex-end;align-items:flex-end}.previewCancel,.previewSend{padding:0 12px}}
   .appointmentThreadCard.cancelled{opacity:.62}.cancelAppointmentBtn{margin-top:6px;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:800;padding:0;cursor:pointer}.cancelAppointmentBtn:disabled{opacity:.5;cursor:default}\n  `}</style>
+  <InstagramCommentsPanel open={commentsOpen} onClose={()=>setCommentsOpen(false)}/>
  </section>;
 }
