@@ -53,6 +53,26 @@ test('health missing/corrupt credential never falls back to staging token',async
 const env={FACEBOOK_MESSENGER_ENABLED:'true',APP_ENV:'test',NEXT_PUBLIC_SUPABASE_URL:'https://hjfwjnejbcpmknvfpdcq.supabase.co',
  FACEBOOK_MESSENGER_CONNECTION_ID:c.connection,FACEBOOK_MESSENGER_APP_ID:c.app,FACEBOOK_MESSENGER_PAGE_ID:c.page,FACEBOOK_MESSENGER_APP_SECRET:c.secret,
  FACEBOOK_MESSENGER_VERIFY_TOKEN:'e'.repeat(32),FACEBOOK_MESSENGER_INDEX_KEY:c.indexKey,FACEBOOK_MESSENGER_DATA_KEY:c.dataKey,FACEBOOK_MESSENGER_TOKEN_KEY:c.tokenKey};
+test('receiver reports only closed validation names without leaking signed payload or exception text',async()=>{
+ const base={object:'page',entry:[{id:c.page,messaging:[{sender:{id:'303'},recipient:{id:c.page},timestamp:now,message:{mid:'mid.local',text:'sensitive-fixture'}}]}]};
+ const cases=[['{ "sensitive-fixture":','json_invalid'],[JSON.stringify({...base,object:'instagram'}),'envelope_denied'],
+  [JSON.stringify({...base,entry:[{...base.entry[0],id:'999'}]}),'page_denied'],
+  [JSON.stringify({...base,entry:[{...base.entry[0],messaging:[{...base.entry[0].messaging[0],timestamp:'bad'}]}]}),'event_denied'],
+  [JSON.stringify({...base,entry:[{...base.entry[0],messaging:[{...base.entry[0].messaging[0],message:{text:'sensitive-fixture'}}]}]}),'message_denied']];
+ for(const [raw,validation] of cases){
+  const diagnostics=[];let writes=0;
+  const handler=createWebReceiver({env:()=>env,capture:async()=>{writes++;},diagnostic:r=>diagnostics.push(r)});
+  const signature='sha256='+createHmac('sha256',c.secret).update(raw).digest('hex');
+  const response=await handler(new Request('https://example.test/webhook',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':signature},body:raw}));
+  assert.equal(response.status,503);assert.equal(writes,0);
+  assert.deepEqual(diagnostics,[{stage:'signature_and_envelope',http_status:503,validation}]);
+  assert.equal(await response.text(),'');assert.ok(!JSON.stringify(diagnostics).includes('sensitive-fixture'));
+ }
+ const diagnostics=[];const raw=JSON.stringify(base);
+ const handler=createWebReceiver({env:()=>env,capture:async()=>{throw Error('sensitive-fixture');},diagnostic:r=>diagnostics.push(r)});
+ await handler(new Request('https://example.test/webhook',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':'sha256='+createHmac('sha256',c.secret).update(raw).digest('hex')},body:raw}));
+ assert.deepEqual(diagnostics,[{stage:'persistence',http_status:503,validation:'unclassified'}]);
+});
 test('setup API requires authenticated admin and same origin; rejects client token/recipient',async()=>{
  for(const [actor,body,origin,status] of [[null,{operation:'health'},'https://dev.test',403],[{active:true,role_id:'asesor'},{operation:'health'},'https://dev.test',403],[{active:true,role_id:'admin'},{operation:'health'},'https://evil.test',403],[{active:true,role_id:'admin'},{operation:'provision',token},'https://dev.test',400]]){
  let code;const res={setHeader(){},status(n){code=n;return this;},json(){},end(){}};
