@@ -10,7 +10,10 @@ async function request(op,{query={},body,binary=false}={}){
   headers:{Authorization:`Bearer ${data.session.access_token}`,...(body?{'Content-Type':'application/json'}:{})},
   ...(body?{body:JSON.stringify(body)}:{})
  });
- if(!r.ok)throw Error('Instagram no disponible');
+ if(!r.ok){
+  if(!binary){try{const j=await r.json();if(typeof j?.status==='string')throw Error(j.status);}catch(e){if(e?.message&&e.message!=='Unexpected end of JSON input')throw e;}}
+  throw Error('Instagram no disponible');
+ }
  return binary?r.blob():r.json();
 }
 
@@ -53,7 +56,7 @@ export default function InstagramBusinessInbox(){
   if(lock.current)return;
   const gen=++generation.current;
   if(!quiet)setBusy(true);
-  setStatus('');
+  if(!quiet)setStatus('');
   try{
    const r=await request(thread?'history':'threads',{query:thread?{thread}:{}});
    if(gen!==generation.current)return;
@@ -106,10 +109,15 @@ export default function InstagramBusinessInbox(){
   setSyncing(true);setStatus('Recuperando historial reciente…');
   try{
    const r=await request('history-sync',{body:{}});
-   setStatus(`Historial: ${r.inserted} nuevos · ${r.duplicates} ya existentes${r.truncated_to_recent_20?' · algunas conversaciones exceden los 20 mensajes recuperables':''}`);
+   setStatus(`Meta encontró ${r.conversation_candidates??r.conversations??0} conversaciones · ${r.scanned??0} mensajes revisados · ${r.inserted??0} nuevos · ${r.duplicates??0} ya existentes${r.truncated_to_recent_20?' · algunas conversaciones exceden los 20 mensajes recuperables':''}`);
    await load(null,{quiet:true});
    if(selected)await load(selected,{quiet:true});
-  }catch{setStatus('No fue posible recuperar el historial reciente');}
+  }catch(e){
+   try{
+    const msg=String(e?.message||'');
+    setStatus(msg.includes('history_list')?'Meta no permitió listar conversaciones':msg.includes('history_detail')?'Meta listó conversaciones pero no permitió leer sus mensajes':'No fue posible recuperar el historial reciente');
+   }catch{setStatus('No fue posible recuperar el historial reciente');}
+  }
   finally{setSyncing(false);}
  }
 
