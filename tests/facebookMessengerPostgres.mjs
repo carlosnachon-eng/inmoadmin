@@ -37,6 +37,7 @@ try {
  await q('create role anon;create role authenticated;create role service_role;create table public.profiles(id uuid primary key,active boolean,role_id text);');
  await q(await readFile(new URL('../supabase/migrations/20261018165210_facebook_messenger_foundation.sql',import.meta.url),'utf8'));checks++;
  await q(await readFile(new URL('../supabase/migrations/20261018194000_facebook_messenger_inbox.sql',import.meta.url),'utf8'));checks++;
+ await q(await readFile(new URL('../supabase/migrations/20261018204628_facebook_messenger_canary_preflight.sql',import.meta.url),'utf8'));checks++;
  await q('insert into public.profiles values($1,true,\'asesor\'),($2,true,\'admin\')',[actor.id,other]);
  await q('insert into facebook_messenger_private.connections(id,app_id,page_id) values($1,$2,$3)',[c.connection,c.app,c.page]);
  check((await q('select enabled,sender_enabled from facebook_messenger_private.connections')).rows[0],{enabled:false,sender_enabled:false});
@@ -45,6 +46,15 @@ try {
  await assert.rejects(()=>call(service,'fb_messenger_capture_v1',args));checks++;
  await q('update facebook_messenger_private.connections set enabled=true where id=$1',[c.connection]);
  check(await call(service,'fb_messenger_capture_v1',args),{received:1,inserted:1});
+ const pf={p_connection:c.connection,p_actor:other,p_input:e.event_ref,p_thread:e.thread_ref};
+ check((await call(service,'fb_messenger_canary_preflight_v1',pf)).event.event_ref,e.event_ref);
+ check(await call(service,'fb_messenger_canary_preflight_v1',{...pf,p_actor:actor.id}),null);
+ check(await call(service,'fb_messenger_canary_preflight_v1',{...pf,p_thread:'0'.repeat(64)}),null);
+ check((await q('select count(*)::int as n from facebook_messenger_private.thread_grants')).rows[0].n,0);
+ check((await q('select count(*)::int as n from facebook_messenger_private.actions')).rows[0].n,0);
+ for(const role of ['anon','authenticated']){
+  const cl=await client(role);await assert.rejects(()=>call(cl,'fb_messenger_canary_preflight_v1',pf),x=>x.code==='42501');checks++;
+ }
  check(await call(service,'fb_messenger_capture_v1',args),{received:1,inserted:0});
  await assert.rejects(()=>call(service,'fb_messenger_capture_v1',{...args,p_app:'999'}));checks++;
  await assert.rejects(()=>call(service,'fb_messenger_capture_v1',{...args,p_page:'999'}));checks++;

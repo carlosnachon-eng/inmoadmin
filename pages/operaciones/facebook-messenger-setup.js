@@ -15,8 +15,8 @@ export default function MessengerSetup({environment='DEV'}){
   try{
    const {data}=await supabase.auth.getSession();
    if(!data?.session?.access_token){setResult({status:`Inicia sesión Admin ${environment}.`});return;}
-   const r=await fetch('/api/operaciones/facebook-messenger-setup',{method:'POST',redirect:'error',cache:'no-store',
-    headers:{Authorization:`Bearer ${data.session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({operation})});
+   const r=await fetch(operation==='preflight'?'/api/operaciones/facebook-messenger-preflight':'/api/operaciones/facebook-messenger-setup',{method:'POST',redirect:'error',cache:'no-store',
+    headers:{Authorization:`Bearer ${data.session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify(operation==='preflight'?{}:{operation})});
    const safe=await r.json().catch(()=>({status:'Configuración no disponible.'}));
    // No credential input or generic response dump. Only known diagnostic fields.
    setResult(Object.fromEntries(['status','stage','ok','http_status','code','subcode','identity_verified','app_verified','token_type','expires_at','data_access_expires_at','verified_at','valid_until','inbound_ready','echo_ready','sender'].filter(k=>Object.hasOwn(safe,k)).map(k=>[k,safe[k]])));
@@ -29,6 +29,7 @@ export default function MessengerSetup({environment='DEV'}){
   <p>La credencial se provisiona desde un secreto server-side. No pegues tokens aquí.</p>
   <button disabled={busy} onClick={()=>run('provision')}>Validar y guardar credencial {environment}</button>{' '}
   <button disabled={busy} onClick={()=>run('health')}>Verificar salud de credencial</button>
+  {' '}<button disabled={busy} onClick={()=>run('preflight')}>Preflight canary (sólo lectura)</button>
   <p>Ambas acciones requieren sender OFF. No suscriben webhooks ni conceden permisos.</p>
   <section aria-live="polite">{result&&<pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(result,null,2)}</pre>}</section>
   <a href="/administracion/inbox">Volver al Inbox existente</a>
