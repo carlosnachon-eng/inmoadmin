@@ -253,7 +253,7 @@ export default function InstagramBusinessInbox(){
       const inbound=r.direction==='customer_inbound';
       return <div key={r.input} className={`messageRow ${inbound?'incoming':'outgoing'}`}>
        <article className="bubble">
-        {r.attachments?.map(a=>a.type==='image'?<Media key={a.index} thread={selected} input={r.input} index={a.index} type={a.type} onOpen={setLightbox} onLoaded={()=>scrollChatBottom('auto')}/>:<div key={a.index} className="mediaPlaceholder">Adjunto no soportado</div>)}
+        {r.attachments?.map(a=>['image','audio','video'].includes(a.type)?<Media key={a.index} thread={selected} input={r.input} index={a.index} type={a.type} onOpen={setLightbox} onLoaded={()=>scrollChatBottom('auto')}/>:<div key={a.index} className="mediaPlaceholder">Adjunto no soportado</div>)}
         {r.text&&<p>{r.text}</p>}
         <div className="bubbleMeta"><time>{messageStamp(r.occurred_at)}</time>{r.status&&<span> · {r.status}</span>}</div>
        </article>
