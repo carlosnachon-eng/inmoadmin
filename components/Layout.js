@@ -65,6 +65,7 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
   const router = useRouter();
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [inboxUnread, setInboxUnread] = useState(0);
 
   // Si el padre ya consultó los permisos (p. ej. pages/index.js), los reutilizamos
   // en vez de volver a consultar Supabase. Si no, Layout consulta por su cuenta.
@@ -92,6 +93,30 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  useEffect(() => {
+    const allowed = ["admin","coord_operaciones","gerente_ventas","asesor","juridico"].includes(perfilPermisos?.role_id);
+    if (!allowed || perfilPermisos?.active === false) { setInboxUnread(0); return; }
+    let alive = true;
+    const loadInboxUnread = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data?.session?.access_token;
+        if (!token) return;
+        const r = await fetch("/api/operaciones/instagram-business?op=notifications", {
+          method: "GET",
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) return;
+        const body = await r.json();
+        if (alive) setInboxUnread(Number(body?.unread_count) || 0);
+      } catch {}
+    };
+    void loadInboxUnread();
+    const timer = window.setInterval(loadInboxUnread, 30000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [perfilPermisos?.role_id, perfilPermisos?.active]);
 
   const handleNav = (n) => {
     if (n.link) { window.location.href = n.link; }
@@ -152,7 +177,12 @@ export default function Layout({ children, view = "dashboard", profile, onNavCli
               }}>
                 <span style={{ fontSize: 15 }}>{n.icon}</span>
                 {n.label}
-                {isActive && <div style={{ marginLeft: "auto", width: 4, height: 4, borderRadius: "50%", background: brand.red }} />}
+                {n.id === "inbox" && inboxUnread > 0 && (
+                  <span style={{ marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", boxSizing: "border-box", borderRadius: 999, background: brand.red, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800 }}>
+                    {inboxUnread > 99 ? "99+" : inboxUnread}
+                  </span>
+                )}
+                {isActive && inboxUnread === 0 && <div style={{ marginLeft: "auto", width: 4, height: 4, borderRadius: "50%", background: brand.red }} />}
               </button>
             );
           })}
