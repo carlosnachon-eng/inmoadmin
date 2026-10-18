@@ -19,6 +19,11 @@ async function request(op,{query={},body,binary=false}={}){
 
 const clock=value=>new Intl.DateTimeFormat('es-MX',{timeZone:'America/Mexico_City',hour:'numeric',minute:'2-digit'}).format(new Date(value));
 const day=value=>new Intl.DateTimeFormat('es-MX',{timeZone:'America/Mexico_City',day:'2-digit',month:'short'}).format(new Date(value));
+const messageStamp=value=>{
+ const d=new Date(value),now=new Date();
+ const key=x=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Mexico_City',year:'numeric',month:'2-digit',day:'2-digit'}).format(x);
+ return key(d)===key(now)?clock(value):`${day(value)} · ${clock(value)}`;
+};
 
 function Media({thread,input,index}){
  const [url,setUrl]=useState(null);
@@ -111,7 +116,7 @@ export default function InstagramBusinessInbox(){
   setSyncing(true);setHistoryStatus('Recuperando historial reciente…');
   try{
    const r=await request('history-sync',{body:{}});
-   setHistoryStatus(`Meta encontró ${r.conversation_candidates??r.conversations??0} conversaciones · ${r.scanned??0} mensajes revisados · ${r.inserted??0} nuevos · ${r.duplicates??0} ya existentes${r.truncated_to_recent_20?' · algunas conversaciones exceden los 20 mensajes recuperables':''}`);
+   setHistoryStatus(`Meta encontró ${r.conversation_candidates??r.conversations??0} conversaciones · ${r.scanned??0} mensajes revisados · ${r.inserted??0} guardados/actualizados · ${r.duplicates??0} sin cambios${r.truncated_to_recent_20?' · algunas conversaciones exceden los 20 mensajes recuperables':''}`);
    await load(null,{quiet:true});
    if(selected)await load(selected,{quiet:true});
   }catch(e){
@@ -210,7 +215,7 @@ export default function InstagramBusinessInbox(){
        <article className="bubble">
         {r.attachments?.map(a=>a.type==='image'?<Media key={a.index} thread={selected} input={r.input} index={a.index}/>:<div key={a.index} className="mediaPlaceholder">Adjunto no soportado</div>)}
         {r.text&&<p>{r.text}</p>}
-        <div className="bubbleMeta"><time>{clock(r.occurred_at)}</time>{r.status&&<span> · {r.status}</span>}</div>
+        <div className="bubbleMeta"><time>{messageStamp(r.occurred_at)}</time>{r.status&&<span> · {r.status}</span>}</div>
        </article>
        {inbound&&!r.deleted&&<button className="replyChip" disabled={busy||uncertainLocked} onClick={()=>setInput(r.input)}>{input===r.input?'✓ Respondiendo aquí':'Responder aquí'}</button>}
       </div>;
