@@ -17,6 +17,35 @@ export async function inboxRequest(channel,op,{thread,body}={}){
  return result;
 }
 
+async function managerRequest(path,body){
+ const {data}=await supabase.auth.getSession();
+ if(!data?.session)throw Error('Sesión requerida');
+ const r=await fetch('/api/operaciones/'+path,{method:body?'POST':'GET',cache:'no-store',
+  headers:{Authorization:'Bearer '+data.session.access_token,...(body?{'Content-Type':'application/json'}:{})},
+  ...(body?{body:JSON.stringify(body)}:{})});
+ if(!r.ok)throw Error('No autorizado o servicio no disponible');
+ return r.json();
+}
+
+function MessengerAssignment({thread}){
+ const [advisors,setAdvisors]=useState([]),[advisor,setAdvisor]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{let live=true;setStatus('');setAdvisor('');managerRequest('facebook-messenger-advisors')
+  .then(r=>{if(live)setAdvisors(r.advisors||[])}).catch(()=>{if(live)setAdvisors([])});
+  return()=>{live=false};},[thread]);
+ if(!advisors.length)return null;
+ async function assign(){
+  if(!advisor||busy)return;setBusy(true);setStatus('');
+  try{await managerRequest('facebook-messenger-assign',{thread,advisor});setStatus('Asignación guardada.');}
+  catch{setStatus('No se pudo asignar. Comprueba permisos y estado del hilo.');}
+  finally{setBusy(false)}
+ }
+ return <div className="fbAssignment"><strong>Asignar conversación</strong><select aria-label="Asesor de Facebook" value={advisor} onChange={e=>setAdvisor(e.target.value)}>
+  <option value="">Selecciona un asesor</option>{advisors.map(a=><option key={a.id} value={a.id}>{a.name}{a.plaza?' · '+a.plaza:''}</option>)}
+  </select><button type="button" disabled={!advisor||busy} onClick={assign}>{busy?'Guardando…':'Asignar'}</button><small role="status">{status}</small>
+  <style jsx>{`.fbAssignment{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid #e7e9ef;background:#fff}.fbAssignment strong{font-size:12px}.fbAssignment select{max-width:260px;padding:9px;border:1px solid #dbe0e8;border-radius:8px;font-size:12px}.fbAssignment button{border:0;border-radius:8px;background:#9c2142;color:white;padding:9px 12px;font-size:12px;font-weight:700}.fbAssignment button:disabled{opacity:.4}.fbAssignment small{font-size:11px;color:#64748b}`}</style>
+ </div>;
+}
+
 export default function CommercialInbox({instagramAvailable}){
  const [filter,setFilter]=useState('all'),[query,setQuery]=useState(''),[threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState('');
  const generation=useRef(0);
@@ -51,7 +80,7 @@ export default function CommercialInbox({instagramAvailable}){
    </aside>
    <main className="conversationPane"><button type="button" className="back" onClick={()=>setSelected(null)}>← Conversaciones</button>
     {!selected?<div className="emptyConversation"><span className="emptyIcon" aria-hidden="true">✉</span><h2>Tu bandeja, en un solo lugar</h2><p>Elige una conversación para consultar sus mensajes y dar seguimiento.</p></div>:selected.channel==='facebook'
-     ?<FacebookMessengerConversation key={selected.key} thread={selected.thread_ref}/>
+     ?<><MessengerAssignment thread={selected.thread_ref}/><FacebookMessengerConversation key={selected.key} thread={selected.thread_ref}/></>
      :<InstagramBusinessInbox key={selected.key} embedded externalThread={selected.thread_ref} onBack={()=>setSelected(null)}/>}
    </main>
   </div>}
