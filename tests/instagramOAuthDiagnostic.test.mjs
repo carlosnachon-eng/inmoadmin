@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {completeBusinessOAuth as complete,businessOAuthDiagnostic} from '../lib/messaging/instagram/business/tokenLifecycle.js';
+import {completeBusinessOAuth as complete,businessOAuthDiagnostic,oauthScopeSummary} from '../lib/messaging/instagram/business/tokenLifecycle.js';
 import {withResponseText} from './fixtures/instagramResponseText.mjs';
 const completeBusinessOAuth=args=>withResponseText(complete,args);
 import {SCOPES} from '../lib/messaging/instagram/business/config.js';
@@ -19,7 +19,7 @@ for(const expected of [...stages,'success'])test(expected,async()=>{
   return {ok:true,status:200,json:async()=>b};
  }};
  if(expected==='success'){assert.equal((await completeBusinessOAuth(args)).status,'healthy');assert.ok(saved.token_box);assert.ok(!JSON.stringify(saved).includes('PRIVATE'));return;}
- await assert.rejects(()=>completeBusinessOAuth(args),e=>{const d=businessOAuthDiagnostic(e);assert.equal(d.stage,expected);assert.ok(!JSON.stringify(d).includes('PRIVATE'));if(expected.endsWith('_exchange'))assert.deepEqual(d,{stage:expected,http_status:400,code:100,subcode:33});return true;});
+ await assert.rejects(()=>completeBusinessOAuth(args),e=>{const d=businessOAuthDiagnostic(e);assert.equal(d.stage,expected);assert.ok(!JSON.stringify(d).includes('PRIVATE'));if(expected.endsWith('_exchange'))assert.deepEqual(d,{stage:expected,http_status:400,code:100,subcode:33,...oauthScopeSummary(expected==='long_token_exchange'?SCOPES:null)});return true;});
  assert.equal(saved,undefined);
 });
 test('short token shape diagnostic exposes only field names, types and data length',async()=>{
@@ -37,7 +37,8 @@ test('short token shape diagnostic exposes only field names, types and data leng
    data_items:[]
   });
   assert.ok(!JSON.stringify(d).includes('PRIVATE'));
-  assert.ok(!JSON.stringify(d).includes(SCOPES[0]));
+  assert.deepEqual(d.requested_scopes,SCOPES);
+  assert.equal(d.granted_scopes,null);
   return true;
  });
 });

@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseJsonWithLosslessUserId as parse} from '../lib/messaging/instagram/business/losslessUserId.js';
 import {parseInstagramLoginShortToken,completeBusinessOAuth} from '../lib/messaging/instagram/business/tokenLifecycle.js';
-const raw=id=>`{"access_token":"SYNTHETIC_TOKEN","user_id":${id},"permissions":["instagram_business_basic","instagram_business_manage_messages"]}`;
+import {SCOPES} from '../lib/messaging/instagram/business/config.js';
+const raw=id=>`{"access_token":"SYNTHETIC_TOKEN","user_id":${id},"permissions":${JSON.stringify(SCOPES)}}`;
 for(const id of ['300','9007199254740991','9007199254740992','9007199254740993','12345678901234567890123456789012'])test(`exact numeric lexeme ${id.length} digits ${id.slice(-2)}`,()=>{
  assert.equal(parseInstagramLoginShortToken(parse(raw(id))).user_id,id);
  assert.equal(parseInstagramLoginShortToken(parse(raw(JSON.stringify(id)))).user_id,id);
