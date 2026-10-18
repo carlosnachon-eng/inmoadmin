@@ -188,8 +188,10 @@ export default function InstagramBusinessInbox(){
 
  function chooseMediaFile(file){
   if(!file||lock.current||!enabled||!replyAnchor||uncertainLocked)return;
-  if(!['image/jpeg','image/png','image/webp','video/mp4'].includes(file.type)){setStatus('Por ahora sólo foto JPG/PNG/WebP o video MP4');if(mediaInputRef.current)mediaInputRef.current.value='';return;}
-  if(file.size<=0||file.size>10485760){setStatus('El archivo debe pesar menos de 10 MB');if(mediaInputRef.current)mediaInputRef.current.value='';return;}
+  const isVideo=['video/mp4','video/quicktime'].includes(file.type);
+  if(!['image/jpeg','image/png','image/webp','video/mp4','video/quicktime'].includes(file.type)){setStatus('Formato no compatible');if(mediaInputRef.current)mediaInputRef.current.value='';return;}
+  const limit=isVideo?26214400:8388608;
+  if(file.size<=0||file.size>limit){setStatus(isVideo?'Instagram permite videos de hasta 25 MB':'Instagram permite imágenes de hasta 8 MB');if(mediaInputRef.current)mediaInputRef.current.value='';return;}
   if(pendingMedia?.url)URL.revokeObjectURL(pendingMedia.url);
   setPendingMedia({file,url:URL.createObjectURL(file)});
   setStatus('');
@@ -204,13 +206,15 @@ export default function InstagramBusinessInbox(){
  async function sendMediaFile(){
   const file=pendingMedia?.file;
   if(!file||lock.current||!enabled||!replyAnchor||uncertainLocked)return;
-  if(!['image/jpeg','image/png','image/webp','video/mp4'].includes(file.type)){setStatus('Por ahora sólo foto JPG/PNG/WebP o video MP4');return;}
-  if(file.size<=0||file.size>10485760){setStatus('El archivo debe pesar menos de 10 MB');return;}
+  const isVideo=['video/mp4','video/quicktime'].includes(file.type);
+  if(!['image/jpeg','image/png','image/webp','video/mp4','video/quicktime'].includes(file.type)){setStatus('Formato no compatible');return;}
+  const limit=isVideo?26214400:8388608;
+  if(file.size<=0||file.size>limit){setStatus(isVideo?'Instagram permite videos de hasta 25 MB':'Instagram permite imágenes de hasta 8 MB');return;}
   const {data}=await supabase.auth.getSession();
   if(!data?.session?.user?.id){setStatus('Sesión requerida');return;}
-  const isVideo=file.type==='video/mp4';
+  const isVideo=['video/mp4','video/quicktime'].includes(file.type);
   lock.current=true;setBusy(true);setStatus(isVideo?'Subiendo video…':'Subiendo foto…');
-  const ext=isVideo?'mp4':file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg';
+  const ext=file.type==='video/quicktime'?'mov':isVideo?'mp4':file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg';
   const path=`${data.session.user.id}/${crypto.randomUUID()}.${ext}`;
   try{
    const upload=await supabase.storage.from('instagram-business-outbound').upload(path,file,{contentType:file.type,upsert:false});
@@ -341,15 +345,15 @@ export default function InstagramBusinessInbox(){
     </div>
     <form className="composer" onSubmit={send}>
      {pendingMedia&&<div className="mediaPreview">
-      <div className="mediaPreviewImage">{pendingMedia.file.type==='video/mp4'?<video src={pendingMedia.url} controls preload="metadata"/>:<img src={pendingMedia.url} alt="Vista previa de la foto por enviar"/>}</div>
+      <div className="mediaPreviewImage">{['video/mp4','video/quicktime'].includes(pendingMedia.file.type)?<video src={pendingMedia.url} controls preload="metadata"/>:<img src={pendingMedia.url} alt="Vista previa de la foto por enviar"/>}</div>
       <div className="mediaPreviewActions">
        <button type="button" className="previewCancel" onClick={cancelPendingMedia} disabled={busy}>Cancelar</button>
-       <button type="button" className="previewSend" onClick={sendMediaFile} disabled={busy||!enabled||!replyAnchor||uncertainLocked}>{busy?'Enviando…':pendingMedia.file.type==='video/mp4'?'Enviar video':'Enviar foto'}</button>
+       <button type="button" className="previewSend" onClick={sendMediaFile} disabled={busy||!enabled||!replyAnchor||uncertainLocked}>{busy?'Enviando…':['video/mp4','video/quicktime'].includes(pendingMedia.file.type)?'Enviar video':'Enviar foto'}</button>
       </div>
      </div>}
      {replyTarget&&<div className="replyContext"><span>Respondiendo al mensaje de las {clock(replyTarget.occurred_at)}</span><button type="button" onClick={()=>setInput(null)}>×</button></div>}
      <div className="composerRow">
-      <input ref={mediaInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4" hidden onChange={e=>chooseMediaFile(e.target.files?.[0])}/>
+      <input ref={mediaInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,.mov" hidden onChange={e=>chooseMediaFile(e.target.files?.[0])}/>
       <button type="button" className="attachButton" title="Adjuntar foto o video" disabled={busy||!enabled||!replyAnchor||uncertainLocked} onClick={()=>mediaInputRef.current?.click()}>＋</button>
       <textarea id="business-reply" value={text} onChange={e=>setText(e.target.value)} maxLength={999}
        placeholder={!enabled?'Sender apagado':uncertainLocked?'Verifica el último envío antes de continuar':replyAnchor?'Escribe un mensaje…':'Fuera de la ventana de respuesta'}
