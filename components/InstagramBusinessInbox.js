@@ -250,11 +250,10 @@ export default function InstagramBusinessInbox(){
   if(!file||lock.current||!enabled||!replyAnchor||uncertainLocked)return;
   const isVideo=['video/mp4','video/quicktime'].includes(file.type),isAudio=file.type==='audio/mp4';
   if(!['image/jpeg','image/png','image/webp','video/mp4','video/quicktime','audio/mp4'].includes(file.type)){setStatus('Formato no compatible');return;}
-  const limit=isVideo?26214400:8388608;
-  if(file.size<=0||file.size>limit){setStatus(isVideo?'Instagram permite videos de hasta 25 MB':'Instagram permite imágenes de hasta 8 MB');return;}
+  const limit=(isVideo||isAudio)?26214400:8388608;
+  if(file.size<=0||file.size>limit){setStatus(isAudio?'El audio excede el límite permitido':isVideo?'Instagram permite videos de hasta 25 MB':'Instagram permite imágenes de hasta 8 MB');return;}
   const {data}=await supabase.auth.getSession();
   if(!data?.session?.user?.id){setStatus('Sesión requerida');return;}
-  const isVideo=['video/mp4','video/quicktime'].includes(file.type);
   lock.current=true;setBusy(true);setStatus(isAudio?'Subiendo audio…':isVideo?'Subiendo video…':'Subiendo foto…');
   const ext=isAudio?'m4a':file.type==='video/quicktime'?'mov':isVideo?'mp4':file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg';
   const path=`${data.session.user.id}/${crypto.randomUUID()}.${ext}`;
