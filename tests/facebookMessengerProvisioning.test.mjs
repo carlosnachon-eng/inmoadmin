@@ -5,6 +5,9 @@ import {open} from '../lib/messaging/facebook/messenger/crypto.js';
 import {createMessengerSetupApi} from '../lib/messaging/facebook/messenger/setupApi.js';
 import {createWebReceiver} from '../lib/messaging/facebook/messenger/webReceiver.js';
 import {createHmac} from 'node:crypto';
+import {Buffer} from 'node:buffer';
+import {captureMessenger} from '../lib/messaging/facebook/messenger/observer.js';
+import {binding,recipient} from '../lib/messaging/facebook/messenger/crypto.js';
 const now=Date.now(),token='synthetic-page-token-123456789';
 const c={connection:'11111111-1111-4111-8111-111111111111',app:'101',page:'202',version:'v26.0',secret:'a'.repeat(32),indexKey:'b'.repeat(64),dataKey:'c'.repeat(64),tokenKey:'d'.repeat(64)};
 const metadata=()=>({is_valid:true,app_id:c.app,profile_id:c.page,type:'PAGE',scopes:['pages_messaging','pages_manage_metadata'],expires_at:0,data_access_expires_at:0});
@@ -53,6 +56,21 @@ test('health missing/corrupt credential never falls back to staging token',async
 const env={FACEBOOK_MESSENGER_ENABLED:'true',APP_ENV:'test',NEXT_PUBLIC_SUPABASE_URL:'https://hjfwjnejbcpmknvfpdcq.supabase.co',
  FACEBOOK_MESSENGER_CONNECTION_ID:c.connection,FACEBOOK_MESSENGER_APP_ID:c.app,FACEBOOK_MESSENGER_PAGE_ID:c.page,FACEBOOK_MESSENGER_APP_SECRET:c.secret,
  FACEBOOK_MESSENGER_VERIFY_TOKEN:'e'.repeat(32),FACEBOOK_MESSENGER_INDEX_KEY:c.indexKey,FACEBOOK_MESSENGER_DATA_KEY:c.dataKey,FACEBOOK_MESSENGER_TOKEN_KEY:c.tokenKey};
+test('Deno regression: signed inbound reaches encryption and binding without ArrayBuffer TypeError',()=>{
+ const raw=Buffer.from(JSON.stringify({object:'page',entry:[{id:c.page,messaging:[{sender:{id:'303'},recipient:{id:c.page},timestamp:now,message:{mid:'mid.runtime',text:'Synthetic runtime fixture'}}]}]}));
+ const stages=[];const {rows}=captureMessenger(raw,'sha256='+createHmac('sha256',c.secret).update(raw).digest('hex'),c,s=>stages.push(s));
+ assert.deepEqual([...new Set(stages)],['signature','json','envelope','normalization','references','encryption']);
+ assert.equal(rows.length,1);assert.equal(recipient(c,rows[0]),'303');
+ assert.equal(open(c,'content',binding(rows[0]),rows[0].content_box).text,'Synthetic runtime fixture');
+ assert.throws(()=>recipient({...c,page:'999'},rows[0]));
+});
+test('configuration and signature diagnostics are fixed enums without exception values',async()=>{
+ for(const [config,stage,validation,status] of [[{...env,FACEBOOK_MESSENGER_PAGE_ID:'bad'},'configuration','configuration_incomplete',503],[env,'signature','signature_denied',401]]){
+  const logs=[];const handler=createWebReceiver({env:()=>config,capture:async()=>assert.fail('no persistence'),diagnostic:r=>logs.push(r)});
+  const response=await handler(new Request('https://example.test/webhook',{method:'POST',headers:{'content-type':'application/json'},body:'secret fixture'}));
+  assert.equal(response.status,status);assert.deepEqual(logs,[{stage,http_status:status,validation,error_class:'Error'}]);
+ }
+});
 test('receiver reports only closed validation names without leaking signed payload or exception text',async()=>{
  const base={object:'page',entry:[{id:c.page,messaging:[{sender:{id:'303'},recipient:{id:c.page},timestamp:now,message:{mid:'mid.local',text:'sensitive-fixture'}}]}]};
  const cases=[['{ "sensitive-fixture":','json_invalid'],[JSON.stringify({...base,object:'instagram'}),'envelope_denied'],
@@ -65,13 +83,14 @@ test('receiver reports only closed validation names without leaking signed paylo
   const signature='sha256='+createHmac('sha256',c.secret).update(raw).digest('hex');
   const response=await handler(new Request('https://example.test/webhook',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':signature},body:raw}));
   assert.equal(response.status,503);assert.equal(writes,0);
-  assert.deepEqual(diagnostics,[{stage:'signature_and_envelope',http_status:503,validation}]);
+  const stage={json_invalid:'json',envelope_denied:'envelope',page_denied:'envelope',event_denied:'normalization',message_denied:'normalization'}[validation];
+  assert.deepEqual(diagnostics,[{stage,http_status:503,validation,error_class:validation==='json_invalid'?'SyntaxError':'Error'}]);
   assert.equal(await response.text(),'');assert.ok(!JSON.stringify(diagnostics).includes('sensitive-fixture'));
  }
  const diagnostics=[];const raw=JSON.stringify(base);
  const handler=createWebReceiver({env:()=>env,capture:async()=>{throw Error('sensitive-fixture');},diagnostic:r=>diagnostics.push(r)});
  await handler(new Request('https://example.test/webhook',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':'sha256='+createHmac('sha256',c.secret).update(raw).digest('hex')},body:raw}));
- assert.deepEqual(diagnostics,[{stage:'persistence',http_status:503,validation:'unclassified'}]);
+ assert.deepEqual(diagnostics,[{stage:'persistence',http_status:503,validation:'unclassified',error_class:'Error'}]);
 });
 test('setup API requires authenticated admin and same origin; rejects client token/recipient',async()=>{
  for(const [actor,body,origin,status] of [[null,{operation:'health'},'https://dev.test',403],[{active:true,role_id:'asesor'},{operation:'health'},'https://dev.test',403],[{active:true,role_id:'admin'},{operation:'health'},'https://evil.test',403],[{active:true,role_id:'admin'},{operation:'provision',token},'https://dev.test',400]]){
