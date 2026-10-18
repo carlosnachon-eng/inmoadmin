@@ -41,7 +41,7 @@ export default function InstagramBusinessInbox(){
  const [search,setSearch]=useState('');
  const [aliasDraft,setAliasDraft]=useState(''),[aliasBusy,setAliasBusy]=useState(false);
  const [profile,setProfile]=useState(null),[syncing,setSyncing]=useState(false);
- const lock=useRef(false),consumed=useRef(new Set()),generation=useRef(0),chatRef=useRef(null);
+ const lock=useRef(false),consumed=useRef(new Set()),generation=useRef(0),chatRef=useRef(null),polling=useRef(false),selectedRef=useRef(null);
 
  const filtered=useMemo(()=>{
   const q=search.trim().toLowerCase();
@@ -76,7 +76,30 @@ export default function InstagramBusinessInbox(){
   finally{if(gen===generation.current&&!quiet)setBusy(false);}
  }
 
+ useEffect(()=>{selectedRef.current=selected;},[selected]);
  useEffect(()=>{void load();},[]);
+ useEffect(()=>{
+  const tick=async()=>{
+   if(polling.current||lock.current||document.visibilityState!=='visible')return;
+   polling.current=true;
+   try{
+    const t=await request('threads');
+    setEnabled(!!t.sender_enabled);
+    setThreads(t.rows||[]);
+    const current=selectedRef.current;
+    if(current){
+     const h=await request('history',{query:{thread:current}});
+     setEnabled(!!h.sender_enabled);
+     setRows(h.rows||[]);
+     setProfile(h.profile||null);
+     if(h.profile)setThreads(list=>list.map(x=>x.thread_ref===current?{...x,profile_name:h.profile.name||null,profile_username:h.profile.username||null,profile_pic:h.profile.profile_pic||null}:x));
+    }
+   }catch{/* Keep the current Inbox visible; manual refresh can surface errors. */}
+   finally{polling.current=false;}
+  };
+  const id=setInterval(tick,15000);
+  return()=>clearInterval(id);
+ },[]);
 
  async function syncHistory(){
   if(syncing)return;
