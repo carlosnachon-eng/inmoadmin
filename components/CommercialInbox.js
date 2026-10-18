@@ -89,7 +89,7 @@ export default function CommercialInbox({instagramAvailable}){
     <div className="threadList">{!visible.length&&<p className="emptyThreads">{query?'No hay coincidencias.':'No hay conversaciones autorizadas en este canal.'}</p>}
      {visible.map((t,i)=><button type="button" key={t.key} className="thread" aria-pressed={selected?.key===t.key} onClick={()=>setSelected(t)}>
       <span className={'avatar '+(t.channel==='facebook'?'fb':'ig')}>{t.channel==='facebook'?'f':'◎'}</span>
-      <span className="threadCopy"><strong>{t.alias||t.profile_name||t.profile_username||'Conversación'}</strong><small>{t.channel==='facebook'?'Facebook Messenger':'Instagram Direct'}</small></span>
+      <span className="threadCopy"><strong>{t.alias||t.profile_name||t.profile_username||(t.channel==='facebook'?`Facebook · ${new Date(t.occurred_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short'})}`:'Conversación')}</strong><small>{t.channel==='facebook'?(t.preview||'Facebook Messenger'): 'Instagram Direct'}</small></span>
       <span className="threadArrow" aria-hidden="true">›</span>
      </button>)}</div>
    </aside>
