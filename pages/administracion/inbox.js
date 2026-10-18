@@ -52,8 +52,11 @@ export default function AdminInbox({businessDev=false}){
   }catch(e){if(id===generation.current)setError(e.message);}
   finally{if(id===generation.current)setBusy(false);}
  }
- return <Layout><Head><title>Administración · Inbox Meta</title></Head><main style={{padding:24}}>
-  <h1>Inbox de Administración</h1>
+ return <Layout view="inbox"><Head><title>Inbox · Emporio Inmobiliario</title></Head><main style={{padding:24}}>
+  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,flexWrap:'wrap',marginBottom:16}}>
+   <div><h1 style={{margin:'0 0 4px'}}>Inbox</h1><p style={{margin:0,color:'#6b7280'}}>Bandeja multicanal de Emporio · atención humana</p></div>
+   <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><span style={{padding:'7px 12px',borderRadius:999,background:'#fce8ed',color:'#b91c3c',fontWeight:700}}>Instagram · activo</span><span style={{padding:'7px 12px',borderRadius:999,background:'#f3f4f6',color:'#6b7280',fontWeight:700}}>Facebook · siguiente</span></div>
+  </div>
   {businessDev&&<InstagramBusinessInbox/>}
   <p>Meta directo · respuestas manuales autorizadas · sin respuesta automática.</p>
   <button onClick={()=>load()} disabled={busy||sending}>Cargar / actualizar conversaciones</button>
