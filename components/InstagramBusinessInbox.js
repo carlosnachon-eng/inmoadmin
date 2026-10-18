@@ -69,7 +69,7 @@ export default function InstagramBusinessInbox(){
  const [aliasDraft,setAliasDraft]=useState(''),[aliasBusy,setAliasBusy]=useState(false),[mobileAliasEditing,setMobileAliasEditing]=useState(false);
  const [profile,setProfile]=useState(null),[syncing,setSyncing]=useState(false),[uncertainLocked,setUncertainLocked]=useState(false);
  const [phoneDraft,setPhoneDraft]=useState(''),[emailDraft,setEmailDraft]=useState(''),[contactBusy,setContactBusy]=useState(false),[lightbox,setLightbox]=useState(null);
- const lock=useRef(false),generation=useRef(0),chatRef=useRef(null),bottomRef=useRef(null),polling=useRef(false),selectedRef=useRef(null);
+ const lock=useRef(false),generation=useRef(0),chatRef=useRef(null),bottomRef=useRef(null),mediaInputRef=useRef(null),polling=useRef(false),selectedRef=useRef(null);
 
  const filtered=useMemo(()=>{
   const q=search.trim().toLowerCase();
@@ -175,6 +175,28 @@ export default function InstagramBusinessInbox(){
  const eligibleInbound=[...rows].reverse().find(r=>r.direction==='customer_inbound'&&!r.deleted&&Date.now()-Date.parse(r.occurred_at)>=0&&Date.now()-Date.parse(r.occurred_at)<23*3600000)||null;
  const replyAnchor=input||eligibleInbound?.input||null;
 
+ async function sendMediaFile(file){
+  if(!file||lock.current||!enabled||!replyAnchor||uncertainLocked)return;
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)){setStatus('Por ahora sólo foto JPG, PNG o WebP');return;}
+  if(file.size<=0||file.size>10485760){setStatus('La foto debe pesar menos de 10 MB');return;}
+  const {data}=await supabase.auth.getSession();
+  if(!data?.session?.user?.id){setStatus('Sesión requerida');return;}
+  lock.current=true;setBusy(true);setStatus('Subiendo foto…');
+  const ext=file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg';
+  const path=`${data.session.user.id}/${crypto.randomUUID()}.${ext}`;
+  try{
+   const upload=await supabase.storage.from('instagram-business-outbound').upload(path,file,{contentType:file.type,upsert:false});
+   if(upload.error)throw Error('upload_failed');
+   setStatus('Enviando foto…');
+   const action=crypto.randomUUID();
+   const r=await request('media-reply',{body:{input:replyAnchor,action,path,mime:file.type,size:file.size}});
+   if(r.status==='accepted'){setStatus('Foto enviada');await load(selected,{quiet:true});await load(null,{quiet:true});}
+   else if(r.status==='uncertain'){setUncertainLocked(true);setStatus('Resultado incierto · revisa Instagram antes de enviar otro mensaje');}
+   else{const validation=r?.diagnostic?.validation;setStatus(validation?`${r.status} · ${validation}`:r.status);}
+  }catch{setStatus('No fue posible enviar la foto');}
+  finally{lock.current=false;setBusy(false);if(mediaInputRef.current)mediaInputRef.current.value='';}
+ }
+
  async function send(e){
   e.preventDefault();
   if(lock.current||!enabled||!replyAnchor||!text.trim()||uncertainLocked)return;
@@ -272,6 +294,8 @@ export default function InstagramBusinessInbox(){
     <form className="composer" onSubmit={send}>
      {replyTarget&&<div className="replyContext"><span>Respondiendo al mensaje de las {clock(replyTarget.occurred_at)}</span><button type="button" onClick={()=>setInput(null)}>×</button></div>}
      <div className="composerRow">
+      <input ref={mediaInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={e=>sendMediaFile(e.target.files?.[0])}/>
+      <button type="button" className="attachButton" title="Adjuntar foto" disabled={busy||!enabled||!replyAnchor||uncertainLocked} onClick={()=>mediaInputRef.current?.click()}>＋</button>
       <textarea id="business-reply" value={text} onChange={e=>setText(e.target.value)} maxLength={999}
        placeholder={!enabled?'Sender apagado':uncertainLocked?'Verifica el último envío antes de continuar':replyAnchor?'Escribe un mensaje…':'Fuera de la ventana de respuesta'}
        disabled={busy||!enabled||!replyAnchor||uncertainLocked}/>
@@ -314,7 +338,7 @@ export default function InstagramBusinessInbox(){
    .bubble{border-radius:18px;padding:10px 13px;box-shadow:0 1px 2px rgba(0,0,0,.06);max-width:100%;overflow:hidden}.incoming .bubble{background:#fff;border-bottom-left-radius:5px}.outgoing .bubble{background:#fce8ed;border-bottom-right-radius:5px}.bubble p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45}.bubble a{color:#2563eb;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}.bubbleMeta{margin-top:5px;color:#9ca3af;font-size:9px;text-align:right}.replyChip{margin-top:5px;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:700;cursor:pointer;padding:3px 5px}
    .mediaButton{border:0;background:transparent;padding:0;cursor:zoom-in;max-width:100%}.inboxMedia{display:block;width:auto;height:auto;max-width:220px;max-height:170px;object-fit:contain;background:#f3f4f6;border-radius:12px;margin-bottom:7px}.chatBottomSentinel{height:1px;flex:none}.mediaPlaceholder{background:#f3f4f6;color:#9ca3af;padding:20px;border-radius:10px;font-size:12px}
    .composer{background:#fff;border-top:1px solid #e5e7eb;padding:12px 18px}.replyContext{display:flex;justify-content:space-between;align-items:center;background:#f9fafb;border-left:3px solid #b91c3c;padding:7px 10px;margin-bottom:8px;font-size:11px;color:#6b7280}.replyContext button{border:0;background:transparent;font-size:18px;color:#6b7280;cursor:pointer}
-   .composerRow{display:flex;gap:10px;align-items:flex-end}.composer textarea{flex:1;resize:none;min-height:58px;max-height:130px;border:1px solid #d1d5db;border-radius:14px;padding:11px 12px;font:inherit;outline:0}.composer textarea:focus{border-color:#b91c3c}.sendButton{height:42px;border:0;border-radius:10px;padding:0 18px;background:#b91c3c;color:#fff;font-weight:800;cursor:pointer}.sendButton:disabled{background:#e5e7eb;color:#9ca3af;cursor:not-allowed}.composerFoot{display:flex;justify-content:space-between;color:#9ca3af;font-size:10px;margin-top:6px}
+   .composerRow{display:flex;gap:10px;align-items:flex-end}.attachButton{width:42px;height:42px;flex:none;border:1px solid #d1d5db;border-radius:10px;background:#fff;color:#b91c3c;font-size:24px;line-height:1;font-weight:700;cursor:pointer}.attachButton:disabled{color:#cbd5e1;background:#f9fafb;cursor:not-allowed}.composer textarea{flex:1;resize:none;min-height:58px;max-height:130px;border:1px solid #d1d5db;border-radius:14px;padding:11px 12px;font:inherit;outline:0}.composer textarea:focus{border-color:#b91c3c}.sendButton{height:42px;border:0;border-radius:10px;padding:0 18px;background:#b91c3c;color:#fff;font-weight:800;cursor:pointer}.sendButton:disabled{background:#e5e7eb;color:#9ca3af;cursor:not-allowed}.composerFoot{display:flex;justify-content:space-between;color:#9ca3af;font-size:10px;margin-top:6px}
    .detailsHeader h3{margin:0;font-size:15px}.detailsBody{padding:20px}.profileCard{text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px;padding-bottom:20px;border-bottom:1px solid #e5e7eb}.profileCard strong{margin-top:5px}.profileCard span{font-size:11px;color:#9ca3af}.detailBlock{padding:15px 0;border-bottom:1px solid #f3f4f6}.detailBlock label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:800}.detailBlock p{font-size:12px;line-height:1.45;margin:5px 0 0}.detailBlock small{display:block;color:#9ca3af;font-size:10px;margin-top:6px}.aliasEditor{display:flex;gap:6px;margin-top:7px}.aliasEditor input{min-width:0;flex:1;border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:12px}.aliasEditor button{border:0;border-radius:8px;background:#b91c3c;color:#fff;padding:0 10px;font-size:11px;font-weight:800}.contactEditor{display:grid;gap:7px;margin-top:7px}.contactEditor input{border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:12px}.contactEditor button{border:0;border-radius:8px;background:#b91c3c;color:#fff;padding:8px 10px;font-size:11px;font-weight:800}.contactSheetBackdrop{display:none;position:fixed;inset:0;z-index:950;background:rgba(17,24,39,.45);align-items:flex-end;justify-content:center}.contactSheet{width:min(100%,520px);background:#fff;border-radius:20px 20px 0 0;padding:18px 18px 24px;box-shadow:0 -10px 30px rgba(0,0,0,.15);display:grid;gap:9px}.contactSheetHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}.contactSheetHead strong{font-size:18px}.contactSheetHead span{display:block;color:#9ca3af;font-size:11px;margin-top:2px}.contactSheetHead button{border:0;background:#f3f4f6;border-radius:50%;width:34px;height:34px;font-size:22px}.contactSheet label{font-size:11px;font-weight:800;color:#6b7280;margin-top:5px}.contactSheet input{width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:11px;padding:11px 12px;font-size:15px}.sheetPrimary{border:0;border-radius:10px;background:#b91c3c;color:#fff;padding:11px 12px;font-size:13px;font-weight:800}.contactSheet small{color:#9ca3af;font-size:10px;line-height:1.35}.lightbox{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.86);display:flex;align-items:center;justify-content:center;padding:24px}.lightbox img{max-width:95vw;max-height:90vh;object-fit:contain;border-radius:10px}.lightboxClose{position:absolute;top:18px;right:18px;width:42px;height:42px;border:0;border-radius:50%;background:#fff;color:#111827;font-size:28px;line-height:1;cursor:pointer}.muted{color:#9ca3af}.emptyChat{margin:auto;text-align:center;color:#6b7280}.emptyIcon{font-size:38px}.emptyChat h3{margin:10px 0 4px}.emptyChat p{margin:0;font-size:13px}.globalError{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#7f1d1d;color:#fff;padding:10px 15px;border-radius:10px;font-size:12px}
    @media(max-width:1100px){.inboxShell{grid-template-columns:300px 1fr}.detailsPane{display:none}}
    @media(max-width:760px){.inboxShell{height:calc(100dvh - 56px);max-height:calc(100dvh - 56px);overflow:hidden;grid-template-columns:1fr}.conversationPane{display:${selected?'none':'flex'}}.chatPane{display:${selected?'flex':'none'}}.detailsPane{display:none}.messageRow{max-width:88%}.messages{padding:16px}.backButton{display:block}.chatHeader{justify-content:flex-start;gap:6px}.contactTitle{min-width:0;flex:1}.contactTitle>div:last-child{min-width:0}.contactTitle strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mobileAliasButton{display:block}.senderBadge{display:none}.contactSheetBackdrop{display:flex}.inboxMedia{width:auto;height:auto;max-width:160px;max-height:140px;object-fit:contain}}
