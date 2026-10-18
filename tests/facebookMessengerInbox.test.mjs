@@ -2,11 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createMessengerInboxApi,presentMessengerHistory} from '../lib/messaging/facebook/messenger/inbox.js';
 import {seal,binding} from '../lib/messaging/facebook/messenger/crypto.js';
-import {messengerConfig} from '../lib/messaging/facebook/messenger/config.js';
+import {messengerConfig,messengerEnvironmentAllowed} from '../lib/messaging/facebook/messenger/config.js';
 const env={FACEBOOK_MESSENGER_ENABLED:'true',APP_ENV:'test',NEXT_PUBLIC_SUPABASE_URL:'https://hjfwjnejbcpmknvfpdcq.supabase.co',
  FACEBOOK_MESSENGER_CONNECTION_ID:'11111111-1111-4111-8111-111111111111',FACEBOOK_MESSENGER_APP_ID:'101',FACEBOOK_MESSENGER_PAGE_ID:'202',
  FACEBOOK_MESSENGER_APP_SECRET:'a'.repeat(32),FACEBOOK_MESSENGER_VERIFY_TOKEN:'b'.repeat(32),FACEBOOK_MESSENGER_INDEX_KEY:'c'.repeat(64),FACEBOOK_MESSENGER_DATA_KEY:'d'.repeat(64),FACEBOOK_MESSENGER_TOKEN_KEY:'e'.repeat(64)};
 const c=messengerConfig(env),thread='a'.repeat(64),actor={id:'22222222-2222-4222-8222-222222222222',active:true,role_id:'asesor'};
+test('production preparation stays closed and rejects cross-environment databases',()=>{
+ const prod={...env,VERCEL_ENV:'production',APP_ENV:'production',NEXT_PUBLIC_SUPABASE_URL:'https://bnzrnizrmonjxlktbhlp.supabase.co'};
+ assert.equal(messengerEnvironmentAllowed(prod),false);
+ assert.equal(messengerEnvironmentAllowed({...prod,FACEBOOK_MESSENGER_ROLLOUT:'closed_manual'}),true);
+ assert.equal(messengerConfig({...prod,FACEBOOK_MESSENGER_ROLLOUT:'closed_manual'}).senderEnabled,false);
+ assert.equal(messengerEnvironmentAllowed({...prod,FACEBOOK_MESSENGER_ROLLOUT:'closed_manual',NEXT_PUBLIC_SUPABASE_URL:env.NEXT_PUBLIC_SUPABASE_URL}),false);
+ assert.equal(messengerEnvironmentAllowed({...env,NEXT_PUBLIC_SUPABASE_URL:prod.NEXT_PUBLIC_SUPABASE_URL}),false);
+});
 const row={connection_id:c.connection,event_ref:'b'.repeat(64),thread_ref:thread,message_ref:'c'.repeat(64),kind:'inbound',occurred_at:'2026-10-18T18:00:00.000Z',reply_allowed:true};
 row.content_box=seal(c,'content',binding(row),{text:'Synthetic only',attachment_types:[]});
 test('history decrypts server-side; only whitelist escapes; deleted content suppressed',()=>{

@@ -157,3 +157,22 @@ Validación: 37 tests JS, 70 checks PostgreSQL efímero, prueba JSX real con API
 
 Pendiente: autorización expresa para grant de respuesta y sender temporal en prueba real; verificar health/freshness antes del envío. Multimedia Messenger, gestión de asignación desde UI, propiedades y citas Facebook aún requieren adaptadores propios; no se invocan APIs de Instagram con refs Facebook. No se presentan esas funcionalidades como certificadas.
 
+## Certificación manual real y preparación cerrada — 18 octubre 2026
+
+Esta sección actualiza los pendientes históricos anteriores; no acredita activación productiva.
+
+Único envío autorizado al inbound controlado `FBDEV-DIAG-20261018-02`: validación de credencial vigente, ventana y binding antes del claim. Reply `FBDEV-REPLY-20261018-01`, recibido visiblemente en Messenger a las 13:04:32 México. Meta HTTP 200 accepted; 1 claim, 1 dispatch, 1 echo correlacionado exactamente por outbound_ref, 0 retries. Nueva lectura del Inbox no produjo otro envío. Kill-switch DB OFF, grant temporal can_reply retirado y variable Preview manual-send false. Redeploy cerrado READY `dpl_3DoiEfbK7KTGZp8sGLFjUScT9Pcm` sobre b745a96. La autorización de un envío está consumida.
+
+Código preparado para Production sólo con opt-in explícito `FACEBOOK_MESSENGER_ROLLOUT=closed_manual`, APP_ENV production, VERCEL_ENV production y URL exacta de Supabase Production. ENABLED y MANUAL_SEND siguen siendo gates independientes y OFF por defecto; la misma comprobación restringe setup e Inbox. No se provisionó ni desplegó Production. La ruta única sigue siendo `/administracion/inbox`.
+
+### Requisitos pendientes antes de activar clientes reales
+
+1. Acreditar Advanced Access de pages_messaging/App Review. La inspección previa de permisos mostró Standard; el panel Messenger actual aún indica solicitar pages_messaging y revisión para usuarios sin rol. El PASS de la cuenta controlada no acredita ese acceso. No se solicitó ni cambió ningún permiso.
+2. Tras aprobación explícita, aplicar las tres migraciones Messenger en Production, verificar ACL/RLS service-only y tests negativos. No copiar grants ni ciphertext DEV.
+3. Provisionar claves nuevas de cifrado/índice/token y conexión productiva independiente; Page token validado server-side contra app, Página, permisos y expiraciones. Health tiene lease máxima de 24 horas: requiere comprobación operativa antes de vencer; no hay renovación automática ni garantía de disponibilidad indefinida.
+4. Preparar callback público `/api/webhooks/facebook-messenger`, challenge/HMAC y suscripción Page messages/message_echoes. La misma app tiene callback Page DEV: planificar corte explícito sólo del objeto Page; no modificar callback Instagram, Respond ni routing. Nunca desproteger Inmoadmin para resolverlo.
+5. Con sender OFF, certificar inbound productivo y grants exactos de operador/hilo. Sin grant no hay lectura ni respuesta, incluso para admin. No existe todavía gestión avanzada de asignaciones Facebook desde UI.
+6. Sólo con nueva autorización, habilitar una respuesta canary manual y comprobar 1 claim/dispatch/echo, recepción y cierre inmediato. Resultado incierto es terminal, sin retry. Reversión: DB sender OFF primero, env false después; cerrar grants temporales sin borrar journal.
+
+No se necesita implementar propiedades, citas ni automatizaciones para este canary básico. IA, private replies y envíos automáticos permanecen fuera del alcance. PR #201 abierto: sin merge ni despliegue productivo.
+

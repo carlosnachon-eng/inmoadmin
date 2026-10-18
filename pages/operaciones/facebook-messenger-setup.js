@@ -1,19 +1,20 @@
 import {useRef,useState} from 'react';
 import Head from 'next/head';
 import {supabase} from '../../lib/supabase';
+import {messengerEnvironmentAllowed} from '../../lib/messaging/facebook/messenger/config';
 
 export async function getServerSideProps({res}) {
  res.setHeader('Cache-Control','no-store');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Robots-Tag','noindex, nofollow');
- if(process.env.VERCEL_ENV==='production'||!['preview','development'].includes(process.env.APP_ENV)||process.env.NEXT_PUBLIC_SUPABASE_URL!=='https://hjfwjnejbcpmknvfpdcq.supabase.co')return {notFound:true};
- return {props:{}};
+ if(process.env.FACEBOOK_MESSENGER_ENABLED!=='true'||!messengerEnvironmentAllowed(process.env))return {notFound:true};
+ return {props:{environment:process.env.VERCEL_ENV==='production'?'Producción':'DEV'}};
 }
-export default function MessengerSetup(){
+export default function MessengerSetup({environment='DEV'}){
  const [busy,setBusy]=useState(false),[result,setResult]=useState(null);const lock=useRef(false);
  async function run(operation){
   if(lock.current)return;lock.current=true;setBusy(true);
   try{
    const {data}=await supabase.auth.getSession();
-   if(!data?.session?.access_token){setResult({status:'Inicia sesión Admin DEV.'});return;}
+   if(!data?.session?.access_token){setResult({status:`Inicia sesión Admin ${environment}.`});return;}
    const r=await fetch('/api/operaciones/facebook-messenger-setup',{method:'POST',redirect:'error',cache:'no-store',
     headers:{Authorization:`Bearer ${data.session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({operation})});
    const safe=await r.json().catch(()=>({status:'Configuración no disponible.'}));
@@ -22,11 +23,11 @@ export default function MessengerSetup(){
   }catch{setResult({status:'No verificable; sin reintento automático.'});}finally{lock.current=false;setBusy(false);}
  }
  return <main style={{maxWidth:720,margin:'40px auto',padding:24}}>
-  <Head><title>Messenger · Configuración DEV</title></Head>
-  <h1>Facebook Messenger · DEV</h1>
+  <Head><title>Messenger · Configuración {environment}</title></Head>
+  <h1>Facebook Messenger · {environment}</h1>
   <p>Configuración exclusiva de administradores. Sin mensajes, sin IA y sin modificar Instagram ni Respond.</p>
   <p>La credencial se provisiona desde un secreto server-side. No pegues tokens aquí.</p>
-  <button disabled={busy} onClick={()=>run('provision')}>Validar y guardar credencial DEV</button>{' '}
+  <button disabled={busy} onClick={()=>run('provision')}>Validar y guardar credencial {environment}</button>{' '}
   <button disabled={busy} onClick={()=>run('health')}>Verificar salud de credencial</button>
   <p>Ambas acciones requieren sender OFF. No suscriben webhooks ni conceden permisos.</p>
   <section aria-live="polite">{result&&<pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(result,null,2)}</pre>}</section>

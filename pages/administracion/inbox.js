@@ -2,11 +2,12 @@ import Head from 'next/head';
 import Layout from '../../components/Layout';
 import InstagramBusinessInbox from '../../components/InstagramBusinessInbox';
 import CommercialInbox from '../../components/CommercialInbox';
+import {messengerEnvironmentAllowed} from '../../lib/messaging/facebook/messenger/config';
 
 export async function getServerSideProps(){
  const enabled=process.env.INSTAGRAM_BUSINESS_ENABLED==='true'
   &&(process.env.VERCEL_ENV!=='production'||process.env.INSTAGRAM_BUSINESS_ROLLOUT==='closed_canary');
- const messengerAvailable=process.env.FACEBOOK_MESSENGER_ENABLED==='true'&&process.env.VERCEL_ENV!=='production';
+ const messengerAvailable=process.env.FACEBOOK_MESSENGER_ENABLED==='true'&&messengerEnvironmentAllowed(process.env);
  return {props:{businessAvailable:enabled,messengerAvailable}};
 }
 
