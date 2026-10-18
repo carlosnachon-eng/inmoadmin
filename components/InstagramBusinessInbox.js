@@ -25,7 +25,7 @@ const messageStamp=value=>{
  return key(d)===key(now)?clock(value):`${day(value)} · ${clock(value)}`;
 };
 
-function Media({thread,input,index}){
+function Media({thread,input,index,onOpen}){
  const [url,setUrl]=useState(null);
  useEffect(()=>{
   let active=true,object;
@@ -34,7 +34,7 @@ function Media({thread,input,index}){
    .catch(()=>{});
   return()=>{active=false;if(object)URL.revokeObjectURL(object);};
  },[thread,input,index]);
- return url?<img src={url} alt="Imagen recibida en Instagram" className="inboxMedia" onLoad={()=>bottomRef.current?.scrollIntoView({block:"end",behavior:"auto"})}/>:<div className="mediaPlaceholder">Imagen no disponible</div>;
+ return url?<button type="button" className="mediaButton" onClick={()=>onOpen?.(url)}><img src={url} alt="Imagen recibida en Instagram" className="inboxMedia" onLoad={()=>bottomRef.current?.scrollIntoView({block:"end",behavior:"auto"})}/></button>:<div className="mediaPlaceholder">Imagen no disponible</div>;
 }
 
 export default function InstagramBusinessInbox(){
@@ -53,6 +53,7 @@ export default function InstagramBusinessInbox(){
  const [search,setSearch]=useState('');
  const [aliasDraft,setAliasDraft]=useState(''),[aliasBusy,setAliasBusy]=useState(false),[mobileAliasEditing,setMobileAliasEditing]=useState(false);
  const [profile,setProfile]=useState(null),[syncing,setSyncing]=useState(false),[uncertainLocked,setUncertainLocked]=useState(false);
+ const [phoneDraft,setPhoneDraft]=useState(''),[emailDraft,setEmailDraft]=useState(''),[contactBusy,setContactBusy]=useState(false),[lightbox,setLightbox]=useState(null);
  const lock=useRef(false),generation=useRef(0),chatRef=useRef(null),bottomRef=useRef(null),polling=useRef(false),selectedRef=useRef(null);
 
  const filtered=useMemo(()=>{
@@ -77,6 +78,7 @@ export default function InstagramBusinessInbox(){
     if(r.profile) setThreads(list=>list.map(t=>t.thread_ref===thread?{...t,profile_name:r.profile.name||null,profile_username:r.profile.username||null,profile_pic:r.profile.profile_pic||null}:t));
     const current=threads.find(t=>t.thread_ref===thread);
     setAliasDraft(current?.alias||'');
+    try{const contact=await request('contact-get',{query:{thread}});setPhoneDraft(contact.phone||'');setEmailDraft(contact.email||'');}catch{setPhoneDraft('');setEmailDraft('');}
     setInput(null);
     setUncertainLocked(false);
     setText('');
@@ -130,6 +132,16 @@ export default function InstagramBusinessInbox(){
    }catch{setHistoryStatus('No fue posible recuperar el historial reciente');}
   }
   finally{setSyncing(false);}
+ }
+
+ async function saveContact(){
+  if(!selected||contactBusy)return;
+  setContactBusy(true);setStatus('');
+  try{
+   const r=await request('contact-set',{body:{thread:selected,phone:phoneDraft,email:emailDraft}});
+   setPhoneDraft(r.phone||'');setEmailDraft(r.email||'');setStatus('Datos de contacto guardados');
+  }catch{setStatus('No fue posible guardar teléfono/correo');}
+  finally{setContactBusy(false);}
  }
 
  async function saveAlias(){
@@ -215,16 +227,19 @@ export default function InstagramBusinessInbox(){
      <div className={`senderBadge ${enabled?'on':'off'}`}>{enabled?'Envío habilitado':'Sender OFF'}</div>
     </header>
     {mobileAliasEditing&&<div className="mobileAliasEditor">
-      <input value={aliasDraft} onChange={e=>setAliasDraft(e.target.value)} maxLength={80} placeholder="Ej. Cliente Zavaleta"/>
-      <button type="button" disabled={aliasBusy} onClick={saveAlias}>{aliasBusy?'Guardando…':'Guardar'}</button>
-      <small>Este nombre sólo se verá dentro de Inmoadmin.</small>
+      <input value={aliasDraft} onChange={e=>setAliasDraft(e.target.value)} maxLength={80} placeholder="Nombre interno"/>
+      <button type="button" disabled={aliasBusy} onClick={saveAlias}>{aliasBusy?'Guardando…':'Guardar nombre'}</button>
+      <input value={phoneDraft} onChange={e=>setPhoneDraft(e.target.value)} maxLength={32} inputMode="tel" placeholder="Teléfono"/>
+      <input value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} maxLength={254} inputMode="email" placeholder="Correo"/>
+      <button type="button" disabled={contactBusy} onClick={saveContact}>{contactBusy?'Guardando…':'Guardar contacto'}</button>
+      <small>Datos internos de Inmoadmin; no modifican Instagram.</small>
     </div>}
     <div className="messages" ref={chatRef}>
      {rows.map(r=>{
       const inbound=r.direction==='customer_inbound';
       return <div key={r.input} className={`messageRow ${inbound?'incoming':'outgoing'}`}>
        <article className="bubble">
-        {r.attachments?.map(a=>a.type==='image'?<Media key={a.index} thread={selected} input={r.input} index={a.index}/>:<div key={a.index} className="mediaPlaceholder">Adjunto no soportado</div>)}
+        {r.attachments?.map(a=>a.type==='image'?<Media key={a.index} thread={selected} input={r.input} index={a.index} onOpen={setLightbox}/>:<div key={a.index} className="mediaPlaceholder">Adjunto no soportado</div>)}
         {r.text&&<p>{r.text}</p>}
         <div className="bubbleMeta"><time>{messageStamp(r.occurred_at)}</time>{r.status&&<span> · {r.status}</span>}</div>
        </article>
@@ -251,6 +266,7 @@ export default function InstagramBusinessInbox(){
    {selected?<div className="detailsBody">
     <div className="profileCard">{profile?.profile_pic?<img src={profile.profile_pic} alt="" className="profilePic"/>:<div className="avatar xlarge">IG</div>}<strong>{threads.find(t=>t.thread_ref===selected)?.alias||(profile?.username?`@${profile.username}`:profile?.name)||'Contacto de Instagram'}</strong><span>{threads.find(t=>t.thread_ref===selected)?.alias?(profile?.username?`Instagram: @${profile.username}`:'Alias interno de Emporio'):(profile?.name||'Identidad no disponible')}</span></div>
     <div className="detailBlock"><label>Nombre interno</label><div className="aliasEditor"><input value={aliasDraft} onChange={e=>setAliasDraft(e.target.value)} maxLength={80} placeholder="Ej. Cliente Depa Angelópolis"/><button disabled={aliasBusy} onClick={saveAlias}>{aliasBusy?'…':'Guardar'}</button></div><small>Visible sólo dentro de Inmoadmin; no cambia el nombre en Instagram.</small></div>
+    <div className="detailBlock"><label>Contacto</label><div className="contactEditor"><input value={phoneDraft} onChange={e=>setPhoneDraft(e.target.value)} maxLength={32} placeholder="Teléfono"/><input value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} maxLength={254} placeholder="Correo"/><button disabled={contactBusy} onClick={saveContact}>{contactBusy?'…':'Guardar'}</button></div></div>
     <div className="detailBlock"><label>Canal</label><p>Instagram Direct</p></div>
     <div className="detailBlock"><label>Estado</label><p>{enabled?'Atención manual habilitada':'Lectura disponible · sender OFF'}</p></div>
     <div className="detailBlock"><label>Seguridad</label><p>Contenido y destinatario cifrados. Sin reintentos automáticos.</p></div>
@@ -258,6 +274,7 @@ export default function InstagramBusinessInbox(){
    </div>:<div className="detailsBody muted">Selecciona una conversación para ver su contexto.</div>}
   </aside>
 
+  {lightbox&&<div className="lightbox" role="dialog" aria-modal="true" onClick={()=>setLightbox(null)}><button type="button" className="lightboxClose" onClick={()=>setLightbox(null)}>×</button><img src={lightbox} alt="Imagen de Instagram ampliada" onClick={e=>e.stopPropagation()}/></div>}
   {status&&status.includes('no disponible')&&<div className="globalError" role="alert">{status}</div>}
 
   <style jsx>{`
@@ -274,10 +291,10 @@ export default function InstagramBusinessInbox(){
    .chatPane{min-width:0;min-height:0;height:100%;overflow:hidden;background:#f7f8fa;display:flex;flex-direction:column}.chatHeader{background:#fff}.backButton{display:none;border:0;background:transparent;font-size:28px;line-height:1;color:#b91c3c;padding:0 4px;cursor:pointer}.mobileAliasButton{display:none;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}.mobileAliasEditor{display:none;background:#fff;border-bottom:1px solid #e5e7eb;padding:10px 14px;gap:8px;align-items:center}.mobileAliasEditor input{min-width:0;flex:1;border:1px solid #d1d5db;border-radius:10px;padding:9px 10px;font-size:13px}.mobileAliasEditor button{border:0;border-radius:9px;background:#b91c3c;color:#fff;padding:9px 12px;font-size:11px;font-weight:800}.mobileAliasEditor small{display:block;width:100%;color:#9ca3af;font-size:9px}.contactTitle{display:flex;align-items:center;gap:10px}.contactTitle strong{font-size:14px}.senderBadge{font-size:11px;font-weight:800;border-radius:999px;padding:6px 9px}.senderBadge.on{background:#dcfce7;color:#166534}.senderBadge.off{background:#f3f4f6;color:#6b7280}
    .messages{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:24px 28px;display:flex;flex-direction:column;gap:14px}.messageRow{display:flex;flex-direction:column;max-width:72%}.messageRow.incoming{align-self:flex-start;align-items:flex-start}.messageRow.outgoing{align-self:flex-end;align-items:flex-end}
    .bubble{border-radius:18px;padding:10px 13px;box-shadow:0 1px 2px rgba(0,0,0,.06);max-width:100%;overflow:hidden}.incoming .bubble{background:#fff;border-bottom-left-radius:5px}.outgoing .bubble{background:#fce8ed;border-bottom-right-radius:5px}.bubble p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45}.bubbleMeta{margin-top:5px;color:#9ca3af;font-size:9px;text-align:right}.replyChip{margin-top:5px;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:700;cursor:pointer;padding:3px 5px}
-   .inboxMedia{display:block;width:220px;height:180px;max-width:100%;object-fit:contain;background:#f3f4f6;border-radius:12px;margin-bottom:7px}.chatBottomSentinel{height:1px;flex:none}.mediaPlaceholder{background:#f3f4f6;color:#9ca3af;padding:20px;border-radius:10px;font-size:12px}
+   .mediaButton{border:0;background:transparent;padding:0;cursor:zoom-in}.inboxMedia{display:block;width:220px;height:180px;max-width:100%;object-fit:cover;background:#f3f4f6;border-radius:12px;margin-bottom:7px}.chatBottomSentinel{height:1px;flex:none}.mediaPlaceholder{background:#f3f4f6;color:#9ca3af;padding:20px;border-radius:10px;font-size:12px}
    .composer{background:#fff;border-top:1px solid #e5e7eb;padding:12px 18px}.replyContext{display:flex;justify-content:space-between;align-items:center;background:#f9fafb;border-left:3px solid #b91c3c;padding:7px 10px;margin-bottom:8px;font-size:11px;color:#6b7280}.replyContext button{border:0;background:transparent;font-size:18px;color:#6b7280;cursor:pointer}
    .composerRow{display:flex;gap:10px;align-items:flex-end}.composer textarea{flex:1;resize:none;min-height:58px;max-height:130px;border:1px solid #d1d5db;border-radius:14px;padding:11px 12px;font:inherit;outline:0}.composer textarea:focus{border-color:#b91c3c}.sendButton{height:42px;border:0;border-radius:10px;padding:0 18px;background:#b91c3c;color:#fff;font-weight:800;cursor:pointer}.sendButton:disabled{background:#e5e7eb;color:#9ca3af;cursor:not-allowed}.composerFoot{display:flex;justify-content:space-between;color:#9ca3af;font-size:10px;margin-top:6px}
-   .detailsHeader h3{margin:0;font-size:15px}.detailsBody{padding:20px}.profileCard{text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px;padding-bottom:20px;border-bottom:1px solid #e5e7eb}.profileCard strong{margin-top:5px}.profileCard span{font-size:11px;color:#9ca3af}.detailBlock{padding:15px 0;border-bottom:1px solid #f3f4f6}.detailBlock label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:800}.detailBlock p{font-size:12px;line-height:1.45;margin:5px 0 0}.detailBlock small{display:block;color:#9ca3af;font-size:10px;margin-top:6px}.aliasEditor{display:flex;gap:6px;margin-top:7px}.aliasEditor input{min-width:0;flex:1;border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:12px}.aliasEditor button{border:0;border-radius:8px;background:#b91c3c;color:#fff;padding:0 10px;font-size:11px;font-weight:800}.muted{color:#9ca3af}.emptyChat{margin:auto;text-align:center;color:#6b7280}.emptyIcon{font-size:38px}.emptyChat h3{margin:10px 0 4px}.emptyChat p{margin:0;font-size:13px}.globalError{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#7f1d1d;color:#fff;padding:10px 15px;border-radius:10px;font-size:12px}
+   .detailsHeader h3{margin:0;font-size:15px}.detailsBody{padding:20px}.profileCard{text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px;padding-bottom:20px;border-bottom:1px solid #e5e7eb}.profileCard strong{margin-top:5px}.profileCard span{font-size:11px;color:#9ca3af}.detailBlock{padding:15px 0;border-bottom:1px solid #f3f4f6}.detailBlock label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:800}.detailBlock p{font-size:12px;line-height:1.45;margin:5px 0 0}.detailBlock small{display:block;color:#9ca3af;font-size:10px;margin-top:6px}.aliasEditor{display:flex;gap:6px;margin-top:7px}.aliasEditor input{min-width:0;flex:1;border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:12px}.aliasEditor button{border:0;border-radius:8px;background:#b91c3c;color:#fff;padding:0 10px;font-size:11px;font-weight:800}.contactEditor{display:grid;gap:7px;margin-top:7px}.contactEditor input{border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:12px}.contactEditor button{border:0;border-radius:8px;background:#b91c3c;color:#fff;padding:8px 10px;font-size:11px;font-weight:800}.lightbox{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.86);display:flex;align-items:center;justify-content:center;padding:24px}.lightbox img{max-width:95vw;max-height:90vh;object-fit:contain;border-radius:10px}.lightboxClose{position:absolute;top:18px;right:18px;width:42px;height:42px;border:0;border-radius:50%;background:#fff;color:#111827;font-size:28px;line-height:1;cursor:pointer}.muted{color:#9ca3af}.emptyChat{margin:auto;text-align:center;color:#6b7280}.emptyIcon{font-size:38px}.emptyChat h3{margin:10px 0 4px}.emptyChat p{margin:0;font-size:13px}.globalError{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#7f1d1d;color:#fff;padding:10px 15px;border-radius:10px;font-size:12px}
    @media(max-width:1100px){.inboxShell{grid-template-columns:300px 1fr}.detailsPane{display:none}}
    @media(max-width:760px){.inboxShell{height:calc(100dvh - 56px);max-height:calc(100dvh - 56px);overflow:hidden;grid-template-columns:1fr}.conversationPane{display:${selected?'none':'flex'}}.chatPane{display:${selected?'flex':'none'}}.detailsPane{display:none}.messageRow{max-width:88%}.messages{padding:16px}.backButton{display:block}.chatHeader{justify-content:flex-start;gap:6px}.contactTitle{min-width:0;flex:1}.contactTitle>div:last-child{min-width:0}.contactTitle strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mobileAliasButton{display:block}.mobileAliasEditor{display:flex;flex-wrap:wrap}.senderBadge{display:none}.inboxMedia{width:170px;height:150px;max-width:170px;max-height:150px}}
   `}</style>
