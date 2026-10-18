@@ -120,6 +120,10 @@
     {
       "path": "/api/cron/provider-quote-sla",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/instagram-outbound-media-cleanup",
+      "schedule": "20 9 * * *"
     }
   ]
 }
