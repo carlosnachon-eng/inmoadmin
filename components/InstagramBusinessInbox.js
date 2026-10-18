@@ -39,6 +39,7 @@ export default function InstagramBusinessInbox(){
  const [status,setStatus]=useState('');
  const [busy,setBusy]=useState(false);
  const [search,setSearch]=useState('');
+ const [aliasDraft,setAliasDraft]=useState(''),[aliasBusy,setAliasBusy]=useState(false);
  const lock=useRef(false),consumed=useRef(new Set()),generation=useRef(0),chatRef=useRef(null);
 
  const filtered=useMemo(()=>{
@@ -59,6 +60,8 @@ export default function InstagramBusinessInbox(){
    if(thread){
     setRows(r.rows||[]);
     setSelected(thread);
+    const current=threads.find(t=>t.thread_ref===thread);
+    setAliasDraft(current?.alias||'');
     setInput(null);
     setText('');
     requestAnimationFrame(()=>chatRef.current?.scrollTo({top:chatRef.current.scrollHeight,behavior:'smooth'}));
@@ -71,6 +74,18 @@ export default function InstagramBusinessInbox(){
  }
 
  useEffect(()=>{void load();},[]);
+
+ async function saveAlias(){
+  if(!selected||aliasBusy)return;
+  setAliasBusy(true);setStatus('');
+  try{
+   const r=await request('alias-set',{body:{thread:selected,alias:aliasDraft}});
+   setAliasDraft(r.alias||'');
+   setThreads(list=>list.map(t=>t.thread_ref===selected?{...t,alias:r.alias||null}:t));
+   setStatus(r.alias?'Nombre guardado':'Nombre eliminado');
+  }catch{setStatus('No fue posible guardar el nombre');}
+  finally{setAliasBusy(false);}
+ }
 
  async function send(e){
   e.preventDefault();
@@ -110,7 +125,7 @@ export default function InstagramBusinessInbox(){
      return <button key={t.thread_ref} className={`threadCard ${active?'selected':''}`} onClick={()=>load(t.thread_ref)} disabled={busy}>
       <div className="avatar">IG</div>
       <div className="threadCopy">
-       <div className="threadTop"><strong>Conversación Instagram {n}</strong><time>{clock(t.last_activity)}</time></div>
+       <div className="threadTop"><strong>{t.alias||`Conversación Instagram ${n}`}</strong><time>{clock(t.last_activity)}</time></div>
        <p>Mensaje directo de Instagram</p>
        <small>{day(t.last_activity)}</small>
       </div>
@@ -122,7 +137,7 @@ export default function InstagramBusinessInbox(){
   <main className="chatPane">
    {selected?<>
     <header className="chatHeader">
-     <div className="contactTitle"><div className="avatar large">IG</div><div><strong>Conversación Instagram {selectedIndex+1}</strong><span>Instagram · Meta directo</span></div></div>
+     <div className="contactTitle"><div className="avatar large">IG</div><div><strong>{threads.find(t=>t.thread_ref===selected)?.alias||`Conversación Instagram ${selectedIndex+1}`}</strong><span>Instagram · Meta directo</span></div></div>
      <div className={`senderBadge ${enabled?'on':'off'}`}>{enabled?'Envío habilitado':'Sender OFF'}</div>
     </header>
     <div className="messages" ref={chatRef}>
@@ -154,7 +169,8 @@ export default function InstagramBusinessInbox(){
   <aside className="detailsPane">
    <div className="detailsHeader"><h3>Detalles</h3></div>
    {selected?<div className="detailsBody">
-    <div className="profileCard"><div className="avatar xlarge">IG</div><strong>Contacto de Instagram</strong><span>Identidad no expuesta por este flujo</span></div>
+    <div className="profileCard"><div className="avatar xlarge">IG</div><strong>{threads.find(t=>t.thread_ref===selected)?.alias||'Contacto de Instagram'}</strong><span>Nombre interno de Emporio</span></div>
+    <div className="detailBlock"><label>Nombre interno</label><div className="aliasEditor"><input value={aliasDraft} onChange={e=>setAliasDraft(e.target.value)} maxLength={80} placeholder="Ej. Cliente Depa Angelópolis"/><button disabled={aliasBusy} onClick={saveAlias}>{aliasBusy?'…':'Guardar'}</button></div><small>Visible sólo dentro de Inmoadmin; no cambia el nombre en Instagram.</small></div>
     <div className="detailBlock"><label>Canal</label><p>Instagram Direct</p></div>
     <div className="detailBlock"><label>Estado</label><p>{enabled?'Atención manual habilitada':'Lectura disponible · sender OFF'}</p></div>
     <div className="detailBlock"><label>Seguridad</label><p>Contenido y destinatario cifrados. Sin reintentos automáticos.</p></div>
@@ -181,7 +197,7 @@ export default function InstagramBusinessInbox(){
    .inboxMedia{max-width:100%;max-height:340px;border-radius:12px;display:block;margin-bottom:7px}.mediaPlaceholder{background:#f3f4f6;color:#9ca3af;padding:20px;border-radius:10px;font-size:12px}
    .composer{background:#fff;border-top:1px solid #e5e7eb;padding:12px 18px}.replyContext{display:flex;justify-content:space-between;align-items:center;background:#f9fafb;border-left:3px solid #b91c3c;padding:7px 10px;margin-bottom:8px;font-size:11px;color:#6b7280}.replyContext button{border:0;background:transparent;font-size:18px;color:#6b7280;cursor:pointer}
    .composerRow{display:flex;gap:10px;align-items:flex-end}.composer textarea{flex:1;resize:none;min-height:58px;max-height:130px;border:1px solid #d1d5db;border-radius:14px;padding:11px 12px;font:inherit;outline:0}.composer textarea:focus{border-color:#b91c3c}.sendButton{height:42px;border:0;border-radius:10px;padding:0 18px;background:#b91c3c;color:#fff;font-weight:800;cursor:pointer}.sendButton:disabled{background:#e5e7eb;color:#9ca3af;cursor:not-allowed}.composerFoot{display:flex;justify-content:space-between;color:#9ca3af;font-size:10px;margin-top:6px}
-   .detailsHeader h3{margin:0;font-size:15px}.detailsBody{padding:20px}.profileCard{text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px;padding-bottom:20px;border-bottom:1px solid #e5e7eb}.profileCard strong{margin-top:5px}.profileCard span{font-size:11px;color:#9ca3af}.detailBlock{padding:15px 0;border-bottom:1px solid #f3f4f6}.detailBlock label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:800}.detailBlock p{font-size:12px;line-height:1.45;margin:5px 0 0}.muted{color:#9ca3af}.emptyChat{margin:auto;text-align:center;color:#6b7280}.emptyIcon{font-size:38px}.emptyChat h3{margin:10px 0 4px}.emptyChat p{margin:0;font-size:13px}.globalError{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#7f1d1d;color:#fff;padding:10px 15px;border-radius:10px;font-size:12px}
+   .detailsHeader h3{margin:0;font-size:15px}.detailsBody{padding:20px}.profileCard{text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px;padding-bottom:20px;border-bottom:1px solid #e5e7eb}.profileCard strong{margin-top:5px}.profileCard span{font-size:11px;color:#9ca3af}.detailBlock{padding:15px 0;border-bottom:1px solid #f3f4f6}.detailBlock label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:800}.detailBlock p{font-size:12px;line-height:1.45;margin:5px 0 0}.detailBlock small{display:block;color:#9ca3af;font-size:10px;margin-top:6px}.aliasEditor{display:flex;gap:6px;margin-top:7px}.aliasEditor input{min-width:0;flex:1;border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:12px}.aliasEditor button{border:0;border-radius:8px;background:#b91c3c;color:#fff;padding:0 10px;font-size:11px;font-weight:800}.muted{color:#9ca3af}.emptyChat{margin:auto;text-align:center;color:#6b7280}.emptyIcon{font-size:38px}.emptyChat h3{margin:10px 0 4px}.emptyChat p{margin:0;font-size:13px}.globalError{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#7f1d1d;color:#fff;padding:10px 15px;border-radius:10px;font-size:12px}
    @media(max-width:1100px){.inboxShell{grid-template-columns:300px 1fr}.detailsPane{display:none}}
    @media(max-width:760px){.inboxShell{height:calc(100vh - 56px);grid-template-columns:1fr}.conversationPane{display:${selected?'none':'flex'}}.chatPane{display:${selected?'flex':'none'}}.detailsPane{display:none}.messageRow{max-width:88%}.messages{padding:16px}.chatHeader:before{content:'‹';font-size:28px;margin-right:8px;cursor:pointer}}
   `}</style>
