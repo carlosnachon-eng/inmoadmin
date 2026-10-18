@@ -1,9 +1,21 @@
 import {useEffect,useRef,useState} from 'react';
 import {inboxRequest} from './CommercialInbox';
+import {supabase} from '../lib/supabase';
 
-export default function FacebookMessengerConversation({thread}){
+export default function FacebookMessengerConversation({thread,displayName='',onNameSaved}){
  const [rows,setRows]=useState([]),[enabled,setEnabled]=useState(false),[text,setText]=useState(''),[input,setInput]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
  const locked=useRef(false),mounted=useRef(true);
+ const [canRename,setCanRename]=useState(false),[editing,setEditing]=useState(false),[nameDraft,setNameDraft]=useState(''),[nameStatus,setNameStatus]=useState('');
+ useEffect(()=>{let live=true;supabase.auth.getUser().then(async({data})=>{if(!data?.user)return;const {data:profile}=await supabase.from('profiles').select('active,role_id').eq('id',data.user.id).maybeSingle();if(live)setCanRename(profile?.active===true&&profile?.role_id==='admin');}).catch(()=>{});return()=>{live=false};},[]);
+ async function saveName(){
+  const alias=nameDraft.trim();if(alias.length<2||alias.length>90)return;
+  setNameStatus('Guardando…');
+  try{const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('auth');
+   const r=await fetch('/api/operaciones/facebook-messenger-names',{method:'POST',cache:'no-store',redirect:'error',headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},body:JSON.stringify({thread,alias})});
+   if(!r.ok)throw Error('save');setEditing(false);setNameStatus('Nombre guardado');if(onNameSaved)await onNameSaved();
+  }catch{setNameStatus('No se pudo guardar el nombre.');}
+ }
+
  async function refresh(){
   try{const r=await inboxRequest('facebook','history',{thread});if(!mounted.current)return;
    setRows(r.rows);setEnabled(r.sender_enabled===true);
@@ -21,7 +33,9 @@ export default function FacebookMessengerConversation({thread}){
   // Remains locked after every attempt; refresh never dispatches or unlocks.
  }
  return <section className="fbConversation" aria-label="Conversación Facebook Messenger">
-  <header className="fbHeader"><div><strong>Facebook Messenger</strong><span>{enabled?'Atención manual habilitada':'Sólo lectura · Envío desactivado'} · Sin IA</span></div><button type="button" onClick={refresh}>↻ Actualizar</button></header>
+  <header className="fbHeader"><div><strong>{displayName||'Contacto de Facebook'}</strong><span>Facebook Messenger · </span><span>{enabled?'Atención manual habilitada':'Sólo lectura · Envío desactivado'} · Sin IA</span></div><div className="fbActions">{canRename&&<button type="button" onClick={()=>{setEditing(v=>!v);setNameDraft(displayName);setNameStatus('')}}>✎ Nombre</button>}<button type="button" onClick={refresh}>↻ Actualizar</button></div></header>
+  {editing&&<div className="nameEditor"><input aria-label="Nombre interno del contacto" placeholder="Nombre del contacto" value={nameDraft} onChange={e=>setNameDraft(e.target.value)} maxLength={90}/><button disabled={nameDraft.trim().length<2} type="button" onClick={saveName}>Guardar nombre</button></div>}
+  {nameStatus&&<p role="status" className="nameStatus">{nameStatus}</p>}
   <div className="history" role="log" aria-label="Mensajes de Facebook">
    {!rows.length&&<p className="emptyHistory">No hay mensajes disponibles para esta conversación.</p>}
    {rows.map(r=><div key={r.input} className={r.kind==='echo'?'messageRow mine':'messageRow theirs'}>
@@ -37,6 +51,7 @@ export default function FacebookMessengerConversation({thread}){
   <style jsx>{`
    .fbConversation{height:100%;flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:#f8fafc}
    .fbHeader{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 18px;background:#fff;border-bottom:1px solid #e5e7eb}.fbHeader div{display:flex;flex-direction:column;gap:4px}.fbHeader strong{font-size:14px;color:#263348}.fbHeader span{font-size:11px;color:#64748b}.fbHeader button{background:white;border:1px solid #e5e7eb;border-radius:9px;padding:8px 11px;color:#475569;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap}
+   .fbActions{display:flex;gap:6px}.nameEditor{display:flex;gap:8px;background:#fff;padding:8px 14px;border-bottom:1px solid #e5e7eb}.nameEditor input{flex:1;min-width:0;border:1px solid #dbe1ea;border-radius:8px;padding:8px;font-size:12px}.nameEditor button{border:0;background:#a51d40;color:#fff;border-radius:8px;padding:8px 12px;font-size:11px;cursor:pointer}.nameEditor button:disabled{opacity:.5}.nameStatus{margin:0;padding:5px 14px;font-size:11px;color:#64748b;background:white}
    .history{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;padding:18px;align-content:start}
    .messageRow{display:flex;width:100%}.messageRow.theirs{justify-content:flex-start}.messageRow.mine{justify-content:flex-end}
    .bubble{width:fit-content;max-width:min(78%,540px);border:1px solid #e2e8f0;background:#fff;border-radius:15px 15px 15px 4px;padding:11px 13px;box-sizing:border-box;overflow-wrap:anywhere}.outgoing{background:#e3efff;border-color:#cfe0fd;border-radius:15px 15px 4px 15px}
