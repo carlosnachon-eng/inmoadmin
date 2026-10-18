@@ -5,6 +5,29 @@ import {supabase} from '../lib/supabase';
 export default function FacebookMessengerConversation({thread,displayName='',onNameSaved}){
  const [rows,setRows]=useState([]),[enabled,setEnabled]=useState(false),[text,setText]=useState(''),[input,setInput]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
  const locked=useRef(false),mounted=useRef(true);
+ const [detailsOpen,setDetailsOpen]=useState(false),[phone,setPhone]=useState(''),[email,setEmail]=useState(''),[contactBusy,setContactBusy]=useState(false),[contactStatus,setContactStatus]=useState('');
+ useEffect(()=>{let live=true;setPhone('');setEmail('');setContactStatus('');
+  supabase.auth.getSession().then(async({data})=>{
+   if(!data?.session)return;
+   const response=await fetch('/api/operaciones/facebook-messenger-contact?'+new URLSearchParams({thread}),{cache:'no-store',headers:{Authorization:'Bearer '+data.session.access_token}});
+   if(!response.ok)throw Error('unavailable');
+   const result=await response.json();
+   if(live){setPhone(result.phone||'');setEmail(result.email||'');}
+  }).catch(()=>{if(live)setContactStatus('No se pudieron cargar los datos de contacto.');});
+  return()=>{live=false};
+ },[thread]);
+ async function saveContact(){
+  if(contactBusy)return;setContactBusy(true);setContactStatus('');
+  try{
+   const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('auth');
+   const response=await fetch('/api/operaciones/facebook-messenger-contact',{method:'POST',cache:'no-store',redirect:'error',
+    headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},
+    body:JSON.stringify({thread,phone:phone.trim(),email:email.trim()})});
+   if(!response.ok)throw Error('unavailable');setContactStatus('Contacto guardado.');
+  }catch{setContactStatus('No se pudieron guardar los datos.');}
+  finally{setContactBusy(false);}
+ }
+
  const [canRename,setCanRename]=useState(false),[editing,setEditing]=useState(false),[nameDraft,setNameDraft]=useState(''),[nameStatus,setNameStatus]=useState('');
  useEffect(()=>{let live=true;supabase.auth.getUser().then(async({data})=>{if(!data?.user)return;const {data:profile}=await supabase.from('profiles').select('active,role_id').eq('id',data.user.id).maybeSingle();if(live)setCanRename(profile?.active===true&&profile?.role_id==='admin');}).catch(()=>{});return()=>{live=false};},[]);
  async function saveName(){
@@ -33,7 +56,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   // Remains locked after every attempt; refresh never dispatches or unlocks.
  }
  return <section className="fbConversation" aria-label="Conversación Facebook Messenger">
-  <header className="fbHeader"><div><strong>{displayName||'Contacto de Facebook'}</strong><span>Facebook Messenger · </span><span>{enabled?'Atención manual habilitada':'Sólo lectura · Envío desactivado'} · Sin IA</span></div><div className="fbActions">{canRename&&<button type="button" onClick={()=>{setEditing(v=>!v);setNameDraft(displayName);setNameStatus('')}}>✎ Nombre</button>}<button type="button" onClick={refresh}>↻ Actualizar</button></div></header>
+  <div className="fbWorkspace"><div className="fbChat"><header className="fbHeader"><div><strong>{displayName||'Contacto de Facebook'}</strong><span>Facebook Messenger · </span><span>{enabled?'Atención manual habilitada':'Sólo lectura · Envío desactivado'} · Sin IA</span></div><div className="fbActions"><button type="button" className="mobileDetails" onClick={()=>setDetailsOpen(v=>!v)}>Ficha</button><button type="button" onClick={refresh}>↻ Actualizar</button></div></header>
   {editing&&<div className="nameEditor"><input aria-label="Nombre interno del contacto" placeholder="Nombre del contacto" value={nameDraft} onChange={e=>setNameDraft(e.target.value)} maxLength={90}/><button disabled={nameDraft.trim().length<2} type="button" onClick={saveName}>Guardar nombre</button></div>}
   {nameStatus&&<p role="status" className="nameStatus">{nameStatus}</p>}
   <div className="history" role="log" aria-label="Mensajes de Facebook">
@@ -47,10 +70,30 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    </div>)}
   </div>
   {enabled?<form onSubmit={send} className="composer"><label htmlFor="facebook-reply-text">Respuesta manual</label><div className="composeRow"><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!input||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
-  {status&&<p role="status" className="status">{status}</p>}
+  {status&&<p role="status" className="status">{status}</p>}</div>
+  <aside className={'fbDetails '+(detailsOpen?'open':'')} aria-label="Detalles del contacto Facebook">
+   <div className="detailsHeading"><strong>Detalles</strong><button type="button" onClick={()=>setDetailsOpen(false)} aria-label="Cerrar ficha">×</button></div>
+   <div className="detailsScroll">
+    <div className="profileCard"><div className="fbAvatar">f</div><strong>{displayName||'Contacto de Facebook'}</strong><small>Facebook Messenger · Meta directo</small></div>
+    <section className="detailBlock"><label>Nombre interno</label>
+     <div className="editFields"><input value={nameDraft} onChange={e=>setNameDraft(e.target.value)} maxLength={90} placeholder={displayName||'Ej. Cliente casa Angelópolis'} disabled={!canRename}/>{canRename&&<button type="button" disabled={nameDraft.trim().length<2} onClick={saveName}>Guardar</button>}</div>
+     {nameStatus&&<small role="status">{nameStatus}</small>}<small>El nombre interno no modifica el perfil de Facebook.</small>
+    </section>
+    <section className="detailBlock"><label>Contacto</label><div className="editFields">
+     <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Teléfono" maxLength={32} disabled={!canRename}/>
+     <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Correo electrónico" maxLength={254} disabled={!canRename}/>
+     {canRename&&<button type="button" onClick={saveContact} disabled={contactBusy}>{contactBusy?'Guardando…':'Guardar contacto'}</button>}
+    </div>{contactStatus&&<small role="status">{contactStatus}</small>}</section>
+    <section className="detailBlock"><label>Asignado a</label><p>Pendiente de habilitar asignaciones de Facebook</p></section>
+    <section className="detailBlock"><label>Canal</label><p>Facebook Messenger</p></section>
+    <section className="detailBlock"><label>Estado</label><p>{enabled?'Atención manual habilitada':'Lectura disponible · Sender OFF'}</p></section>
+    <section className="detailBlock"><label>Seguridad</label><p>Contenido y datos de contacto cifrados. Sin IA ni reintentos automáticos.</p></section>
+   </div>
+  </aside></div>
   <style jsx>{`
-   .fbConversation{height:100%;flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:#f8fafc}
+   .fbConversation{height:100%;flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:#f8fafc}.fbWorkspace{display:grid;grid-template-columns:minmax(0,1fr) 265px;flex:1;min-height:0;overflow:hidden}.fbChat{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
    .fbHeader{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 18px;background:#fff;border-bottom:1px solid #e5e7eb}.fbHeader div{display:flex;flex-direction:column;gap:4px}.fbHeader strong{font-size:14px;color:#263348}.fbHeader span{font-size:11px;color:#64748b}.fbHeader button{background:white;border:1px solid #e5e7eb;border-radius:9px;padding:8px 11px;color:#475569;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap}
+   .fbDetails{min-width:0;min-height:0;display:flex;flex-direction:column;border-left:1px solid #e5e7eb;background:#fff}.detailsHeading{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #e5e7eb}.detailsHeading strong{font-size:14px}.detailsHeading button{display:none}.detailsScroll{overflow-y:auto;min-height:0;flex:1;overscroll-behavior:contain}.profileCard{display:flex;flex-direction:column;align-items:center;text-align:center;gap:7px;padding:22px 12px;border-bottom:1px solid #edf0f4}.profileCard strong{font-size:13px;overflow-wrap:anywhere}.profileCard small{color:#94a3b8;font-size:11px}.fbAvatar{width:55px;height:55px;border-radius:50%;background:#1877f2;color:white;display:grid;place-items:center;font-size:34px;font-weight:700}.detailBlock{padding:15px;border-bottom:1px solid #edf0f4}.detailBlock label{display:block;font-size:11px;font-weight:800;color:#64748b;margin-bottom:9px}.detailBlock p{margin:0;font-size:12px;color:#475569;line-height:1.55}.detailBlock small{display:block;margin-top:6px;font-size:10px;color:#94a3b8}.editFields{display:flex;flex-direction:column;gap:7px}.editFields input{min-width:0;width:100%;box-sizing:border-box;border:1px solid #dbe1ea;border-radius:8px;padding:9px;font-size:12px}.editFields input:disabled{background:#f8fafc}.editFields button{background:#ae2148;color:white;border:0;border-radius:8px;padding:9px;font-weight:700;font-size:11px;cursor:pointer}.editFields button:disabled{opacity:.5}.mobileDetails{display:none}
    .fbActions{display:flex;gap:6px}.nameEditor{display:flex;gap:8px;background:#fff;padding:8px 14px;border-bottom:1px solid #e5e7eb}.nameEditor input{flex:1;min-width:0;border:1px solid #dbe1ea;border-radius:8px;padding:8px;font-size:12px}.nameEditor button{border:0;background:#a51d40;color:#fff;border-radius:8px;padding:8px 12px;font-size:11px;cursor:pointer}.nameEditor button:disabled{opacity:.5}.nameStatus{margin:0;padding:5px 14px;font-size:11px;color:#64748b;background:white}
    .history{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;padding:18px;align-content:start}
    .messageRow{display:flex;width:100%}.messageRow.theirs{justify-content:flex-start}.messageRow.mine{justify-content:flex-end}
@@ -60,7 +103,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    .composer{flex-shrink:0;background:#fff;padding:12px 16px;border-top:1px solid #e5e7eb}.composer label{display:block;font-size:11px;font-weight:700;color:#64748b;margin-bottom:7px}.composeRow{display:flex;align-items:flex-end;gap:9px}.composer textarea{flex:1;min-width:0;resize:vertical;min-height:48px;max-height:116px;padding:12px;border:1px solid #dbe1ea;border-radius:12px;font:inherit;font-size:13px}.composer button{width:38px;height:38px;border-radius:50%;background:#ae2148;color:#fff;border:0;font-size:15px;cursor:pointer}.composer button:disabled{background:#cbd5e1;cursor:not-allowed}
    .readOnly{flex-shrink:0;padding:12px 18px;background:#fff;border-top:1px solid #e5e7eb;font-size:11px;color:#64748b;line-height:1.5}
    .status{margin:0;padding:9px 18px;background:#fff7ed;color:#9a3412;font-size:11px}
-   @media(max-width:760px){.fbHeader{padding:10px 12px}.history{padding:12px}.bubble{max-width:87%}}
+   @media(max-width:1000px){.fbWorkspace{grid-template-columns:minmax(0,1fr)}.fbDetails{display:none;position:absolute;right:0;top:0;bottom:0;width:min(330px,90%);z-index:5;box-shadow:-12px 0 28px #0f172a21}.fbDetails.open{display:flex}.fbConversation{position:relative}.mobileDetails{display:inline-block}.detailsHeading button{display:block;border:0;background:transparent;font-size:22px;cursor:pointer}}@media(max-width:760px){.fbHeader{padding:10px 12px}.history{padding:12px}.bubble{max-width:87%}}
   `}</style>
  </section>;
 }
