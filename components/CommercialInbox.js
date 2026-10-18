@@ -29,7 +29,18 @@ export default function CommercialInbox({instagramAvailable}){
    catch{return {rows:[],error:channel};}
   }));
   if(gen!==generation.current)return;
-  setThreads(results.flatMap(r=>r.rows).sort((a,b)=>String(b.occurred_at||b.last_at||'').localeCompare(String(a.occurred_at||a.last_at||''))));
+  let names={};
+  if(results.some(r=>r.rows.some(t=>t.channel==='facebook'))){
+   try{
+    const {data}=await supabase.auth.getSession();
+    if(data?.session){
+     const response=await fetch('/api/operaciones/facebook-messenger-names',{cache:'no-store',headers:{Authorization:'Bearer '+data.session.access_token}});
+     if(response.ok){const payload=await response.json();names=Object.fromEntries((payload.rows||[]).map(n=>[n.thread_ref,n]));}
+    }
+   }catch{}
+  }
+  if(gen!==generation.current)return;
+  setThreads(results.flatMap(r=>r.rows).map(t=>t.channel==='facebook'?{...t,...(names[t.thread_ref]||{})}:t).sort((a,b)=>String(b.occurred_at||b.last_at||'').localeCompare(String(a.occurred_at||a.last_at||''))));
   setError(results.filter(r=>r.error).map(r=>`${r.error}: no disponible`).join(' · '));
  }
  useEffect(()=>{void load();return()=>{generation.current++;};},[instagramAvailable]);
@@ -84,7 +95,9 @@ export default function CommercialInbox({instagramAvailable}){
    </aside>
    <main className="conversationPane"><button type="button" className="back" onClick={()=>setSelected(null)}>← Conversaciones</button>
     {!selected?<div className="emptyConversation"><span className="emptyIcon" aria-hidden="true">✉</span><h2>Tu bandeja, en un solo lugar</h2><p>Elige una conversación para consultar sus mensajes y dar seguimiento.</p></div>:selected.channel==='facebook'
-     ?<FacebookMessengerConversation key={selected.key} thread={selected.thread_ref}/>
+     ?<FacebookMessengerConversation key={selected.key} thread={selected.thread_ref}
+      displayName={threads.find(t=>t.key===selected.key)?.alias||threads.find(t=>t.key===selected.key)?.profile_name||''}
+      onNameSaved={load}/>
      :<InstagramBusinessInbox key={selected.key+':'+historyRevision} embedded externalThread={selected.thread_ref} onBack={()=>setSelected(null)}/>}
    </main>
   </div>}
