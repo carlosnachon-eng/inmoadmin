@@ -1,45 +1,189 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import {submitBusinessReply} from '../lib/messaging/instagram/business/replyResult';
+
 async function request(op,{query={},body,binary=false}={}){
- const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('Sesión requerida');
+ const {data}=await supabase.auth.getSession();
+ if(!data?.session)throw Error('Sesión requerida');
  const r=await fetch('/api/operaciones/instagram-business?'+new URLSearchParams({op,...query}),{
-  method:body?'POST':'GET',cache:'no-store',redirect:'error',headers:{Authorization:`Bearer ${data.session.access_token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
- if(!r.ok)throw Error('Instagram no disponible; no se reintentará el envío');return binary?r.blob():r.json();
+  method:body?'POST':'GET',cache:'no-store',redirect:'error',
+  headers:{Authorization:`Bearer ${data.session.access_token}`,...(body?{'Content-Type':'application/json'}:{})},
+  ...(body?{body:JSON.stringify(body)}:{})
+ });
+ if(!r.ok)throw Error('Instagram no disponible');
+ return binary?r.blob():r.json();
 }
+
+const clock=value=>new Intl.DateTimeFormat('es-MX',{timeZone:'America/Mexico_City',hour:'numeric',minute:'2-digit'}).format(new Date(value));
+const day=value=>new Intl.DateTimeFormat('es-MX',{timeZone:'America/Mexico_City',day:'2-digit',month:'short'}).format(new Date(value));
+
 function Media({thread,input,index}){
  const [url,setUrl]=useState(null);
- useEffect(()=>{let active=true,object;request('media',{query:{thread,input,index:String(index)},binary:true}).then(blob=>{object=URL.createObjectURL(blob);if(active)setUrl(object);else URL.revokeObjectURL(object);}).catch(()=>{});
-  return()=>{active=false;if(object)URL.revokeObjectURL(object);};},[thread,input,index]);
- return url?<img src={url} alt="Imagen recibida en Instagram" style={{maxWidth:280,maxHeight:300}}/>:<p>Imagen no disponible</p>;
+ useEffect(()=>{
+  let active=true,object;
+  request('media',{query:{thread,input,index:String(index)},binary:true})
+   .then(blob=>{object=URL.createObjectURL(blob);if(active)setUrl(object);else URL.revokeObjectURL(object);})
+   .catch(()=>{});
+  return()=>{active=false;if(object)URL.revokeObjectURL(object);};
+ },[thread,input,index]);
+ return url?<img src={url} alt="Imagen recibida en Instagram" className="inboxMedia"/>:<div className="mediaPlaceholder">Imagen no disponible</div>;
 }
+
 export default function InstagramBusinessInbox(){
- const [threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[rows,setRows]=useState([]),[text,setText]=useState(''),[input,setInput]=useState(null),[enabled,setEnabled]=useState(false),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
- const lock=useRef(false),consumed=useRef(new Set()),generation=useRef(0);
- async function load(thread){if(lock.current)return;const gen=++generation.current;setBusy(true);try{
-  const r=await request(thread?'history':'threads',{query:thread?{thread}:{}});if(gen!==generation.current)return;
-  setEnabled(r.sender_enabled);if(thread){setRows(r.rows);setSelected(thread);setInput(null);setText('');}else setThreads(r.rows);
- }catch(e){setStatus(e.message);}finally{if(gen===generation.current)setBusy(false);}}
- async function send(e){e.preventDefault();if(lock.current||!enabled||!input||consumed.current.has(input))return;
-  lock.current=true;consumed.current.add(input);setBusy(true);setStatus('pending');
-  try{const r=await submitBusinessReply({request,thread:selected,input,action:crypto.randomUUID(),text:text.trim()});setStatus(r.status+(r.status==='uncertain'?' · no reenviar':r.source==='journal'?' · journal confirmado':'')+(r.diagnostic?.stage==='pre_claim'&&/^[a-z_]{1,64}$/.test(r.diagnostic.validation)?` · pre_claim / ${r.diagnostic.validation}`:''));}
-  catch{setStatus('uncertain · no reenviar');}finally{lock.current=false;setBusy(false);}
+ const [threads,setThreads]=useState([]);
+ const [selected,setSelected]=useState(null);
+ const [rows,setRows]=useState([]);
+ const [text,setText]=useState('');
+ const [input,setInput]=useState(null);
+ const [enabled,setEnabled]=useState(false);
+ const [status,setStatus]=useState('');
+ const [busy,setBusy]=useState(false);
+ const [search,setSearch]=useState('');
+ const lock=useRef(false),consumed=useRef(new Set()),generation=useRef(0),chatRef=useRef(null);
+
+ const filtered=useMemo(()=>{
+  const q=search.trim().toLowerCase();
+  if(!q)return threads;
+  return threads.filter((t,i)=>`instagram conversación ${i+1} ${t.thread_ref}`.toLowerCase().includes(q));
+ },[threads,search]);
+
+ async function load(thread,{quiet=false}={}){
+  if(lock.current)return;
+  const gen=++generation.current;
+  if(!quiet)setBusy(true);
+  setStatus('');
+  try{
+   const r=await request(thread?'history':'threads',{query:thread?{thread}:{}});
+   if(gen!==generation.current)return;
+   setEnabled(!!r.sender_enabled);
+   if(thread){
+    setRows(r.rows||[]);
+    setSelected(thread);
+    setInput(null);
+    setText('');
+    requestAnimationFrame(()=>chatRef.current?.scrollTo({top:chatRef.current.scrollHeight,behavior:'smooth'}));
+   }else{
+    setThreads(r.rows||[]);
+    if(!selected&&r.rows?.length)void load(r.rows[0].thread_ref,{quiet:true});
+   }
+  }catch(e){if(gen===generation.current)setStatus(e.message);}
+  finally{if(gen===generation.current&&!quiet)setBusy(false);}
  }
- return <section aria-label="Instagram Business Inbox"><h2>Instagram · Emporio</h2>
-  <p>Meta directo · atención manual · Respond permanece conectado. Histórico legacy separado.</p>
-  <button disabled={busy} onClick={()=>load()}>Actualizar conversaciones Instagram</button>
-  <div style={{display:'grid',gridTemplateColumns:'220px 1fr',gap:20}}>
-   <nav aria-label="Conversaciones Instagram">{threads.map((t,i)=><button key={t.thread_ref} disabled={busy} onClick={()=>load(t.thread_ref)} style={{display:'block',margin:8}}>Contacto sin identificar {i+1}<br/>{new Date(t.last_activity).toLocaleString('es-MX')}</button>)}</nav>
-   <section aria-label="Historial Instagram">{rows.map(r=><article key={r.input} style={{textAlign:r.direction==='customer_inbound'?'left':'right',padding:12,background:'#f1f5f9',margin:8}}>
-    <small>{new Date(r.occurred_at).toLocaleString('es-MX')} · {r.direction==='customer_inbound'?'Mensaje recibido':'Mensaje saliente'}</small>
-    <p style={{whiteSpace:'pre-wrap'}}>{r.text}</p>
-    {r.attachments.map(a=>a.type==='image'?<Media key={a.index} thread={selected} input={r.input} index={a.index}/>:<p key={a.index}>Adjunto no disponible</p>)}
-    {r.paused&&<p>IA pausada por atención humana</p>}{r.status&&<p>{r.status}</p>}
-    {r.direction==='customer_inbound'&&!r.deleted&&!r.status&&<button disabled={busy||consumed.current.has(r.input)} onClick={()=>setInput(r.input)}>Responder a este mensaje</button>}
-   </article>)}</section>
-  </div>
-  <form onSubmit={send}><label htmlFor="business-reply">Respuesta manual Instagram</label><textarea id="business-reply" value={text} onChange={e=>setText(e.target.value)} maxLength={999} disabled={busy||!enabled||!input||consumed.current.has(input)}/>
-   <button disabled={busy||!enabled||!input||!text.trim()||consumed.current.has(input)}>Enviar respuesta manual DEV</button></form>
-  {!enabled&&<p>Sender OFF</p>}<p role="status">{status}</p><p>Accepted no acredita entrega ni lectura. Sin reintentos automáticos.</p>
+
+ useEffect(()=>{void load();},[]);
+
+ async function send(e){
+  e.preventDefault();
+  if(lock.current||!enabled||!input||!text.trim()||consumed.current.has(input))return;
+  lock.current=true;
+  consumed.current.add(input);
+  setBusy(true);
+  setStatus('Enviando…');
+  try{
+   const r=await submitBusinessReply({request,thread:selected,input,action:crypto.randomUUID(),text:text.trim()});
+   setStatus(r.status==='accepted'?'Enviado':r.status==='uncertain'?'Resultado incierto · no reenviar':r.source==='journal'?`${r.status} · confirmado en journal`:r.status);
+   if(r.status==='accepted'){setText('');setInput(null);await load(selected,{quiet:true});await load(null,{quiet:true});}
+  }catch{setStatus('Resultado incierto · no reenviar');}
+  finally{lock.current=false;setBusy(false);}
+ }
+
+ const selectedIndex=Math.max(0,threads.findIndex(t=>t.thread_ref===selected));
+ const replyTarget=input?rows.find(r=>r.input===input):null;
+
+ return <section aria-label="Instagram Business Inbox" className="inboxShell">
+  <aside className="conversationPane">
+   <div className="paneHeader">
+    <div><h2>Inbox</h2><span>Instagram</span></div>
+    <button className="iconButton" title="Actualizar" disabled={busy} onClick={()=>load()}>↻</button>
+   </div>
+   <div className="channelTabs">
+    <button className="channel active"><span className="igDot">◎</span> Instagram</button>
+    <button className="channel" disabled><span>f</span> Facebook <small>próximamente</small></button>
+   </div>
+   <div className="searchWrap"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar conversaciones"/></div>
+   <div className="threadList" aria-label="Conversaciones Instagram">
+    {busy&&!threads.length&&<div className="emptyList">Cargando conversaciones…</div>}
+    {!busy&&!threads.length&&!status&&<div className="emptyList">No hay conversaciones disponibles.</div>}
+    {filtered.map((t,i)=>{
+     const active=t.thread_ref===selected;
+     const n=threads.indexOf(t)+1;
+     return <button key={t.thread_ref} className={`threadCard ${active?'selected':''}`} onClick={()=>load(t.thread_ref)} disabled={busy}>
+      <div className="avatar">IG</div>
+      <div className="threadCopy">
+       <div className="threadTop"><strong>Conversación Instagram {n}</strong><time>{clock(t.last_activity)}</time></div>
+       <p>Mensaje directo de Instagram</p>
+       <small>{day(t.last_activity)}</small>
+      </div>
+     </button>;
+    })}
+   </div>
+  </aside>
+
+  <main className="chatPane">
+   {selected?<>
+    <header className="chatHeader">
+     <div className="contactTitle"><div className="avatar large">IG</div><div><strong>Conversación Instagram {selectedIndex+1}</strong><span>Instagram · Meta directo</span></div></div>
+     <div className={`senderBadge ${enabled?'on':'off'}`}>{enabled?'Envío habilitado':'Sender OFF'}</div>
+    </header>
+    <div className="messages" ref={chatRef}>
+     {rows.map(r=>{
+      const inbound=r.direction==='customer_inbound';
+      return <div key={r.input} className={`messageRow ${inbound?'incoming':'outgoing'}`}>
+       <article className="bubble">
+        {r.attachments?.map(a=>a.type==='image'?<Media key={a.index} thread={selected} input={r.input} index={a.index}/>:<div key={a.index} className="mediaPlaceholder">Adjunto no soportado</div>)}
+        {r.text&&<p>{r.text}</p>}
+        <div className="bubbleMeta"><time>{clock(r.occurred_at)}</time>{r.status&&<span> · {r.status}</span>}</div>
+       </article>
+       {inbound&&!r.deleted&&!r.status&&<button className="replyChip" disabled={busy||consumed.current.has(r.input)} onClick={()=>setInput(r.input)}>{input===r.input?'✓ Respondiendo':'Responder'}</button>}
+      </div>;
+     })}
+    </div>
+    <form className="composer" onSubmit={send}>
+     {replyTarget&&<div className="replyContext"><span>Respondiendo al mensaje de las {clock(replyTarget.occurred_at)}</span><button type="button" onClick={()=>setInput(null)}>×</button></div>}
+     <div className="composerRow">
+      <textarea id="business-reply" value={text} onChange={e=>setText(e.target.value)} maxLength={999}
+       placeholder={enabled?(input?'Escribe una respuesta…':'Selecciona “Responder” en un mensaje del cliente'):'Sender apagado'}
+       disabled={busy||!enabled||!input||consumed.current.has(input)}/>
+      <button className="sendButton" disabled={busy||!enabled||!input||!text.trim()||consumed.current.has(input)}>Enviar</button>
+     </div>
+     <div className="composerFoot"><span>{status||'Atención manual · sin IA automática'}</span><span>{text.length}/999</span></div>
+    </form>
+   </>:<div className="emptyChat"><div className="emptyIcon">💬</div><h3>Selecciona una conversación</h3><p>Los mensajes de Instagram aparecerán aquí automáticamente.</p></div>}
+  </main>
+
+  <aside className="detailsPane">
+   <div className="detailsHeader"><h3>Detalles</h3></div>
+   {selected?<div className="detailsBody">
+    <div className="profileCard"><div className="avatar xlarge">IG</div><strong>Contacto de Instagram</strong><span>Identidad no expuesta por este flujo</span></div>
+    <div className="detailBlock"><label>Canal</label><p>Instagram Direct</p></div>
+    <div className="detailBlock"><label>Estado</label><p>{enabled?'Atención manual habilitada':'Lectura disponible · sender OFF'}</p></div>
+    <div className="detailBlock"><label>Seguridad</label><p>Contenido y destinatario cifrados. Sin reintentos automáticos.</p></div>
+    <div className="detailBlock muted"><p>Facebook/Messenger se incorporará aquí como segundo canal, sin crear otra bandeja.</p></div>
+   </div>:<div className="detailsBody muted">Selecciona una conversación para ver su contexto.</div>}
+  </aside>
+
+  {status&&status.includes('no disponible')&&<div className="globalError" role="alert">{status}</div>}
+
+  <style jsx>{`
+   .inboxShell{height:calc(100vh - 62px);min-height:620px;background:#fff;display:grid;grid-template-columns:320px minmax(420px,1fr) 280px;border-top:1px solid #e5e7eb;color:#1f2937}
+   .conversationPane,.detailsPane{min-width:0;background:#fff}.conversationPane{border-right:1px solid #e5e7eb;display:flex;flex-direction:column}.detailsPane{border-left:1px solid #e5e7eb}
+   .paneHeader,.chatHeader,.detailsHeader{height:68px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e7eb;box-sizing:border-box}
+   .paneHeader h2{margin:0;font-size:22px}.paneHeader span,.contactTitle span{display:block;color:#6b7280;font-size:12px;margin-top:2px}
+   .iconButton{width:34px;height:34px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;font-size:18px;cursor:pointer}
+   .channelTabs{display:flex;gap:6px;padding:12px 14px 6px}.channel{border:0;background:#f3f4f6;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:700;color:#6b7280}.channel.active{background:#fce8ed;color:#b91c3c}.channel small{font-size:9px;font-weight:600}.igDot{font-size:16px}
+   .searchWrap{margin:8px 14px 12px;background:#f3f4f6;border-radius:10px;padding:9px 12px;display:flex;gap:8px;align-items:center}.searchWrap input{width:100%;border:0;outline:0;background:transparent;font-size:13px}
+   .threadList{overflow:auto;flex:1}.threadCard{width:100%;border:0;border-top:1px solid #f3f4f6;background:#fff;padding:13px 14px;display:flex;gap:11px;text-align:left;cursor:pointer}.threadCard:hover,.threadCard.selected{background:#f9fafb}.threadCard.selected{box-shadow:inset 3px 0 #b91c3c}
+   .avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#ec4899,#f59e0b);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:none}.avatar.large{width:42px;height:42px}.avatar.xlarge{width:64px;height:64px;font-size:16px}
+   .threadCopy{min-width:0;flex:1}.threadTop{display:flex;justify-content:space-between;gap:8px;align-items:center}.threadTop strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.threadTop time{font-size:10px;color:#9ca3af}.threadCopy p{margin:4px 0 2px;color:#6b7280;font-size:12px}.threadCopy small{color:#9ca3af;font-size:10px}.emptyList{padding:28px 18px;color:#9ca3af;font-size:13px;text-align:center}
+   .chatPane{min-width:0;background:#f7f8fa;display:flex;flex-direction:column}.chatHeader{background:#fff}.contactTitle{display:flex;align-items:center;gap:10px}.contactTitle strong{font-size:14px}.senderBadge{font-size:11px;font-weight:800;border-radius:999px;padding:6px 9px}.senderBadge.on{background:#dcfce7;color:#166534}.senderBadge.off{background:#f3f4f6;color:#6b7280}
+   .messages{flex:1;overflow:auto;padding:24px 28px;display:flex;flex-direction:column;gap:14px}.messageRow{display:flex;flex-direction:column;max-width:72%}.messageRow.incoming{align-self:flex-start;align-items:flex-start}.messageRow.outgoing{align-self:flex-end;align-items:flex-end}
+   .bubble{border-radius:18px;padding:10px 13px;box-shadow:0 1px 2px rgba(0,0,0,.06);max-width:100%;overflow:hidden}.incoming .bubble{background:#fff;border-bottom-left-radius:5px}.outgoing .bubble{background:#fce8ed;border-bottom-right-radius:5px}.bubble p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45}.bubbleMeta{margin-top:5px;color:#9ca3af;font-size:9px;text-align:right}.replyChip{margin-top:5px;border:0;background:transparent;color:#b91c3c;font-size:11px;font-weight:700;cursor:pointer;padding:3px 5px}
+   .inboxMedia{max-width:100%;max-height:340px;border-radius:12px;display:block;margin-bottom:7px}.mediaPlaceholder{background:#f3f4f6;color:#9ca3af;padding:20px;border-radius:10px;font-size:12px}
+   .composer{background:#fff;border-top:1px solid #e5e7eb;padding:12px 18px}.replyContext{display:flex;justify-content:space-between;align-items:center;background:#f9fafb;border-left:3px solid #b91c3c;padding:7px 10px;margin-bottom:8px;font-size:11px;color:#6b7280}.replyContext button{border:0;background:transparent;font-size:18px;color:#6b7280;cursor:pointer}
+   .composerRow{display:flex;gap:10px;align-items:flex-end}.composer textarea{flex:1;resize:none;min-height:58px;max-height:130px;border:1px solid #d1d5db;border-radius:14px;padding:11px 12px;font:inherit;outline:0}.composer textarea:focus{border-color:#b91c3c}.sendButton{height:42px;border:0;border-radius:10px;padding:0 18px;background:#b91c3c;color:#fff;font-weight:800;cursor:pointer}.sendButton:disabled{background:#e5e7eb;color:#9ca3af;cursor:not-allowed}.composerFoot{display:flex;justify-content:space-between;color:#9ca3af;font-size:10px;margin-top:6px}
+   .detailsHeader h3{margin:0;font-size:15px}.detailsBody{padding:20px}.profileCard{text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px;padding-bottom:20px;border-bottom:1px solid #e5e7eb}.profileCard strong{margin-top:5px}.profileCard span{font-size:11px;color:#9ca3af}.detailBlock{padding:15px 0;border-bottom:1px solid #f3f4f6}.detailBlock label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:800}.detailBlock p{font-size:12px;line-height:1.45;margin:5px 0 0}.muted{color:#9ca3af}.emptyChat{margin:auto;text-align:center;color:#6b7280}.emptyIcon{font-size:38px}.emptyChat h3{margin:10px 0 4px}.emptyChat p{margin:0;font-size:13px}.globalError{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#7f1d1d;color:#fff;padding:10px 15px;border-radius:10px;font-size:12px}
+   @media(max-width:1100px){.inboxShell{grid-template-columns:300px 1fr}.detailsPane{display:none}}
+   @media(max-width:760px){.inboxShell{height:calc(100vh - 56px);grid-template-columns:1fr}.conversationPane{display:${selected?'none':'flex'}}.chatPane{display:${selected?'flex':'none'}}.detailsPane{display:none}.messageRow{max-width:88%}.messages{padding:16px}.chatHeader:before{content:'‹';font-size:28px;margin-right:8px;cursor:pointer}}
+  `}</style>
  </section>;
 }
