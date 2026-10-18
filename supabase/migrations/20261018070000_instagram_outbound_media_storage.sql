@@ -1,5 +1,5 @@
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
-values('instagram-business-outbound','instagram-business-outbound',false,26214400,array['image/jpeg','image/png','image/webp','video/mp4','video/quicktime']::text[])
+values('instagram-business-outbound','instagram-business-outbound',false,26214400,array['image/jpeg','image/png','image/webp','video/mp4','video/quicktime','audio/mp4']::text[])
 on conflict(id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
 
 drop policy if exists instagram_business_outbound_insert on storage.objects;
