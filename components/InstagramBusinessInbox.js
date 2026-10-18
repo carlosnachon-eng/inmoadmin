@@ -25,7 +25,7 @@ const messageStamp=value=>{
  return key(d)===key(now)?clock(value):`${day(value)} · ${clock(value)}`;
 };
 
-function Media({thread,input,index,onOpen}){
+function Media({thread,input,index,onOpen,onLoaded}){
  const [url,setUrl]=useState(null);
  useEffect(()=>{
   let active=true,object;
@@ -34,7 +34,11 @@ function Media({thread,input,index,onOpen}){
    .catch(()=>{});
   return()=>{active=false;if(object)URL.revokeObjectURL(object);};
  },[thread,input,index]);
- return url?<button type="button" className="mediaButton" onClick={()=>onOpen?.(url)}><img src={url} alt="Imagen recibida en Instagram" className="inboxMedia" onLoad={()=>bottomRef.current?.scrollIntoView({block:"end",behavior:"auto"})}/></button>:<div className="mediaPlaceholder">Imagen no disponible</div>;
+ return url?<button type="button" onClick={()=>onOpen?.(url)}
+  style={{border:0,background:'transparent',padding:0,cursor:'zoom-in',maxWidth:'100%',display:'block'}}>
+  <img src={url} alt="Imagen recibida en Instagram" onLoad={()=>onLoaded?.()}
+   style={{display:'block',width:'auto',height:'auto',maxWidth:'160px',maxHeight:'140px',objectFit:'contain',background:'#f3f4f6',borderRadius:'12px',marginBottom:'7px'}}/>
+ </button>:<div className="mediaPlaceholder">Imagen no disponible</div>;
 }
 
 export default function InstagramBusinessInbox(){
@@ -245,7 +249,7 @@ export default function InstagramBusinessInbox(){
       const inbound=r.direction==='customer_inbound';
       return <div key={r.input} className={`messageRow ${inbound?'incoming':'outgoing'}`}>
        <article className="bubble">
-        {r.attachments?.map(a=>a.type==='image'?<Media key={a.index} thread={selected} input={r.input} index={a.index} onOpen={setLightbox}/>:<div key={a.index} className="mediaPlaceholder">Adjunto no soportado</div>)}
+        {r.attachments?.map(a=>a.type==='image'?<Media key={a.index} thread={selected} input={r.input} index={a.index} onOpen={setLightbox} onLoaded={()=>scrollChatBottom('auto')}/>:<div key={a.index} className="mediaPlaceholder">Adjunto no soportado</div>)}
         {r.text&&<p>{r.text}</p>}
         <div className="bubbleMeta"><time>{messageStamp(r.occurred_at)}</time>{r.status&&<span> · {r.status}</span>}</div>
        </article>
