@@ -298,7 +298,37 @@ async function generarFichaApartado(form) {
     }
   }
 
+  // Acuerdos particulares previamente negociados: solo se incluyen si hay contenido.
+  const acuerdos = String(form.acuerdos_particulares || '').trim()
+  if (acuerdos) {
+    const lhAcuerdo = 12
+    const lineas = acuerdos.split(/\r?\n/).flatMap(parrafo =>
+      parrafo.trim() ? doc.splitTextToSize(parrafo, maxW - 20) : ['']
+    )
+    const nuevaPagina = () => {
+      doc.addPage()
+      doc.setFillColor(...RED); doc.rect(0, 0, W, 6, 'F')
+      y = M + 10
+    }
+    if (y + 46 > H - 48) nuevaPagina()
+    y += 10
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...RED)
+    doc.text('ACUERDOS PARTICULARES DE LA OPERACIÓN', M, y); y += 18
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...DARK)
+    for (const linea of lineas) {
+      if (y + lhAcuerdo > H - 55) nuevaPagina()
+      if (linea) doc.text(linea, M + 8, y)
+      y += lhAcuerdo
+    }
+    y += 5
+  }
+
   // NOTA FINAL
+  if (y + 48 > H - 48) {
+    doc.addPage()
+    doc.setFillColor(...RED); doc.rect(0, 0, W, 6, 'F')
+    y = M + 10
+  }
   y += 8
   doc.setFillColor(...LGREEN); doc.rect(M, y, W - 2 * M, 32, 'F')
   doc.setDrawColor(...GREEN); doc.setLineWidth(0.5); doc.rect(M, y, W - 2 * M, 32, 'S')
@@ -332,6 +362,7 @@ export default function Guias() {
     fecha_firma: '',
     asesor_nombre: '',
     asesor_tel: '',
+    acuerdos_particulares: '',
   })
   const [fichaLoading, setFichaLoading] = useState(false)
   const [fichaToast, setFichaToast] = useState(null)
@@ -650,6 +681,20 @@ export default function Guias() {
                     <label style={labelSt}>Tu teléfono</label>
                     <input style={inputSt} value={fichaForm.asesor_tel} onChange={e => setFicha('asesor_tel', e.target.value)} placeholder="222 000 0000" />
                   </div>
+                </div>
+
+                <div>
+                  <label style={labelSt}>Acuerdos particulares previamente negociados</label>
+                  <textarea
+                    style={{ ...inputSt, resize: 'vertical' }}
+                    rows={4}
+                    value={fichaForm.acuerdos_particulares}
+                    onChange={e => setFicha('acuerdos_particulares', e.target.value)}
+                    placeholder="Ej.: El propietario entregará el departamento pintado antes de la entrega física."
+                  />
+                  <p style={{ fontSize: 11, color: '#6b7280', margin: '5px 0 0' }}>
+                    Registra únicamente acuerdos ya aceptados por las partes antes del apartado. Aparecerán en el PDF.
+                  </p>
                 </div>
 
                 {/* Preview datos bancarios */}
