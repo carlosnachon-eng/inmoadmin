@@ -1,0 +1,101 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {createHmac,randomUUID} from 'node:crypto';
+import {businessConfig,SCOPES,PROVIDER} from '../lib/messaging/instagram/business/config.js';
+import {normalizeBusinessReceipt,persistBusinessReceipt} from '../lib/messaging/instagram/business/observer.js';
+import {openRecipient,seal,open,eventBinding} from '../lib/messaging/instagram/business/crypto.js';
+import {projectBusinessHistory,pilotInboxRows,loadBusinessImage} from '../lib/messaging/instagram/business/inbox.js';
+import {beginBusinessOAuth,completeBusinessOAuth as complete,health,tokenForSend,maintainBusinessToken as maintain} from '../lib/messaging/instagram/business/tokenLifecycle.js';
+import {withResponseText} from './fixtures/instagramResponseText.mjs';
+const completeBusinessOAuth=args=>withResponseText(complete,args),maintainBusinessToken=args=>withResponseText(maintain,args);
+import {runBusinessReply,businessManualText,sendBusinessTextOnce} from '../lib/messaging/instagram/business/manual.js';
+const blockedManualFixture='Confirmación manual de Emporio — IGDURABLE-REPLY-20261016-01: recibimos tu prueba TEXT y respondemos por este mismo hilo mediante Instagram Login durable. Sin IA.';
+test('Business manual reference is not subjected to legacy AI redaction',()=>{
+ assert.equal(businessManualText(blockedManualFixture),true);
+ assert.equal(businessManualText('Referencia 20261016-01 — respuesta manual.'),true);
+});
+test('Business manual text preserves format and byte limits',()=>{
+ for(const value of [null,undefined,{},[],42,'',' ',' x','x ','<script>','a\nb','a\rb','a\tb','a\u0000b','a\u007fb','a\u202eb','a\u2066b','a'.repeat(1000),'🙂'.repeat(251)])assert.equal(businessManualText(value),false);
+ for(const value of ['Respuesta manual.','a'.repeat(999),'🙂'.repeat(250)])assert.equal(businessManualText(value),true);
+});
+export const env={APP_ENV:'test',VERCEL_ENV:'preview',NEXT_PUBLIC_SUPABASE_URL:'https://hjfwjnejbcpmknvfpdcq.supabase.co',INSTAGRAM_BUSINESS_ENABLED:'true',
+ INSTAGRAM_BUSINESS_CONNECTION_ID:'10000000-0000-4000-8000-000000000001',INSTAGRAM_BUSINESS_APP_ID:'100',INSTAGRAM_BUSINESS_INSTAGRAM_APP_ID:'200',INSTAGRAM_BUSINESS_ACCOUNT_ID:'300',
+ INSTAGRAM_BUSINESS_INSTAGRAM_APP_SECRET:'a'.repeat(32),INSTAGRAM_BUSINESS_VERIFY_TOKEN:'b'.repeat(32),INSTAGRAM_BUSINESS_INDEX_KEY:'c'.repeat(64),INSTAGRAM_BUSINESS_DATA_KEY:'d'.repeat(64),INSTAGRAM_BUSINESS_TOKEN_KEY:'e'.repeat(64),INSTAGRAM_BUSINESS_OAUTH_REDIRECT_URI:'https://dev.example.invalid/oauth',INSTAGRAM_BUSINESS_MANUAL_SEND_ENABLED:'true'};
+export const c=businessConfig(env),now=Date.now(),actor={id:randomUUID(),active:true,role_id:'admin'};
+export function receipt(message={mid:'test.mid',text:'Consulta de prueba'},mutate=()=>{}){
+ const b={object:'instagram',entry:[{id:c.account,messaging:[{sender:{id:'400'},recipient:{id:c.account},timestamp:now-1000,message}]}]};mutate(b);const raw=Buffer.from(JSON.stringify(b));return {raw,signature:'sha256='+createHmac('sha256',c.secret).update(raw).digest('hex'),config:c};
+}
+export function row(){return {...normalizeBusinessReceipt(...Object.values(receipt())).rows[0],ambiguous:false};}
+export function credential(){const r={provider:PROVIDER,connection_id:c.connection,app_id:c.app,instagram_app_id:c.instagramApp,account_id:c.account,generation:randomUUID(),issued_at:new Date(now-2*86400000).toISOString(),expires_at:new Date(now+50*86400000).toISOString(),verified_at:new Date(now).toISOString(),status:'healthy',scopes:[...SCOPES],token_type:'bearer'};r.token_box=seal(c,'token',[r.generation,r.issued_at,r.expires_at],{access_token:'fixture-token'});return r;}
+test('sender OFF default and production config denied',()=>{assert.equal(businessConfig({...env,INSTAGRAM_BUSINESS_MANUAL_SEND_ENABLED:undefined}).senderEnabled,false);assert.throws(()=>businessConfig({...env,VERCEL_ENV:'production'}));});
+test('legacy secrets never fallback',()=>assert.throws(()=>businessConfig({...env,INSTAGRAM_BUSINESS_INSTAGRAM_APP_SECRET:undefined,SOCIAL_OAUTH_APP_SECRET:'x'.repeat(32)})));
+test('future capture content and native values encrypted',()=>{const e=row();assert.equal(openRecipient(c,e).sender,'400');assert.equal(open(c,'content',eventBinding(e),e.content_box).text,'Consulta de prueba');assert.ok(!JSON.stringify(e).includes('test.mid'));assert.ok(!JSON.stringify(e).includes('Consulta de prueba'));});
+for(const f of ['provider','connection_id','thread_type','thread_ref','message_ref','event_ref','occurred_at','subject_ref'])test(`binding tamper ${f}`,()=>assert.throws(()=>openRecipient(c,{...row(),[f]:'other'})));
+test('wrong HMAC rejected',()=>{const p=receipt();assert.throws(()=>normalizeBusinessReceipt(p.raw,'sha256='+'0'.repeat(64),c));});
+test('foreign account rejected',()=>{const p=receipt(undefined,b=>b.entry[0].id='999');assert.throws(()=>normalizeBusinessReceipt(p.raw,p.signature,c));});
+test('duplicate observation stable while ciphertext randomized',()=>{const p=receipt(),a=normalizeBusinessReceipt(p.raw,p.signature,c),b=normalizeBusinessReceipt(p.raw,p.signature,c);assert.equal(a.rows[0].event_ref,b.rows[0].event_ref);assert.notDeepEqual(a.rows[0].recipient_box,b.rows[0].recipient_box);});
+test('durable ack mandatory',async()=>{await assert.rejects(()=>persistBusinessReceipt({...receipt(),store:{capture:async()=>({durable:false})}}));});
+test('unsent tombstone suppresses text/media independent of order',()=>{const e=row(),p=receipt({mid:'test.mid',is_deleted:true}),d=normalizeBusinessReceipt(p.raw,p.signature,c).rows[0];assert.equal(e.message_ref,d.message_ref);assert.equal(d.recipient_box,null);assert.equal(projectBusinessHistory({config:c,rows:[d,e],tombstones:new Set([d.message_ref])})[0].text,'Mensaje anulado');});
+test('echo never automatically human',()=>{const p=receipt({mid:'echo',is_echo:true,text:'Salida'},b=>{const e=b.entry[0].messaging[0];[e.sender,e.recipient]=[e.recipient,e.sender];});const e=normalizeBusinessReceipt(p.raw,p.signature,c).rows[0];assert.equal(e.recipient_box,null);assert.equal(projectBusinessHistory({config:c,rows:[e],tombstones:new Set()})[0].direction,'business_outbound_unattributed');});
+test('image encrypted reference not exposed in UI',()=>{const p=receipt({mid:'image',attachments:[{type:'image',payload:{url:'https://lookaside.fbsbx.com/fixture'}}]}),e=normalizeBusinessReceipt(p.raw,p.signature,c).rows[0],view=projectBusinessHistory({config:c,rows:[e],tombstones:new Set()});assert.equal(view[0].attachments[0].type,'image');assert.ok(!JSON.stringify(view).includes('lookaside'));});
+test('media false MIME and revoked access blocked',async()=>{const p=receipt({mid:'image',attachments:[{type:'image',payload:{url:'https://lookaside.fbsbx.com/fixture'}}]}),e=normalizeBusinessReceipt(p.raw,p.signature,c).rows[0];await assert.rejects(()=>loadBusinessImage({config:c,row:e,index:0,authorized:async()=>true,download:async()=>({buffer:Buffer.from('89504e470d0a1a0a','hex'),headerMime:'text/html'})}));});
+test('pilot suppresses only explicitly mapped Respond source, not other scopes',()=>{const rows=[{provider:PROVIDER},{provider:'respond',channel_id:'x',account_ref:'a',thread_type:'instagram_dm'},{provider:'respond',channel_id:'y',account_ref:'a',thread_type:'instagram_dm'}];assert.equal(pilotInboxRows(rows,{businessEnabled:true,respondChannelId:'x',accountRef:'a'}).length,2);});
+for(const [name,patch] of [['expired',{expires_at:new Date(now-1).toISOString()}],['stale',{verified_at:new Date(now-2*86400000).toISOString()}],['revoked',{status:'reauthorization_required'}]])test(`token ${name} blocks sender`,()=>assert.throws(()=>tokenForSend(c,{...credential(),...patch},now)));
+test('token AAD tamper fails',()=>assert.throws(()=>tokenForSend(c,{...credential(),generation:randomUUID()},now)));
+test('fresh token opens only correct provider',()=>{assert.equal(tokenForSend(c,credential(),now),'fixture-token');assert.throws(()=>tokenForSend(c,{...credential(),provider:'facebook'},now));});
+test('OAuth state new, exact minimal scopes',async()=>{let saved;const u=new URL(await beginBusinessOAuth({config:c,actor:actor.id,sessionBinding:'session',store:{createState:async r=>{saved=r;}}}));assert.equal(u.searchParams.get('scope'),SCOPES.join(','));assert.equal(saved.state_hash.length,64);assert.notEqual(saved.state_hash,u.searchParams.get('state'));});
+function oauthFixture(extra=[]){let calls=0,saved;return {store:{consumeState:async()=>true,saveCredential:async r=>{saved=r;}},fetchImpl:async(url,opts)=>{calls++;const u=String(url);if(u==='https://api.instagram.com/oauth/access_token'){assert.equal(opts.body.get('client_id'),c.instagramApp);return {ok:true,json:async()=>({access_token:'short-fixture',user_id:400,permissions:[...SCOPES,...extra]})};}if(u.includes('/me?'))return {ok:true,json:async()=>({user_id:c.account})};return {ok:true,json:async()=>({access_token:'long-fixture',token_type:'bearer',expires_in:5184000})};},get saved(){return saved},get calls(){return calls}};}
+test('OAuth exchange server-side yields encrypted long token, known expiry',async()=>{const f=oauthFixture();const h=await completeBusinessOAuth({config:c,state:'a'.repeat(43),code:'test-code',actor:actor.id,sessionBinding:'session',store:f.store,fetchImpl:f.fetchImpl,now});assert.equal(h.status,'healthy');assert.equal(f.calls,4);assert.equal(tokenForSend(c,f.saved,now),'long-fixture');assert.ok(!JSON.stringify(f.saved).includes('long-fixture'));});
+test('OAuth extras blocked before long exchange or persistence',async()=>{const f=oauthFixture(['whatsapp_business_messaging']);await assert.rejects(()=>completeBusinessOAuth({config:c,state:'a'.repeat(43),code:'code',actor:actor.id,sessionBinding:'s',...f}));assert.equal(f.calls,1);assert.equal(f.saved,undefined);});
+test('OAuth consumed state blocks external requests',async()=>{const f=oauthFixture();f.store.consumeState=async()=>false;await assert.rejects(()=>completeBusinessOAuth({config:c,state:'a'.repeat(43),code:'code',actor:actor.id,sessionBinding:'s',...f}));assert.equal(f.calls,0);});
+test('refresh expired does not call Graph',async()=>{let calls=0;const r=await maintainBusinessToken({config:c,store:{loadCredential:async()=>({...credential(),expires_at:new Date(now-1).toISOString()})},fetchImpl:async()=>{calls++},now});assert.equal(r.status,'expired');assert.equal(calls,0);});
+test('maintenance pending never retries an uncertain refresh',async()=>{let claims=0,calls=0;const h=await maintainBusinessToken({config:c,store:{loadCredential:async()=>({...credential(),maintenance_lease:randomUUID()}),claimMaintenance:async()=>{claims++;return true;}},fetchImpl:async()=>{calls++;},now});assert.equal(h.status,'maintenance_pending');assert.equal(claims,0);assert.equal(calls,0);assert.equal(h.send_allowed,false);});
+test('refresh rotates encrypted generation and known expiry under CAS',async()=>{
+ const r={...credential(),expires_at:new Date(now+2*86400000).toISOString()};r.token_box=seal(c,'token',[r.generation,r.issued_at,r.expires_at],{access_token:'old-fixture'});let saved,calls=0;
+ const h=await maintainBusinessToken({config:c,now,store:{loadCredential:async()=>r,claimMaintenance:async()=>true,finishMaintenance:async(g,l,next)=>{assert.equal(g,r.generation);assert.ok(l);saved=next;return true;},failMaintenance:async()=>assert.fail('unexpected failure')},fetchImpl:async url=>{calls++;return {ok:true,json:async()=>String(url).includes('refresh_access_token')?{access_token:'new-fixture',token_type:'bearer',expires_in:5184000}:{user_id:c.account}};}});
+ assert.equal(h.status,'healthy');assert.equal(calls,3);assert.notEqual(saved.generation,r.generation);assert.equal(tokenForSend(c,saved,now),'new-fixture');assert.ok(!JSON.stringify(saved).includes('new-fixture'));
+});
+test('failed refresh requires reauthorization and never retries transport',async()=>{
+ const r=credential();let calls=0,failed=0;const h=await maintainBusinessToken({config:c,now,store:{loadCredential:async()=>r,claimMaintenance:async()=>true,failMaintenance:async(g,l,s)=>{assert.equal(s,'reauthorization_required');failed++;}},fetchImpl:async()=>{calls++;throw Error('fixture transport');}});assert.equal(h.status,'reauthorization_required');assert.equal(calls,1);assert.equal(failed,1);assert.equal(h.send_allowed,false);
+});
+function manualFixture(){const e=row(),cred=credential();let reserved=false,dispatches=0,finished;return {args:{config:c,actor,body:{input:e.event_ref,action:randomUUID(),text:'Respuesta de prueba'},store:{loadInput:async()=>e,loadCredential:async()=>cred,reserveAndPause:async()=>{if(reserved)return false;reserved=true;return true;},start:async()=>true,finish:async(a,o)=>{finished=o;return true;}},fetchImpl:async(url,opts)=>{assert.ok(reserved);dispatches++;assert.equal(url,'https://graph.instagram.com/v26.0/300/messages');assert.equal(JSON.parse(opts.body).recipient.id,'400');return {ok:true,status:200,json:async()=>({recipient_id:'400',message_id:'outbound'})};},now:()=>now},get dispatches(){return dispatches},get finished(){return finished}};}
+test('blocked real-text regression passes both gates once using mock transport only',async()=>{
+ const f=manualFixture();f.args.body.text=blockedManualFixture;const transport=f.args.fetchImpl;
+ f.args.fetchImpl=async(url,opts)=>{assert.equal(JSON.parse(opts.body).message.text,blockedManualFixture);return transport(url,opts);};
+ assert.equal((await runBusinessReply(f.args)).status,'accepted');
+ assert.equal((await runBusinessReply(f.args)).status,'already_consumed_or_blocked');assert.equal(f.dispatches,1);
+});
+test('invalid Business text fails before claim and at transport guard',async()=>{
+ const f=manualFixture();f.args.diagnostics=true;f.args.body.text='x\ny';
+ f.args.store.loadInput=async()=>assert.fail('must not load input');
+ assert.deepEqual(await runBusinessReply(f.args),{status:'blocked',diagnostic:{stage:'pre_claim',validation:'manual_text'}});assert.equal(f.dispatches,0);
+ await assert.rejects(()=>sendBusinessTextOnce({config:c,recipient:'400',text:'<x>',token:'fixture',fetchImpl:async()=>assert.fail('must not dispatch')}),/send_denied/);
+});
+test('pre-claim diagnostic exposes fixed labels only and never exception values',async()=>{
+ const cases=[
+  ['actor_active',f=>{f.args.actor={...actor,active:false};}],
+  ['request_fields',f=>{f.args.body.recipient='sensitive-native-id';}],
+  ['input_present',f=>{f.args.store.loadInput=async()=>null;}],
+  ['input_lookup',f=>{f.args.store.loadInput=async()=>{throw Error('secret-token-sensitive-native-id');};}],
+  ['input_unambiguous',f=>{const e=row();f.args.store.loadInput=async()=>({...e,ambiguous:true});}],
+  ['recipient_event_binding',f=>{const e=row();f.args.store.loadInput=async()=>({...e,provider:'legacy'});}],
+  ['recipient_cipher_envelope',f=>{const e=row();f.args.store.loadInput=async()=>({...e,recipient_box:null});}],
+  ['recipient_cipher_authentication',f=>{const e=row();f.args.store.loadInput=async()=>({...e,recipient_box:{...e.recipient_box,tag:'0'.repeat(32)}});}],
+  ['credential_lookup',f=>{f.args.store.loadCredential=async()=>{throw Error('secret-token');};}],
+  ['credential_provider',f=>{f.args.store.loadCredential=async()=>({...credential(),provider:'legacy'});}],
+  ['credential_freshness',f=>{f.args.store.loadCredential=async()=>({...credential(),expires_at:new Date(now-1).toISOString()});}],
+  ['token_cipher_authentication',f=>{const k=credential();f.args.store.loadCredential=async()=>({...k,token_box:{...k.token_box,tag:'0'.repeat(32)}});}],
+ ];
+ for(const [validation,mutate] of cases){const f=manualFixture();f.args.diagnostics=true;mutate(f);const result=await runBusinessReply(f.args);assert.deepEqual(result,{status:'blocked',diagnostic:{stage:'pre_claim',validation}});assert.equal(f.dispatches,0);assert.equal(f.finished,undefined);}
+});
+test('pre-claim diagnostics off by default, sender OFF unchanged',async()=>{
+ const f=manualFixture();f.args.store.loadInput=async()=>{throw Error('sensitive');};assert.deepEqual(await runBusinessReply(f.args),{status:'blocked'});
+ f.args.config={...c,senderEnabled:false};f.args.diagnostics=true;assert.deepEqual(await runBusinessReply(f.args),{status:'disabled'});assert.equal(f.dispatches,0);
+});
+test('diagnostics do not alter accepted or post-claim uncertainty contracts',async()=>{
+ const f=manualFixture();f.args.diagnostics=true;const r=await runBusinessReply(f.args);assert.equal(r.status,'accepted');assert.equal(r.diagnostic,undefined);assert.equal(f.dispatches,1);
+ const g=manualFixture();g.args.diagnostics=true;g.args.store.start=async()=>{throw Error('sensitive');};assert.deepEqual(await runBusinessReply(g.args),{status:'uncertain',paused:true});assert.equal(g.dispatches,0);
+});
+test('one manual action accepted, encrypted outgoing ID',async()=>{const f=manualFixture();assert.equal((await runBusinessReply(f.args)).status,'accepted');assert.equal(f.dispatches,1);assert.ok(f.finished.outbound_box);assert.ok(!JSON.stringify(f.finished).includes('"outbound"'));});
+test('double click two sessions only one dispatch',async()=>{const f=manualFixture();await Promise.all([runBusinessReply(f.args),runBusinessReply(f.args)]);assert.equal(f.dispatches,1);});
+test('client recipient field forbidden',async()=>{const f=manualFixture();f.args.body.recipient='999';assert.equal((await runBusinessReply(f.args)).status,'blocked');assert.equal(f.dispatches,0);});
+test('HTTP terminal, no retry',async()=>{const f=manualFixture();f.args.fetchImpl=async()=>({ok:false,status:403,json:async()=>({error:{code:200,error_subcode:7,message:'permission denied'}})});assert.equal((await runBusinessReply(f.args)).status,'failed');assert.equal(f.finished.http_error.code,200);assert.equal((await runBusinessReply(f.args)).status,'already_consumed_or_blocked');});
+test('uncertain no retry and paused',async()=>{const f=manualFixture();f.args.fetchImpl=async()=>{throw Error('network')};const r=await runBusinessReply(f.args);assert.equal(r.status,'uncertain');assert.equal(r.paused,true);assert.equal((await runBusinessReply(f.args)).status,'already_consumed_or_blocked');});
