@@ -152,10 +152,13 @@ export default function InstagramBusinessInbox(){
    }else if(r.status==='uncertain'){
     setUncertainLocked(true);setStatus('Resultado incierto · revisa Instagram antes de enviar otro mensaje');
    }else{
-    setStatus(r.source==='journal'?`${r.status} · confirmado en journal`:r.status);
+    const validation=r?.diagnostic?.validation;
+    setStatus(validation?`${r.status} · ${validation}`:r.source==='journal'?`${r.status} · confirmado en journal`:r.status);
    }
-  }catch{
-   setUncertainLocked(true);setStatus('Resultado incierto · revisa Instagram antes de enviar otro mensaje');
+  }catch(e){
+   const reason=String(e?.message||'');
+   if(reason==='origin_denied'){setStatus('Bloqueado por validación de origen');}
+   else {setUncertainLocked(true);setStatus('Resultado incierto · revisa Instagram antes de enviar otro mensaje');}
   }finally{lock.current=false;setBusy(false);}
  }
 
