@@ -54,7 +54,7 @@ function Media({thread,input,index,type,onOpen,onLoaded}){
  </button>;
 }
 
-export default function InstagramBusinessInbox(){
+export default function InstagramBusinessInbox({embedded=false,externalThread=null,onBack}={}){
  function scrollChatBottom(behavior='auto'){
   requestAnimationFrame(()=>requestAnimationFrame(()=>bottomRef.current?.scrollIntoView({block:'end',behavior})));
  }
@@ -132,7 +132,7 @@ export default function InstagramBusinessInbox(){
    }else{
     setThreads(r.rows||[]);
     try{const n=await request('notifications');setNotifications(n||{rows:[],unread_count:0});}catch{}
-    if(!selected&&r.rows?.length){if(!quiet)setBusy(false);void load(r.rows[0].thread_ref,{quiet:true});}
+    if(!embedded&&!selected&&r.rows?.length){if(!quiet)setBusy(false);void load(r.rows[0].thread_ref,{quiet:true});}
    }
   }catch(e){if(gen===generation.current)setStatus(e.message);}
   finally{if(gen===generation.current&&!quiet)setBusy(false);}
@@ -152,7 +152,7 @@ export default function InstagramBusinessInbox(){
   })));
  },[rows]);
  useEffect(()=>{if(selected&&(rows.length||optimistic.length))scrollChatBottom('auto');},[selected,rows.length,optimistic.length]);
- useEffect(()=>{void load();},[]);
+ useEffect(()=>{void load(embedded?externalThread:undefined);},[externalThread]);
  useEffect(()=>{
   const tick=async()=>{
    if(polling.current||lock.current||document.visibilityState!=='visible')return;
@@ -481,7 +481,7 @@ export default function InstagramBusinessInbox(){
 
  if(commentsOpen)return <InstagramCommentsPanel open onClose={()=>setCommentsOpen(false)}/>;
 
- return <section aria-label="Instagram Business Inbox" className="inboxShell">
+ return <section aria-label="Instagram Business Inbox" className={'inboxShell'+(embedded?' embedded':'')}>
   <aside className="conversationPane">
    <div className="paneHeader">
     <div><h2>Inbox {notifications.unread_count>0&&<b className="notificationCount">{notifications.unread_count}</b>}</h2><span>Instagram</span></div>
@@ -521,7 +521,7 @@ export default function InstagramBusinessInbox(){
   <main className="chatPane">
    {selected?<>
     <header className="chatHeader">
-     <button type="button" className="backButton" onClick={()=>{setSelected(null);setRows([]);setProfile(null);setInput(null);}}>‹</button>
+     <button type="button" className="backButton" onClick={()=>{if(embedded){onBack?.();return;}setSelected(null);setRows([]);setProfile(null);setInput(null);}}>‹</button>
      <div className="contactTitle"><div className="avatar large">IG</div><div><strong>{threads.find(t=>t.thread_ref===selected)?.alias||(profile?.username?`@${profile.username}`:profile?.name)||`Conversación Instagram ${selectedIndex+1}`}</strong><span>{profile?.username&&profile?.name?`${profile.name} · `:''}Instagram · Meta directo{assignment?.advisor_name?` · Asignado: ${assignment.advisor_name}`:''}</span></div></div>
      <button type="button" className="mobileAliasButton" onClick={()=>setMobileAliasEditing(true)}>Ficha</button>
      <div className={`senderBadge ${enabled?'on':'off'}`}>{enabled?'Envío habilitado':'Sender OFF'}</div>
@@ -667,6 +667,8 @@ export default function InstagramBusinessInbox(){
 
   <style jsx>{`
    .inboxShell{height:calc(100vh - 62px);min-height:620px;background:#fff;display:grid;grid-template-columns:320px minmax(420px,1fr) 280px;border-top:1px solid #e5e7eb;color:#1f2937}
+   .inboxShell.embedded{grid-template-columns:minmax(0,1fr) 280px;min-height:0;height:75vh}.inboxShell.embedded .conversationPane{display:none}
+   @media(max-width:1100px){.inboxShell.embedded{grid-template-columns:minmax(0,1fr)}}
    .conversationPane,.detailsPane{min-width:0;background:#fff}.conversationPane{min-height:0;height:100%;overflow:hidden;border-right:1px solid #e5e7eb;display:flex;flex-direction:column}.detailsPane{border-left:1px solid #e5e7eb}
    .paneHeader,.chatHeader,.detailsHeader{height:68px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e7eb;box-sizing:border-box}
    .paneHeader h2{margin:0;font-size:22px}.paneHeader span,.contactTitle span{display:block;color:#6b7280;font-size:12px;margin-top:2px}
