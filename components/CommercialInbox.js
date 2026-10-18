@@ -19,6 +19,7 @@ export async function inboxRequest(channel,op,{thread,body}={}){
 
 export default function CommercialInbox({instagramAvailable}){
  const [filter,setFilter]=useState('all'),[query,setQuery]=useState(''),[threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState('');
+ const [canSyncHistory,setCanSyncHistory]=useState(false),[syncBusy,setSyncBusy]=useState(false),[syncStatus,setSyncStatus]=useState(''),[historyRevision,setHistoryRevision]=useState(0);
  const generation=useRef(0);
  async function load(){
   const gen=++generation.current;
@@ -32,12 +33,30 @@ export default function CommercialInbox({instagramAvailable}){
   setError(results.filter(r=>r.error).map(r=>`${r.error}: no disponible`).join(' · '));
  }
  useEffect(()=>{void load();return()=>{generation.current++;};},[instagramAvailable]);
+ useEffect(()=>{let live=true;
+  supabase.auth.getUser().then(async({data})=>{
+   if(!data?.user)return;
+   const {data:profile}=await supabase.from('profiles').select('role_id,active').eq('id',data.user.id).maybeSingle();
+   if(live)setCanSyncHistory(profile?.active===true&&profile.role_id==='admin');
+  }).catch(()=>{if(live)setCanSyncHistory(false)});
+  return()=>{live=false};
+ },[]);
+ async function recoverHistory(){
+  if(syncBusy)return;setSyncBusy(true);setSyncStatus('Recuperando historial de Instagram…');
+  try{
+   const result=await inboxRequest('instagram','history-sync',{body:{}});
+   setSyncStatus(`Recuperación terminada: ${result.inserted??0} mensajes incorporados, ${result.duplicates??0} duplicados evitados.`);
+   await load();setHistoryRevision(n=>n+1);
+  }catch{setSyncStatus('No se pudo recuperar el historial. No se enviaron mensajes.');}
+  finally{setSyncBusy(false)}
+ }
  const visible=threads.filter(t=>(filter==='all'||t.channel===filter)&&`${t.alias||''} ${t.profile_name||''} ${t.profile_username||''} ${t.channel}`.toLocaleLowerCase('es-MX').includes(query.toLocaleLowerCase('es-MX').trim()));
  return <section aria-label="Inbox comercial omnicanal" className="commercialInbox">
   <header className="inboxHeader"><div><span className="eyebrow">EMPORIO · MENSAJERÍA</span><h1>Inbox</h1><p className="subtitle">Conversaciones y atención desde un solo lugar</p></div>
-  <button type="button" className="refresh" onClick={load} aria-label="Actualizar conversaciones">↻ Actualizar</button></header>
+  <div className="inboxActions">{instagramAvailable&&canSyncHistory&&<button type="button" className="refresh" disabled={syncBusy} onClick={recoverHistory}>{syncBusy?'Recuperando…':'↻ Recuperar 7 días IG'}</button>}<button type="button" className="refresh" onClick={load} aria-label="Actualizar conversaciones">↻ Actualizar</button></div></header>
   <nav aria-label="Canales" className="channelTabs">{[['all','Todos'],['instagram','Instagram'],['facebook','Facebook'],['comments','Comentarios']].map(([id,label])=>
    <button type="button" key={id} className={filter===id?'active':''} aria-pressed={filter===id} onClick={()=>{setFilter(id);setSelected(null);}}>{label}{id==='all'&&<span className="counter">{threads.length}</span>}{(id==='instagram'||id==='facebook')&&<span className="counter">{threads.filter(t=>t.channel===id).length}</span>}</button>)}</nav>
+  {syncStatus&&<p role="status" className="loadWarning">{syncStatus}</p>}
   {error&&<p role="status" className="loadWarning">Algunos canales no están disponibles: {error}</p>}
   {filter==='comments'?<InstagramCommentsPanel open onClose={()=>setFilter('all')}/>:<div className={'workspace '+(selected?'hasSelection':'')}>
    <aside aria-label="Conversaciones" className="threadsPane"><div className="paneHeading"><strong>Conversaciones</strong><span>{visible.length}</span></div>
@@ -52,12 +71,12 @@ export default function CommercialInbox({instagramAvailable}){
    <main className="conversationPane"><button type="button" className="back" onClick={()=>setSelected(null)}>← Conversaciones</button>
     {!selected?<div className="emptyConversation"><span className="emptyIcon" aria-hidden="true">✉</span><h2>Tu bandeja, en un solo lugar</h2><p>Elige una conversación para consultar sus mensajes y dar seguimiento.</p></div>:selected.channel==='facebook'
      ?<FacebookMessengerConversation key={selected.key} thread={selected.thread_ref}/>
-     :<InstagramBusinessInbox key={selected.key} embedded externalThread={selected.thread_ref} onBack={()=>setSelected(null)}/>}
+     :<InstagramBusinessInbox key={selected.key+':'+historyRevision} embedded externalThread={selected.thread_ref} onBack={()=>setSelected(null)}/>}
    </main>
   </div>}
   <style jsx>{`
   .commercialInbox{height:calc(100dvh - 190px);max-height:calc(100dvh - 190px);display:flex;flex-direction:column;overflow:hidden;background:#fff;color:#202b3c;min-width:0;border:1px solid #e8e9ec;border-radius:14px;overflow:hidden}
-  .inboxHeader{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px 26px 16px;background:white}
+   .inboxActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.inboxHeader{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px 26px 16px;background:white}
   .eyebrow{font-size:10px;letter-spacing:1.5px;font-weight:800;color:#a4a9b4}.inboxHeader h1{margin:4px 0 2px;font-size:27px;letter-spacing:-.7px}.subtitle{font-size:12px;color:#87909c;margin:0}
   button{font:inherit;cursor:pointer}.refresh{border:1px solid #e8e9ef;border-radius:9px;padding:9px 13px;background:white;color:#657081;font-size:12px;font-weight:700}
   .channelTabs{display:flex;gap:7px;flex-wrap:wrap;padding:0 26px 16px;border-bottom:1px solid #eff0f3}.channelTabs button{display:flex;align-items:center;gap:7px;border:1px solid transparent;border-radius:9px;background:transparent;color:#788291;padding:9px 12px;font-size:12px;font-weight:700;min-height:39px}.channelTabs button.active{color:#a51d40;background:#fff2f5;border-color:#f4d8df}.counter{font-size:10px;color:inherit;background:#f1f2f5;border-radius:15px;padding:2px 6px}.active .counter{background:#f8dfe6}
