@@ -124,6 +124,10 @@
     {
       "path": "/api/cron/instagram-outbound-media-cleanup",
       "schedule": "20 9 * * *"
+    },
+    {
+      "path": "/api/cron/instagram-comment-automation",
+      "schedule": "* * * * *"
     }
   ]
 }
