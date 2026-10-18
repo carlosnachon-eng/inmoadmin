@@ -13,7 +13,7 @@ export default async function handler(req,res){
   const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,
    {auth:{persistSession:false,autoRefreshToken:false}});
   const {data,error}=await db.from('v_sales_team_directory')
-   .select('advisor_profile_id,full_name,plaza_name');
+   .select('advisor_profile_id,full_name,plaza_name,left_at').is('left_at',null);
   if(error)throw Error('directory_unavailable');
   const unique=new Map();
   for(const row of data||[]){
