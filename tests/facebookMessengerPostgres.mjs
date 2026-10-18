@@ -133,6 +133,30 @@ try {
  for(const role of ['anon','authenticated']){
   const cl=await client(role);await assert.rejects(()=>call(cl,'fb_messenger_provision_v1',{p_connection:provisionConnection,p_args:pargs}),x=>x.code==='42501');checks++;
  }
+ await q(await readFile(new URL('../supabase/migrations/20261018194331_facebook_messenger_health.sql',import.meta.url),'utf8'));checks++;
+ const healthRun=randomUUID(),beginHealth=r=>call(service,'fb_messenger_health_begin_v1',{p_connection:provisionConnection,p_run:r});
+ check((await beginHealth(healthRun)).generation,2);check(await beginHealth(randomUUID()),null);
+ const finishHealth=(r,a)=>call(service,'fb_messenger_health_finish_v1',{p_connection:provisionConnection,p_run:r,p_args:a});
+ const healthArgs={...pargs,valid_until:new Date(pnow.getTime()+8*3600000).toISOString(),expected_generation:2,generation:3,ok:true,stage:'verified',metadata:{...pargs.metadata,ok:true,inbound_ready:true,echo_ready:true}};
+ check(await finishHealth(randomUUID(),healthArgs),false);
+ check(await finishHealth(healthRun,healthArgs),true);
+ check((await q('select sender_enabled from facebook_messenger_private.connections where id=$1',[provisionConnection])).rows[0].sender_enabled,true); // preserves, never opens
+ check(await finishHealth(healthRun,healthArgs),false);check(await beginHealth(randomUUID()),null);
+ await q("update facebook_messenger_private.health set next_check_at=now() where connection_id=$1",[provisionConnection]);
+ const failedRun=randomUUID();await beginHealth(failedRun);
+ check(await finishHealth(failedRun,{ok:false,expected_generation:3,stage:'token_invalid',http_status:400,code:190}),true);
+ check((await q('select sender_enabled from facebook_messenger_private.connections where id=$1',[provisionConnection])).rows[0].sender_enabled,false);
+ check((await q('select generation from facebook_messenger_private.credentials where connection_id=$1',[provisionConnection])).rows[0].generation,'3');
+ await q("update facebook_messenger_private.health set next_check_at=now() where connection_id=$1",[provisionConnection]);
+ const recoveryRun=randomUUID();await beginHealth(recoveryRun);
+ check(await finishHealth(recoveryRun,{...healthArgs,expected_generation:3,generation:4}),true);
+ check((await q('select sender_enabled from facebook_messenger_private.connections where id=$1',[provisionConnection])).rows[0].sender_enabled,false);
+ for(const role of ['anon','authenticated']){
+  const cl=await client(role);for(const [name,a] of [['fb_messenger_health_begin_v1',{p_connection:provisionConnection,p_run:healthRun}],['fb_messenger_health_finish_v1',{p_connection:provisionConnection,p_run:healthRun,p_args:healthArgs}]]){
+   await assert.rejects(()=>call(cl,name,a),x=>x.code==='42501');checks++;
+  }
+ }
+ await assert.rejects(()=>service.query('select * from facebook_messenger_private.health'),x=>x.code==='42501');checks++;
  console.log(JSON.stringify({postgres:'PASS',checks,real_meta_requests:0,remote_migrations:0}));
 } finally {
  for(const cl of connections)await cl.end();

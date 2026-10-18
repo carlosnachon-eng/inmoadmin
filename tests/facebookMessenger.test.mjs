@@ -16,6 +16,13 @@ const env={FACEBOOK_MESSENGER_ENABLED:'true',APP_ENV:'test',NEXT_PUBLIC_SUPABASE
  FACEBOOK_MESSENGER_APP_SECRET:'a'.repeat(32),FACEBOOK_MESSENGER_VERIFY_TOKEN:'b'.repeat(32),
  FACEBOOK_MESSENGER_INDEX_KEY:'c'.repeat(64),FACEBOOK_MESSENGER_DATA_KEY:'d'.repeat(64),FACEBOOK_MESSENGER_TOKEN_KEY:'e'.repeat(64)};
 const c=messengerConfig(env), now=Date.parse('2026-10-18T17:00:00.000Z');
+test('Messenger production environment is isolated from shared APP_ENV',()=>{
+ const prod={...env,APP_ENV:undefined,FACEBOOK_MESSENGER_ENV:'production',VERCEL_ENV:'production',FACEBOOK_MESSENGER_ROLLOUT:'closed_manual',NEXT_PUBLIC_SUPABASE_URL:'https://bnzrnizrmonjxlktbhlp.supabase.co'};
+ assert.equal(messengerConfig(prod).senderEnabled,false);
+ assert.throws(()=>messengerConfig({...prod,FACEBOOK_MESSENGER_ENV:'preview'}));
+ assert.throws(()=>messengerConfig({...prod,NEXT_PUBLIC_SUPABASE_URL:env.NEXT_PUBLIC_SUPABASE_URL}));
+ assert.throws(()=>messengerConfig({...prod,FACEBOOK_MESSENGER_ROLLOUT:undefined}));
+});
 const actor={id:'22222222-2222-4222-8222-222222222222',active:true,role_id:'asesor'};
 const event={sender:{id:'303'},recipient:{id:c.page},timestamp:now-1000,message:{mid:'mid.synthetic-1',text:'Texto sintético local'}};
 const envelope=(events=[event])=>({object:'page',entry:[{id:c.page,messaging:events}]});

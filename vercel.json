@@ -30,6 +30,10 @@
   },
   "crons": [
     {
+      "path": "/api/cron/facebook-messenger-health",
+      "schedule": "17 * * * *"
+    },
+    {
       "path": "/api/cron/respond-commercial-worker",
       "schedule": "* * * * *"
     },
