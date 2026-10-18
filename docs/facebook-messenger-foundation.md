@@ -108,3 +108,40 @@ Resultados: 19 tests Messenger JS PASS; 51 verificaciones PostgreSQL PASS, inclu
 Baseline previo a cambios: `instagramBusinessReplyResult.test.mjs` falla en main en reconciliación de journal/fixture y una aserción de UI antigua. No se corrigió ni se presenta la suite completa de Instagram como PASS. Ningún archivo existente se modifica en esta etapa.
 
 Antes de certificar Messenger real faltan: permisos efectivos/app elegida, token provenance/lease, migración y provisioning DEV, challenge/HMAC real, inbound de usuario controlado, reply autorizado, echo exacto y pruebas visuales del Inbox unificado. No hay `FACEBOOK_MESSENGER_PRODUCTION_PASS` ni autorización outbound derivada de estos tests locales.
+# Fase 1B — provisioning DEV (2026-10-18)
+
+Inspección real de Meta: Emporio Social `29650489627887372`, activa, producto Messenger presente. Messenger API Settings muestra callback vacío y ninguna Página conectada. `pages_messaging`, `pages_manage_metadata`, `pages_read_engagement`, `pages_show_list`, `business_management`: Standard Access. Esto NO acredita scopes de un token. Página `119960324707764` confirmada en el selector como EMPORIO INMOBILIARIO; identidad mediante `/me` con token de Página aún pendiente.
+
+El botón Conectar del panel inicia OAuth con `pages_messaging,pages_utility_messaging`. No se confirmó ni se otorgó ese acceso adicional. Se preparó el consentimiento mínimo `pages_messaging,pages_manage_metadata,pages_show_list` sólo para Emporio; detenido antes de «Listo», pendiente de autorización del usuario. No se tocó Instagram ni sus suscripciones.
+
+## Provisioning y salud
+
+- `/operaciones/facebook-messenger-setup`: herramientas Admin DEV, NO otra bandeja.
+- POST `/api/operaciones/facebook-messenger-setup`, cuerpo sólo `{operation:"provision"}` o `{operation:"health"}`. Sesión validada server-side + perfil activo admin + mismo origen.
+- Token inicial exclusivamente desde `FACEBOOK_MESSENGER_PROVISIONING_PAGE_TOKEN` (secreto DEV server-side, nunca desde UI). Eliminar ese secreto transitorio tras verificar almacenamiento; no eliminar credenciales existentes ajenas.
+- GET oficial `v26.0/debug_token` con App token, validación de app/profile, scopes, expiración y target granular; GET `/me?fields=id` con Page token; GET `/{PAGE_ID}/subscribed_apps` read-only. No suscribe ni solicita permisos automáticamente.
+- Scopes mínimos exigidos por provisioning: `pages_messaging`, `pages_manage_metadata`. `pages_show_list` para seleccionar Página durante autorización; dependencias efectivas deben verificarse en Meta, no inferirse del panel.
+- Guarda sólo token cifrado AES-GCM ligado a app/Page/conexión/generación/lease, scopes y metadata sanitizada. CAS por generación. No sustituye activos ni tokens de Instagram.
+- Health descifra exclusivamente en servidor y vuelve a consultar Meta; no renueva/rota el token Meta. Nueva lease local <=24h y nunca posterior a expiración o data-access expiry. Un resultado fallido NO acredita health PASS. No hay mantenimiento automático aún.
+- Provisioning requiere sender OFF en env y DB, no abre grants y jamás habilita sender. La API no acepta token, PSID, Page ID ni controles outbound en el request.
+
+## Receptor DEV público
+
+Los proyectos Vercel inspeccionados tienen Deployment Protection. No se desactivó. Receptor aditivo en el proyecto Supabase DEV existente:
+
+`https://hjfwjnejbcpmknvfpdcq.supabase.co/functions/v1/facebook-messenger-dev`
+
+Usa el MISMO `captureMessenger`/cifrado que el handler Next; autenticación por raw HMAC, JWT de Supabase no exigido a Meta. Entry point `supabase/functions/facebook-messenger-dev/index.ts`. No incluye sender ni APIs de administración. Debe recibir sólo configuración `FACEBOOK_MESSENGER_*` exclusiva DEV; identidad Supabase exacta fijada en código. Sin `ENABLED=true` devuelve 404. No usar como callback hasta provisionar claves/secret y certificar challenge real.
+
+Aplicadas sólo en `inmoadmin-dev` (`hjfwjnejbcpmknvfpdcq`): foundation y provisioning. 5 tablas RLS; 7 RPC sólo service_role; anon/authenticated sin EXECUTE ni lectura. Advisor señala RLS sin políticas: intencional deny-all en schema privado; acceso exclusivamente RPC service-only con comprobación del actor. No abrir políticas para eliminar ese aviso.
+
+## Pendiente real
+
+1. Autorizar Messenger para la Página exacta sin permisos utility innecesarios; acreditar Page Access Token y app emisora. No hay token real validado aún.
+2. Provisionar App Secret general de esta app y claves nuevas DEV (no Instagram App Secret); cargar token transitorio sólo como secreto server-side. Nada de copiar credenciales por chat.
+3. Guardar configuración del mismo Messenger tanto en Preview como en receptor DEV. Certificar health y challenge; suscribir `messages` y `message_echoes` preservando las demás integraciones.
+4. Un inbound controlado real de usuario con rol de app, comprobar HMAC/persistencia/deduplicación. Todavía NO ejecutado.
+5. Outbound real sólo después de autorización explícita del usuario. Sender permanece OFF; no grants.
+6. Inbox omnicanal posterior reutiliza `/administracion/inbox`; este cambio no agrega una bandeja ni modifica UI Instagram.
+
+Fuente introspección: https://developers.facebook.com/docs/graph-api/reference/debug_token/ (v26.0, inspeccionada en navegador). App Review/Advanced Access para usuarios no-role continúa pendiente; no interpretar Standard como permiso general para clientes.

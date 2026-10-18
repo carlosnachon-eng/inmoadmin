@@ -107,6 +107,21 @@ try {
  const run=()=>runManualReply({config:c,actor,body,store,fetchImpl:async()=>{network++;return {ok:true,status:200,json:async()=>({recipient_id:'303',message_id:'mid.outbound'})};}});
  check((await run()).status,'accepted');check((await run()).status,'already_consumed_or_blocked');check(network,1);
  check((await q('select state,dispatch_count from facebook_messenger_private.actions where action_id=$1',[body.action])).rows[0],{state:'accepted',dispatch_count:1});
+ await q(await readFile(new URL('../supabase/migrations/20261018171612_facebook_messenger_provisioning.sql',import.meta.url),'utf8'));checks++;
+ const provisionConnection=randomUUID(),pnow=new Date(),until=new Date(pnow.getTime()+3600000).toISOString();
+ const pargs={actor:other,app:'401',page:'402',expected_generation:0,generation:1,scopes:['pages_messaging','pages_manage_metadata'],verified_at:pnow.toISOString(),valid_until:until,token_box:box,metadata:{ok:true,expires_at:0,subscribed_fields:[]}};
+ const provision=a=>call(service,'fb_messenger_provision_v1',{p_connection:provisionConnection,p_args:a});
+ check(await provision({...pargs,actor:actor.id}),false);
+ check(await provision(pargs),true);
+ check(await provision(pargs),false);
+ check((await q('select enabled,sender_enabled from facebook_messenger_private.connections where id=$1',[provisionConnection])).rows[0],{enabled:true,sender_enabled:false});
+ check(await provision({...pargs,expected_generation:1,generation:2,app:'999'}),false);
+ check(await provision({...pargs,expected_generation:1,generation:2}),true);
+ await q('update facebook_messenger_private.connections set sender_enabled=true where id=$1',[provisionConnection]);
+ check(await provision({...pargs,expected_generation:2,generation:3}),false);
+ for(const role of ['anon','authenticated']){
+  const cl=await client(role);await assert.rejects(()=>call(cl,'fb_messenger_provision_v1',{p_connection:provisionConnection,p_args:pargs}),x=>x.code==='42501');checks++;
+ }
  console.log(JSON.stringify({postgres:'PASS',checks,real_meta_requests:0,remote_migrations:0}));
 } finally {
  for(const cl of connections)await cl.end();
