@@ -3,6 +3,13 @@ import {inboxRequest} from './CommercialInbox';
 import {supabase} from '../lib/supabase';
 import FacebookReceivedMedia from './FacebookReceivedMedia';
 
+function FacebookLinkifiedText({value}){
+ const parts=String(value||'').split(/(https?:\/\/[^\s]+)/g);
+ return <p>{parts.map((part,i)=>/^https?:\/\/[^\s]+$/i.test(part)
+  ?<a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{color:'#1769bd',textDecoration:'underline',overflowWrap:'anywhere'}}>{part}</a>
+  :part)}</p>;
+}
+
 export default function FacebookMessengerConversation({thread,displayName='',onNameSaved}){
  const [rows,setRows]=useState([]),[enabled,setEnabled]=useState(false),[text,setText]=useState(''),[input,setInput]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
  const locked=useRef(false),mounted=useRef(true);
@@ -251,7 +258,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    {!rows.length&&<p className="emptyHistory">No hay mensajes disponibles para esta conversación.</p>}
    {rows.map(r=><div key={r.input} className={r.kind==='echo'?'messageRow mine':'messageRow theirs'}>
     <article className={r.kind==='echo'?'bubble outgoing':'bubble'}>
-     {r.text&&<p>{r.text}</p>}{(r.attachment_types||[]).slice(0,5).map((type,index)=>r.kind==='echo'?<div key={r.input+':'+index} className="outboundMediaReceipt">{type==='audio'?'🎤 Audio':type==='image'?'🖼️ Imagen':type==='video'?'🎬 Video':'📎 Archivo'} enviado por Messenger · vista previa pendiente</div>:<FacebookReceivedMedia key={r.input+':'+index} input={r.input} index={index} type={type}/>)}{!r.text&&!r.attachment_types?.length&&<p>Evento recibido</p>}
+     {r.text&&<FacebookLinkifiedText value={r.text}/>}{(r.attachment_types||[]).slice(0,5).map((type,index)=>r.kind==='echo'?<div key={r.input+':'+index} className="outboundMediaReceipt">{type==='audio'?'🎤 Audio':type==='image'?'🖼️ Imagen':type==='video'?'🎬 Video':'📎 Archivo'} enviado por Messenger · vista previa pendiente</div>:<FacebookReceivedMedia key={r.input+':'+index} input={r.input} index={index} type={type}/>)}{!r.text&&!r.attachment_types?.length&&<p>Evento recibido</p>}
      <footer><time>{new Date(r.occurred_at).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</time>{r.outcome&&<span> · {r.outcome}</span>}</footer>
      {enabled&&r.can_reply&&<button type="button" className="pickReply" disabled={busy||locked.current} aria-pressed={input===r.input} onClick={()=>setInput(r.input)}>{input===r.input?'Seleccionado':'Responder a este mensaje'}</button>}
     </article>
