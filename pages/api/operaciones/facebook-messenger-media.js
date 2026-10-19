@@ -1,9 +1,32 @@
 import {createClient} from '@supabase/supabase-js';
 import {authorizeInboxStaff} from '../../../lib/shadow/ai/apiAuth.js';
 import {messengerConfig,isRef} from '../../../lib/messaging/facebook/messenger/config.js';
-import {open,binding} from '../../../lib/messaging/facebook/messenger/crypto.js';
+import {open,binding,recipient} from '../../../lib/messaging/facebook/messenger/crypto.js';
+import {pageToken} from '../../../lib/messaging/facebook/messenger/manual.js';
+import {messengerStore} from '../../../lib/messaging/facebook/messenger/store.js';
 import {reviewMediaUrl} from '../../../lib/messaging/instagram/business/content.js';
 import {secureDownload,detectMime} from '../../../lib/shadow/media/network.js';
+
+// Resolve only the exact, authorized inbound message; never accept a message ID from the browser.
+async function recoverSource(c,row,attachment,index,db){
+ const {mid}=open(c,'recipient',binding(row),row.recipient_box);
+ recipient(c,row); // Validate cryptographic thread/message binding before Graph access.
+ const store=messengerStore(db,c.connection,c);
+ const token=pageToken(c,await store.credential());
+ const endpoint=new URL('https://graph.facebook.com/'+c.version+'/'+encodeURIComponent(mid));
+ endpoint.searchParams.set('fields','id,attachments{file_url,image_data,video_data,id}');
+ const response=await fetch(endpoint,{method:'GET',redirect:'error',cache:'no-store',
+  signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+token}});
+ if(!response.ok)throw Error('graph_unavailable');
+ const body=await response.json();
+ if(body?.id!==mid||!Array.isArray(body?.attachments?.data))throw Error('graph_mismatch');
+ const item=body.attachments.data[index];
+ if(!item)throw Error('graph_attachment_missing');
+ // Match the encrypted webhook attachment ID when present, to prevent index drift.
+ if(attachment.attachment_id&&item.id!==attachment.attachment_id)throw Error('graph_attachment_mismatch');
+ const candidate=item.file_url||item.image_data?.url||item.image_data?.media_url||item.video_data?.url;
+ return reviewMediaUrl(candidate);
+}
 
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private, no-store, max-age=0');
@@ -29,10 +52,16 @@ export default async function handler(req,res){
   const content=open(c,'content',binding(row),row.content_box);
   stage='attachment_metadata';
   const attachment=Array.isArray(content?.attachments)?content.attachments[index]:null;
-  if(!attachment||!['image','audio','video','file'].includes(attachment.type)
-   ||typeof attachment.source_url!=='string'){diagnostic('attachment_source_missing');return res.status(404).end();}
+  if(!attachment||!['image','audio','video','file'].includes(attachment.type)){
+   diagnostic('attachment_missing');return res.status(404).end();
+  }
   stage='url_validation';
-  const url=reviewMediaUrl(attachment.source_url);
+  let url;
+  if(typeof attachment.source_url==='string')url=reviewMediaUrl(attachment.source_url);
+  else {
+   stage='graph_recovery';
+   url=await recoverSource(c,row,attachment,index,db);
+  }
   const maxBytes=attachment.type==='image'?8*1024*1024:20*1024*1024;
   stage='download';
   const media=await secureDownload(url,{maxBytes,maxRedirects:0,timeoutMs:10000});
