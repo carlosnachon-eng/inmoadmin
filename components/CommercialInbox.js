@@ -21,6 +21,7 @@ export default function CommercialInbox({instagramAvailable}){
  const [filter,setFilter]=useState('all'),[query,setQuery]=useState(''),[threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState('');
  const [canSyncHistory,setCanSyncHistory]=useState(false),[syncBusy,setSyncBusy]=useState(false),[syncStatus,setSyncStatus]=useState(''),[historyRevision,setHistoryRevision]=useState(0);
  const generation=useRef(0);
+ const listPolling=useRef(false);
  const instagramProfileCache=useRef(new Map());
  const instagramProfileInFlight=useRef(new Set());
  const [unreadFilter,setUnreadFilter]=useState('all');
@@ -83,6 +84,21 @@ export default function CommercialInbox({instagramAvailable}){
   setError(results.filter(r=>r.error).map(r=>`${r.error}: no disponible`).join(' · '));
  }
  useEffect(()=>{void load();return()=>{generation.current++;};},[instagramAvailable]);
+ // List polling is independent of the selected chat and never changes the
+ // selected thread or the operator's draft. Only the visible tab polls.
+ useEffect(()=>{
+  let alive=true;
+  const tick=async()=>{
+   if(!alive||document.visibilityState!=='visible'||listPolling.current)return;
+   listPolling.current=true;
+   try{await load();}finally{listPolling.current=false;}
+  };
+  const id=setInterval(()=>{void tick()},10000);
+  const onVisible=()=>{if(document.visibilityState==='visible')void tick();};
+  document.addEventListener('visibilitychange',onVisible);
+  return()=>{alive=false;clearInterval(id);document.removeEventListener('visibilitychange',onVisible);generation.current++;};
+ },[instagramAvailable]);
+
  // Enrich Instagram's unified list with the same Meta profile resolved inside its chat.
  // Bounded batches avoid a large parallel Graph burst; cached for the current session.
  useEffect(()=>{
