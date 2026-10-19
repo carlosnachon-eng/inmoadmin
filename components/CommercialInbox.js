@@ -107,7 +107,7 @@ export default function CommercialInbox({instagramAvailable}){
    }
   })();
   return()=>{cancelled=true};
- },[threads]);
+ },[instagramAvailable,threads.filter(t=>t.channel==='instagram').length]);
  useEffect(()=>{let live=true;
   supabase.auth.getUser().then(async({data})=>{
    if(!data?.user)return;
