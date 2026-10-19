@@ -21,6 +21,8 @@ export default function CommercialInbox({instagramAvailable}){
  const [filter,setFilter]=useState('all'),[query,setQuery]=useState(''),[threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState('');
  const [canSyncHistory,setCanSyncHistory]=useState(false),[syncBusy,setSyncBusy]=useState(false),[syncStatus,setSyncStatus]=useState(''),[historyRevision,setHistoryRevision]=useState(0);
  const generation=useRef(0);
+ const instagramProfileCache=useRef(new Map());
+ const instagramProfileInFlight=useRef(new Set());
  const [unreadFilter,setUnreadFilter]=useState('all');
  const timestamp=t=>{const date=t.last_activity||t.occurred_at||t.last_at;const parsed=Date.parse(date||'');return Number.isFinite(parsed)?parsed:0};
  async function markThreadRead(t){
@@ -76,11 +78,36 @@ export default function CommercialInbox({instagramAvailable}){
    const read=facebookRead.get(t.thread_ref);
    const unread=t.channel==='instagram'?igUnread.has(t.thread_ref):
     Boolean(read?.last_inbound_at)&&(!read?.read_at||Date.parse(read.last_inbound_at)>Date.parse(read.read_at));
-   return {...t,...name,unread};
+   return {...t,...(t.channel==='instagram'?(instagramProfileCache.current.get(t.thread_ref)||{}):{}),...name,unread};
   }).sort((a,b)=>timestamp(b)-timestamp(a)||a.key.localeCompare(b.key)));
   setError(results.filter(r=>r.error).map(r=>`${r.error}: no disponible`).join(' · '));
  }
  useEffect(()=>{void load();return()=>{generation.current++;};},[instagramAvailable]);
+ // Enrich Instagram's unified list with the same Meta profile resolved inside its chat.
+ // Bounded batches avoid a large parallel Graph burst; cached for the current session.
+ useEffect(()=>{
+  const missing=threads.filter(t=>t.channel==='instagram'&&!t.alias&&!t.profile_username&&!t.profile_name
+   &&!instagramProfileCache.current.has(t.thread_ref)&&!instagramProfileInFlight.current.has(t.thread_ref)).slice(0,36);
+  if(!missing.length)return;
+  missing.forEach(t=>instagramProfileInFlight.current.add(t.thread_ref));
+  let cancelled=false;
+  (async()=>{
+   for(let i=0;i<missing.length;i+=4){
+    if(cancelled)break;
+    await Promise.all(missing.slice(i,i+4).map(async t=>{
+     try{
+      const result=await inboxRequest('instagram','history',{thread:t.thread_ref});
+      const p=result.profile;
+      const name=p?.name||null,username=p?.username||null;
+      instagramProfileCache.current.set(t.thread_ref,{profile_name:name,profile_username:username});
+      if(!cancelled&&(name||username))setThreads(old=>old.map(x=>x.key===t.key?{...x,profile_name:name,profile_username:username}:x));
+     }catch{instagramProfileCache.current.set(t.thread_ref,null)}
+     finally{instagramProfileInFlight.current.delete(t.thread_ref)}
+    }));
+   }
+  })();
+  return()=>{cancelled=true};
+ },[instagramAvailable,threads.filter(t=>t.channel==='instagram').length]);
  useEffect(()=>{let live=true;
   supabase.auth.getUser().then(async({data})=>{
    if(!data?.user)return;
