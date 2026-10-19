@@ -7,5 +7,6 @@ test('media manifest stays server-side and omits provider identifiers and URLs',
  assert.match(s,/open\(c,'content',binding\(row\),row\.content_box\)/);
  assert.match(s,/row\.deleted/);
  assert.match(s,/retrievable:/);
+ assert.match(s,/source_url/);
  assert.doesNotMatch(s,/url:item|attachment_id:item/);
 });
