@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {inboxRequest} from './CommercialInbox';
 import {supabase} from '../lib/supabase';
 import FacebookReceivedMedia from './FacebookReceivedMedia';
@@ -282,14 +283,23 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    </div>)}
   </div>
   {enabled?<form onSubmit={send} className="composer"><label htmlFor="facebook-reply-text">Respuesta manual</label><small className="replyHint">{input?'Ventana activa · cada mensaje se registra y envía una sola vez':'No hay mensaje entrante elegible para responder en esta conversación'}</small>{appointmentRows.map(a=><div key={a.id} style={{fontSize:12,padding:6,borderBottom:'1px solid #eee'}}>📅 {new Date(a.fecha_hora).toLocaleString('es-MX')} · {a.estado}{a.estado!=='cancelada'&&<button type="button" disabled={appointmentBusy} onClick={()=>cancelAppointment(a.id)}>Cancelar</button>}</div>)}
-  {appointmentOpen&&<div className="fbAppointmentPanel" style={{padding:10,border:'1px solid #ddd',borderRadius:10,marginBottom:8,maxHeight:'min(55vh,440px)',overflowY:'auto',overscrollBehavior:'contain'}}>
-   <strong>Agendar cita</strong>
-   {['name','phone','email','fecha_local','notas'].map(k=><label key={k} style={{display:'block',fontSize:12}}>{({name:'Nombre',phone:'Teléfono',email:'Correo',fecha_local:'Fecha y hora',notas:'Notas'})[k]}<input type={k==='fecha_local'?'datetime-local':'text'} value={appointmentForm[k]} onChange={e=>setAppointmentForm(f=>({...f,[k]:e.target.value}))} style={{width:'100%'}}/></label>)}
-   <label>Asesor<select value={appointmentForm.advisor_id} onChange={e=>setAppointmentForm(f=>({...f,advisor_id:e.target.value}))}><option value="">Seleccionar</option>{appointmentAdvisors.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-   <label>Propiedad<select value={appointmentForm.property_id} onChange={e=>setAppointmentForm(f=>({...f,property_id:e.target.value}))}><option value="">Sin propiedad</option>{appointmentProperties.map(p=><option key={p.id} value={p.id}>{p.titulo}</option>)}</select></label>
-   <div className="fbAppointmentFooter" style={{position:'sticky',bottom:0,background:'#fff',display:'flex',gap:8,padding:'12px 0 4px',zIndex:1}}><button type="button" disabled={appointmentBusy} onClick={createAppointment}>Guardar cita</button>
-   <button type="button" onClick={()=>setAppointmentOpen(false)}>Cerrar</button></div>
-  </div>}
+  {appointmentOpen&&typeof document!=='undefined'&&createPortal(
+   <div role="presentation" style={{position:'fixed',inset:0,zIndex:2147483000,background:'rgba(15,23,42,.55)',display:'flex',alignItems:'center',justifyContent:'center',padding:'max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))',boxSizing:'border-box'}}>
+    <section role="dialog" aria-modal="true" aria-label="Agendar cita de Facebook" style={{display:'flex',flexDirection:'column',width:'min(540px,100%)',maxHeight:'min(90dvh,800px)',minHeight:0,overflow:'hidden',borderRadius:14,background:'#fff',boxShadow:'0 18px 55px rgba(0,0,0,.25)',color:'#263348'}}>
+     <header style={{padding:'14px 18px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid #e5e7eb',flexShrink:0}}>
+      <strong>Agendar cita</strong><button type="button" onClick={()=>setAppointmentOpen(false)} aria-label="Cerrar cita" style={{border:0,background:'transparent',fontSize:24,cursor:'pointer'}}>×</button>
+     </header>
+     <div style={{padding:'14px 18px',overflowY:'auto',overscrollBehavior:'contain',flex:'1 1 auto',minHeight:0}}>
+      {['name','phone','email','fecha_local','notas'].map(k=><label key={k} style={{display:'block',fontSize:13,marginBottom:12}}>{({name:'Nombre',phone:'Teléfono',email:'Correo',fecha_local:'Fecha y hora',notas:'Notas'})[k]}<input type={k==='fecha_local'?'datetime-local':'text'} value={appointmentForm[k]} onChange={e=>setAppointmentForm(f=>({...f,[k]:e.target.value}))} style={{display:'block',width:'100%',boxSizing:'border-box',minHeight:40,marginTop:5,padding:9,border:'1px solid #cbd5e1',borderRadius:8,fontSize:14}}/></label>)}
+      <label style={{display:'block',fontSize:13,marginBottom:12}}>Asesor<select value={appointmentForm.advisor_id} onChange={e=>setAppointmentForm(f=>({...f,advisor_id:e.target.value}))} style={{display:'block',width:'100%',minHeight:40,marginTop:5}}><option value="">Seleccionar</option>{appointmentAdvisors.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+      <label style={{display:'block',fontSize:13,marginBottom:12}}>Propiedad<select value={appointmentForm.property_id} onChange={e=>setAppointmentForm(f=>({...f,property_id:e.target.value}))} style={{display:'block',width:'100%',minHeight:40,marginTop:5}}><option value="">Sin propiedad</option>{appointmentProperties.map(p=><option key={p.id} value={p.id}>{p.titulo}</option>)}</select></label>
+     </div>
+     <footer style={{display:'flex',gap:10,padding:'12px 18px max(12px,env(safe-area-inset-bottom))',flexShrink:0,borderTop:'1px solid #e5e7eb',background:'#fff'}}>
+      <button type="button" disabled={appointmentBusy} onClick={createAppointment} style={{flex:1,minHeight:44,border:0,borderRadius:9,background:'#ae2148',color:'#fff',fontWeight:700,cursor:'pointer'}}>Guardar cita</button>
+      <button type="button" onClick={()=>setAppointmentOpen(false)} style={{flex:1,minHeight:44,border:'1px solid #cbd5e1',borderRadius:9,background:'#fff',color:'#334155',cursor:'pointer'}}>Cerrar</button>
+     </footer>
+    </section>
+   </div>,document.body)}
   {propertyPicker&&<div className="fbPropertyPicker" style={{border:'1px solid #ddd',padding:10,borderRadius:10,marginBottom:8}}>
    <div style={{display:'flex',justifyContent:'space-between'}}><strong>Compartir propiedad</strong><button type="button" onClick={()=>setPropertyPicker(false)} aria-label="Cerrar propiedades">×</button></div>
    <input aria-label="Buscar propiedad" placeholder="Buscar por nombre o colonia" value={propertySearch} onChange={e=>setPropertySearch(e.target.value)} style={{width:'100%',padding:8,margin:'8px 0'}}/>
