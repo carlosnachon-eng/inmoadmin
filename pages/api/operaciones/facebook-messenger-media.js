@@ -1,8 +1,7 @@
 import {createClient} from '@supabase/supabase-js';
 import {authorizeInboxStaff} from '../../../lib/shadow/ai/apiAuth.js';
 import {messengerConfig,isRef} from '../../../lib/messaging/facebook/messenger/config.js';
-import {open,binding,recipient} from '../../../lib/messaging/facebook/messenger/crypto.js';
-import {pageToken} from '../../../lib/messaging/facebook/messenger/manual.js';
+import {open,binding} from '../../../lib/messaging/facebook/messenger/crypto.js';
 import {reviewMediaUrl} from '../../../lib/messaging/instagram/business/content.js';
 import {secureDownload,detectMime} from '../../../lib/shadow/media/network.js';
 
