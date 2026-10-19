@@ -37,6 +37,14 @@ export default async function handler(req,res){
   if(he||!history||!Array.isArray(history.rows))return res.status(403).end();
   const {data:link,error:le}=await db.rpc('fb_messenger_thread_client_v1',{p_connection:c.connection,p_thread:thread,p_actor:actor.id,p_op:'get',p_client:null});
   if(le)return res.status(403).end();
+  if(op==='options'){
+   const [{data:advisors,error:ae},{data:properties,error:pe}]=await Promise.all([
+    db.from('profiles').select('id,full_name,email,role_id').eq('active',true).in('role_id',['asesor','gerente_ventas','admin']).order('full_name',{ascending:true}),
+    db.from('propiedades').select('id,titulo,status').eq('status','published').order('updated_at',{ascending:false}).limit(150)
+   ]);
+   if(ae||pe)throw Error('options');
+   return res.status(200).json({advisors:(advisors||[]).map(a=>({id:a.id,name:a.full_name||a.email})),properties:properties||[]});
+  }
   if(op==='list'){
    if(!link?.client_id)return res.status(200).json({rows:[]});
    const {data,error}=await db.from('citas').select('id,cliente_id,asesor_id,propiedad_id,fecha_hora,estado,notas').eq('cliente_id',link.client_id).order('fecha_hora',{ascending:false}).limit(30);
