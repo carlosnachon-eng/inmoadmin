@@ -28,7 +28,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   setText(draft);setPropertyPicker(false);
  }
  const [pendingMedia,setPendingMedia]=useState(null),[recording,setRecording]=useState(false);
- const mediaInputRef=useRef(null),recorderRef=useRef(null),streamRef=useRef(null),chunksRef=useRef([]);
+ const mediaInputRef=useRef(null),recorderRef=useRef(null),streamRef=useRef(null),chunksRef=useRef([]),cancelRecordingRef=useRef(false);
  const allowedMime=new Set(['image/jpeg','image/png','image/webp','video/mp4','audio/mp4']);
  function clearPending(){setPendingMedia(null);if(mediaInputRef.current)mediaInputRef.current.value='';}
  function selectMedia(file){
@@ -46,18 +46,20 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    stream=await navigator.mediaDevices.getUserMedia({audio:true});
    const mime=['audio/mp4;codecs=mp4a.40.2','audio/mp4'].find(x=>MediaRecorder.isTypeSupported(x));
    if(!mime){stream.getTracks().forEach(t=>t.stop());setStatus('Grabación MP4 no disponible');return;}
-   const recorder=new MediaRecorder(stream,{mimeType:mime});streamRef.current=stream;recorderRef.current=recorder;chunksRef.current=[];
+   const recorder=new MediaRecorder(stream,{mimeType:mime});streamRef.current=stream;recorderRef.current=recorder;chunksRef.current=[];cancelRecordingRef.current=false;
    recorder.ondataavailable=e=>{if(e.data?.size)chunksRef.current.push(e.data);};
    recorder.onstop=()=>{
     stream.getTracks().forEach(t=>t.stop());streamRef.current=null;setRecording(false);
     const chunks=chunksRef.current;chunksRef.current=[];
-    if(chunks.length)setPendingMedia(new File(chunks,'nota-voz.m4a',{type:'audio/mp4'}));
+    if(chunks.length&&!cancelRecordingRef.current)setPendingMedia(new File(chunks,'nota-voz.m4a',{type:'audio/mp4'}));
+   cancelRecordingRef.current=false;
    };
    recorder.start(250);setRecording(true);setStatus('Grabando…');
   }catch{stream?.getTracks().forEach(t=>t.stop());setStatus('No se pudo acceder al micrófono');}
  }
  function stopRecording(cancel=false){
   const r=recorderRef.current;
+  if(cancel)cancelRecordingRef.current=true;
   if(r&&r.state==='recording'){if(cancel)r.ondataavailable=()=>{};r.stop();}
   streamRef.current?.getTracks().forEach(t=>t.stop());
   if(cancel){chunksRef.current=[];setPendingMedia(null);}
