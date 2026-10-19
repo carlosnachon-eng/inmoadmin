@@ -27,6 +27,62 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   if(new TextEncoder().encode(draft).length>990){setStatus('La propiedad excede el límite de texto');return;}
   setText(draft);setPropertyPicker(false);
  }
+ const [pendingMedia,setPendingMedia]=useState(null),[recording,setRecording]=useState(false);
+ const mediaInputRef=useRef(null),recorderRef=useRef(null),streamRef=useRef(null),chunksRef=useRef([]);
+ const allowedMime=new Set(['image/jpeg','image/png','image/webp','video/mp4','audio/mp4']);
+ function clearPending(){setPendingMedia(null);if(mediaInputRef.current)mediaInputRef.current.value='';}
+ function selectMedia(file){
+  if(!file)return;
+  if(!allowedMime.has(file.type)||file.size<1||file.size>(file.type.startsWith('image/')?8388608:26214400)){
+   setStatus('Archivo no compatible o demasiado grande');return;
+  }
+  setPendingMedia(file);setStatus('');
+ }
+ async function startRecording(){
+  if(recording||pendingMedia||busy||locked.current||!enabled)return;
+  if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined'){setStatus('Este navegador no permite grabar audio');return;}
+  let stream;
+  try{
+   stream=await navigator.mediaDevices.getUserMedia({audio:true});
+   const mime=['audio/mp4;codecs=mp4a.40.2','audio/mp4'].find(x=>MediaRecorder.isTypeSupported(x));
+   if(!mime){stream.getTracks().forEach(t=>t.stop());setStatus('Grabación MP4 no disponible');return;}
+   const recorder=new MediaRecorder(stream,{mimeType:mime});streamRef.current=stream;recorderRef.current=recorder;chunksRef.current=[];
+   recorder.ondataavailable=e=>{if(e.data?.size)chunksRef.current.push(e.data);};
+   recorder.onstop=()=>{
+    stream.getTracks().forEach(t=>t.stop());streamRef.current=null;setRecording(false);
+    const chunks=chunksRef.current;chunksRef.current=[];
+    if(chunks.length)setPendingMedia(new File(chunks,'nota-voz.m4a',{type:'audio/mp4'}));
+   };
+   recorder.start(250);setRecording(true);setStatus('Grabando…');
+  }catch{stream?.getTracks().forEach(t=>t.stop());setStatus('No se pudo acceder al micrófono');}
+ }
+ function stopRecording(cancel=false){
+  const r=recorderRef.current;
+  if(r&&r.state==='recording'){if(cancel)r.ondataavailable=()=>{};r.stop();}
+  streamRef.current?.getTracks().forEach(t=>t.stop());
+  if(cancel){chunksRef.current=[];setPendingMedia(null);}
+  setRecording(false);
+ }
+ useEffect(()=>()=>{streamRef.current?.getTracks().forEach(t=>t.stop());},[]);
+ async function sendMedia(){
+  const file=pendingMedia;
+  if(!file||locked.current||busy||!enabled||!rows.some(r=>r.input===input&&r.can_reply))return;
+  const {data}=await supabase.auth.getSession();
+  if(!data?.session?.user?.id){setStatus('Sesión requerida');return;}
+  const ext=file.type==='audio/mp4'?'m4a':file.type==='video/mp4'?'mp4':file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg';
+  const path=data.session.user.id+'/'+crypto.randomUUID()+'.'+ext;
+  locked.current=true;setBusy(true);setStatus('Subiendo archivo…');
+  try{
+   const uploaded=await supabase.storage.from('facebook-messenger-outbound').upload(path,file,{contentType:file.type,upsert:false});
+   if(uploaded.error)throw Error('upload');
+   const action=crypto.randomUUID();
+   const result=await inboxRequest('facebook','media-reply',{body:{action,input,mime:file.type,path,size:file.size}});
+   if(result.status==='accepted'){setStatus('Meta aceptó el archivo. Esperando confirmación.');clearPending();locked.current=false;}
+   else if(result.status==='failed'){setStatus('Meta rechazó el archivo; no se reenviará automáticamente.');locked.current=false;}
+   else setStatus('Resultado incierto. No reenvíes el archivo hasta revisar el registro.');
+  }catch{setStatus('Resultado no confirmado. No vuelvas a enviar sin revisar.');}
+  finally{setBusy(false);await refresh();}
+ }
  const [refreshing,setRefreshing]=useState(false);
  const [outbox,setOutbox]=useState([]);
  const outboxRef=useRef([]);
@@ -163,7 +219,16 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    <div style={{maxHeight:220,overflowY:'auto'}}>{propertyLoading?'Cargando…':propertyRows.filter(p=>(p.titulo+' '+p.colonia+' '+p.ciudad).toLowerCase().includes(propertySearch.toLowerCase())).slice(0,30).map(p=><button type="button" key={p.id} onClick={()=>selectProperty(p)} style={{display:'block',width:'100%',height:'auto',borderRadius:6,textAlign:'left',padding:9,marginBottom:4}}>{p.titulo} · {p.colonia||p.ciudad||''}</button>)}</div>
    <small>La propiedad se prepara como mensaje. Revisa y pulsa Enviar para compartirla.</small>
   </div>}
-  <div className="composeRow"><button type="button" title="Enviar propiedad" aria-label="Enviar propiedad" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)} onClick={openProperties}>🏠</button><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
+  {pendingMedia&&<div style={{display:'flex',alignItems:'center',gap:8,padding:8}}>
+    <span>{pendingMedia.name} · {(pendingMedia.size/1024/1024).toFixed(1)} MB</span>
+    <button type="button" onClick={clearPending} disabled={busy}>Cancelar</button>
+    <button type="button" onClick={sendMedia} disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)}>Enviar archivo</button>
+   </div>}
+   {recording&&<div><span>● Grabando nota de voz</span><button type="button" onClick={()=>stopRecording(false)}>Detener</button><button type="button" onClick={()=>stopRecording(true)}>Cancelar</button></div>}
+   <div className="composeRow"><input type="file" ref={mediaInputRef} accept="image/jpeg,image/png,image/webp,video/mp4" hidden onChange={e=>selectMedia(e.target.files?.[0])}/>
+   <button type="button" title="Adjuntar foto o video" disabled={busy||recording} onClick={()=>mediaInputRef.current?.click()}>＋</button>
+   <button type="button" title="Grabar nota de voz" disabled={busy||recording||!!pendingMedia} onClick={startRecording}>🎤</button>
+   <button type="button" title="Enviar propiedad" aria-label="Enviar propiedad" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)} onClick={openProperties}>🏠</button><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
   {status&&<p role="status" className="status">{status}</p>}</div>
   <aside className={'fbDetails '+(detailsOpen?'open':'')} aria-label="Detalles del contacto Facebook">
    <div className="detailsHeading"><strong>Detalles</strong><button type="button" onClick={()=>setDetailsOpen(false)} aria-label="Cerrar ficha">×</button></div>
