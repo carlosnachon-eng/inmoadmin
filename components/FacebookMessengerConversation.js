@@ -3,6 +3,7 @@ import {createPortal} from 'react-dom';
 import {inboxRequest} from './CommercialInbox';
 import {supabase} from '../lib/supabase';
 import FacebookReceivedMedia from './FacebookReceivedMedia';
+import {shouldSendOnEnter} from '../lib/messaging/shared/composerKeyboard.js';
 
 function FacebookLinkifiedText({value}){
  const parts=String(value||'').split(/(https?:\/\/[^\s]+)/g);
@@ -13,7 +14,7 @@ function FacebookLinkifiedText({value}){
 
 export default function FacebookMessengerConversation({thread,displayName='',onNameSaved}){
  const [rows,setRows]=useState([]),[enabled,setEnabled]=useState(false),[text,setText]=useState(''),[input,setInput]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
- const locked=useRef(false),mounted=useRef(true);
+ const locked=useRef(false),mounted=useRef(true),historyPolling=useRef(false);
  const [propertyPicker,setPropertyPicker]=useState(false),[propertyRows,setPropertyRows]=useState([]),[propertySearch,setPropertySearch]=useState(''),[propertyLoading,setPropertyLoading]=useState(false),[propertyChoices,setPropertyChoices]=useState([]);
  async function openProperties(){
   if(!enabled||busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply))return;
@@ -217,8 +218,10 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   }catch{setNameStatus('No se pudo guardar el nombre.');}
  }
 
- async function refresh(){
-  setRefreshing(true);
+ async function refresh({quiet=false}={}){
+  if(historyPolling.current)return;
+  historyPolling.current=true;
+  if(!quiet)setRefreshing(true);
   try{const r=await inboxRequest('facebook','history',{thread});if(!mounted.current)return;
    const items=Array.isArray(r.rows)?r.rows:[];
    setRows(items);setEnabled(r.sender_enabled===true);
@@ -235,10 +238,17 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    });
    if(!locked.current){const latest=[...items].reverse().find(item=>item.can_reply===true&&item.kind==='inbound');
     setInput(previous=>items.some(item=>item.input===previous&&item.can_reply===true)?previous:(latest?.input||''));}
-  }catch{if(mounted.current){setRows([]);setInput('');setEnabled(false);setStatus('Historial no disponible o acceso no autorizado.');}}
-  finally{if(mounted.current)setRefreshing(false);}
+  }catch{if(mounted.current&&!quiet){setRows([]);setInput('');setEnabled(false);setStatus('Historial no disponible o acceso no autorizado.');}}
+  finally{historyPolling.current=false;if(mounted.current&&!quiet)setRefreshing(false);}
  }
  useEffect(()=>{mounted.current=true;void refresh();return()=>{mounted.current=false;};},[thread]);
+ // Poll received Facebook history without changing drafts or dispatching a message.
+ useEffect(()=>{
+  const tick=()=>{if(document.visibilityState==='visible'&&!locked.current&&!busy)void refresh({quiet:true});};
+  const id=setInterval(tick,10000);
+  document.addEventListener('visibilitychange',tick);
+  return()=>{clearInterval(id);document.removeEventListener('visibilitychange',tick);};
+ },[thread,busy]);
  async function send(e){
   e.preventDefault();
   const message=text.trim();
@@ -315,7 +325,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    <div className="composeRow"><button type="button" title="Agendar cita" onClick={()=>void openAppointment()} disabled={busy||appointmentBusy}>📅</button><input type="file" ref={mediaInputRef} accept="image/jpeg,image/png,image/webp,video/mp4" hidden onChange={e=>selectMedia(e.target.files?.[0])}/>
    <button type="button" title="Adjuntar foto o video" disabled={busy||recording} onClick={()=>mediaInputRef.current?.click()}>＋</button>
    <button type="button" title="Grabar nota de voz" disabled={busy||recording||!!pendingMedia} onClick={startRecording}>🎤</button>
-   <button type="button" title="Enviar propiedad" aria-label="Enviar propiedad" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)} onClick={openProperties}>🏠</button><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
+   <button type="button" title="Enviar propiedad" aria-label="Enviar propiedad" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)} onClick={openProperties}>🏠</button><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(shouldSendOnEnter(e)){e.preventDefault();if(enabled&&!busy&&!locked.current&&text.trim()&&rows.some(r=>r.input===input&&r.can_reply))e.currentTarget.form?.requestSubmit();}}} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
   {status&&<p role="status" className="status">{status}</p>}</div>
   <aside className={'fbDetails '+(detailsOpen?'open':'')} aria-label="Detalles del contacto Facebook">
    <div className="detailsHeading"><strong>Detalles</strong><button type="button" onClick={()=>setDetailsOpen(false)} aria-label="Cerrar ficha">×</button></div>
