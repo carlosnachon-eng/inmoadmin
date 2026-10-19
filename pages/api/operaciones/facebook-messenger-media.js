@@ -17,14 +17,17 @@ async function recoverSource(c,row,attachment,index,db){
  endpoint.searchParams.set('fields','id,attachments{file_url,image_data,video_data,id}');
  const response=await fetch(endpoint,{method:'GET',redirect:'error',cache:'no-store',
   signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+token}});
- if(!response.ok)throw Error('graph_unavailable');
+ if(!response.ok)throw Error(response.status===401||response.status===403?'graph_access_denied':response.status===404?'graph_not_found':response.status===429?'graph_rate_limited':'graph_http_failure');
  const body=await response.json();
- if(body?.id!==mid||!Array.isArray(body?.attachments?.data))throw Error('graph_mismatch');
+ if(body?.id!==mid)throw Error('graph_message_mismatch');
+ if(!Array.isArray(body?.attachments?.data))throw Error('graph_attachments_absent');
  const item=body.attachments.data[index];
- if(!item||typeof attachment.attachment_id!=='string'||item.id!==attachment.attachment_id)
-  throw Error('graph_attachment_mismatch');
+ if(!item)throw Error('graph_attachment_index_missing');
+ if(typeof attachment.attachment_id!=='string')throw Error('stored_attachment_id_missing');
+ if(item.id!==attachment.attachment_id)throw Error('graph_attachment_mismatch');
  const candidate=item.file_url||item.image_data?.url||item.image_data?.media_url||item.video_data?.url;
- return reviewMediaUrl(candidate);
+ if(typeof candidate!=='string')throw Error('graph_media_url_missing');
+ try{return reviewMediaUrl(candidate);}catch{throw Error('graph_media_url_rejected');}
 }
 
 export default async function handler(req,res){
@@ -82,5 +85,12 @@ export default async function handler(req,res){
   res.setHeader('Content-Length',String(media.buffer.length));
   res.setHeader('Content-Disposition',attachment.type==='file'?'attachment':'inline');
   return res.status(200).send(media.buffer);
- }catch{diagnostic(stage);return res.status(404).end();}
+ }catch(error){
+  const safe=new Set(['graph_access_denied','graph_not_found','graph_rate_limited','graph_http_failure',
+   'graph_message_mismatch','graph_attachments_absent','graph_attachment_index_missing',
+   'stored_attachment_id_missing','graph_attachment_mismatch','graph_media_url_missing',
+   'graph_media_url_rejected']);
+  diagnostic(stage==='graph_recovery'&&safe.has(error?.message)?error.message:stage);
+  return res.status(404).end();
+ }
 }
