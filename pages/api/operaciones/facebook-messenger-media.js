@@ -35,7 +35,21 @@ async function recoverSource(c,row,attachment,index,db){
  }
  const candidate=item.file_url||item.image_data?.url||item.image_data?.media_url||item.video_data?.url;
  if(typeof candidate!=='string')throw Error('graph_media_url_missing');
- try{return reviewMediaUrl(candidate);}catch{throw Error('graph_media_url_rejected');}
+ try{return reviewMediaUrl(candidate);}catch{
+  // Only fixed categories: never log URL, hostname, query, token or message IDs.
+  let category='invalid_url';
+  try {
+   const u=new URL(candidate);
+   if(u.protocol!=='https:')category='non_https';
+   else if(u.username||u.password||u.hash||(u.port&&u.port!=='443'))category='url_components';
+   else if(u.hostname==='lookaside.fbsbx.com'||u.hostname.endsWith('.cdninstagram.com')||
+     u.hostname.endsWith('.fbcdn.net'))category='approved_host_rejected';
+   else if(u.hostname==='facebook.com'||u.hostname.endsWith('.facebook.com')||
+     u.hostname==='fbsbx.com'||u.hostname.endsWith('.fbsbx.com'))category='meta_host_not_allowlisted';
+   else category='other_host_not_allowlisted';
+  }catch{}
+  throw Error('graph_media_url_rejected_'+category);
+ }
 }
 
 export default async function handler(req,res){
@@ -98,7 +112,11 @@ export default async function handler(req,res){
    'graph_message_mismatch','graph_attachments_absent','graph_attachment_index_missing',
    'stored_attachment_id_missing','graph_attachment_mismatch','legacy_attachment_ambiguous',
    'graph_media_url_missing',
-   'graph_media_url_rejected']);
+   'graph_media_url_rejected',
+   'graph_media_url_rejected_invalid_url','graph_media_url_rejected_non_https',
+   'graph_media_url_rejected_url_components','graph_media_url_rejected_approved_host_rejected',
+   'graph_media_url_rejected_meta_host_not_allowlisted',
+   'graph_media_url_rejected_other_host_not_allowlisted']);
   diagnostic(stage==='graph_recovery'&&safe.has(error?.message)?error.message:stage);
   return res.status(404).end();
  }
