@@ -80,7 +80,8 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   locked.current=true;setBusy(true);setStatus('Envío manual en curso…');
   try{
    const result=await inboxRequest('facebook','reply',{body:{action:crypto.randomUUID(),input,text:text.trim()}});
-   if(mounted.current)setStatus(result.status==='accepted'?'Aceptado por Meta. La recepción se confirma por echo.':`Resultado: ${result.status}. No se reintentará.`);
+   if(mounted.current)setStatus(result.status==='accepted'?'Aceptado por Meta. Puedes enviar otro mensaje mientras la ventana esté abierta.':`Resultado: ${result.status}. No reintentes un envío incierto.`);
+   if(result.status==='accepted')locked.current=false;
   }catch{if(mounted.current)setStatus('Resultado incierto. No reintentar; revisar journal.');}
   finally{if(mounted.current){setBusy(false);setText('');await refresh();}}
   // Remains locked after every attempt; refresh never dispatches or unlocks.
@@ -98,7 +99,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
     </article>
    </div>)}
   </div>
-  {enabled?<form onSubmit={send} className="composer"><label htmlFor="facebook-reply-text">Respuesta manual</label><small className="replyHint">{input?'Mensaje entrante válido seleccionado automáticamente · se enviará una sola vez':'No hay mensaje entrante elegible para responder en esta conversación'}</small><div className="composeRow"><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
+  {enabled?<form onSubmit={send} className="composer"><label htmlFor="facebook-reply-text">Respuesta manual</label><small className="replyHint">{input?'Ventana activa · cada mensaje se registra y envía una sola vez':'No hay mensaje entrante elegible para responder en esta conversación'}</small><div className="composeRow"><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
   {status&&<p role="status" className="status">{status}</p>}</div>
   <aside className={'fbDetails '+(detailsOpen?'open':'')} aria-label="Detalles del contacto Facebook">
    <div className="detailsHeading"><strong>Detalles</strong><button type="button" onClick={()=>setDetailsOpen(false)} aria-label="Cerrar ficha">×</button></div>
