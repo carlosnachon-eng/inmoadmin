@@ -23,8 +23,19 @@ async function recoverSource(c,row,attachment,index,db){
  if(!Array.isArray(body?.attachments?.data))throw Error('graph_attachments_absent');
  const item=body.attachments.data[index];
  if(!item)throw Error('graph_attachment_index_missing');
- if(typeof attachment.attachment_id!=='string')throw Error('stored_attachment_id_missing');
- if(item.id!==attachment.attachment_id)throw Error('graph_attachment_mismatch');
+ if(typeof attachment.attachment_id==='string'){
+  if(item.id!==attachment.attachment_id)throw Error('graph_attachment_mismatch');
+ } else {
+  // Legacy webhook events may lack an attachment ID. Permit only a unique,
+  // type-consistent attachment on the exact cryptographically bound message.
+  if(body.attachments.data.length!==1||index!==0)throw Error('legacy_attachment_ambiguous');
+  const providerType=String(item.mime_type||item.type||'').toLowerCase();
+  const expected=attachment.type;
+  if(!providerType||!(providerType===expected||providerType.startsWith(expected+'/')||
+    (expected==='audio'&&providerType==='video/mp4')||
+    (expected==='file'&&providerType==='application/pdf')))
+   throw Error('legacy_attachment_type_unverified');
+ }
  const candidate=item.file_url||item.image_data?.url||item.image_data?.media_url||item.video_data?.url;
  if(typeof candidate!=='string')throw Error('graph_media_url_missing');
  try{return reviewMediaUrl(candidate);}catch{throw Error('graph_media_url_rejected');}
@@ -88,7 +99,8 @@ export default async function handler(req,res){
  }catch(error){
   const safe=new Set(['graph_access_denied','graph_not_found','graph_rate_limited','graph_http_failure',
    'graph_message_mismatch','graph_attachments_absent','graph_attachment_index_missing',
-   'stored_attachment_id_missing','graph_attachment_mismatch','graph_media_url_missing',
+   'stored_attachment_id_missing','graph_attachment_mismatch','legacy_attachment_ambiguous',
+   'legacy_attachment_type_unverified','graph_media_url_missing',
    'graph_media_url_rejected']);
   diagnostic(stage==='graph_recovery'&&safe.has(error?.message)?error.message:stage);
   return res.status(404).end();
