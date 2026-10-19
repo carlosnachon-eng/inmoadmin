@@ -13,3 +13,12 @@ test('Facebook messages linkify URLs safely as Instagram does',()=>{
  assert.match(ui,/rel="noopener noreferrer"/);
  assert.match(ui,/<FacebookLinkifiedText value=\{r\.text\}/);
 });
+
+test('Facebook supports Instagram-style selection of up to five properties',()=>{
+ assert.match(ui,/propertyChoices/);
+ assert.match(ui,/current\.length>=5/);
+ assert.match(ui,/toggleProperty\(p\)/);
+ assert.match(ui,/prepareProperties/);
+ assert.match(ui,/Te comparto estas opciones:/);
+ assert.match(ui,/setText\(message\)/);
+});
