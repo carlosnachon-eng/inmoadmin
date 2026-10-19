@@ -6,6 +6,27 @@ import FacebookReceivedMedia from './FacebookReceivedMedia';
 export default function FacebookMessengerConversation({thread,displayName='',onNameSaved}){
  const [rows,setRows]=useState([]),[enabled,setEnabled]=useState(false),[text,setText]=useState(''),[input,setInput]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
  const locked=useRef(false),mounted=useRef(true);
+ const [propertyPicker,setPropertyPicker]=useState(false),[propertyRows,setPropertyRows]=useState([]),[propertySearch,setPropertySearch]=useState(''),[propertyLoading,setPropertyLoading]=useState(false);
+ async function openProperties(){
+  if(!enabled||busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply))return;
+  setPropertyLoading(true);setPropertyPicker(true);
+  try{
+   const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('session');
+   const response=await fetch('/api/operaciones/facebook-messenger-properties?'+new URLSearchParams({thread}),{
+    headers:{Authorization:'Bearer '+data.session.access_token},cache:'no-store'});
+   if(!response.ok)throw Error('properties');
+   const result=await response.json();setPropertyRows(result.rows||[]);
+  }catch{setStatus('No se pudieron cargar las propiedades');setPropertyPicker(false);}
+  finally{setPropertyLoading(false);}
+ }
+ function selectProperty(p){
+  const url='https://www.emporioinmobiliario.com.mx/propiedades/'+encodeURIComponent(p.public_id);
+  const amount=Number(p.precio);
+  const price=Number.isFinite(amount)?new Intl.NumberFormat('es-MX',{style:'currency',currency:p.moneda==='USD'?'USD':'MXN',maximumFractionDigits:0}).format(amount):'Precio a consultar';
+  const draft=[p.titulo,price,url].join('\\n');
+  if(new TextEncoder().encode(draft).length>990){setStatus('La propiedad excede el límite de texto');return;}
+  setText(draft);setPropertyPicker(false);
+ }
  const [refreshing,setRefreshing]=useState(false);
  const [outbox,setOutbox]=useState([]);
  const outboxRef=useRef([]);
@@ -136,7 +157,13 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
     <article className="bubble outgoing pendingBubble"><p>{o.text}</p><footer><span>{o.state==='sending'?'Enviando…':o.state==='accepted'?'Aceptado por Meta · esperando historial':o.state==='failed'?'Envío rechazado':'Resultado incierto · no reenviar'}</span></footer></article>
    </div>)}
   </div>
-  {enabled?<form onSubmit={send} className="composer"><label htmlFor="facebook-reply-text">Respuesta manual</label><small className="replyHint">{input?'Ventana activa · cada mensaje se registra y envía una sola vez':'No hay mensaje entrante elegible para responder en esta conversación'}</small><div className="composeRow"><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
+  {enabled?<form onSubmit={send} className="composer"><label htmlFor="facebook-reply-text">Respuesta manual</label><small className="replyHint">{input?'Ventana activa · cada mensaje se registra y envía una sola vez':'No hay mensaje entrante elegible para responder en esta conversación'}</small>{propertyPicker&&<div className="fbPropertyPicker" style={{border:'1px solid #ddd',padding:10,borderRadius:10,marginBottom:8}}>
+   <div style={{display:'flex',justifyContent:'space-between'}}><strong>Compartir propiedad</strong><button type="button" onClick={()=>setPropertyPicker(false)} aria-label="Cerrar propiedades">×</button></div>
+   <input aria-label="Buscar propiedad" placeholder="Buscar por nombre o colonia" value={propertySearch} onChange={e=>setPropertySearch(e.target.value)} style={{width:'100%',padding:8,margin:'8px 0'}}/>
+   <div style={{maxHeight:220,overflowY:'auto'}}>{propertyLoading?'Cargando…':propertyRows.filter(p=>(p.titulo+' '+p.colonia+' '+p.ciudad).toLowerCase().includes(propertySearch.toLowerCase())).slice(0,30).map(p=><button type="button" key={p.id} onClick={()=>selectProperty(p)} style={{display:'block',width:'100%',height:'auto',borderRadius:6,textAlign:'left',padding:9,marginBottom:4}}>{p.titulo} · {p.colonia||p.ciudad||''}</button>)}</div>
+   <small>La propiedad se prepara como mensaje. Revisa y pulsa Enviar para compartirla.</small>
+  </div>}
+  <div className="composeRow"><button type="button" title="Enviar propiedad" aria-label="Enviar propiedad" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)} onClick={openProperties}>🏠</button><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
   {status&&<p role="status" className="status">{status}</p>}</div>
   <aside className={'fbDetails '+(detailsOpen?'open':'')} aria-label="Detalles del contacto Facebook">
    <div className="detailsHeading"><strong>Detalles</strong><button type="button" onClick={()=>setDetailsOpen(false)} aria-label="Cerrar ficha">×</button></div>
