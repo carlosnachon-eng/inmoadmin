@@ -54,7 +54,7 @@ function Media({thread,input,index,type,onOpen,onLoaded}){
  </button>;
 }
 
-export default function InstagramBusinessInbox({embedded=false,externalThread=null,onBack}={}){
+export default function InstagramBusinessInbox({embedded=false,externalThread=null,externalDisplayName='',onBack}={}){
  function scrollChatBottom(behavior='auto'){
   requestAnimationFrame(()=>requestAnimationFrame(()=>bottomRef.current?.scrollIntoView({block:'end',behavior})));
  }
@@ -523,7 +523,7 @@ export default function InstagramBusinessInbox({embedded=false,externalThread=nu
    {selected?<>
     <header className="chatHeader">
      <button type="button" className="backButton" onClick={()=>{if(embedded){onBack?.();return;}setSelected(null);setRows([]);setProfile(null);setInput(null);}}>‹</button>
-     <div className="contactTitle"><div className="avatar large">IG</div><div><strong>{threads.find(t=>t.thread_ref===selected)?.alias||(profile?.username?`@${profile.username}`:profile?.name)||`Conversación Instagram ${selectedIndex+1}`}</strong><span>{profile?.username&&profile?.name?`${profile.name} · `:''}Instagram · Meta directo{assignment?.advisor_name?` · Asignado: ${assignment.advisor_name}`:''}</span></div></div>
+     <div className="contactTitle"><div className="avatar large">IG</div><div><strong>{threads.find(t=>t.thread_ref===selected)?.alias||externalDisplayName||(profile?.username?`@${profile.username}`:profile?.name)||`Contacto de Instagram`}</strong><span>{profile?.username&&profile?.name?`${profile.name} · `:''}Instagram · Meta directo{assignment?.advisor_name?` · Asignado: ${assignment.advisor_name}`:''}</span></div></div>
      <button type="button" className="mobileAliasButton" onClick={()=>{if(embedded)setDetailsExpanded(v=>!v);else setMobileAliasEditing(true)}} aria-expanded={embedded?detailsExpanded:mobileAliasEditing}>Ficha</button>
      <div className={`senderBadge ${enabled?'on':'off'}`}>{enabled?'Envío habilitado':'Sender OFF'}</div>
     </header>
