@@ -5,6 +5,9 @@ import {supabase} from '../lib/supabase';
 export default function FacebookMessengerConversation({thread,displayName='',onNameSaved}){
  const [rows,setRows]=useState([]),[enabled,setEnabled]=useState(false),[text,setText]=useState(''),[input,setInput]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
  const locked=useRef(false),mounted=useRef(true);
+ const [outbox,setOutbox]=useState([]);
+ const outboxRef=useRef([]);
+ function setOutboxSafe(updater){setOutbox(old=>{const next=typeof updater==='function'?updater(old):updater;outboxRef.current=next;return next;});}
  const [detailsOpen,setDetailsOpen]=useState(false),[phone,setPhone]=useState(''),[email,setEmail]=useState(''),[contactBusy,setContactBusy]=useState(false),[contactStatus,setContactStatus]=useState('');
  useEffect(()=>{let live=true;setPhone('');setEmail('');setContactStatus('');
   supabase.auth.getSession().then(async({data})=>{
@@ -70,22 +73,49 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   try{const r=await inboxRequest('facebook','history',{thread});if(!mounted.current)return;
    const items=Array.isArray(r.rows)?r.rows:[];
    setRows(items);setEnabled(r.sender_enabled===true);
+   // Reconcile only confirmed outbound echoes after the local send started.
+   const echoes=items.filter(x=>x.kind==='echo'&&typeof x.text==='string');
+   setOutboxSafe(old=>{
+    const consumed=new Set(old.filter(o=>o.echoInput).map(o=>o.echoInput));
+    return old.map(item=>{
+    if(item.state!=='accepted')return item;
+    const match=echoes.find(x=>!consumed.has(x.input)&&x.text===item.text&&Date.parse(x.occurred_at)>=item.startedAt-10000);
+    if(match){consumed.add(match.input);return {...item,state:'confirmed',echoInput:match.input};}
+    return item;
+   });
+   });
    if(!locked.current){const latest=[...items].reverse().find(item=>item.can_reply===true&&item.kind==='inbound');
     setInput(previous=>items.some(item=>item.input===previous&&item.can_reply===true)?previous:(latest?.input||''));}
   }catch{if(mounted.current){setRows([]);setInput('');setEnabled(false);setStatus('Historial no disponible o acceso no autorizado.');}}
  }
  useEffect(()=>{mounted.current=true;void refresh();return()=>{mounted.current=false;};},[thread]);
  async function send(e){
-  e.preventDefault();if(locked.current||!enabled||!text.trim()||!rows.some(r=>r.input===input&&r.can_reply))return;
-  locked.current=true;setBusy(true);setStatus('Envío manual en curso…');
+  e.preventDefault();
+  const message=text.trim();
+  if(locked.current||!enabled||!message||!rows.some(r=>r.input===input&&r.can_reply))return;
+  const action=crypto.randomUUID(),startedAt=Date.now();
+  locked.current=true;setBusy(true);setStatus('');
+  setOutboxSafe(old=>[...old,{action,text:message,startedAt,state:'sending'}]);
+  setText('');
   try{
-   const result=await inboxRequest('facebook','reply',{body:{action:crypto.randomUUID(),input,text:text.trim()}});
-   if(mounted.current)setStatus(result.status==='accepted'?'Aceptado por Meta. Puedes enviar otro mensaje mientras la ventana esté abierta.':`Resultado: ${result.status}. No reintentes un envío incierto.`);
-   if(result.status==='accepted')locked.current=false;
-  }catch{if(mounted.current)setStatus('Resultado incierto. No reintentar; revisar journal.');}
-  finally{if(mounted.current){setBusy(false);setText('');await refresh();}}
-  // Remains locked after every attempt; refresh never dispatches or unlocks.
+   const result=await inboxRequest('facebook','reply',{body:{action,input,text:message}});
+   const state=result.status==='accepted'?'accepted':result.status==='failed'?'failed':'uncertain';
+   if(mounted.current){
+    setOutboxSafe(old=>old.map(x=>x.action===action?{...x,state}:x));
+    setStatus(state==='accepted'?'Meta aceptó el envío. Esperando confirmación en el historial.':
+     state==='failed'?'Meta rechazó este envío; no se reenviará automáticamente.':
+     'Resultado incierto. No volver a enviar hasta revisar el registro.');
+   }
+   if(state==='accepted')locked.current=false;
+  }catch{
+   if(mounted.current){
+    setOutboxSafe(old=>old.map(x=>x.action===action?{...x,state:'uncertain'}:x));
+    setStatus('Resultado incierto. No vuelvas a enviar hasta revisar el registro.');
+   }
+  }finally{if(mounted.current){setBusy(false);await refresh();}}
+  // Every click creates one durable action. An uncertain attempt stays locked.
  }
+
  return <section className="fbConversation" aria-label="Conversación Facebook Messenger">
   <div className="fbWorkspace"><div className="fbChat"><header className="fbHeader"><div><strong>{displayName||'Contacto de Facebook'}</strong><span>Facebook Messenger · </span><span>{enabled?'Atención manual habilitada':'Sólo lectura · Envío desactivado'} · Sin IA</span></div><div className="fbActions"><button type="button" className="mobileDetails" onClick={()=>setDetailsOpen(v=>!v)}>Ficha</button><button type="button" onClick={refresh}>↻ Actualizar</button></div></header>
   {nameStatus&&<p role="status" className="nameStatus">{nameStatus}</p>}
@@ -93,10 +123,13 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    {!rows.length&&<p className="emptyHistory">No hay mensajes disponibles para esta conversación.</p>}
    {rows.map(r=><div key={r.input} className={r.kind==='echo'?'messageRow mine':'messageRow theirs'}>
     <article className={r.kind==='echo'?'bubble outgoing':'bubble'}>
-     <p>{r.text||(r.unsupported?'Adjunto recibido · vista previa no disponible':'Evento recibido')}</p>
+     <p>{r.text||(r.attachment_types?.length?`Adjunto: ${r.attachment_types.map(t=>({image:'Imagen',audio:'Audio',video:'Video',file:'Archivo'}[t]||'Archivo')).join(', ')} · vista previa no disponible`:r.unsupported?'Adjunto recibido · vista previa no disponible':'Evento recibido')}</p>
      <footer><time>{new Date(r.occurred_at).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</time>{r.outcome&&<span> · {r.outcome}</span>}</footer>
      {enabled&&r.can_reply&&<button type="button" className="pickReply" disabled={busy||locked.current} aria-pressed={input===r.input} onClick={()=>setInput(r.input)}>{input===r.input?'Seleccionado':'Responder a este mensaje'}</button>}
     </article>
+   </div>)}
+   {outbox.filter(o=>o.state!=='confirmed').map(o=><div key={o.action} className="messageRow mine">
+    <article className="bubble outgoing pendingBubble"><p>{o.text}</p><footer><span>{o.state==='sending'?'Enviando…':o.state==='accepted'?'Aceptado por Meta · esperando historial':o.state==='failed'?'Envío rechazado':'Resultado incierto · no reenviar'}</span></footer></article>
    </div>)}
   </div>
   {enabled?<form onSubmit={send} className="composer"><label htmlFor="facebook-reply-text">Respuesta manual</label><small className="replyHint">{input?'Ventana activa · cada mensaje se registra y envía una sola vez':'No hay mensaje entrante elegible para responder en esta conversación'}</small><div className="composeRow"><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
@@ -132,7 +165,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    .fbDetails{min-width:0;min-height:0;display:flex;flex-direction:column;border-left:1px solid #e5e7eb;background:#fff}.detailsHeading{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #e5e7eb}.detailsHeading strong{font-size:14px}.detailsHeading button{display:none}.detailsScroll{overflow-y:auto;min-height:0;flex:1;overscroll-behavior:contain}.profileCard{display:flex;flex-direction:column;align-items:center;text-align:center;gap:7px;padding:22px 12px;border-bottom:1px solid #edf0f4}.profileCard strong{font-size:13px;overflow-wrap:anywhere}.profileCard small{color:#94a3b8;font-size:11px}.fbAvatar{width:55px;height:55px;border-radius:50%;background:#1877f2;color:white;display:grid;place-items:center;font-size:34px;font-weight:700}.detailBlock{padding:15px;border-bottom:1px solid #edf0f4}.detailBlock label{display:block;font-size:11px;font-weight:800;color:#64748b;margin-bottom:9px}.detailBlock p{margin:0;font-size:12px;color:#475569;line-height:1.55}.detailBlock small{display:block;margin-top:6px;font-size:10px;color:#94a3b8}.editFields{display:flex;flex-direction:column;gap:7px}.editFields select{min-width:0;width:100%;box-sizing:border-box;border:1px solid #dbe1ea;border-radius:8px;padding:9px;font-size:12px}.editFields input{min-width:0;width:100%;box-sizing:border-box;border:1px solid #dbe1ea;border-radius:8px;padding:9px;font-size:12px}.editFields input:disabled{background:#f8fafc}.editFields button{background:#ae2148;color:white;border:0;border-radius:8px;padding:9px;font-weight:700;font-size:11px;cursor:pointer}.editFields button:disabled{opacity:.5}.mobileDetails{display:none}
    .fbActions{display:flex;gap:6px}.nameEditor{display:flex;gap:8px;background:#fff;padding:8px 14px;border-bottom:1px solid #e5e7eb}.nameEditor input{flex:1;min-width:0;border:1px solid #dbe1ea;border-radius:8px;padding:8px;font-size:12px}.nameEditor button{border:0;background:#a51d40;color:#fff;border-radius:8px;padding:8px 12px;font-size:11px;cursor:pointer}.nameEditor button:disabled{opacity:.5}.nameStatus{margin:0;padding:5px 14px;font-size:11px;color:#64748b;background:white}
    .history{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;padding:18px;align-content:start}
-   .messageRow{display:flex;width:100%}.messageRow.theirs{justify-content:flex-start}.messageRow.mine{justify-content:flex-end}
+   .pendingBubble{opacity:.8}.pendingBubble footer{font-weight:700}.messageRow{display:flex;width:100%}.messageRow.theirs{justify-content:flex-start}.messageRow.mine{justify-content:flex-end}
    .bubble{width:fit-content;max-width:min(78%,540px);border:1px solid #e2e8f0;background:#fff;border-radius:15px 15px 15px 4px;padding:11px 13px;box-sizing:border-box;overflow-wrap:anywhere}.outgoing{background:#e3efff;border-color:#cfe0fd;border-radius:15px 15px 4px 15px}
    .bubble p{white-space:pre-wrap;font-size:13px;line-height:1.5;margin:0;color:#263348}.bubble footer{display:block;text-align:right;margin-top:6px;color:#94a3b8;font-size:10px}.emptyHistory{color:#64748b;font-size:12px;text-align:center;margin:auto}
    .pickReply{margin-top:9px;background:transparent;border:0;color:#a51d40;font-size:11px;font-weight:700;cursor:pointer}
