@@ -160,10 +160,14 @@ export default function InstagramBusinessInbox({embedded=false,externalThread=nu
    if(polling.current||lock.current||document.visibilityState!=='visible')return;
    polling.current=true;
    try{
-    const [t,n]=await Promise.all([request('threads'),request('notifications').catch(()=>null)]);
-    setEnabled(!!t.sender_enabled);
-    setThreads(t.rows||[]);
-    if(n)setNotifications(n);
+    // The unified Inbox already polls the shared thread list. In embedded mode
+    // fetch only this conversation to avoid duplicate provider requests.
+    if(!embedded){
+     const [t,n]=await Promise.all([request('threads'),request('notifications').catch(()=>null)]);
+     setEnabled(!!t.sender_enabled);
+     setThreads(t.rows||[]);
+     if(n)setNotifications(n);
+    }
     const current=selectedRef.current;
     if(current){
      const h=await request('history',{query:{thread:current}});
@@ -180,7 +184,7 @@ export default function InstagramBusinessInbox({embedded=false,externalThread=nu
   };
   const id=setInterval(tick,10000);
   return()=>clearInterval(id);
- },[]);
+ },[embedded]);
 
  async function openPropertyPicker(){
   if(!enabled||!replyAnchor||uncertainLocked||busy)return;
