@@ -177,7 +177,7 @@ export default function InstagramBusinessInbox({embedded=false,externalThread=nu
    }catch{/* Keep the current Inbox visible; manual refresh can surface errors. */}
    finally{polling.current=false;}
   };
-  const id=setInterval(tick,15000);
+  const id=setInterval(tick,10000);
   return()=>clearInterval(id);
  },[]);
 
@@ -594,7 +594,7 @@ export default function InstagramBusinessInbox({embedded=false,externalThread=nu
       <input ref={mediaInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,.mov" hidden onChange={e=>chooseMediaFile(e.target.files?.[0])}/>
       <button type="button" className="attachButton" title="Adjuntar foto o video" disabled={busy||recording||!enabled||!replyAnchor||uncertainLocked} onClick={()=>mediaInputRef.current?.click()}>＋</button>
       {recording?<div className="recordingBar"><span>● {recordSeconds}s</span><button type="button" onClick={cancelRecording}>Cancelar</button><button type="button" onClick={stopRecording}>Detener</button></div>:<button type="button" className="micButton" title="Grabar nota de voz" disabled={busy||!!pendingMedia||!enabled||!replyAnchor||uncertainLocked} onClick={startRecording}>🎤</button>}
-      <textarea id="business-reply" value={text} onChange={e=>setText(e.target.value)} maxLength={999}
+      <textarea id="business-reply" value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.repeat&&!e.nativeEvent.isComposing&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();if(!busy&&!lock.current&&enabled&&replyAnchor&&!uncertainLocked&&text.trim())e.currentTarget.form?.requestSubmit();}}} maxLength={999}
        placeholder={!enabled?'Sender apagado':uncertainLocked?'Verifica el último envío antes de continuar':replyAnchor?'Escribe un mensaje…':'Fuera de la ventana de respuesta'}
        disabled={busy||!enabled||!replyAnchor||uncertainLocked}/>
       <button className="sendButton" aria-label="Enviar mensaje" title="Enviar mensaje" disabled={busy||!enabled||!replyAnchor||!text.trim()||uncertainLocked}><span className="sendLabel">Enviar</span><span className="sendArrow" aria-hidden="true">↑</span></button>
