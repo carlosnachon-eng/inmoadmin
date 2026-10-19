@@ -1,0 +1,65 @@
+Issue #251 — cancelación auditada de cierres
+Fecha: 2026-10-19. Base main: bd0631d.
+
+ALCANCE
+RPC cancelar_cierre sólo para perfil admin activo; motivo obligatorio; bloqueo
+de fila; auditoría privada append-only; idempotencia por cierre. No modifica
+atribución comercial, recibo, firma ni montos históricos. Cobros/pagos existentes
+requieren conciliación y bloquean cancelación. Los pagos nuevos se serializan
+contra la cancelación. No permite reactivar ni regenerar el mismo origen.
+UI conserva activos por defecto y ofrece historial cancelado separado.
+Consumidores financieros y v_commercial_kpi_events excluyen cancelados.
+Las RPC de KPIs existentes consumen esa vista; no se reescriben.
+
+EVIDENCIA EJECUTADA
+- node --test tests/cierreCancellation.test.mjs: 4/4 PASS.
+- tests/cierreCancellationPostgres.mjs: 23 comprobaciones PASS en PostgreSQL
+  local desechable, con roles authenticated/anon y dos conexiones concurrentes.
+  Incluye doble cancelación, no-admin, motivo inválido, mutación directa,
+  pago previo, carreras pago/cancelación en ambos órdenes, rollback,
+  recreación por recibo/firma, auditoría inmutable, KPI y atribución conservada.
+- Build Next.js completo: PASS, 81/81 páginas; credenciales dummy sin servicios
+  externos. Advertencias de descarga de Google Fonts (optimización omitida).
+- Migración 20261019195353_cierre_cancelacion_auditada aplicada SÓLO en
+  Supabase DEV hjfwjnejbcpmknvfpdcq.
+- tests/cierreCancellationDEV.sql ejecutado en DEV con ROLLBACK:
+  first=cancelado, second=ya_cancelado, audit_events=1, paid=paid_blocked,
+  active_commission=10000, control_unchanged=true,
+  preserved_historical_commission=true.
+- Consulta posterior: cero cierres y cero auditorías residuales para los tres
+  IDs negativos de fixture. Los cierres reales 943 y 950 no fueron modificados.
+- ACL DEV: anon sin EXECUTE, authenticated sin INSERT directo en auditoría.
+
+ADVISORS DEV
+INFO RLS sin políticas en cierre_audit_private.cancelaciones: intencional,
+deniega acceso directo; sólo RPC SECURITY DEFINER con comprobación de admin.
+WARN RPC SECURITY DEFINER ejecutable por authenticated: intencional; permisos
+efectivos se validan dentro de la RPC y el search_path es vacío.
+Referencias:
+https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+Existen avisos de otras tablas fuera del alcance; no se corrigieron aquí.
+
+REPRODUCCIÓN LOCAL
+node --test tests/cierreCancellation.test.mjs
+IG_PG_DEPS=<directorio con paquete pg> IG_PG_BIN=<binarios postgres>
+  node tests/cierreCancellationPostgres.mjs
+El runner crea y elimina su propia base local; no acepta URL remota.
+
+PENDIENTE ANTES DE PRODUCCIÓN
+1. Revisión del PR y QA visual autenticada en DEV (desktop/móvil); no se
+   declara completada una prueba de navegador sólo por el build.
+2. Autorización explícita de migración y deployment productivos.
+3. Respaldar definición de v_commercial_kpi_events y esquema antes de aplicar.
+   Aplicar la migración completa de forma transaccional ANTES del código:
+   las consultas nuevas requieren la columna estado.
+4. Verificar ACL/RLS, trigger de atribución intacto y KPIs de activos.
+5. La cancelación REAL de #943 es una acción posterior con autorización propia;
+   no forma parte de esta implementación ni de la migración.
+
+ROLLBACK
+Si falla la aplicación transaccional de la migración: ROLLBACK completo.
+Tras commit, no borrar auditoría ni reactivar filas automáticamente. No volver
+al código anterior si hay cancelaciones: volvería a incluirlas en KPIs.
+Ante incidente posterior, suspender nuevas cancelaciones (revocar EXECUTE de
+authenticated) con autorización, conservar datos y corregir hacia adelante.
+No se realizó merge, deployment ni cambio en Producción.

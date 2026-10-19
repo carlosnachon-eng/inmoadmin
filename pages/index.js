@@ -418,7 +418,7 @@ export default function Home() {
         safe("allVisits", supabase.from("visitas_propiedad").select("propiedad_id, created_at")),
         safe("allContacts", supabase.from("solicitudes_contacto_propiedad").select("propiedad_id, created_at")),
         safe("allAppointments", supabase.from("citas").select("propiedad_id, fecha_hora")),
-        safe("closings", supabase.from("cierres").select("id, anio, mes, comision, pendiente")),
+        safe("closings", supabase.from("cierres").select("id, anio, mes, comision, pendiente").eq('estado', 'activo')),
         safe("closingPayments", supabase.from("cierre_pagos").select("id, monto, fecha").gte("fecha", mesInicio.slice(0, 10)).lt("fecha", mesFin.slice(0, 10))),
         safe("policies", supabase.from("poliza_expedientes").select("id, status, fecha_vigencia")),
         safe("policyRequests", supabase.from("solicitudes_inquilino").select("id, status")),

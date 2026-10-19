@@ -78,7 +78,7 @@ export default async function handler(req, res) {
   try {
     const { data: cierre, error: cierreError } = await supabase
       .from("cierres")
-      .select("*")
+      .select("*").eq('estado', 'activo')
       .eq("id", cierreId)
       .maybeSingle();
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import { cierreVigente, motivoCancelacionValido, cancellationError } from "../lib/cierreCancellation";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -27,6 +28,9 @@ export default function Cierres() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cierres, setCierres] = useState([]);
+  const [cancelados, setCancelados] = useState([]);
+  const [mostrarCancelados, setMostrarCancelados] = useState(false);
+  const [cancelando, setCancelando] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -98,7 +102,8 @@ export default function Cierres() {
         .eq("flujo_estado", "completo")
         .order("created_at", { ascending: false }),
     ]);
-    setCierres(cierresData || []);
+    setCierres((cierresData || []).filter(cierreVigente));
+    setCancelados((cierresData || []).filter(c => !cierreVigente(c)));
     setCierrePagos(pagosData || []);
     const recibosConCierre = new Set((cierresData || []).map(c => c.recibo_id).filter(Boolean));
     setApartadosPendientes((recibosData || []).filter(r =>
@@ -397,10 +402,27 @@ export default function Cierres() {
     }
   };
 
+  const cancelarCierre = async cierre => {
+    if (profile?.role_id !== 'admin' || cancelando !== null) return;
+    const motivo = window.prompt('Cancelar operación registrada. Motivo obligatorio (10–1000 caracteres):');
+    if (motivo === null) return;
+    if (!motivoCancelacionValido(motivo)) { showToast('Escribe un motivo de 10 a 1000 caracteres.', false); return; }
+    if (!window.confirm(`¿Confirmas CANCELAR el cierre #${cierre.id} de "${cierre.propiedad}"? Se conservará el historial y se excluirá de KPIs. No se cancelarán recibos ni firmas.`)) return;
+    setCancelando(cierre.id);
+    try {
+      const { error } = await supabase.rpc('cancelar_cierre', { p_cierre_id: cierre.id, p_motivo: motivo.trim() });
+      if (error) { showToast(cancellationError(error), false); return; }
+      showToast('Cierre cancelado. Evidencia histórica conservada.');
+      await loadCierres();
+    } catch { showToast(cancellationError(null), false); }
+    finally { setCancelando(null); }
+  };
+
   const deleteCierre = async (id, nombre) => {
     if (profile?.role_id !== "admin") { showToast("Solo Admin puede eliminar cierres", false); return; }
     if (!confirm(`Eliminar cierre de "${nombre}"?`)) return;
-    await supabase.from("cierres").delete().eq("id", id);
+    const { error } = await supabase.from("cierres").delete().eq("id", id);
+    if (error) { showToast('No se puede eliminar evidencia histórica. Usa Cancelar cierre si corresponde.', false); return; }
     showToast("Eliminado"); loadCierres();
   };
 
@@ -878,6 +900,7 @@ export default function Cierres() {
                         </div>
                       </div>
                       {esAdmin && <div style={{ display: "flex", gap: 6 }}>
+                        <button disabled={cancelando !== null} onClick={() => cancelarCierre(c)}>Cancelar cierre</button>
                         <button onClick={() => openEdit(c)} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Editar</button>
                         <button onClick={() => deleteCierre(c.id, c.propiedad)} style={{ background: "#fee2e2", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#991b1b" }}>X</button>
                       </div>}
@@ -1031,6 +1054,7 @@ export default function Cierres() {
                             <td style={{ padding: "9px 10px", fontSize: 12, fontWeight: 800, color: "#065f46" }}>{fmt(empNeto)}</td>
                             <td style={{ padding: "9px 10px" }}>
                               <div style={{ display: "flex", gap: 4 }}>
+                                {esAdmin && <button disabled={cancelando !== null} onClick={() => cancelarCierre(c)}>Cancelar cierre</button>}
                                 {esAdmin && <button onClick={() => openPago(c)} style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#065f46" }}>+ Pago</button>}
                                 {esAdmin && c.comision > 0 && c.cobrado > 0 && (
                                   <button onClick={() => descargarReciboComision(c)} style={{ background: "#fff0f2", border: "1px solid #fecdd3", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#C8102E" }}>Recibo</button>
@@ -1156,6 +1180,16 @@ export default function Cierres() {
         )}
       </div>
 
+      <section aria-label="Historial de cierres cancelados" style={{ padding: 16 }}>
+        <button onClick={() => setMostrarCancelados(v => !v)}>{mostrarCancelados ? 'Ocultar' : 'Mostrar'} cancelados ({cancelados.length})</button>
+        {mostrarCancelados && <><p>Historial excluido de totales, comisiones y KPIs. No modifica recibos ni firmas.</p>
+          {cancelados.map(c => <article key={c.id} style={{ padding: 12, borderBottom: '1px solid #ddd' }}>
+            <strong>Cancelado · #{c.id} · {c.propiedad}</strong>
+            <p>{c.cancelacion_motivo}</p>
+            <small>Fecha: {c.cancelado_en} · Autor: {c.cancelado_por}</small>
+          </article>)}
+        </>}
+      </section>
       {/* Modal Nuevo/Editar Cierre */}
       {showModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 12 }}>

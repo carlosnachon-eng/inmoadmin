@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     supabase.from("properties").select("status, rent_amount"),
     supabase.from("payments").select("status, amount, due_date").gte("due_date", inicioMes).lte("due_date", finMes),
     supabase.from("poliza_expedientes").select("status, fecha_vigencia, nombre_arrendatario, direccion_inmueble").eq("status", "activo"),
-    supabase.from("cierres").select("vendedor, comision").gte("fecha_cierre", inicioMes).lte("fecha_cierre", finMes),
+    supabase.from("cierres").select("vendedor, comision").eq('estado', 'activo').gte("fecha_cierre", inicioMes).lte("fecha_cierre", finMes),
     supabase.from("kpis_diarios").select("asesor, citas_efectivas").gte("fecha", inicioMes).lte("fecha", finMes),
   ]);
 

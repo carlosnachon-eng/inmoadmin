@@ -63,7 +63,7 @@ async function cargarCierres(periodo, metrics) {
 
   const { data: cierres, error: cierresError } = await measure('cierres.periodo', () => supabase
     .from('cierres')
-    .select('id, fecha_cierre, operacion, precio, comision, cobrado, pendiente, cobrado_bool, vendedor, propiedad_id, recibo_id, firma_id, comision_inmobiliaria, monto_gerente')
+    .select('id, fecha_cierre, operacion, precio, comision, cobrado, pendiente, cobrado_bool, vendedor, propiedad_id, recibo_id, firma_id, comision_inmobiliaria, monto_gerente').eq('estado', 'activo')
     .gte('fecha_cierre', periodo.startDate)
     .lt('fecha_cierre', periodo.endExclusive)
     .order('fecha_cierre', { ascending: true }));
@@ -280,7 +280,7 @@ async function cargarDatosOperativos(metrics) {
       .order('fecha', { ascending: true })),
     safe('operativo.cierres', () => supabase
       .from('cierres')
-      .select('id, propiedad, operacion, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, firma_id, propiedad_id')
+      .select('id, propiedad, operacion, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, firma_id, propiedad_id').eq('estado', 'activo')
       .order('fecha_cierre', { ascending: false })),
     safe('operativo.cierre_pagos', () => supabase
       .from('cierre_pagos')

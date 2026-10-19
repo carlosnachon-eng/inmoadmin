@@ -48,7 +48,7 @@ async function autenticarDireccion(req) {
 async function cargarCierres(periodo) {
   const { data: cierres, error: cierresError } = await supabase
     .from('cierres')
-    .select('id, fecha_cierre, operacion, precio, comision, cobrado, pendiente, cobrado_bool, vendedor, propiedad_id, recibo_id, firma_id')
+    .select('id, fecha_cierre, operacion, precio, comision, cobrado, pendiente, cobrado_bool, vendedor, propiedad_id, recibo_id, firma_id').eq('estado', 'activo')
     .gte('fecha_cierre', periodo.startDate)
     .lt('fecha_cierre', periodo.endExclusive)
     .order('fecha_cierre', { ascending: true });

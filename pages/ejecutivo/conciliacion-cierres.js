@@ -136,7 +136,7 @@ export default function ConciliacionCierres() {
   const cargarDatosDirectoSupabase = async () => {
     const { data: cierres, error: cierresError } = await supabase
       .from('cierres')
-      .select('id, propiedad, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, origen, notas, created_at, updated_at')
+      .select('id, propiedad, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, origen, notas, created_at, updated_at').eq('estado', 'activo')
       .order('fecha_cierre', { ascending: false });
 
     if (cierresError) throw cierresError;

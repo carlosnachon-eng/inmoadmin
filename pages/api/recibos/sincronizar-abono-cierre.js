@@ -37,7 +37,7 @@ export default async function handler(req, res) {
 
   const { data: cierre } = await supabase
     .from("cierres")
-    .select("id, comision, cobrado")
+    .select("id, comision, cobrado, estado")
     .eq("recibo_id", abono.recibo_id)
     .maybeSingle();
 
@@ -45,6 +45,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, pendiente_cierre: true });
   }
 
+  if (cierre.estado === 'cancelado') return res.status(409).json({ ok: false, error: 'Cierre cancelado: requiere revisión manual; no se sincronizó el abono.' });
   const marcador = `recibo_abono:${abono.id}`;
   const { data: existente } = await supabase
     .from("cierre_pagos")
