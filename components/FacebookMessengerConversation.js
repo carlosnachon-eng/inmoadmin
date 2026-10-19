@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {inboxRequest} from './CommercialInbox';
 import {supabase} from '../lib/supabase';
+import FacebookReceivedMedia from './FacebookReceivedMedia';
 
 export default function FacebookMessengerConversation({thread,displayName='',onNameSaved}){
  const [rows,setRows]=useState([]),[enabled,setEnabled]=useState(false),[text,setText]=useState(''),[input,setInput]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
