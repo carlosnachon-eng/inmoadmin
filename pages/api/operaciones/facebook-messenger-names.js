@@ -4,7 +4,7 @@ import {sameOriginAdminRequest} from '../../../lib/shadow/identityBootstrap.js';
 import {messengerConfig,isRef} from '../../../lib/messaging/facebook/messenger/config.js';
 import {seal,open} from '../../../lib/messaging/facebook/messenger/crypto.js';
 export const config={api:{bodyParser:{sizeLimit:'1kb'}}};
-const clean=x=>typeof x==='string'&&x.trim()===x&&x.length>=2&&x.length<=90&&!/[<>\\x00-\\x1f]/.test(x);
+const clean=x=>typeof x==='string'&&x.trim()===x&&x.length>=2&&x.length<=90&&!/[<>\u0000-\u001f]/.test(x);
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private, no-store, max-age=0');
  try{

@@ -21,6 +21,24 @@ export default function CommercialInbox({instagramAvailable}){
  const [filter,setFilter]=useState('all'),[query,setQuery]=useState(''),[threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState('');
  const [canSyncHistory,setCanSyncHistory]=useState(false),[syncBusy,setSyncBusy]=useState(false),[syncStatus,setSyncStatus]=useState(''),[historyRevision,setHistoryRevision]=useState(0);
  const generation=useRef(0);
+ const [unreadFilter,setUnreadFilter]=useState('all');
+ const timestamp=t=>{const date=t.last_activity||t.occurred_at||t.last_at;const parsed=Date.parse(date||'');return Number.isFinite(parsed)?parsed:0};
+ async function markThreadRead(t){
+  if(!t||!t.unread)return;
+  setThreads(prev=>prev.map(x=>x.key===t.key?{...x,unread:false}:x));
+  try{
+   if(t.channel==='instagram')await inboxRequest('instagram','notification-read',{body:{thread:t.thread_ref}});
+   else{
+    const {data}=await supabase.auth.getSession();
+    if(!data?.session)throw Error('auth');
+    const r=await fetch('/api/operaciones/facebook-messenger-read-state',{method:'POST',
+     cache:'no-store',redirect:'error',headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},
+     body:JSON.stringify({thread:t.thread_ref})});
+    if(!r.ok)throw Error('read_unavailable');
+   }
+  }catch{setThreads(prev=>prev.map(x=>x.key===t.key?{...x,unread:true}:x));}
+ }
+
  async function load(){
   const gen=++generation.current;
   const channels=instagramAvailable?['instagram','facebook']:['facebook'];
@@ -29,6 +47,19 @@ export default function CommercialInbox({instagramAvailable}){
    catch{return {rows:[],error:channel};}
   }));
   if(gen!==generation.current)return;
+  let igUnread=new Set(),facebookRead=new Map();
+  const [igNotifications,fbReads]=await Promise.allSettled([
+   instagramAvailable?inboxRequest('instagram','notifications'):Promise.resolve({rows:[]}),
+   (async()=>{
+    const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('auth');
+    const r=await fetch('/api/operaciones/facebook-messenger-read-state',{cache:'no-store',
+     headers:{Authorization:'Bearer '+data.session.access_token}});
+    if(!r.ok)throw Error('read_unavailable');
+    return r.json();
+   })()
+  ]);
+  if(igNotifications.status==='fulfilled')igUnread=new Set((igNotifications.value.rows||[]).filter(n=>!n.read_at).map(n=>n.thread_ref));
+  if(fbReads.status==='fulfilled')facebookRead=new Map((fbReads.value.rows||[]).map(n=>[n.thread_ref,n]));
   let names={};
   if(results.some(r=>r.rows.some(t=>t.channel==='facebook'))){
    try{
@@ -40,7 +71,13 @@ export default function CommercialInbox({instagramAvailable}){
    }catch{}
   }
   if(gen!==generation.current)return;
-  setThreads(results.flatMap(r=>r.rows).map(t=>t.channel==='facebook'?{...t,...(names[t.thread_ref]||{})}:t).sort((a,b)=>String(b.occurred_at||b.last_at||'').localeCompare(String(a.occurred_at||a.last_at||''))));
+  setThreads(results.flatMap(r=>r.rows).map(t=>{
+   const name=t.channel==='facebook'?(names[t.thread_ref]||{}):{};
+   const read=facebookRead.get(t.thread_ref);
+   const unread=t.channel==='instagram'?igUnread.has(t.thread_ref):
+    Boolean(read?.last_inbound_at)&&(!read?.read_at||Date.parse(read.last_inbound_at)>Date.parse(read.read_at));
+   return {...t,...name,unread};
+  }).sort((a,b)=>timestamp(b)-timestamp(a)||a.key.localeCompare(b.key)));
   setError(results.filter(r=>r.error).map(r=>`${r.error}: no disponible`).join(' · '));
  }
  useEffect(()=>{void load();return()=>{generation.current++;};},[instagramAvailable]);
@@ -75,7 +112,7 @@ export default function CommercialInbox({instagramAvailable}){
   }catch{setSyncStatus('No se pudo recuperar Facebook: comprueba permisos de Meta y vigencia de la conexión. No se enviaron mensajes.');}
   finally{setSyncBusy(false)}
  }
- const visible=threads.filter(t=>(filter==='all'||t.channel===filter)&&`${t.alias||''} ${t.profile_name||''} ${t.profile_username||''} ${t.channel}`.toLocaleLowerCase('es-MX').includes(query.toLocaleLowerCase('es-MX').trim()));
+ const visible=threads.filter(t=>(filter==='all'||t.channel===filter)&&(unreadFilter==='all'||t.unread)&&`${t.alias||''} ${t.profile_name||''} ${t.profile_username||''} ${t.channel}`.toLocaleLowerCase('es-MX').includes(query.toLocaleLowerCase('es-MX').trim()));
  return <section aria-label="Inbox comercial omnicanal" className="commercialInbox">
   <header className="inboxHeader"><div><span className="eyebrow">EMPORIO · MENSAJERÍA</span><h1>Inbox</h1><p className="subtitle">Conversaciones y atención desde un solo lugar</p></div>
   <div className="inboxActions">{instagramAvailable&&canSyncHistory&&<button type="button" className="refresh" disabled={syncBusy} onClick={recoverHistory}>{syncBusy?'Recuperando…':'↻ Recuperar 7 días IG'}</button>}{canSyncHistory&&<button type="button" className="refresh" disabled={syncBusy} onClick={recoverFacebookHistory}>{syncBusy?'Recuperando…':'↻ Recuperar 7 días FB'}</button>}<button type="button" className="refresh" onClick={load} aria-label="Actualizar conversaciones">↻ Actualizar</button></div></header>
@@ -85,12 +122,13 @@ export default function CommercialInbox({instagramAvailable}){
   {error&&<p role="status" className="loadWarning">Algunos canales no están disponibles: {error}</p>}
   {filter==='comments'?<InstagramCommentsPanel open onClose={()=>setFilter('all')}/>:<div className={'workspace '+(selected?'hasSelection':'')}>
    <aside aria-label="Conversaciones" className="threadsPane"><div className="paneHeading"><strong>Conversaciones</strong><span>{visible.length}</span></div>
+    <div className="readFilters"><button className={unreadFilter==='all'?'active':''} onClick={()=>setUnreadFilter('all')}>Todas</button><button className={unreadFilter==='unread'?'active':''} onClick={()=>setUnreadFilter('unread')}>No leídas ({threads.filter(t=>t.unread&&(filter==='all'||t.channel===filter)).length})</button></div>
     <label className="searchBox"><span aria-hidden="true">⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar conversaciones" aria-label="Buscar conversaciones"/></label>
     <div className="threadList">{!visible.length&&<p className="emptyThreads">{query?'No hay coincidencias.':'No hay conversaciones autorizadas en este canal.'}</p>}
-     {visible.map((t,i)=><button type="button" key={t.key} className="thread" aria-pressed={selected?.key===t.key} onClick={()=>setSelected(t)}>
+     {visible.map((t,i)=><button type="button" key={t.key} className={`thread ${t.unread?'unread':''}`} aria-pressed={selected?.key===t.key} onClick={()=>{setSelected(t);void markThreadRead(t)}}>
       <span className={'avatar '+(t.channel==='facebook'?'fb':'ig')}>{t.channel==='facebook'?'f':'◎'}</span>
-      <span className="threadCopy"><strong>{t.alias||t.profile_name||t.profile_username||(t.channel==='facebook'?`Facebook · ${new Date(t.occurred_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short'})}`:'Conversación')}</strong><small>{t.channel==='facebook'?(t.preview||'Facebook Messenger'): 'Instagram Direct'}</small></span>
-      <span className="threadArrow" aria-hidden="true">›</span>
+      <span className="threadCopy"><strong>{t.alias||(t.channel==='instagram'&&t.profile_username?'@'+String(t.profile_username).replace(/^@/,''):null)||t.profile_name||(t.channel==='facebook'?'Contacto de Facebook':'Contacto de Instagram')}</strong><small>{t.channel==='facebook'?(t.preview||'Facebook Messenger'):'Instagram Direct'}</small>{t.unread&&<em className="unreadTag">Nuevo</em>}</span>
+      <span className="threadDate">{timestamp(t)?new Date(timestamp(t)).toLocaleDateString('es-MX',{day:'2-digit',month:'short'}):''}</span><span className="threadArrow" aria-hidden="true">›</span>
      </button>)}</div>
    </aside>
    <main className="conversationPane"><button type="button" className="back" onClick={()=>setSelected(null)}>← Conversaciones</button>
@@ -110,7 +148,7 @@ export default function CommercialInbox({instagramAvailable}){
   .loadWarning{background:#fff7ed;color:#9a3412;padding:10px 24px;font-size:12px;margin:0}.workspace{display:grid;grid-template-columns:minmax(255px,310px) minmax(0,1fr);flex:1;min-height:0;overflow:hidden}
   .threadsPane{display:flex;flex-direction:column;border-right:1px solid #eceef2;overflow:hidden;min-width:0}.paneHeading{display:flex;justify-content:space-between;align-items:center;padding:20px 17px 12px}.paneHeading strong{font-size:14px}.paneHeading span{color:#9299a4;font-size:11px}
   .searchBox{margin:0 13px 12px;display:flex;gap:6px;align-items:center;background:#f6f7f9;border:1px solid #edf0f2;padding:8px 11px;border-radius:10px;color:#98a1ac}.searchBox input{background:transparent;border:0;outline:none;width:100%;font-size:12px;color:#253245}.threadList{overflow-y:auto;flex:1;padding:0 8px 16px}
-  .thread{width:100%;border:0;display:flex;align-items:center;gap:10px;text-align:left;padding:12px 10px;border-radius:11px;background:transparent;min-height:67px}.thread:hover{background:#f7f8fa}.thread[aria-pressed=true]{background:#fff0f4}.avatar{width:38px;height:38px;flex:0 0 38px;border-radius:50%;display:grid;place-items:center;color:white;font-size:20px;font-weight:800}.avatar.ig{background:linear-gradient(135deg,#884dda,#f14980,#f8a553)}.avatar.fb{background:#1877f2}.threadCopy{display:flex;min-width:0;flex:1;flex-direction:column;gap:5px}.threadCopy strong{font-size:12px;color:#263348;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.threadCopy small{font-size:10px;color:#929aab}.threadArrow{font-size:21px;color:#adb4c1}.emptyThreads{padding:20px 12px;color:#7d8796;font-size:12px}
+  .readFilters{display:flex;gap:8px;padding:0 13px 10px}.readFilters button{border:0;border-radius:999px;padding:6px 10px;background:#f3f4f6;color:#6b7280;font-size:11px;font-weight:700;cursor:pointer}.readFilters button.active{background:#fce8ed;color:#a51d40}.thread.unread{background:#fff8fa}.thread.unread .threadCopy strong{font-weight:850}.unreadTag{display:inline-block;align-self:flex-start;background:#fce8ed;color:#a51d40;padding:2px 6px;border-radius:999px;font-size:9px;font-style:normal;font-weight:800}.threadDate{white-space:nowrap;font-size:9px;color:#9ca3af;align-self:flex-start;margin-top:3px}.thread{width:100%;border:0;display:flex;align-items:center;gap:10px;text-align:left;padding:12px 10px;border-radius:11px;background:transparent;min-height:67px}.thread:hover{background:#f7f8fa}.thread[aria-pressed=true]{background:#fff0f4}.avatar{width:38px;height:38px;flex:0 0 38px;border-radius:50%;display:grid;place-items:center;color:white;font-size:20px;font-weight:800}.avatar.ig{background:linear-gradient(135deg,#884dda,#f14980,#f8a553)}.avatar.fb{background:#1877f2}.threadCopy{display:flex;min-width:0;flex:1;flex-direction:column;gap:5px}.threadCopy strong{font-size:12px;color:#263348;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.threadCopy small{font-size:10px;color:#929aab}.threadArrow{font-size:21px;color:#adb4c1}.emptyThreads{padding:20px 12px;color:#7d8796;font-size:12px}
   .conversationPane{min-width:0;min-height:0;overflow:hidden;background:#fafbfc;padding:0;display:flex;flex-direction:column}.conversationPane :global(.inboxShell){height:100%!important;max-height:100%!important;min-height:0;min-width:0}.conversationPane :global(.inboxShell .chatPane){min-height:0;overflow:hidden}.conversationPane :global(.inboxShell .messages){flex:1;min-height:0;overflow-y:auto}.conversationPane :global(.inboxShell .composer){flex-shrink:0}.conversationPane :global(.inboxShell .detailsPane){height:100%;min-height:0;overflow-y:auto;overscroll-behavior:contain}.conversationPane :global(.fbConversation){flex:1;min-height:0}.emptyConversation{height:100%;min-height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;color:#8791a2}.emptyIcon{display:grid;place-items:center;background:#fff1f4;color:#bb3155;border-radius:50%;width:58px;height:58px;font-size:28px}.emptyConversation h2{color:#303e51;font-size:17px;margin:20px 0 5px}.emptyConversation p{max-width:300px;font-size:12px;line-height:1.5}.back{display:none;background:transparent;border:0;color:#9b2042;padding:12px;font-weight:700}
   @media(max-width:760px){.commercialInbox{border-radius:0}.inboxHeader{padding:17px 15px 12px}.inboxHeader h1{font-size:23px}.subtitle{display:none}.channelTabs{padding:0 12px 12px;flex-wrap:nowrap;overflow-x:auto}.channelTabs button{white-space:nowrap}.commercialInbox{height:calc(100dvh - 66px);max-height:calc(100dvh - 66px)}.inboxHeader{padding:8px 12px 5px}.inboxHeader .eyebrow,.inboxHeader .subtitle{display:none}.inboxHeader h1{font-size:18px;margin:0}.inboxHeader .refresh{padding:6px 9px;min-height:34px}.channelTabs{padding:0 8px 6px}.channelTabs button{min-height:33px;padding:6px 9px}.workspace{display:block;min-height:0;flex:1;overflow:hidden}.threadsPane{height:100%;min-height:0;border:0}.conversationPane{display:none}.workspace.hasSelection .threadsPane{display:none}.workspace.hasSelection .conversationPane{display:flex;min-height:0;height:100%}.back{display:block;padding:7px 12px;font-size:13px;flex-shrink:0}.conversationPane :global(.inboxShell.embedded){height:100%!important;max-height:100%!important;min-height:0!important}.conversationPane :global(.inboxShell.embedded .chatPane){min-height:0;height:100%;display:flex;flex-direction:column}.conversationPane :global(.inboxShell.embedded .messages){flex:1;min-height:0;overflow-y:auto}.conversationPane :global(.inboxShell.embedded .composer){flex-shrink:0}}
   `}</style>
