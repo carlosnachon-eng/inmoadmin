@@ -103,10 +103,10 @@ export default function CommercialInbox({instagramAvailable}){
       const latest=(Array.isArray(result.rows)?result.rows:[]).reduce((best,row)=>
        !best||Date.parse(row.occurred_at||'')>Date.parse(best.occurred_at||'')?row:best,null);
       const preview=typeof latest?.text==='string'&&latest.text.trim()
-       ?latest.text.trim().replace(/\\s+/g,' ').slice(0,110)
+       ?latest.text.trim().replace(/\s+/g,' ').slice(0,110)
        :Array.isArray(latest?.attachments)&&latest.attachments.length
        ?'📎 Archivo multimedia':'Instagram Direct';
-      const enriched={profile_name:name,profile_username:username,preview};
+      const enriched={...(name?{profile_name:name}:{}),...(username?{profile_username:username}:{}),preview};
       instagramProfileCache.current.set(t.thread_ref,enriched);
       if(!cancelled)setThreads(old=>old.map(x=>x.key===t.key?{...x,...enriched}:x));
      }catch{instagramProfileCache.current.set(t.thread_ref,null)}
