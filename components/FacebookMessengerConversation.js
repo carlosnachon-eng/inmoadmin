@@ -352,6 +352,17 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
       box-shadow:0 18px 55px rgba(15,23,42,.28)}
     .fbPropertyPicker .fbPropertyList{flex:1;min-height:40px;overflow-y:auto;max-height:none!important}
     .fbPropertyPicker .fbPropertyFooter{flex-shrink:0;flex-wrap:wrap;background:#fff}
+    .fbAppointmentPanel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+      z-index:1001;width:min(540px,calc(100vw - 48px));box-sizing:border-box;
+      max-height:min(82vh,760px)!important;overflow-y:auto!important;
+      background:#fff;box-shadow:0 18px 55px rgba(15,23,42,.28);
+      padding-bottom:14px!important}
+    .fbAppointmentPanel .fbAppointmentFooter{position:sticky;bottom:0;z-index:2;
+      display:flex;flex-shrink:0;background:#fff;border-top:1px solid #e5e7eb;
+      padding:12px 0!important}
+    .fbAppointmentPanel label{display:block;margin:8px 0}
+    .fbAppointmentPanel label input,.fbAppointmentPanel label select{width:100%;min-width:0}
+
    }.composer button:disabled{background:#cbd5e1;cursor:not-allowed}
    .readOnly{flex-shrink:0;padding:12px 18px;background:#fff;border-top:1px solid #e5e7eb;font-size:11px;color:#64748b;line-height:1.5}
    .status{margin:0;padding:9px 18px;background:#fff7ed;color:#9a3412;font-size:11px}
