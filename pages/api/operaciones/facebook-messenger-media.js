@@ -7,6 +7,18 @@ import {messengerStore} from '../../../lib/messaging/facebook/messenger/store.js
 import {reviewMediaUrl} from '../../../lib/messaging/instagram/business/content.js';
 import {secureDownload,detectMime} from '../../../lib/shadow/media/network.js';
 
+// Facebook Messenger's verified CDN host; do not broaden Instagram's allowlist.
+function reviewFacebookMediaUrl(value){
+ if(typeof value!=='string'||value.length>4096)throw Error('invalid_media_url');
+ const u=new URL(value);
+ if(u.hostname==='cdn.fbsbx.com'){
+  if(u.protocol!=='https:'||u.username||u.password||u.hash||(u.port&&u.port!=='443'))
+   throw Error('invalid_media_url');
+  return u.href;
+ }
+ return reviewMediaUrl(value);
+}
+
 // Resolve only the exact, authorized inbound message; never accept a message ID from the browser.
 async function recoverSource(c,row,attachment,index,db){
  recipient(c,row); // Validate cryptographic thread/message binding before Graph access.
@@ -35,7 +47,7 @@ async function recoverSource(c,row,attachment,index,db){
  }
  const candidate=item.file_url||item.image_data?.url||item.image_data?.media_url||item.video_data?.url;
  if(typeof candidate!=='string')throw Error('graph_media_url_missing');
- try{return reviewMediaUrl(candidate);}catch{
+ try{return reviewFacebookMediaUrl(candidate);}catch{
   // Only fixed categories: never log URL, hostname, query, token or message IDs.
   let category='invalid_url';
   try {
@@ -91,7 +103,7 @@ export default async function handler(req,res){
   }
   stage='url_validation';
   let url;
-  if(typeof attachment.source_url==='string')url=reviewMediaUrl(attachment.source_url);
+  if(typeof attachment.source_url==='string')url=reviewFacebookMediaUrl(attachment.source_url);
   else {
    stage='graph_recovery';
    url=await recoverSource(c,row,attachment,index,db);
