@@ -83,6 +83,44 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   }catch{setStatus('Resultado no confirmado. No vuelvas a enviar sin revisar.');}
   finally{setBusy(false);await refresh();}
  }
+ const [appointmentOpen,setAppointmentOpen]=useState(false),[appointmentBusy,setAppointmentBusy]=useState(false),[appointmentRows,setAppointmentRows]=useState([]);
+ const [appointmentForm,setAppointmentForm]=useState({name:'',phone:'',email:'',advisor_id:'',property_id:'',fecha_local:'',notas:''});
+ async function appointmentRequest(op,body){
+  const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('session');
+  const response=await fetch('/api/operaciones/facebook-messenger-appointments?'+new URLSearchParams({op,thread}),{
+   method:body?'POST':'GET',cache:'no-store',redirect:'error',
+   headers:{Authorization:'Bearer '+data.session.access_token,...(body?{'Content-Type':'application/json'}:{})},
+   ...(body?{body:JSON.stringify({...body,thread})}:{})});
+  if(!response.ok)throw Error('appointment');
+  return response.json();
+ }
+ async function loadAppointments(){
+  try{const result=await appointmentRequest('list');setAppointmentRows(result.rows||[]);}catch{}
+ }
+ useEffect(()=>{setAppointmentRows([]);void loadAppointments();},[thread]);
+ function openAppointment(){
+  if(busy||appointmentBusy)return;
+  setAppointmentForm({name:displayName||'',phone:phone||'',email:email||'',advisor_id:assigned?.advisor_id||'',property_id:'',fecha_local:'',notas:''});
+  setAppointmentOpen(true);
+ }
+ async function createAppointment(){
+  const f=appointmentForm;
+  if(!f.name.trim()||!f.advisor_id||!f.fecha_local){setStatus('Completa cliente, asesor y fecha');return;}
+  setAppointmentBusy(true);
+  try{
+   const result=await appointmentRequest('create',{name:f.name,phone:f.phone,email:f.email,advisor_id:f.advisor_id,property_id:f.property_id||null,fecha_hora:new Date(f.fecha_local).toISOString(),notas:f.notas});
+   setStatus(result.kpi_synced?'Cita agendada':'Cita agendada · KPI pendiente de sincronizar');
+   setAppointmentOpen(false);await loadAppointments();
+  }catch{setStatus('No se pudo agendar la cita');}
+  finally{setAppointmentBusy(false);}
+ }
+ async function cancelAppointment(id){
+  if(!window.confirm('¿Cancelar esta cita?'))return;
+  setAppointmentBusy(true);
+  try{const r=await appointmentRequest('cancel',{appointment_id:id});setStatus(r.kpi_synced?'Cita cancelada':'Cita cancelada · KPI pendiente');await loadAppointments();}
+  catch{setStatus('No se pudo cancelar la cita');}
+  finally{setAppointmentBusy(false);}
+ }
  const [refreshing,setRefreshing]=useState(false);
  const [outbox,setOutbox]=useState([]);
  const outboxRef=useRef([]);
@@ -213,7 +251,16 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
     <article className="bubble outgoing pendingBubble"><p>{o.text}</p><footer><span>{o.state==='sending'?'Enviando…':o.state==='accepted'?'Aceptado por Meta · esperando historial':o.state==='failed'?'Envío rechazado':'Resultado incierto · no reenviar'}</span></footer></article>
    </div>)}
   </div>
-  {enabled?<form onSubmit={send} className="composer"><label htmlFor="facebook-reply-text">Respuesta manual</label><small className="replyHint">{input?'Ventana activa · cada mensaje se registra y envía una sola vez':'No hay mensaje entrante elegible para responder en esta conversación'}</small>{propertyPicker&&<div className="fbPropertyPicker" style={{border:'1px solid #ddd',padding:10,borderRadius:10,marginBottom:8}}>
+  {enabled?<form onSubmit={send} className="composer"><label htmlFor="facebook-reply-text">Respuesta manual</label><small className="replyHint">{input?'Ventana activa · cada mensaje se registra y envía una sola vez':'No hay mensaje entrante elegible para responder en esta conversación'}</small>{appointmentRows.map(a=><div key={a.id} style={{fontSize:12,padding:6,borderBottom:'1px solid #eee'}}>📅 {new Date(a.fecha_hora).toLocaleString('es-MX')} · {a.estado}{a.estado!=='cancelada'&&<button type="button" disabled={appointmentBusy} onClick={()=>cancelAppointment(a.id)}>Cancelar</button>}</div>)}
+  {appointmentOpen&&<div style={{padding:10,border:'1px solid #ddd',borderRadius:10,marginBottom:8}}>
+   <strong>Agendar cita</strong>
+   {['name','phone','email','fecha_local','notas'].map(k=><label key={k} style={{display:'block',fontSize:12}}>{({name:'Nombre',phone:'Teléfono',email:'Correo',fecha_local:'Fecha y hora',notas:'Notas'})[k]}<input type={k==='fecha_local'?'datetime-local':'text'} value={appointmentForm[k]} onChange={e=>setAppointmentForm(f=>({...f,[k]:e.target.value}))} style={{width:'100%'}}/></label>)}
+   <label>Asesor<select value={appointmentForm.advisor_id} onChange={e=>setAppointmentForm(f=>({...f,advisor_id:e.target.value}))}><option value="">Seleccionar</option>{advisors.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+   <label>Propiedad<select value={appointmentForm.property_id} onChange={e=>setAppointmentForm(f=>({...f,property_id:e.target.value}))}><option value="">Sin propiedad</option>{propertyRows.map(p=><option key={p.id} value={p.id}>{p.titulo}</option>)}</select></label>
+   <button type="button" disabled={appointmentBusy} onClick={createAppointment}>Guardar cita</button>
+   <button type="button" onClick={()=>setAppointmentOpen(false)}>Cerrar</button>
+  </div>}
+  {propertyPicker&&<div className="fbPropertyPicker" style={{border:'1px solid #ddd',padding:10,borderRadius:10,marginBottom:8}}>
    <div style={{display:'flex',justifyContent:'space-between'}}><strong>Compartir propiedad</strong><button type="button" onClick={()=>setPropertyPicker(false)} aria-label="Cerrar propiedades">×</button></div>
    <input aria-label="Buscar propiedad" placeholder="Buscar por nombre o colonia" value={propertySearch} onChange={e=>setPropertySearch(e.target.value)} style={{width:'100%',padding:8,margin:'8px 0'}}/>
    <div style={{maxHeight:220,overflowY:'auto'}}>{propertyLoading?'Cargando…':propertyRows.filter(p=>(p.titulo+' '+p.colonia+' '+p.ciudad).toLowerCase().includes(propertySearch.toLowerCase())).slice(0,30).map(p=><button type="button" key={p.id} onClick={()=>selectProperty(p)} style={{display:'block',width:'100%',height:'auto',borderRadius:6,textAlign:'left',padding:9,marginBottom:4}}>{p.titulo} · {p.colonia||p.ciudad||''}</button>)}</div>
@@ -225,7 +272,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
     <button type="button" onClick={sendMedia} disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)}>Enviar archivo</button>
    </div>}
    {recording&&<div><span>● Grabando nota de voz</span><button type="button" onClick={()=>stopRecording(false)}>Detener</button><button type="button" onClick={()=>stopRecording(true)}>Cancelar</button></div>}
-   <div className="composeRow"><input type="file" ref={mediaInputRef} accept="image/jpeg,image/png,image/webp,video/mp4" hidden onChange={e=>selectMedia(e.target.files?.[0])}/>
+   <div className="composeRow"><button type="button" title="Agendar cita" onClick={()=>{void openProperties();openAppointment();}} disabled={busy||appointmentBusy}>📅</button><input type="file" ref={mediaInputRef} accept="image/jpeg,image/png,image/webp,video/mp4" hidden onChange={e=>selectMedia(e.target.files?.[0])}/>
    <button type="button" title="Adjuntar foto o video" disabled={busy||recording} onClick={()=>mediaInputRef.current?.click()}>＋</button>
    <button type="button" title="Grabar nota de voz" disabled={busy||recording||!!pendingMedia} onClick={startRecording}>🎤</button>
    <button type="button" title="Enviar propiedad" aria-label="Enviar propiedad" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)} onClick={openProperties}>🏠</button><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
