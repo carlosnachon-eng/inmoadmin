@@ -377,6 +377,8 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    .readOnly{flex-shrink:0;padding:12px 18px;background:#fff;border-top:1px solid #e5e7eb;font-size:11px;color:#64748b;line-height:1.5}
    .status{margin:0;padding:9px 18px;background:#fff7ed;color:#9a3412;font-size:11px}
    @media(max-width:1000px){.fbWorkspace{grid-template-columns:minmax(0,1fr)}.fbDetails{display:none;position:absolute;right:0;top:0;bottom:0;width:min(330px,90%);z-index:5;box-shadow:-12px 0 28px #0f172a21}.fbDetails.open{display:flex}.fbConversation{position:relative}.mobileDetails{display:inline-block}.detailsHeading button{display:block;border:0;background:transparent;font-size:22px;cursor:pointer}}@media(max-width:760px){.fbHeader{padding:10px 12px}.history{padding:12px}.bubble{max-width:87%}}
+ 
+   @media(max-width:760px){.history{gap:9px}.bubble p{font-size:13.5px;line-height:1.45}}
   `}</style>
  </section>;
 }
