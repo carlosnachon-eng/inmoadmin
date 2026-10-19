@@ -83,7 +83,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   }catch{setStatus('Resultado no confirmado. No vuelvas a enviar sin revisar.');}
   finally{setBusy(false);await refresh();}
  }
- const [appointmentOpen,setAppointmentOpen]=useState(false),[appointmentBusy,setAppointmentBusy]=useState(false),[appointmentRows,setAppointmentRows]=useState([]);
+ const [appointmentOpen,setAppointmentOpen]=useState(false),[appointmentBusy,setAppointmentBusy]=useState(false),[appointmentRows,setAppointmentRows]=useState([]),[appointmentAdvisors,setAppointmentAdvisors]=useState([]),[appointmentProperties,setAppointmentProperties]=useState([]);
  const [appointmentForm,setAppointmentForm]=useState({name:'',phone:'',email:'',advisor_id:'',property_id:'',fecha_local:'',notas:''});
  async function appointmentRequest(op,body){
   const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('session');
@@ -98,10 +98,17 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   try{const result=await appointmentRequest('list');setAppointmentRows(result.rows||[]);}catch{}
  }
  useEffect(()=>{setAppointmentRows([]);void loadAppointments();},[thread]);
- function openAppointment(){
+ async function openAppointment(){
   if(busy||appointmentBusy)return;
-  setAppointmentForm({name:displayName||'',phone:phone||'',email:email||'',advisor_id:assigned?.advisor_id||'',property_id:'',fecha_local:'',notas:''});
-  setAppointmentOpen(true);
+  setAppointmentBusy(true);
+  try{
+   const result=await appointmentRequest('options');
+   setAppointmentAdvisors(result.advisors||[]);setAppointmentProperties(result.properties||[]);
+   const {data}=await supabase.auth.getSession();
+   setAppointmentForm({name:displayName||'',phone:phone||'',email:email||'',advisor_id:assigned?.advisor_id||data?.session?.user?.id||'',property_id:'',fecha_local:'',notas:''});
+   setAppointmentOpen(true);
+  }catch{setStatus('No se pudieron cargar las opciones de citas');}
+  finally{setAppointmentBusy(false);}
  }
  async function createAppointment(){
   const f=appointmentForm;
@@ -255,8 +262,8 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   {appointmentOpen&&<div style={{padding:10,border:'1px solid #ddd',borderRadius:10,marginBottom:8}}>
    <strong>Agendar cita</strong>
    {['name','phone','email','fecha_local','notas'].map(k=><label key={k} style={{display:'block',fontSize:12}}>{({name:'Nombre',phone:'Teléfono',email:'Correo',fecha_local:'Fecha y hora',notas:'Notas'})[k]}<input type={k==='fecha_local'?'datetime-local':'text'} value={appointmentForm[k]} onChange={e=>setAppointmentForm(f=>({...f,[k]:e.target.value}))} style={{width:'100%'}}/></label>)}
-   <label>Asesor<select value={appointmentForm.advisor_id} onChange={e=>setAppointmentForm(f=>({...f,advisor_id:e.target.value}))}><option value="">Seleccionar</option>{advisors.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-   <label>Propiedad<select value={appointmentForm.property_id} onChange={e=>setAppointmentForm(f=>({...f,property_id:e.target.value}))}><option value="">Sin propiedad</option>{propertyRows.map(p=><option key={p.id} value={p.id}>{p.titulo}</option>)}</select></label>
+   <label>Asesor<select value={appointmentForm.advisor_id} onChange={e=>setAppointmentForm(f=>({...f,advisor_id:e.target.value}))}><option value="">Seleccionar</option>{appointmentAdvisors.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+   <label>Propiedad<select value={appointmentForm.property_id} onChange={e=>setAppointmentForm(f=>({...f,property_id:e.target.value}))}><option value="">Sin propiedad</option>{appointmentProperties.map(p=><option key={p.id} value={p.id}>{p.titulo}</option>)}</select></label>
    <button type="button" disabled={appointmentBusy} onClick={createAppointment}>Guardar cita</button>
    <button type="button" onClick={()=>setAppointmentOpen(false)}>Cerrar</button>
   </div>}
@@ -272,7 +279,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
     <button type="button" onClick={sendMedia} disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)}>Enviar archivo</button>
    </div>}
    {recording&&<div><span>● Grabando nota de voz</span><button type="button" onClick={()=>stopRecording(false)}>Detener</button><button type="button" onClick={()=>stopRecording(true)}>Cancelar</button></div>}
-   <div className="composeRow"><button type="button" title="Agendar cita" onClick={()=>{void openProperties();openAppointment();}} disabled={busy||appointmentBusy}>📅</button><input type="file" ref={mediaInputRef} accept="image/jpeg,image/png,image/webp,video/mp4" hidden onChange={e=>selectMedia(e.target.files?.[0])}/>
+   <div className="composeRow"><button type="button" title="Agendar cita" onClick={()=>void openAppointment()} disabled={busy||appointmentBusy}>📅</button><input type="file" ref={mediaInputRef} accept="image/jpeg,image/png,image/webp,video/mp4" hidden onChange={e=>selectMedia(e.target.files?.[0])}/>
    <button type="button" title="Adjuntar foto o video" disabled={busy||recording} onClick={()=>mediaInputRef.current?.click()}>＋</button>
    <button type="button" title="Grabar nota de voz" disabled={busy||recording||!!pendingMedia} onClick={startRecording}>🎤</button>
    <button type="button" title="Enviar propiedad" aria-label="Enviar propiedad" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)} onClick={openProperties}>🏠</button><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
