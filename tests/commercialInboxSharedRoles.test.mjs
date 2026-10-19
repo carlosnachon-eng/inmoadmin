@@ -18,3 +18,9 @@ test('Messenger reply retains durable send and permission checks',()=>{
 test('shared role policy does not activate transport or change grants',()=>{
  assert.doesNotMatch(policy,/fetch\(|supabase|service_role|senderEnabled\s*=/);
 });
+
+test('Messenger composer availability follows authorized history and sender gate',()=>{
+ assert.match(facebook,/sender_enabled:op==='history'&&c\.senderEnabled&&data\.sender_enabled===true&&roles\.has\(actor\.role_id\)/);
+ assert.match(facebook,/fb_messenger_inbox_v1/);
+ assert.match(manual,/store\.reserve\(a\)/);
+});
