@@ -75,13 +75,15 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    setRows(items);setEnabled(r.sender_enabled===true);
    // Reconcile only confirmed outbound echoes after the local send started.
    const echoes=items.filter(x=>x.kind==='echo'&&typeof x.text==='string');
-   const consumed=new Set();
-   setOutboxSafe(old=>old.map(item=>{
+   setOutboxSafe(old=>{
+    const consumed=new Set(old.filter(o=>o.echoInput).map(o=>o.echoInput));
+    return old.map(item=>{
     if(item.state!=='accepted')return item;
     const match=echoes.find(x=>!consumed.has(x.input)&&x.text===item.text&&Date.parse(x.occurred_at)>=item.startedAt-10000);
     if(match){consumed.add(match.input);return {...item,state:'confirmed',echoInput:match.input};}
     return item;
-   }));
+   });
+   });
    if(!locked.current){const latest=[...items].reverse().find(item=>item.can_reply===true&&item.kind==='inbound');
     setInput(previous=>items.some(item=>item.input===previous&&item.can_reply===true)?previous:(latest?.input||''));}
   }catch{if(mounted.current){setRows([]);setInput('');setEnabled(false);setStatus('Historial no disponible o acceso no autorizado.');}}
