@@ -28,6 +28,32 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   finally{setContactBusy(false);}
  }
 
+ const [canAssign,setCanAssign]=useState(false),[advisors,setAdvisors]=useState([]),[assigned,setAssigned]=useState(null),[advisorDraft,setAdvisorDraft]=useState(''),[assignBusy,setAssignBusy]=useState(false),[assignStatus,setAssignStatus]=useState('');
+ useEffect(()=>{let live=true;setAssigned(null);setAdvisorDraft('');setAssignStatus('');
+  (async()=>{
+   const {data}=await supabase.auth.getSession();if(!data?.session)return;
+   const headers={Authorization:'Bearer '+data.session.access_token};
+   const options=await fetch('/api/operaciones/facebook-messenger-advisors',{cache:'no-store',headers});
+   if(!options.ok)return;
+   const details=await fetch('/api/operaciones/facebook-messenger-assign?'+new URLSearchParams({thread}),{cache:'no-store',headers});
+   if(!details.ok)return;
+   const [opts,current]=await Promise.all([options.json(),details.json()]);
+   if(live){setCanAssign(true);setAdvisors(opts.advisors||[]);setAssigned(current.assignment||null);setAdvisorDraft(current.assignment?.advisor_id||'');}
+  })().catch(()=>{});return()=>{live=false};
+ },[thread]);
+ async function saveAssignment(){
+  if(assignBusy||!advisorDraft)return;setAssignBusy(true);setAssignStatus('');
+  try{const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('auth');
+   const response=await fetch('/api/operaciones/facebook-messenger-assign',{method:'POST',cache:'no-store',redirect:'error',
+    headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},
+    body:JSON.stringify({thread,advisor:advisorDraft})});
+   if(!response.ok)throw Error('assign');
+   const current=advisors.find(a=>a.id===advisorDraft);
+   setAssigned({advisor_id:advisorDraft,advisor_name:current?.name||'Asesor'});
+   setAssignStatus('Asignación guardada.');
+  }catch{setAssignStatus('No fue posible asignar el chat; revisa permisos o el mensaje entrante.');}
+  finally{setAssignBusy(false);}
+ }
  const [canRename,setCanRename]=useState(false),[nameDraft,setNameDraft]=useState(displayName),[nameStatus,setNameStatus]=useState('');
  useEffect(()=>{setNameDraft(displayName||'')},[displayName,thread]);
  useEffect(()=>{let live=true;supabase.auth.getUser().then(async({data})=>{if(!data?.user)return;const {data:profile}=await supabase.from('profiles').select('active,role_id').eq('id',data.user.id).maybeSingle();if(live)setCanRename(profile?.active===true&&profile?.role_id==='admin');}).catch(()=>{});return()=>{live=false};},[]);
@@ -84,7 +110,13 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
      <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Correo electrónico" maxLength={254} disabled={!canRename}/>
      {canRename&&<button type="button" onClick={saveContact} disabled={contactBusy}>{contactBusy?'Guardando…':'Guardar contacto'}</button>}
     </div>{contactStatus&&<small role="status">{contactStatus}</small>}</section>
-    <section className="detailBlock"><label>Asignado a</label><p>Pendiente de habilitar asignaciones de Facebook</p></section>
+    <section className="detailBlock"><label>Asignado a</label>
+     <p>{assigned?.advisor_name||'Sin asignar'}</p>
+     {canAssign&&<div className="editFields"><select value={advisorDraft} onChange={e=>setAdvisorDraft(e.target.value)} aria-label="Asesor asignado Facebook">
+       <option value="">Selecciona un asesor</option>{advisors.map(a=><option key={a.id} value={a.id}>{a.name}{a.plaza?' · '+a.plaza:''}</option>)}
+      </select><button type="button" disabled={!advisorDraft||assignBusy} onClick={saveAssignment}>{assignBusy?'Guardando…':assigned?'Reasignar':'Asignar'}</button></div>}
+     {assignStatus&&<small role="status">{assignStatus}</small>}
+    </section>
     <section className="detailBlock"><label>Canal</label><p>Facebook Messenger</p></section>
     <section className="detailBlock"><label>Estado</label><p>{enabled?'Atención manual habilitada':'Lectura disponible · Sender OFF'}</p></section>
     <section className="detailBlock"><label>Seguridad</label><p>Contenido y datos de contacto cifrados. Sin IA ni reintentos automáticos.</p></section>
@@ -93,7 +125,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   <style jsx>{`
    .fbConversation{height:100%;flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:#f8fafc}.fbWorkspace{display:grid;grid-template-columns:minmax(0,1fr) 265px;flex:1;min-height:0;overflow:hidden}.fbChat{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
    .fbHeader{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 18px;background:#fff;border-bottom:1px solid #e5e7eb}.fbHeader div{display:flex;flex-direction:column;gap:4px}.fbHeader strong{font-size:14px;color:#263348}.fbHeader span{font-size:11px;color:#64748b}.fbHeader button{background:white;border:1px solid #e5e7eb;border-radius:9px;padding:8px 11px;color:#475569;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap}
-   .fbDetails{min-width:0;min-height:0;display:flex;flex-direction:column;border-left:1px solid #e5e7eb;background:#fff}.detailsHeading{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #e5e7eb}.detailsHeading strong{font-size:14px}.detailsHeading button{display:none}.detailsScroll{overflow-y:auto;min-height:0;flex:1;overscroll-behavior:contain}.profileCard{display:flex;flex-direction:column;align-items:center;text-align:center;gap:7px;padding:22px 12px;border-bottom:1px solid #edf0f4}.profileCard strong{font-size:13px;overflow-wrap:anywhere}.profileCard small{color:#94a3b8;font-size:11px}.fbAvatar{width:55px;height:55px;border-radius:50%;background:#1877f2;color:white;display:grid;place-items:center;font-size:34px;font-weight:700}.detailBlock{padding:15px;border-bottom:1px solid #edf0f4}.detailBlock label{display:block;font-size:11px;font-weight:800;color:#64748b;margin-bottom:9px}.detailBlock p{margin:0;font-size:12px;color:#475569;line-height:1.55}.detailBlock small{display:block;margin-top:6px;font-size:10px;color:#94a3b8}.editFields{display:flex;flex-direction:column;gap:7px}.editFields input{min-width:0;width:100%;box-sizing:border-box;border:1px solid #dbe1ea;border-radius:8px;padding:9px;font-size:12px}.editFields input:disabled{background:#f8fafc}.editFields button{background:#ae2148;color:white;border:0;border-radius:8px;padding:9px;font-weight:700;font-size:11px;cursor:pointer}.editFields button:disabled{opacity:.5}.mobileDetails{display:none}
+   .fbDetails{min-width:0;min-height:0;display:flex;flex-direction:column;border-left:1px solid #e5e7eb;background:#fff}.detailsHeading{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #e5e7eb}.detailsHeading strong{font-size:14px}.detailsHeading button{display:none}.detailsScroll{overflow-y:auto;min-height:0;flex:1;overscroll-behavior:contain}.profileCard{display:flex;flex-direction:column;align-items:center;text-align:center;gap:7px;padding:22px 12px;border-bottom:1px solid #edf0f4}.profileCard strong{font-size:13px;overflow-wrap:anywhere}.profileCard small{color:#94a3b8;font-size:11px}.fbAvatar{width:55px;height:55px;border-radius:50%;background:#1877f2;color:white;display:grid;place-items:center;font-size:34px;font-weight:700}.detailBlock{padding:15px;border-bottom:1px solid #edf0f4}.detailBlock label{display:block;font-size:11px;font-weight:800;color:#64748b;margin-bottom:9px}.detailBlock p{margin:0;font-size:12px;color:#475569;line-height:1.55}.detailBlock small{display:block;margin-top:6px;font-size:10px;color:#94a3b8}.editFields{display:flex;flex-direction:column;gap:7px}.editFields select{min-width:0;width:100%;box-sizing:border-box;border:1px solid #dbe1ea;border-radius:8px;padding:9px;font-size:12px}.editFields input{min-width:0;width:100%;box-sizing:border-box;border:1px solid #dbe1ea;border-radius:8px;padding:9px;font-size:12px}.editFields input:disabled{background:#f8fafc}.editFields button{background:#ae2148;color:white;border:0;border-radius:8px;padding:9px;font-weight:700;font-size:11px;cursor:pointer}.editFields button:disabled{opacity:.5}.mobileDetails{display:none}
    .fbActions{display:flex;gap:6px}.nameEditor{display:flex;gap:8px;background:#fff;padding:8px 14px;border-bottom:1px solid #e5e7eb}.nameEditor input{flex:1;min-width:0;border:1px solid #dbe1ea;border-radius:8px;padding:8px;font-size:12px}.nameEditor button{border:0;background:#a51d40;color:#fff;border-radius:8px;padding:8px 12px;font-size:11px;cursor:pointer}.nameEditor button:disabled{opacity:.5}.nameStatus{margin:0;padding:5px 14px;font-size:11px;color:#64748b;background:white}
    .history{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;padding:18px;align-content:start}
    .messageRow{display:flex;width:100%}.messageRow.theirs{justify-content:flex-start}.messageRow.mine{justify-content:flex-end}
