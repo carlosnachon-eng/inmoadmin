@@ -121,7 +121,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    {!rows.length&&<p className="emptyHistory">No hay mensajes disponibles para esta conversación.</p>}
    {rows.map(r=><div key={r.input} className={r.kind==='echo'?'messageRow mine':'messageRow theirs'}>
     <article className={r.kind==='echo'?'bubble outgoing':'bubble'}>
-     <p>{r.text||(r.unsupported?'Adjunto recibido · vista previa no disponible':'Evento recibido')}</p>
+     <p>{r.text||(r.attachment_types?.length?`Adjunto: ${r.attachment_types.map(t=>({image:'Imagen',audio:'Audio',video:'Video',file:'Archivo'}[t]||'Archivo')).join(', ')} · vista previa no disponible`:r.unsupported?'Adjunto recibido · vista previa no disponible':'Evento recibido')}</p>
      <footer><time>{new Date(r.occurred_at).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</time>{r.outcome&&<span> · {r.outcome}</span>}</footer>
      {enabled&&r.can_reply&&<button type="button" className="pickReply" disabled={busy||locked.current} aria-pressed={input===r.input} onClick={()=>setInput(r.input)}>{input===r.input?'Seleccionado':'Responder a este mensaje'}</button>}
     </article>
