@@ -9,8 +9,8 @@ import {secureDownload,detectMime} from '../../../lib/shadow/media/network.js';
 
 // Resolve only the exact, authorized inbound message; never accept a message ID from the browser.
 async function recoverSource(c,row,attachment,index,db){
- const {mid}=open(c,'recipient',binding(row),row.recipient_box);
  recipient(c,row); // Validate cryptographic thread/message binding before Graph access.
+ const {mid}=open(c,'recipient',binding(row),row.recipient_box);
  const store=messengerStore(db,c.connection,c);
  const token=pageToken(c,await store.credential());
  const endpoint=new URL('https://graph.facebook.com/'+c.version+'/'+encodeURIComponent(mid));
@@ -21,9 +21,8 @@ async function recoverSource(c,row,attachment,index,db){
  const body=await response.json();
  if(body?.id!==mid||!Array.isArray(body?.attachments?.data))throw Error('graph_mismatch');
  const item=body.attachments.data[index];
- if(!item)throw Error('graph_attachment_missing');
- // Match the encrypted webhook attachment ID when present, to prevent index drift.
- if(attachment.attachment_id&&item.id!==attachment.attachment_id)throw Error('graph_attachment_mismatch');
+ if(!item||typeof attachment.attachment_id!=='string'||item.id!==attachment.attachment_id)
+  throw Error('graph_attachment_mismatch');
  const candidate=item.file_url||item.image_data?.url||item.image_data?.media_url||item.video_data?.url;
  return reviewMediaUrl(candidate);
 }
