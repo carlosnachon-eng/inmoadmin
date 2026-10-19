@@ -48,6 +48,16 @@ async function recoverSource(c,row,attachment,index,db){
      u.hostname==='fbsbx.com'||u.hostname.endsWith('.fbsbx.com'))category='meta_host_not_allowlisted';
    else category='other_host_not_allowlisted';
   }catch{}
+  // Restricted operational diagnostics: hostname only, never URL/path/query or credentials.
+  // Log only for recognized Meta-owned suffixes; unknown hosts remain category-only.
+  if(category==='meta_host_not_allowlisted'){
+   try {
+    const hostname=new URL(candidate).hostname.toLowerCase();
+    if(hostname==='facebook.com'||hostname.endsWith('.facebook.com')||
+       hostname==='fbsbx.com'||hostname.endsWith('.fbsbx.com'))
+     console.info('fb_media_rejected_meta_hostname',{hostname});
+   }catch{}
+  }
   throw Error('graph_media_url_rejected_'+category);
  }
 }
