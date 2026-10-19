@@ -14,3 +14,11 @@ test('result list scrolls independently while confirmation remains visible',()=>
  assert.match(source,/\.fbPropertyPicker \.fbPropertyFooter\{flex-shrink:0/);
  assert.match(source,/onClick=\{prepareProperties\}>Preparar mensaje/);
 });
+
+test('shared property draft uses JS newline escapes, not literal slash characters',()=>{
+ const begin=source.indexOf(' function prepareProperties(){');
+ const end=source.indexOf(' const [pendingMedia',begin);
+ const block=source.slice(begin,end);
+ assert.equal(block.includes("'\\\\n'"),false);
+ assert.equal(block.includes("'\\n'"),true);
+});
