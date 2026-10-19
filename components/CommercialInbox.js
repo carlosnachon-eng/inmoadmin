@@ -86,7 +86,7 @@ export default function CommercialInbox({instagramAvailable}){
  // Enrich Instagram's unified list with the same Meta profile resolved inside its chat.
  // Bounded batches avoid a large parallel Graph burst; cached for the current session.
  useEffect(()=>{
-  const missing=threads.filter(t=>t.channel==='instagram'&&!t.alias&&!t.profile_username&&!t.profile_name
+  const missing=threads.filter(t=>t.channel==='instagram'
    &&!instagramProfileCache.current.has(t.thread_ref)&&!instagramProfileInFlight.current.has(t.thread_ref)).slice(0,36);
   if(!missing.length)return;
   missing.forEach(t=>instagramProfileInFlight.current.add(t.thread_ref));
@@ -99,8 +99,16 @@ export default function CommercialInbox({instagramAvailable}){
       const result=await inboxRequest('instagram','history',{thread:t.thread_ref});
       const p=result.profile;
       const name=p?.name||null,username=p?.username||null;
-      instagramProfileCache.current.set(t.thread_ref,{profile_name:name,profile_username:username});
-      if(!cancelled&&(name||username))setThreads(old=>old.map(x=>x.key===t.key?{...x,profile_name:name,profile_username:username}:x));
+      // Same authorized history as the conversation: no new Graph permissions.
+      const latest=(Array.isArray(result.rows)?result.rows:[]).reduce((best,row)=>
+       !best||Date.parse(row.occurred_at||'')>Date.parse(best.occurred_at||'')?row:best,null);
+      const preview=typeof latest?.text==='string'&&latest.text.trim()
+       ?latest.text.trim().replace(/\\s+/g,' ').slice(0,110)
+       :Array.isArray(latest?.attachments)&&latest.attachments.length
+       ?'📎 Archivo multimedia':'Instagram Direct';
+      const enriched={profile_name:name,profile_username:username,preview};
+      instagramProfileCache.current.set(t.thread_ref,enriched);
+      if(!cancelled)setThreads(old=>old.map(x=>x.key===t.key?{...x,...enriched}:x));
      }catch{instagramProfileCache.current.set(t.thread_ref,null)}
      finally{instagramProfileInFlight.current.delete(t.thread_ref)}
     }));
@@ -154,7 +162,7 @@ export default function CommercialInbox({instagramAvailable}){
     <div className="threadList">{!visible.length&&<p className="emptyThreads">{query?'No hay coincidencias.':'No hay conversaciones autorizadas en este canal.'}</p>}
      {visible.map((t,i)=><button type="button" key={t.key} className={`thread ${t.unread?'unread':''}`} aria-pressed={selected?.key===t.key} onClick={()=>{setSelected(t);void markThreadRead(t)}}>
       <span className={'avatar '+(t.channel==='facebook'?'fb':'ig')}>{t.channel==='facebook'?'f':'◎'}</span>
-      <span className="threadCopy"><strong>{t.alias||(t.channel==='instagram'&&t.profile_username?'@'+String(t.profile_username).replace(/^@/,''):null)||t.profile_name||(t.channel==='facebook'?'Contacto de Facebook':'Contacto de Instagram')}</strong><small>{t.channel==='facebook'?(t.preview||'Facebook Messenger'):'Instagram Direct'}</small>{t.unread&&<em className="unreadTag">Nuevo</em>}</span>
+      <span className="threadCopy"><strong>{t.alias||(t.channel==='instagram'&&t.profile_username?'@'+String(t.profile_username).replace(/^@/,''):null)||t.profile_name||(t.channel==='facebook'?'Contacto de Facebook':'Contacto de Instagram')}</strong><small>{t.channel==='facebook'?(t.preview||'Facebook Messenger') :(t.preview||'Instagram Direct')}</small>{t.unread&&<em className="unreadTag">Nuevo</em>}</span>
       <span className="threadDate">{timestamp(t)?new Date(timestamp(t)).toLocaleDateString('es-MX',{day:'2-digit',month:'short'}):''}</span><span className="threadArrow" aria-hidden="true">›</span>
      </button>)}</div>
    </aside>
@@ -163,7 +171,9 @@ export default function CommercialInbox({instagramAvailable}){
      ?<FacebookMessengerConversation key={selected.key} thread={selected.thread_ref}
       displayName={threads.find(t=>t.key===selected.key)?.alias||threads.find(t=>t.key===selected.key)?.profile_name||''}
       onNameSaved={load}/>
-     :<InstagramBusinessInbox key={selected.key+':'+historyRevision} embedded externalThread={selected.thread_ref} onBack={()=>setSelected(null)}/>}
+     :<InstagramBusinessInbox key={selected.key+':'+historyRevision} embedded externalThread={selected.thread_ref}
+       externalDisplayName={threads.find(t=>t.key===selected.key)?.alias||threads.find(t=>t.key===selected.key)?.profile_username&&('@'+String(threads.find(t=>t.key===selected.key)?.profile_username).replace(/^@/,''))||threads.find(t=>t.key===selected.key)?.profile_name||''}
+       onBack={()=>setSelected(null)}/>}
    </main>
   </div>}
   <style jsx>{`
