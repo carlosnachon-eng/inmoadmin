@@ -3,6 +3,7 @@ import {createPortal} from 'react-dom';
 import {inboxRequest} from './CommercialInbox';
 import {supabase} from '../lib/supabase';
 import FacebookReceivedMedia from './FacebookReceivedMedia';
+import {shouldSendOnEnter} from '../lib/messaging/shared/composerKeyboard.js';
 
 function FacebookLinkifiedText({value}){
  const parts=String(value||'').split(/(https?:\/\/[^\s]+)/g);
@@ -324,7 +325,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    <div className="composeRow"><button type="button" title="Agendar cita" onClick={()=>void openAppointment()} disabled={busy||appointmentBusy}>📅</button><input type="file" ref={mediaInputRef} accept="image/jpeg,image/png,image/webp,video/mp4" hidden onChange={e=>selectMedia(e.target.files?.[0])}/>
    <button type="button" title="Adjuntar foto o video" disabled={busy||recording} onClick={()=>mediaInputRef.current?.click()}>＋</button>
    <button type="button" title="Grabar nota de voz" disabled={busy||recording||!!pendingMedia} onClick={startRecording}>🎤</button>
-   <button type="button" title="Enviar propiedad" aria-label="Enviar propiedad" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)} onClick={openProperties}>🏠</button><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.repeat&&!e.nativeEvent.isComposing&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();if(enabled&&!busy&&!locked.current&&text.trim()&&rows.some(r=>r.input===input&&r.can_reply))e.currentTarget.form?.requestSubmit();}}} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
+   <button type="button" title="Enviar propiedad" aria-label="Enviar propiedad" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)} onClick={openProperties}>🏠</button><textarea id="facebook-reply-text" value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(shouldSendOnEnter(e)){e.preventDefault();if(enabled&&!busy&&!locked.current&&text.trim()&&rows.some(r=>r.input===input&&r.can_reply))e.currentTarget.form?.requestSubmit();}}} maxLength={1000} disabled={busy||locked.current} placeholder="Escribe una respuesta…"/><button type="submit" disabled={busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply)||!text.trim()} aria-label="Enviar una vez">➤</button></div></form>:<div className="readOnly">Las conversaciones recuperadas se pueden consultar. Los envíos siguen desactivados hasta terminar las pruebas de permisos.</div>}
   {status&&<p role="status" className="status">{status}</p>}</div>
   <aside className={'fbDetails '+(detailsOpen?'open':'')} aria-label="Detalles del contacto Facebook">
    <div className="detailsHeading"><strong>Detalles</strong><button type="button" onClick={()=>setDetailsOpen(false)} aria-label="Cerrar ficha">×</button></div>
