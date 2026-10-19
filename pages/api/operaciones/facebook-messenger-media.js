@@ -25,12 +25,12 @@ export default async function handler(req,res){
   stage='event_read';
   const {data:row,error}=await db.rpc('fb_messenger_read_v1',
    {p_connection:c.connection,p_actor:actor.id,p_input:req.query.input});
-  if(error||!row||row.kind!=='inbound')return res.status(404).end();
+  if(error||!row||row.kind!=='inbound'){diagnostic('event_missing_or_forbidden');return res.status(404).end();}
   const content=open(c,'content',binding(row),row.content_box);
   stage='attachment_metadata';
   const attachment=Array.isArray(content?.attachments)?content.attachments[index]:null;
   if(!attachment||!['image','audio','video','file'].includes(attachment.type)
-   ||typeof attachment.source_url!=='string')return res.status(404).end();
+   ||typeof attachment.source_url!=='string'){diagnostic('attachment_source_missing');return res.status(404).end();}
   stage='url_validation';
   const url=reviewMediaUrl(attachment.source_url);
   const maxBytes=attachment.type==='image'?8*1024*1024:20*1024*1024;

@@ -6,6 +6,7 @@ import FacebookReceivedMedia from './FacebookReceivedMedia';
 export default function FacebookMessengerConversation({thread,displayName='',onNameSaved}){
  const [rows,setRows]=useState([]),[enabled,setEnabled]=useState(false),[text,setText]=useState(''),[input,setInput]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
  const locked=useRef(false),mounted=useRef(true);
+ const [refreshing,setRefreshing]=useState(false);
  const [outbox,setOutbox]=useState([]);
  const outboxRef=useRef([]);
  function setOutboxSafe(updater){setOutbox(old=>{const next=typeof updater==='function'?updater(old):updater;outboxRef.current=next;return next;});}
@@ -71,6 +72,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
  }
 
  async function refresh(){
+  setRefreshing(true);
   try{const r=await inboxRequest('facebook','history',{thread});if(!mounted.current)return;
    const items=Array.isArray(r.rows)?r.rows:[];
    setRows(items);setEnabled(r.sender_enabled===true);
@@ -88,6 +90,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    if(!locked.current){const latest=[...items].reverse().find(item=>item.can_reply===true&&item.kind==='inbound');
     setInput(previous=>items.some(item=>item.input===previous&&item.can_reply===true)?previous:(latest?.input||''));}
   }catch{if(mounted.current){setRows([]);setInput('');setEnabled(false);setStatus('Historial no disponible o acceso no autorizado.');}}
+  finally{if(mounted.current)setRefreshing(false);}
  }
  useEffect(()=>{mounted.current=true;void refresh();return()=>{mounted.current=false;};},[thread]);
  async function send(e){
@@ -118,7 +121,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
  }
 
  return <section className="fbConversation" aria-label="Conversación Facebook Messenger">
-  <div className="fbWorkspace"><div className="fbChat"><header className="fbHeader"><div><strong>{displayName||'Contacto de Facebook'}</strong><span>Facebook Messenger · </span><span>{enabled?'Atención manual habilitada':'Sólo lectura · Envío desactivado'} · Sin IA</span></div><div className="fbActions"><button type="button" className="mobileDetails" onClick={()=>setDetailsOpen(v=>!v)}>Ficha</button><button type="button" onClick={refresh}>↻ Actualizar</button></div></header>
+  <div className="fbWorkspace"><div className="fbChat"><header className="fbHeader"><div><strong>{displayName||'Contacto de Facebook'}</strong><span>Facebook Messenger · </span><span>{enabled?'Atención manual habilitada':'Sólo lectura · Envío desactivado'} · Sin IA</span></div><div className="fbActions"><button type="button" className="mobileDetails" onClick={()=>setDetailsOpen(v=>!v)}>Ficha</button><button type="button" disabled={refreshing} onClick={()=>void refresh()}>{refreshing?'Actualizando…':'↻ Actualizar'}</button></div></header>
   {nameStatus&&<p role="status" className="nameStatus">{nameStatus}</p>}
   <div className="history" role="log" aria-label="Mensajes de Facebook">
    {!rows.length&&<p className="emptyHistory">No hay mensajes disponibles para esta conversación.</p>}
