@@ -78,14 +78,14 @@ grant execute on function public.fb_messenger_inbox_v1(uuid,uuid,text) to servic
 
 -- Manager-only current assignment for an exact thread, without exposing whole directory.
 create or replace function public.fb_messenger_assignment_get_v1(p_connection uuid,p_thread text,p_actor uuid)
-returns jsonb language sql stable security definer set search_path=pg_catalog as $
+returns jsonb language sql stable security definer set search_path=pg_catalog as $assignment_read$
  select jsonb_build_object('advisor_id',a.advisor_id,'advisor_name',coalesce(p.full_name,p.email))
  from facebook_messenger_private.thread_assignments a
  join public.profiles p on p.id=a.advisor_id
  where a.connection_id=p_connection and a.thread_ref=p_thread
  and exists(select 1 from public.profiles manager where manager.id=p_actor and manager.active
  and manager.role_id in ('admin','gerente_ventas'))
-$;
+$assignment_read$;
 revoke all on function public.fb_messenger_assignment_get_v1(uuid,text,uuid) from public,anon,authenticated;
 grant execute on function public.fb_messenger_assignment_get_v1(uuid,text,uuid) to service_role;
 commit;
