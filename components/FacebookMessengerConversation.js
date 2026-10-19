@@ -3,13 +3,20 @@ import {inboxRequest} from './CommercialInbox';
 import {supabase} from '../lib/supabase';
 import FacebookReceivedMedia from './FacebookReceivedMedia';
 
+function FacebookLinkifiedText({value}){
+ const parts=String(value||'').split(/(https?:\/\/[^\s]+)/g);
+ return <p>{parts.map((part,i)=>/^https?:\/\/[^\s]+$/i.test(part)
+  ?<a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{color:'#1769bd',textDecoration:'underline',overflowWrap:'anywhere'}}>{part}</a>
+  :part)}</p>;
+}
+
 export default function FacebookMessengerConversation({thread,displayName='',onNameSaved}){
  const [rows,setRows]=useState([]),[enabled,setEnabled]=useState(false),[text,setText]=useState(''),[input,setInput]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
  const locked=useRef(false),mounted=useRef(true);
- const [propertyPicker,setPropertyPicker]=useState(false),[propertyRows,setPropertyRows]=useState([]),[propertySearch,setPropertySearch]=useState(''),[propertyLoading,setPropertyLoading]=useState(false);
+ const [propertyPicker,setPropertyPicker]=useState(false),[propertyRows,setPropertyRows]=useState([]),[propertySearch,setPropertySearch]=useState(''),[propertyLoading,setPropertyLoading]=useState(false),[propertyChoices,setPropertyChoices]=useState([]);
  async function openProperties(){
   if(!enabled||busy||locked.current||!rows.some(r=>r.input===input&&r.can_reply))return;
-  setPropertyLoading(true);setPropertyPicker(true);
+  setPropertyLoading(true);setPropertyPicker(true);setPropertyChoices([]);
   try{
    const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('session');
    const response=await fetch('/api/operaciones/facebook-messenger-properties?'+new URLSearchParams({thread}),{
@@ -19,13 +26,27 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   }catch{setStatus('No se pudieron cargar las propiedades');setPropertyPicker(false);}
   finally{setPropertyLoading(false);}
  }
- function selectProperty(p){
-  const url='https://www.emporioinmobiliario.com.mx/propiedades/'+encodeURIComponent(p.public_id);
-  const amount=Number(p.precio);
-  const price=Number.isFinite(amount)?new Intl.NumberFormat('es-MX',{style:'currency',currency:p.moneda==='USD'?'USD':'MXN',maximumFractionDigits:0}).format(amount):'Precio a consultar';
-  const draft=[p.titulo,price,url].join('\n');
-  if(new TextEncoder().encode(draft).length>990){setStatus('La propiedad excede el límite de texto');return;}
-  setText(draft);setPropertyPicker(false);
+ function toggleProperty(p){
+  setPropertyChoices(current=>{
+   if(current.some(x=>x.id===p.id))return current.filter(x=>x.id!==p.id);
+   if(current.length>=5){setStatus('Puedes compartir hasta cinco propiedades por mensaje');return current;}
+   return [...current,p];
+  });
+ }
+ function prepareProperties(){
+  if(!propertyChoices.length)return;
+  const short=(v,n)=>String(v||'').length>n?String(v).slice(0,n-1).trimEnd()+'…':String(v||'');
+  const parts=propertyChoices.map((p,i)=>{
+   const url='https://www.emporioinmobiliario.com.mx/propiedades/'+encodeURIComponent(p.public_id);
+   const price=Number(p.precio);
+   const money=Number.isFinite(price)?new Intl.NumberFormat('es-MX',{style:'currency',currency:p.moneda==='USD'?'USD':'MXN',maximumFractionDigits:0}).format(price):'Precio a consultar';
+   const operation=p.operacion==='sale'?'Venta':'Renta';
+   const location=short([p.colonia,p.ciudad].filter(Boolean).join(', '),42);
+   return (i+1)+'. '+short(p.titulo,58)+'\\n'+money+' · '+operation+(location?' · '+location:'')+'\\n'+url;
+  });
+  const message='Te comparto estas opciones:\\n\\n'+parts.join('\\n\\n');
+  if(new TextEncoder().encode(message).length>980){setStatus('El mensaje es demasiado largo; selecciona menos propiedades');return;}
+  setText(message);setPropertyPicker(false);setPropertyChoices([]);
  }
  const [pendingMedia,setPendingMedia]=useState(null),[recording,setRecording]=useState(false);
  const mediaInputRef=useRef(null),recorderRef=useRef(null),streamRef=useRef(null),chunksRef=useRef([]),cancelRecordingRef=useRef(false);
@@ -251,7 +272,7 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    {!rows.length&&<p className="emptyHistory">No hay mensajes disponibles para esta conversación.</p>}
    {rows.map(r=><div key={r.input} className={r.kind==='echo'?'messageRow mine':'messageRow theirs'}>
     <article className={r.kind==='echo'?'bubble outgoing':'bubble'}>
-     {r.text&&<p>{r.text}</p>}{(r.attachment_types||[]).slice(0,5).map((type,index)=>r.kind==='echo'?<div key={r.input+':'+index} className="outboundMediaReceipt">{type==='audio'?'🎤 Audio':type==='image'?'🖼️ Imagen':type==='video'?'🎬 Video':'📎 Archivo'} enviado por Messenger · vista previa pendiente</div>:<FacebookReceivedMedia key={r.input+':'+index} input={r.input} index={index} type={type}/>)}{!r.text&&!r.attachment_types?.length&&<p>Evento recibido</p>}
+     {r.text&&<FacebookLinkifiedText value={r.text}/>}{(r.attachment_types||[]).slice(0,5).map((type,index)=>r.kind==='echo'?<div key={r.input+':'+index} className="outboundMediaReceipt">{type==='audio'?'🎤 Audio':type==='image'?'🖼️ Imagen':type==='video'?'🎬 Video':'📎 Archivo'} enviado por Messenger · vista previa pendiente</div>:<FacebookReceivedMedia key={r.input+':'+index} input={r.input} index={index} type={type}/>)}{!r.text&&!r.attachment_types?.length&&<p>Evento recibido</p>}
      <footer><time>{new Date(r.occurred_at).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</time>{r.outcome&&<span> · {r.outcome}</span>}</footer>
      {enabled&&r.can_reply&&<button type="button" className="pickReply" disabled={busy||locked.current} aria-pressed={input===r.input} onClick={()=>setInput(r.input)}>{input===r.input?'Seleccionado':'Responder a este mensaje'}</button>}
     </article>
@@ -272,8 +293,8 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
   {propertyPicker&&<div className="fbPropertyPicker" style={{border:'1px solid #ddd',padding:10,borderRadius:10,marginBottom:8}}>
    <div style={{display:'flex',justifyContent:'space-between'}}><strong>Compartir propiedad</strong><button type="button" onClick={()=>setPropertyPicker(false)} aria-label="Cerrar propiedades">×</button></div>
    <input aria-label="Buscar propiedad" placeholder="Buscar por nombre o colonia" value={propertySearch} onChange={e=>setPropertySearch(e.target.value)} style={{width:'100%',padding:8,margin:'8px 0'}}/>
-   <div style={{maxHeight:220,overflowY:'auto'}}>{propertyLoading?'Cargando…':propertyRows.filter(p=>(p.titulo+' '+p.colonia+' '+p.ciudad).toLowerCase().includes(propertySearch.toLowerCase())).slice(0,30).map(p=><button type="button" key={p.id} onClick={()=>selectProperty(p)} style={{display:'block',width:'100%',height:'auto',borderRadius:6,textAlign:'left',padding:9,marginBottom:4}}>{p.titulo} · {p.colonia||p.ciudad||''}</button>)}</div>
-   <small>La propiedad se prepara como mensaje. Revisa y pulsa Enviar para compartirla.</small>
+   <div style={{maxHeight:220,overflowY:'auto'}}>{propertyLoading?'Cargando…':propertyRows.filter(p=>(p.titulo+' '+p.colonia+' '+p.ciudad).toLowerCase().includes(propertySearch.toLowerCase())).slice(0,30).map(p=><button type="button" key={p.id} onClick={()=>toggleProperty(p)} style={{display:'block',width:'100%',height:'auto',borderRadius:6,textAlign:'left',padding:9,marginBottom:4}}>{propertyChoices.some(x=>x.id===p.id)?'☑':'☐'} {p.titulo} · {p.colonia||p.ciudad||''}</button>)}</div>
+   <div style={{display:'flex',gap:8,alignItems:'center',paddingTop:8}}><span>{propertyChoices.length}/5 seleccionadas</span><button type="button" disabled={!propertyChoices.length} onClick={prepareProperties}>Preparar mensaje</button></div><small>Revisa las opciones y pulsa Enviar. No se enviará automáticamente.</small>
   </div>}
   {pendingMedia&&<div style={{display:'flex',alignItems:'center',gap:8,padding:8}}>
     <span>{pendingMedia.name} · {(pendingMedia.size/1024/1024).toFixed(1)} MB</span>
