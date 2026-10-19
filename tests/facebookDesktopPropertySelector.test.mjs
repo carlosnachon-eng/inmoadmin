@@ -22,3 +22,12 @@ test('shared property draft uses JS newline escapes, not literal slash character
  assert.equal(block.includes("'\\\\n'"),false);
  assert.equal(block.includes("'\\n'"),true);
 });
+
+test('appointment editor portals above Inbox on both mobile and desktop',()=>{
+ assert.match(source,/createPortal\(/);
+ assert.match(source,/document\.body/);
+ assert.match(source,/zIndex:2147483000/);
+ assert.match(source,/role="dialog"/);
+ assert.match(source,/maxHeight:'min\(90dvh,800px\)'/);
+ assert.match(source,/flexShrink:0,borderTop:/);
+});
