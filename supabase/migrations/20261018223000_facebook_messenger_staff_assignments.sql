@@ -22,7 +22,7 @@ begin
  if not exists(select 1 from public.profiles where id=p_actor and active and role_id in ('admin','gerente_ventas')) then return false; end if;
  if not exists(select 1 from public.profiles p
    where p.id=p_advisor and p.active and p.role_id='asesor'
-   and p.id in (select advisor_profile_id from public.v_sales_team_directory)) then return false; end if;
+   and p.id in (select advisor_profile_id from public.v_sales_team_directory where left_at is null)) then return false; end if;
  if not exists(select 1 from facebook_messenger_private.connections
    where id=p_connection and enabled) then return false; end if;
  if not exists(select 1 from facebook_messenger_private.events
@@ -76,4 +76,16 @@ end $inbox$;
 revoke all on function public.fb_messenger_inbox_v1(uuid,uuid,text) from public,anon,authenticated;
 grant execute on function public.fb_messenger_inbox_v1(uuid,uuid,text) to service_role;
 
+-- Manager-only current assignment for an exact thread, without exposing whole directory.
+create or replace function public.fb_messenger_assignment_get_v1(p_connection uuid,p_thread text,p_actor uuid)
+returns jsonb language sql stable security definer set search_path=pg_catalog as $
+ select jsonb_build_object('advisor_id',a.advisor_id,'advisor_name',coalesce(p.full_name,p.email))
+ from facebook_messenger_private.thread_assignments a
+ join public.profiles p on p.id=a.advisor_id
+ where a.connection_id=p_connection and a.thread_ref=p_thread
+ and exists(select 1 from public.profiles manager where manager.id=p_actor and manager.active
+ and manager.role_id in ('admin','gerente_ventas'))
+$;
+revoke all on function public.fb_messenger_assignment_get_v1(uuid,text,uuid) from public,anon,authenticated;
+grant execute on function public.fb_messenger_assignment_get_v1(uuid,text,uuid) to service_role;
 commit;
