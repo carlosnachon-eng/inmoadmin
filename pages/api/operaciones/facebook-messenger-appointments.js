@@ -29,7 +29,7 @@ export default async function handler(req,res){
  try{
   const c=messengerConfig(process.env),actor=await authorizeInboxStaff(req);
   if(!c||!actor?.active||!COMMERCIAL_INBOX_ROLES.includes(actor.role_id))return res.status(403).end();
-  const op=req.method==='GET'?'list':req.query?.op;
+  const op=req.method==='GET'?(req.query?.op==='options'?'options':'list'):req.query?.op;
   const thread=req.method==='GET'?req.query?.thread:req.body?.thread;
   if(!isRef(thread))return res.status(400).end();
   const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
