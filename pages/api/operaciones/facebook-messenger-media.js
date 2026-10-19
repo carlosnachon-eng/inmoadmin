@@ -32,14 +32,16 @@ export default async function handler(req,res){
   const mime=detectMime(media.buffer);
   const allowed={
    image:['image/jpeg','image/png','image/webp'],
-   audio:['audio/mpeg','audio/ogg','audio/mp4'],
+   audio:['audio/mpeg','audio/ogg','audio/mp4','video/mp4'],
    video:['video/mp4'],
    file:['application/pdf']
   };
   if(!allowed[attachment.type].includes(mime))return res.status(415).end();
-  if(media.headerMime&&media.headerMime!==mime&&media.headerMime!=='application/octet-stream')
+  const responseMime=attachment.type==='audio'&&mime==='video/mp4'?'audio/mp4':mime;
+  if(media.headerMime&&media.headerMime!==mime&&media.headerMime!==responseMime
+   &&media.headerMime!=='application/octet-stream')
    return res.status(415).end();
-  res.setHeader('Content-Type',mime);
+  res.setHeader('Content-Type',responseMime);
   res.setHeader('Content-Length',String(media.buffer.length));
   res.setHeader('Content-Disposition',attachment.type==='file'?'attachment':'inline');
   return res.status(200).send(media.buffer);
