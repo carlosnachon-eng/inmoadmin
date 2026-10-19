@@ -42,9 +42,9 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    const money=Number.isFinite(price)?new Intl.NumberFormat('es-MX',{style:'currency',currency:p.moneda==='USD'?'USD':'MXN',maximumFractionDigits:0}).format(price):'Precio a consultar';
    const operation=p.operacion==='sale'?'Venta':'Renta';
    const location=short([p.colonia,p.ciudad].filter(Boolean).join(', '),42);
-   return (i+1)+'. '+short(p.titulo,58)+'\\n'+money+' · '+operation+(location?' · '+location:'')+'\\n'+url;
+   return (i+1)+'. '+short(p.titulo,58)+'\n'+money+' · '+operation+(location?' · '+location:'')+'\n'+url;
   });
-  const message='Te comparto estas opciones:\\n\\n'+parts.join('\\n\\n');
+  const message='Te comparto estas opciones:\n\n'+parts.join('\n\n');
   if(new TextEncoder().encode(message).length>980){setStatus('El mensaje es demasiado largo; selecciona menos propiedades');return;}
   setText(message);setPropertyPicker(false);setPropertyChoices([]);
  }
