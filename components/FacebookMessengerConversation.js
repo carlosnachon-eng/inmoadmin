@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {inboxRequest} from './CommercialInbox';
 import {supabase} from '../lib/supabase';
 import FacebookReceivedMedia from './FacebookReceivedMedia';
@@ -42,9 +43,9 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    const money=Number.isFinite(price)?new Intl.NumberFormat('es-MX',{style:'currency',currency:p.moneda==='USD'?'USD':'MXN',maximumFractionDigits:0}).format(price):'Precio a consultar';
    const operation=p.operacion==='sale'?'Venta':'Renta';
    const location=short([p.colonia,p.ciudad].filter(Boolean).join(', '),42);
-   return (i+1)+'. '+short(p.titulo,58)+'\\n'+money+' · '+operation+(location?' · '+location:'')+'\\n'+url;
+   return (i+1)+'. '+short(p.titulo,58)+'\n'+money+' · '+operation+(location?' · '+location:'')+'\n'+url;
   });
-  const message='Te comparto estas opciones:\\n\\n'+parts.join('\\n\\n');
+  const message='Te comparto estas opciones:\n\n'+parts.join('\n\n');
   if(new TextEncoder().encode(message).length>980){setStatus('El mensaje es demasiado largo; selecciona menos propiedades');return;}
   setText(message);setPropertyPicker(false);setPropertyChoices([]);
  }
@@ -282,19 +283,28 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    </div>)}
   </div>
   {enabled?<form onSubmit={send} className="composer"><label htmlFor="facebook-reply-text">Respuesta manual</label><small className="replyHint">{input?'Ventana activa · cada mensaje se registra y envía una sola vez':'No hay mensaje entrante elegible para responder en esta conversación'}</small>{appointmentRows.map(a=><div key={a.id} style={{fontSize:12,padding:6,borderBottom:'1px solid #eee'}}>📅 {new Date(a.fecha_hora).toLocaleString('es-MX')} · {a.estado}{a.estado!=='cancelada'&&<button type="button" disabled={appointmentBusy} onClick={()=>cancelAppointment(a.id)}>Cancelar</button>}</div>)}
-  {appointmentOpen&&<div className="fbAppointmentPanel" style={{padding:10,border:'1px solid #ddd',borderRadius:10,marginBottom:8,maxHeight:'min(55vh,440px)',overflowY:'auto',overscrollBehavior:'contain'}}>
-   <strong>Agendar cita</strong>
-   {['name','phone','email','fecha_local','notas'].map(k=><label key={k} style={{display:'block',fontSize:12}}>{({name:'Nombre',phone:'Teléfono',email:'Correo',fecha_local:'Fecha y hora',notas:'Notas'})[k]}<input type={k==='fecha_local'?'datetime-local':'text'} value={appointmentForm[k]} onChange={e=>setAppointmentForm(f=>({...f,[k]:e.target.value}))} style={{width:'100%'}}/></label>)}
-   <label>Asesor<select value={appointmentForm.advisor_id} onChange={e=>setAppointmentForm(f=>({...f,advisor_id:e.target.value}))}><option value="">Seleccionar</option>{appointmentAdvisors.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-   <label>Propiedad<select value={appointmentForm.property_id} onChange={e=>setAppointmentForm(f=>({...f,property_id:e.target.value}))}><option value="">Sin propiedad</option>{appointmentProperties.map(p=><option key={p.id} value={p.id}>{p.titulo}</option>)}</select></label>
-   <div className="fbAppointmentFooter" style={{position:'sticky',bottom:0,background:'#fff',display:'flex',gap:8,padding:'12px 0 4px',zIndex:1}}><button type="button" disabled={appointmentBusy} onClick={createAppointment}>Guardar cita</button>
-   <button type="button" onClick={()=>setAppointmentOpen(false)}>Cerrar</button></div>
-  </div>}
+  {appointmentOpen&&typeof document!=='undefined'&&createPortal(
+   <div role="presentation" style={{position:'fixed',inset:0,zIndex:2147483000,background:'rgba(15,23,42,.55)',display:'flex',alignItems:'center',justifyContent:'center',padding:'max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))',boxSizing:'border-box'}}>
+    <section role="dialog" aria-modal="true" aria-label="Agendar cita de Facebook" style={{display:'flex',flexDirection:'column',width:'min(540px,100%)',maxHeight:'min(90dvh,800px)',minHeight:0,overflow:'hidden',borderRadius:14,background:'#fff',boxShadow:'0 18px 55px rgba(0,0,0,.25)',color:'#263348'}}>
+     <header style={{padding:'14px 18px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid #e5e7eb',flexShrink:0}}>
+      <strong>Agendar cita</strong><button type="button" onClick={()=>setAppointmentOpen(false)} aria-label="Cerrar cita" style={{border:0,background:'transparent',fontSize:24,cursor:'pointer'}}>×</button>
+     </header>
+     <div style={{padding:'14px 18px',overflowY:'auto',overscrollBehavior:'contain',flex:'1 1 auto',minHeight:0}}>
+      {['name','phone','email','fecha_local','notas'].map(k=><label key={k} style={{display:'block',fontSize:13,marginBottom:12}}>{({name:'Nombre',phone:'Teléfono',email:'Correo',fecha_local:'Fecha y hora',notas:'Notas'})[k]}<input type={k==='fecha_local'?'datetime-local':'text'} value={appointmentForm[k]} onChange={e=>setAppointmentForm(f=>({...f,[k]:e.target.value}))} style={{display:'block',width:'100%',boxSizing:'border-box',minHeight:40,marginTop:5,padding:9,border:'1px solid #cbd5e1',borderRadius:8,fontSize:14}}/></label>)}
+      <label style={{display:'block',fontSize:13,marginBottom:12}}>Asesor<select value={appointmentForm.advisor_id} onChange={e=>setAppointmentForm(f=>({...f,advisor_id:e.target.value}))} style={{display:'block',width:'100%',minHeight:40,marginTop:5}}><option value="">Seleccionar</option>{appointmentAdvisors.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+      <label style={{display:'block',fontSize:13,marginBottom:12}}>Propiedad<select value={appointmentForm.property_id} onChange={e=>setAppointmentForm(f=>({...f,property_id:e.target.value}))} style={{display:'block',width:'100%',minHeight:40,marginTop:5}}><option value="">Sin propiedad</option>{appointmentProperties.map(p=><option key={p.id} value={p.id}>{p.titulo}</option>)}</select></label>
+     </div>
+     <footer style={{display:'flex',gap:10,padding:'12px 18px max(12px,env(safe-area-inset-bottom))',flexShrink:0,borderTop:'1px solid #e5e7eb',background:'#fff'}}>
+      <button type="button" disabled={appointmentBusy} onClick={createAppointment} style={{flex:1,minHeight:44,border:0,borderRadius:9,background:'#ae2148',color:'#fff',fontWeight:700,cursor:'pointer'}}>Guardar cita</button>
+      <button type="button" onClick={()=>setAppointmentOpen(false)} style={{flex:1,minHeight:44,border:'1px solid #cbd5e1',borderRadius:9,background:'#fff',color:'#334155',cursor:'pointer'}}>Cerrar</button>
+     </footer>
+    </section>
+   </div>,document.body)}
   {propertyPicker&&<div className="fbPropertyPicker" style={{border:'1px solid #ddd',padding:10,borderRadius:10,marginBottom:8}}>
    <div style={{display:'flex',justifyContent:'space-between'}}><strong>Compartir propiedad</strong><button type="button" onClick={()=>setPropertyPicker(false)} aria-label="Cerrar propiedades">×</button></div>
    <input aria-label="Buscar propiedad" placeholder="Buscar por nombre o colonia" value={propertySearch} onChange={e=>setPropertySearch(e.target.value)} style={{width:'100%',padding:8,margin:'8px 0'}}/>
-   <div style={{maxHeight:220,overflowY:'auto'}}>{propertyLoading?'Cargando…':propertyRows.filter(p=>(p.titulo+' '+p.colonia+' '+p.ciudad).toLowerCase().includes(propertySearch.toLowerCase())).slice(0,30).map(p=><button type="button" key={p.id} onClick={()=>toggleProperty(p)} style={{display:'block',width:'100%',height:'auto',borderRadius:6,textAlign:'left',padding:9,marginBottom:4}}>{propertyChoices.some(x=>x.id===p.id)?'☑':'☐'} {p.titulo} · {p.colonia||p.ciudad||''}</button>)}</div>
-   <div style={{display:'flex',gap:8,alignItems:'center',paddingTop:8}}><span>{propertyChoices.length}/5 seleccionadas</span><button type="button" disabled={!propertyChoices.length} onClick={prepareProperties}>Preparar mensaje</button></div><small>Revisa las opciones y pulsa Enviar. No se enviará automáticamente.</small>
+   <div className="fbPropertyList" style={{maxHeight:220,overflowY:'auto'}}>{propertyLoading?'Cargando…':propertyRows.filter(p=>(p.titulo+' '+p.colonia+' '+p.ciudad).toLowerCase().includes(propertySearch.toLowerCase())).slice(0,30).map(p=><button type="button" key={p.id} onClick={()=>toggleProperty(p)} style={{display:'block',width:'100%',height:'auto',borderRadius:6,textAlign:'left',padding:9,marginBottom:4}}>{propertyChoices.some(x=>x.id===p.id)?'☑':'☐'} {p.titulo} · {p.colonia||p.ciudad||''}</button>)}</div>
+   <div className="fbPropertyFooter" style={{display:'flex',gap:8,alignItems:'center',paddingTop:8}}><span>{propertyChoices.length}/5 seleccionadas</span><button type="button" disabled={!propertyChoices.length} onClick={prepareProperties}>Preparar mensaje</button></div><small>Revisa las opciones y pulsa Enviar. No se enviará automáticamente.</small>
   </div>}
   {pendingMedia&&<div style={{display:'flex',alignItems:'center',gap:8,padding:8}}>
     <span>{pendingMedia.name} · {(pendingMedia.size/1024/1024).toFixed(1)} MB</span>
@@ -342,7 +352,28 @@ export default function FacebookMessengerConversation({thread,displayName='',onN
    .bubble{width:fit-content;max-width:min(78%,540px);border:1px solid #e2e8f0;background:#fff;border-radius:15px 15px 15px 4px;padding:11px 13px;box-sizing:border-box;overflow-wrap:anywhere}.outgoing{background:#e3efff;border-color:#cfe0fd;border-radius:15px 15px 4px 15px}
    .bubble p{white-space:pre-wrap;font-size:13px;line-height:1.5;margin:0;color:#263348}.bubble footer{display:block;text-align:right;margin-top:6px;color:#94a3b8;font-size:10px}.emptyHistory{color:#64748b;font-size:12px;text-align:center;margin:auto}
    .pickReply{margin-top:9px;background:transparent;border:0;color:#a51d40;font-size:11px;font-weight:700;cursor:pointer}
-   .replyHint{display:block;font-size:10px;color:#64748b;margin:-3px 0 8px}.composer{flex-shrink:0;background:#fff;padding:12px 16px;border-top:1px solid #e5e7eb}.composer label{display:block;font-size:11px;font-weight:700;color:#64748b;margin-bottom:7px}.composeRow{display:flex;align-items:flex-end;gap:9px}.composer textarea{flex:1;min-width:0;resize:vertical;min-height:48px;max-height:116px;padding:12px;border:1px solid #dbe1ea;border-radius:12px;font:inherit;font-size:13px}.composer button{min-width:38px;min-height:38px;border-radius:12px;background:#ae2148;color:#fff;border:0;font-size:13px;cursor:pointer;padding:7px 10px;white-space:normal;overflow-wrap:normal}.composeRow>button{flex:0 0 38px;width:38px;height:38px;padding:0;border-radius:50%;font-size:18px}.composer button:not(.composeRow>button){width:auto;height:auto}.composer label input,.composer label select{box-sizing:border-box;max-width:100%;min-height:36px}.fbAppointmentPanel{min-height:0;scrollbar-width:thin}.fbAppointmentFooter button{flex:1;min-width:0}.outboundMediaReceipt{padding:9px 10px;background:#eef4ff;border-radius:8px;font-size:12px;color:#42516a}.composer label{line-height:1.4}.composer .fbPropertyPicker button{max-width:100%}.composer button:disabled{background:#cbd5e1;cursor:not-allowed}
+   .replyHint{display:block;font-size:10px;color:#64748b;margin:-3px 0 8px}.composer{flex-shrink:0;background:#fff;padding:12px 16px;border-top:1px solid #e5e7eb}.composer label{display:block;font-size:11px;font-weight:700;color:#64748b;margin-bottom:7px}.composeRow{display:flex;align-items:flex-end;gap:9px}.composer textarea{flex:1;min-width:0;resize:vertical;min-height:48px;max-height:116px;padding:12px;border:1px solid #dbe1ea;border-radius:12px;font:inherit;font-size:13px}.composer button{min-width:38px;min-height:38px;border-radius:12px;background:#ae2148;color:#fff;border:0;font-size:13px;cursor:pointer;padding:7px 10px;white-space:normal;overflow-wrap:normal}.composeRow>button{flex:0 0 38px;width:38px;height:38px;padding:0;border-radius:50%;font-size:18px}.composer button:not(.composeRow>button){width:auto;height:auto}.composer label input,.composer label select{box-sizing:border-box;max-width:100%;min-height:36px}.fbAppointmentPanel{min-height:0;scrollbar-width:thin}.fbAppointmentFooter button{flex:1;min-width:0}.outboundMediaReceipt{padding:9px 10px;background:#eef4ff;border-radius:8px;font-size:12px;color:#42516a}.composer label{line-height:1.4}.composer .fbPropertyPicker button{max-width:100%} 
+   /* Desktop Inbox has a height-constrained chat pane: keep the property picker
+      and its confirmation visible, independently scrolling only its results. */
+   @media(min-width:1001px){
+    .fbPropertyPicker{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;
+      width:min(520px,calc(100vw - 48px));max-height:min(66vh,540px);box-sizing:border-box;
+      display:flex;flex-direction:column;min-height:0;background:#fff;
+      box-shadow:0 18px 55px rgba(15,23,42,.28)}
+    .fbPropertyPicker .fbPropertyList{flex:1;min-height:40px;overflow-y:auto;max-height:none!important}
+    .fbPropertyPicker .fbPropertyFooter{flex-shrink:0;flex-wrap:wrap;background:#fff}
+    .fbAppointmentPanel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+      z-index:1001;width:min(540px,calc(100vw - 48px));box-sizing:border-box;
+      max-height:min(82vh,760px)!important;overflow-y:auto!important;
+      background:#fff;box-shadow:0 18px 55px rgba(15,23,42,.28);
+      padding-bottom:14px!important}
+    .fbAppointmentPanel .fbAppointmentFooter{position:sticky;bottom:0;z-index:2;
+      display:flex;flex-shrink:0;background:#fff;border-top:1px solid #e5e7eb;
+      padding:12px 0!important}
+    .fbAppointmentPanel label{display:block;margin:8px 0}
+    .fbAppointmentPanel label input,.fbAppointmentPanel label select{width:100%;min-width:0}
+
+   }.composer button:disabled{background:#cbd5e1;cursor:not-allowed}
    .readOnly{flex-shrink:0;padding:12px 18px;background:#fff;border-top:1px solid #e5e7eb;font-size:11px;color:#64748b;line-height:1.5}
    .status{margin:0;padding:9px 18px;background:#fff7ed;color:#9a3412;font-size:11px}
    @media(max-width:1000px){.fbWorkspace{grid-template-columns:minmax(0,1fr)}.fbDetails{display:none;position:absolute;right:0;top:0;bottom:0;width:min(330px,90%);z-index:5;box-shadow:-12px 0 28px #0f172a21}.fbDetails.open{display:flex}.fbConversation{position:relative}.mobileDetails{display:inline-block}.detailsHeading button{display:block;border:0;background:transparent;font-size:22px;cursor:pointer}}@media(max-width:760px){.fbHeader{padding:10px 12px}.history{padding:12px}.bubble{max-width:87%}}
