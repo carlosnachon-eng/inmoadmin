@@ -83,7 +83,7 @@ export default function Ejecutivo() {
     setLoading(true);
     const [c, cp, pc, cm, t, cond, ca, ct, gc] = await Promise.all([
       supabase.from("cierres").select("fecha_cierre, comision, cobrado, pendiente, anio, mes").eq('estado', 'activo'),
-      supabase.from("cierre_pagos").select("cierre_id, monto, fecha"),
+      supabase.from("cierre_pagos").select("cierre_id, monto, fecha, cierres!inner(estado)").eq("cierres.estado", "activo"),
       supabase.from("poliza_caja").select("fecha, monto, tipo, concepto"),
       supabase.from("cash_movements").select("date, amount, type, category, description"),
       supabase.from("maintenance_tickets").select("status, charged_amount, provider_cost, updated_at, created_at, payer"),

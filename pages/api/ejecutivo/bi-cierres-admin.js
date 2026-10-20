@@ -57,7 +57,7 @@ async function cargarCierres(periodo) {
 
   const { data: pagosPeriodo, error: pagosPeriodoError } = await supabase
     .from('cierre_pagos')
-    .select('id, cierre_id, concepto, monto, fecha, notas')
+    .select('id, cierre_id, concepto, monto, fecha, notas, cierres!inner(estado)').eq('cierres.estado', 'activo')
     .gte('fecha', periodo.startDate)
     .lt('fecha', periodo.endExclusive)
     .order('fecha', { ascending: true });
@@ -70,7 +70,7 @@ async function cargarCierres(periodo) {
   if (cierreIds.length > 0) {
     const { data, error } = await supabase
       .from('cierre_pagos')
-      .select('id, cierre_id, concepto, monto, fecha, notas')
+      .select('id, cierre_id, concepto, monto, fecha, notas, cierres!inner(estado)').eq('cierres.estado', 'activo')
       .in('cierre_id', cierreIds);
 
     if (error) throw error;

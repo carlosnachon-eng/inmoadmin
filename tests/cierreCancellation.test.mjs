@@ -23,6 +23,8 @@ test('audited financial consumers explicitly filter active closures',()=>{
 test('receipt sync sees cancellation, history excludes cancelled from active state',()=>{
  const ui=readFileSync(new URL('../pages/cierres.js',import.meta.url),'utf8');
  assert.match(ui,/setCierres\(\(cierresData \|\| \[\]\)\.filter\(cierreVigente\)\)/);
- assert.match(ui,/window.confirm/);assert.match(ui,/Cancelar cierre/);
+ assert.match(ui,/CierreCancellationDialog/);assert.match(ui,/Cancelar cierre/);
+ const dialog=readFileSync(new URL('../components/CierreCancellationDialog.js',import.meta.url),'utf8');
+ assert.match(dialog,/type="checkbox"/);assert.match(dialog,/confirmed && motivoCancelacionValido/);
  assert.match(readFileSync(new URL('../pages/api/recibos/sincronizar-abono-cierre.js',import.meta.url),'utf8'),/cierre.estado === 'cancelado'/);
 });

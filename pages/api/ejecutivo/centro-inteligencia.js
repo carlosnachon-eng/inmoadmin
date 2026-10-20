@@ -72,7 +72,7 @@ async function cargarCierres(periodo, metrics) {
 
   const { data: pagosPeriodo, error: pagosPeriodoError } = await measure('cierre_pagos.periodo', () => supabase
     .from('cierre_pagos')
-    .select('id, cierre_id, concepto, monto, fecha, notas')
+    .select('id, cierre_id, concepto, monto, fecha, notas, cierres!inner(estado)').eq('cierres.estado', 'activo')
     .gte('fecha', periodo.startDate)
     .lt('fecha', periodo.endExclusive)
     .order('fecha', { ascending: true }));
@@ -85,7 +85,7 @@ async function cargarCierres(periodo, metrics) {
   if (cierreIds.length > 0) {
     const { data, error } = await measure('cierre_pagos.cierres_periodo', () => supabase
       .from('cierre_pagos')
-      .select('id, cierre_id, concepto, monto, fecha, notas')
+      .select('id, cierre_id, concepto, monto, fecha, notas, cierres!inner(estado)').eq('cierres.estado', 'activo')
       .in('cierre_id', cierreIds));
 
     if (error) throw error;
@@ -284,7 +284,7 @@ async function cargarDatosOperativos(metrics) {
       .order('fecha_cierre', { ascending: false })),
     safe('operativo.cierre_pagos', () => supabase
       .from('cierre_pagos')
-      .select('id, cierre_id, concepto, monto, fecha, notas')
+      .select('id, cierre_id, concepto, monto, fecha, notas, cierres!inner(estado)').eq('cierres.estado', 'activo')
       .order('fecha', { ascending: false })),
     safe('operativo.solicitudes_inquilino', () => supabase
       .from('solicitudes_inquilino')

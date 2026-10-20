@@ -8,17 +8,22 @@ import path from 'node:path';
 const require=createRequire(path.join(process.env.IG_PG_DEPS,'test.cjs')),{Client}=require('pg');
 const bin=process.env.IG_PG_BIN,dir=await mkdtemp('/private/tmp/cierre-cancel-pg-');
 const port=await new Promise((resolve,reject)=>{const s=net.createServer();s.on('error',reject);s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});});
-let db,other,started=false,checks=0;
+let db,other,observer,started=false,checks=0;
 const ok=v=>{assert.ok(v);checks++;};
 const reason='Cancelación simulada issue 251';
 try{
  execFileSync(path.join(bin,'initdb'),['-D',dir+'/db','-U','postgres','-A','trust','--no-locale'],{stdio:'ignore'});
  execFileSync(path.join(bin,'pg_ctl'),['-D',dir+'/db','-l',dir+'/server.log','-o',`-h 127.0.0.1 -p ${port} -k ${dir}`,'start','-w'],{stdio:'ignore'});started=true;
- db=new Client({host:'127.0.0.1',port,user:'postgres',database:'postgres'});other=new Client({host:'127.0.0.1',port,user:'postgres',database:'postgres'});await db.connect();await other.connect();
+ db=new Client({host:'127.0.0.1',port,user:'postgres',database:'postgres'});other=new Client({host:'127.0.0.1',port,user:'postgres',database:'postgres'});await db.connect();await other.connect();observer=new Client({host:'127.0.0.1',port,user:'postgres',database:'postgres'});await observer.connect();
  await db.query(`create role anon;create role authenticated;create role service_role;
  create schema auth;create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  grant usage on schema auth to authenticated;
  create table profiles(id uuid primary key,active boolean,role_id text);
+ create table roles(id text primary key,es_externo boolean);
+ insert into roles values('admin',false),('asesor',false),('partner',true);
+ create function public.profiles_is_active_internal_reader() returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from public.profiles p join public.roles r on r.id=p.role_id where p.id=auth.uid() and p.active and not coalesce(r.es_externo,false))$$;
+ revoke all on function public.profiles_is_active_internal_reader() from public,anon;
+ grant execute on function public.profiles_is_active_internal_reader() to authenticated;
  create table cierres(id bigint primary key,comision numeric,cobrado numeric default 0,pag_vendedor numeric default 0,gerente_pagado_monto numeric default 0,cobrado_bool boolean default false,vendedor_pagado boolean default false,gerente_pagado boolean default false,recibo_id uuid,firma_id uuid);
  create table cierre_pagos(id uuid primary key default gen_random_uuid(),cierre_id bigint references cierres,monto numeric);
  create table citas(id uuid primary key,estado text);
@@ -29,8 +34,13 @@ try{
  create function prevent_commercial_attribution_mutation() returns trigger language plpgsql as $$begin raise exception 'immutable';end$$;
  create trigger attribution_immutable before update or delete on commercial_attributions for each row execute function prevent_commercial_attribution_mutation();
  grant select,insert,update,delete on cierres,cierre_pagos to authenticated;
- grant select on profiles to authenticated;`);
+ grant select on profiles to authenticated;
+ grant truncate,references,trigger on cierres,cierre_pagos to anon,authenticated;`);
  await db.query(await readFile(new URL('../supabase/migrations/20261019195353_cierre_cancelacion_auditada.sql',import.meta.url),'utf8'));
+ await db.query(await readFile(new URL('../supabase/migrations/20261020234412_cierre_cancelacion_preservar_movimientos.sql',import.meta.url),'utf8'));
+ await db.query(await readFile(new URL('../supabase/migrations/20261020234923_cierre_cancelacion_serializar_origen.sql',import.meta.url),'utf8'));
+ await db.query(await readFile(new URL('../supabase/migrations/20261020235219_cierre_pagos_autorizacion_activa.sql',import.meta.url),'utf8'));
+ await db.query(await readFile(new URL('../supabase/migrations/20261020235638_cierre_historial_privilegios.sql',import.meta.url),'utf8'));
  const admin=randomUUID(),nonadmin=randomUUID(),receipt=randomUUID(),signature=randomUUID();
  await db.query("insert into profiles values($1,true,'admin'),($2,true,'asesor')",[admin,nonadmin]);
  await db.query('insert into cierres(id,comision,recibo_id,firma_id) values(943,22000,$1,$2),(950,10000,null,null),(951,10000,null,null),(952,10000,null,null),(953,10000,null,null),(954,10000,null,null)',[receipt,signature]);
@@ -42,6 +52,14 @@ try{
  ok(Number((await db.query("select sum(ingresos) amount from v_commercial_kpi_events where event_type='CIERRE'")).rows[0].amount)===22000);
  const snapshot950=(await db.query('select to_jsonb(c) v from cierres c where id=950')).rows[0].v;
  const login=async(client,actor)=>{await client.query("select set_config('request.jwt.claim.sub',$1,false)",[actor]);await client.query('set role authenticated');};
+ const inactive=randomUUID();
+ await db.query("insert into profiles values($1,false,'admin')",[inactive]);
+ await login(db,inactive);
+ await assert.rejects(()=>db.query('select cancelar_cierre(943,$1)',[reason]),e=>e.code==='42501');checks++;
+ await db.query('reset role');
+ await db.query("select set_config('request.jwt.claim.sub','',false)");
+ await db.query('set role authenticated');
+ await assert.rejects(()=>db.query('select cancelar_cierre(943,$1)',[reason]),e=>e.code==='42501');checks++;
  await login(db,nonadmin);
  await assert.rejects(()=>db.query('select cancelar_cierre(943,$1)',[reason]),e=>e.code==='42501');checks++;
  await login(db,admin);await login(other,admin);
@@ -70,8 +88,68 @@ try{
  await db.query('begin');await db.query('select cancelar_cierre(954,$1)',[reason]);
  const latePayment=other.query('insert into cierre_pagos(cierre_id,monto) values(954,10)').then(()=>false,e=>e.message==='cierre_cancelado_no_admite_pagos');
  await db.query('commit');ok(await latePayment);
+ // Zero-value movements are preserved after cancellation.
+ await db.query('insert into cierres(id,comision) values(957,500),(958,500)');
+ const zero=(await db.query('insert into cierre_pagos(cierre_id,monto) values(957,0) returning id')).rows[0].id;
+ await db.query('select cancelar_cierre(957,$1)',[reason]);
+ await assert.rejects(()=>db.query('delete from cierre_pagos where id=$1',[zero]),/cierre_cancelado_no_admite_pagos/);checks++;
+ await assert.rejects(()=>db.query('update cierre_pagos set monto=1 where id=$1',[zero]),/cierre_cancelado_no_admite_pagos/);checks++;
+ ok((await db.query('select count(*)::int n from cierre_pagos where id=$1',[zero])).rows[0].n===1);
+ const activePayment=(await db.query('insert into cierre_pagos(cierre_id,monto) values(958,10) returning id')).rows[0].id;
+ await db.query('update cierre_pagos set monto=20 where id=$1',[activePayment]);
+ await db.query('delete from cierre_pagos where id=$1',[activePayment]);
+ ok((await db.query('select count(*)::int n from cierre_pagos where id=$1',[activePayment])).rows[0].n===0);
+ // Establish actual lock waits before committing each race.
+ await db.query('insert into cierre_pagos(cierre_id,monto) values(958,5)');
+ await login(db,nonadmin);
+ await assert.rejects(()=>db.query('insert into cierre_pagos(cierre_id,monto) values(958,5)'),e=>e.code==='42501');checks++;
+ ok((await db.query('update cierre_pagos set monto=99 where cierre_id=958')).rowCount===0);
+ ok((await db.query('delete from cierre_pagos where cierre_id=958')).rowCount===0);
+ ok((await db.query('select * from cierre_pagos where cierre_id=958')).rows.length===1);
+ await login(db,inactive);ok((await db.query('select * from cierre_pagos')).rows.length===0);
+ await assert.rejects(()=>db.query('insert into cierre_pagos(cierre_id,monto) values(958,5)'),e=>e.code==='42501');checks++;
+ await db.query('reset role');await db.query('set role anon');
+ await assert.rejects(()=>db.query('select * from cierre_pagos'),e=>e.code==='42501');checks++;
+ await assert.rejects(()=>db.query('insert into cierre_pagos(cierre_id,monto) values(958,5)'),e=>e.code==='42501');checks++;
+ await db.query('reset role');await login(db,admin);
+ ok(!(await db.query("select has_table_privilege('authenticated','cierre_pagos','truncate') p")).rows[0].p);
+ for(const role of ['anon','authenticated'])for(const table of ['cierres','cierre_pagos'])for(const privilege of ['TRUNCATE','REFERENCES','TRIGGER']){
+  ok(!(await db.query('select has_table_privilege($1,$2,$3) p',[role,table,privilege])).rows[0].p);
+ }
+ await db.query('delete from cierre_pagos where cierre_id=958');
+ const waiting = async pid => {
+  for(let i=0;i<200;i++){
+   if((await observer.query("select wait_event_type from pg_stat_activity where pid=$1",[pid])).rows[0]?.wait_event_type==='Lock')return;
+   await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  throw new Error('expected_concurrent_lock_wait');
+ };
+ const sharedSignature=randomUUID();
+ await db.query('insert into cierres(id,comision,firma_id) values(959,500,$1)',[sharedSignature]);
+ await db.query('begin');
+ await db.query('insert into cierres(id,comision,firma_id) values(960,500,$1)',[sharedSignature]);
+ const duplicateFirst=other.query('select cancelar_cierre(959,$1)',[reason]).then(()=>false,e=>e.message==='origen_cierre_duplicado');
+ await waiting(other.processID);await db.query('commit');ok(await duplicateFirst);
+ ok((await db.query('select estado from cierres where id=959')).rows[0].estado==='activo');
+ const cancelledSignature=randomUUID();
+ await db.query('insert into cierres(id,comision,firma_id) values(961,500,$1)',[cancelledSignature]);
+ await db.query('begin');await db.query('select cancelar_cierre(961,$1)',[reason]);
+ const cancelFirst=other.query('insert into cierres(id,comision,firma_id) values(962,500,$1)',[cancelledSignature]).then(()=>false,e=>e.message==='origen_cierre_cancelado');
+ await waiting(other.processID);await db.query('commit');ok(await cancelFirst);
+ // A deactivation already in progress must be observed before authorisation.
+ await db.query('reset role');await db.query('begin');
+ await db.query('update profiles set active=false where id=$1',[admin]);
+ const deactivated=other.query('select cancelar_cierre(958,$1)',[reason]).then(()=>false,e=>e.code==='42501');
+ await waiting(other.processID);await db.query('commit');ok(await deactivated);
+ await db.query('update profiles set active=true where id=$1',[admin]);
+ await login(db,admin);await db.query('insert into cierres(id,comision) values(963,500)');
+ await other.query('reset role');
+ await db.query('begin');await db.query('select cancelar_cierre(963,$1)',[reason]);
+ const revokeLater=other.query('update profiles set active=false where id=$1',[admin]);
+ await waiting(other.processID);await db.query('commit');await revokeLater;ok(true);
+ await other.query('update profiles set active=true where id=$1',[admin]);
  await db.query('reset role');
- ok((await db.query('select count(*)::int n from cierre_audit_private.cancelaciones')).rows[0].n===2);
+ ok((await db.query('select count(*)::int n from cierre_audit_private.cancelaciones')).rows[0].n===5);
  assert.deepEqual((await db.query('select to_jsonb(a) snapshot from commercial_attributions a')).rows,before);checks++;
  assert.deepEqual((await db.query('select to_jsonb(c) v from cierres c where id=950')).rows[0].v,snapshot950);checks++;
  ok((await db.query("select count(*)::int n from v_commercial_kpi_events where event_type='CIERRE'")).rows[0].n===0);
@@ -79,4 +157,4 @@ try{
  ok(!(await db.query("select has_function_privilege('anon','cancelar_cierre(bigint,text)','execute') p")).rows[0].p);
  ok((await db.query("select relrowsecurity from pg_class where oid='cierre_audit_private.cancelaciones'::regclass")).rows[0].relrowsecurity);
  console.log(JSON.stringify({postgres:'PASS',checks,production_touched:false,fixtures:'disposable_local_only'}));
-}finally{await db?.end();await other?.end();if(started)execFileSync(path.join(bin,'pg_ctl'),['-D',dir+'/db','stop','-m','fast','-w'],{stdio:'ignore'});await rm(dir,{recursive:true,force:true});}
+}finally{await db?.end();await other?.end();await observer?.end();if(started)execFileSync(path.join(bin,'pg_ctl'),['-D',dir+'/db','stop','-m','fast','-w'],{stdio:'ignore'});await rm(dir,{recursive:true,force:true});}
