@@ -102,6 +102,7 @@ test('single Inbox explicit adapter; no writes, onboarding or composer in WA com
  assert.doesNotMatch(ui,/<textarea|onSubmit|method:\s*['"]POST|window\.FB|graph\.facebook/);
  assert.match(ui,/<details>/);assert.match(ui,/@media\(max-width:760px\)/);
  assert.match(inbox,/selected.channel==='whatsapp_admin'/);
+ assert.match(inbox,/filter==='all'&&whatsappAdminAvailable&&waList.phase==='error'/);
  assert.match(inbox,/channel==='whatsapp_admin'\?'whatsapp-admin-inbox'/);
  assert.match(api,/includeContext:false/);
  assert.doesNotMatch(api,/process\.env\.\w*TOKEN|sendText|dispatch|claim/i);
