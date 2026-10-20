@@ -1,0 +1,52 @@
+PR #253 — DIAGNÓSTICO DE LISTA VACÍA (2026-10-20)
+
+CAUSA
+El Preview usa Supabase DEV hjfwjnejbcpmknvfpdcq, no Producción.
+El gate SSR y API exige VERCEL_ENV preview/development y ese host exacto.
+La misma NEXT_PUBLIC_SUPABASE_URL alimenta auth y cliente server-side del reader.
+La interfaz autenticada Admin muestra el canal sin aviso de error de API.
+
+Consulta agregada ejecutada directamente sobre DEV, sin leer cuerpos/identificadores:
+ public.meta_observer_events: 0
+ eventos del alcance Administración: 0
+ meta_admin_private.inbound_inputs: 0
+ inputs del alcance Administración: 0
+ meta_admin_private.native_subject_evidence: 0
+ jsonb_array_length(public.meta_admin_inbox_list_v1(null,100)): 0
+
+Los 303 mensajes productivos son un antecedente del usuario, no datos de DEV.
+No se consultó ni copió Producción. No hay registros DEV para excluir por identidad.
+El reporte previo de un hilo era un error: count(*) sobre una RPC JSONB cuenta
+una fila escalar incluso cuando su valor es []. Esta evidencia queda rectificada.
+
+CADENA Y AUTORIZACIÓN
+CommercialInbox -> GET whatsapp-admin-inbox?op=threads -> auth.getUser y perfil
+activo admin/coord_operaciones -> createInboxReader(includeContext=false).
+La API legacy meta-admin-inbox utiliza el mismo reader y las mismas RPC;
+no es la ruta llamada por la pestaña nueva. No se modificó la API legacy.
+La RPC fija WABA/phone Administración; exige native_subject_evidence exacta,
+signed_from, native message match, observer_only/state observed y cero errores.
+Agrupa por scope/subject/key_tag y excluye audiencia internal.
+El reader admite matched, unmatched y ambiguous: no exige matched para listar.
+Cada preview pasa después por detalle, evidencia fresca/scope/subject/key_tag
+y verificación final; su fallo provoca 503, no exclusión silenciosa.
+ACL verificadas en DEV: anon=false/authenticated=false/service_role=true para
+list/history. No RLS, ACL, evidencia ni requisitos de identidad modificados.
+
+DEFECTO DE PRESENTACIÓN Y CORRECCIÓN
+HTTP no exitoso ya generaba un aviso de canal no disponible, pero debajo aún se
+mostraba el texto genérico de cero conversaciones. Además, un HTTP 200 sin rows
+podía convertirse en [] mediante r.rows || []. No fue la causa del caso actual,
+porque la base y la RPC efectivamente están vacías, pero era ambiguo.
+Sólo para WhatsApp se valida contrato explícito, se distinguen loading/error/
+empty/filtered y se muestra origen DEV + HTTP 200 sólo tras lectura autorizada.
+No se permite diagnosticar ausencia de datos cuando falla la API.
+Datos de diagnóstico: nombre del proyecto, entorno, alcance; nunca secretos,
+IDs nativos, ciphertext, contenido o datos globales fuera del alcance autorizado.
+
+LÍMITE DE CERTIFICACIÓN
+La lectura vacía autenticada queda explicada; no demuestra la visualización de
+un historial poblado. Pruebas con fixtures locales cubren datos/roles/evidencia.
+No se sembró DEV ni se activó recepción para fabricar evidencia. Antes de aprobar
+merge como integración completa faltan QA autenticada con fixture DEV autorizado
+y resolver Coexistence. El PR permanece sólo preparación read-only, sin merge.

@@ -1,0 +1,58 @@
+PR #253 — PREFLIGHT QA SINTÉTICA DEV
+Resultado: BLOQUEO REAL; NO MERGE. No es una nueva investigación de lista vacía.
+Código funcional evaluado: 9b18d67. Entorno único: hjfwjnejbcpmknvfpdcq.
+
+Se revisó el mecanismo existente antes de crear datos reversibles.
+Configuración encontrada para Administración:
+  meta_observer_admin_scope: 0 filas / 0 habilitadas.
+  meta_admin_private.capture_config: 0 filas / 0 habilitadas.
+  subject_evidence_epoch: 1 fila (no se modificó).
+
+Prueba ejecutada en BEGIN READ ONLY / ROLLBACK con lotes vacíos:
+  capture_meta_admin_shadow_v1 -> SQLSTATE 23514 / meta_admin_capture_disabled.
+  observe_meta_admin_events_v1 -> SQLSTATE 42501 / meta_observer_scope_denied.
+Ambos errores se verificaron exactamente; cualquier otro resultado habría fallado
+la prueba. No hubo llamadas HTTP a Meta ni mensajes, claims o envíos.
+
+Los triggers guard_input_v1 y guard_subject_evidence_v1 exigen scope y captura
+habilitados, coincidencia exacta con el evento creado en la misma transacción,
+ventana temporal y evidencia de sujeto. No se deshabilitaron ni eludieron.
+La lectura de snapshot también depende de esas configuraciones existentes.
+
+El fixture previo scripts/sql/meta-admin-memory-provenance-dev.sql no es adecuado
+para esta QA hosted bajo las restricciones actuales: habilita scope/captura,
+introduce evidencia directamente y termina en ROLLBACK. Un browser/Preview en
+otra conexión no puede ver sus filas sin commit. No se ejecutó ni se transformó
+en una siembra persistente. No se falsearon identidades acreditadas.
+
+RESULTADOS POR ESCENARIO
+- Tres contactos/historial entrante y eco saliente: BLOQUEADO antes de siembra.
+- Orden, previews y cronología con datos en Preview: NO EJECUTADO.
+- Identidad acreditada y ficha con datos: NO EJECUTADO; sin identidades falsas.
+- Multimedia simulada: NO EJECUTADO en Preview; descarga/reproducción pendientes.
+- Refresh sin perder selección: NO EJECUTADO con historial poblado.
+- QA visual poblada escritorio/móvil: NO EJECUTADA; no hay capturas que acrediten.
+- Roles, separación por scope, dedupe, cambios de estado, error/carga/lista vacía:
+  cubiertos por suites locales, no equivalen a QA autenticada poblada.
+- 155/155 pruebas locales PASS (whatsappAdminInbox, metaAdminInbox,
+  metaObserver, metaAdminCapture), reejecutadas en esta fase.
+- Build funcional: PASS previamente en 9b18d67; no se modificó código ejecutable
+  en esta fase, sólo se agrega el preflight SQL reproducible y este informe.
+
+LIMPIEZA
+No se creó ningún fixture persistente ni identidad/contrato de prueba.
+IDs de fixtures creados: ninguno.
+Conteos finales verificados: eventos=0, inputs=0, evidencias nativas=0.
+No hizo falta DELETE; no se alteraron gates, RLS, roles, credenciales ni recursos.
+Producción, Facebook, Instagram, Respond y WhatsApp iPhone intactos.
+
+SIGUIENTE PASO / AUTORIDAD NECESARIA
+No se puede certificar el historial poblado en ESTE Preview mediante los
+mecanismos existentes manteniendo simultáneamente ausentes/deshabilitados los
+gates de captura requeridos por esos mecanismos.
+Alternativa recomendada para autorizar y diseñar aparte: entorno QA desechable,
+sin webhook público ni credenciales Meta, con fixtures propios y controles reales,
+sin cambiar el DEV operativo ni datos productivos. Validar primero que su
+aprovisionamiento mantenga todos los bloqueos de envío y no requiera eludir
+el gate actual de proyecto DEV. No se creó ese entorno en esta tarea.
+No aprobar el PR como certificado funcionalmente hasta completar QA poblada.

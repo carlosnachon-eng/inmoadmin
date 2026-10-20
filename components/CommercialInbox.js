@@ -3,22 +3,27 @@ import {supabase} from '../lib/supabase';
 import InstagramBusinessInbox from './InstagramBusinessInbox';
 import InstagramCommentsPanel from './InstagramCommentsPanel';
 import FacebookMessengerConversation from './FacebookMessengerConversation';
+import WhatsAppAdminConversation from './WhatsAppAdminConversation';
+import {validateWhatsAppAdminList,whatsappAdminListMessage} from '../lib/messaging/whatsappAdmin/listState';
 
 export async function inboxRequest(channel,op,{thread,body}={}){
+ if(!['instagram','facebook','whatsapp_admin'].includes(channel)||channel==='whatsapp_admin'&&body)throw Error('Canal de sólo lectura');
  const {data}=await supabase.auth.getSession();
  if(!data?.session)throw Error('Sesión requerida');
- const path=channel==='facebook'?(body?'facebook-messenger':'facebook-messenger-inbox'):'instagram-business';
+ const path=channel==='whatsapp_admin'?'whatsapp-admin-inbox':channel==='facebook'?(body?'facebook-messenger':'facebook-messenger-inbox'):'instagram-business';
  const response=await fetch('/api/operaciones/'+path+'?'+new URLSearchParams({op,...(thread?{thread}:{})}),{
   method:body?'POST':'GET',cache:'no-store',redirect:'error',
   headers:{Authorization:`Bearer ${data.session.access_token}`,...(body?{'Content-Type':'application/json'}:{})},
   ...(body?{body:JSON.stringify(body)}:{})});
  const result=await response.json().catch(()=>null);
  if(!response.ok||!result)throw Error('No fue posible consultar el canal.');
+ if(channel==='whatsapp_admin'&&op==='threads')validateWhatsAppAdminList(result);
  return result;
 }
 
-export default function CommercialInbox({instagramAvailable}){
+export default function CommercialInbox({instagramAvailable,facebookAvailable=true,whatsappAdminAvailable=false}){
  const [filter,setFilter]=useState('all'),[query,setQuery]=useState(''),[threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState('');
+ const [waList,setWaList]=useState({phase:'loading'});
  const [canSyncHistory,setCanSyncHistory]=useState(false),[syncBusy,setSyncBusy]=useState(false),[syncStatus,setSyncStatus]=useState(''),[historyRevision,setHistoryRevision]=useState(0);
  const generation=useRef(0);
  const listPolling=useRef(false);
@@ -27,7 +32,7 @@ export default function CommercialInbox({instagramAvailable}){
  const [unreadFilter,setUnreadFilter]=useState('all');
  const timestamp=t=>{const date=t.last_activity||t.occurred_at||t.last_at;const parsed=Date.parse(date||'');return Number.isFinite(parsed)?parsed:0};
  async function markThreadRead(t){
-  if(!t||!t.unread)return;
+  if(!t||!t.unread||t.channel==='whatsapp_admin')return;
   setThreads(prev=>prev.map(x=>x.key===t.key?{...x,unread:false}:x));
   try{
    if(t.channel==='instagram')await inboxRequest('instagram','notification-read',{body:{thread:t.thread_ref}});
@@ -44,16 +49,16 @@ export default function CommercialInbox({instagramAvailable}){
 
  async function load(){
   const gen=++generation.current;
-  const channels=instagramAvailable?['instagram','facebook']:['facebook'];
+  const channels=[...(instagramAvailable?['instagram']:[]),...(facebookAvailable?['facebook']:[]),...(whatsappAdminAvailable?['whatsapp_admin']:[])];
   const results=await Promise.all(channels.map(async channel=>{
-   try{const r=await inboxRequest(channel,'threads');return {rows:(r.rows||[]).map(t=>({...t,channel,key:channel+':'+t.thread_ref}))};}
-   catch{return {rows:[],error:channel};}
+   try{const r=await inboxRequest(channel,'threads');return {channel,status:r.status,rows:(r.rows||[]).map(t=>({...t,channel,key:channel+':'+t.thread_ref}))};}
+   catch{return {channel,rows:[],error:channel};}
   }));
   if(gen!==generation.current)return;
   let igUnread=new Set(),facebookRead=new Map();
   const [igNotifications,fbReads]=await Promise.allSettled([
    instagramAvailable?inboxRequest('instagram','notifications'):Promise.resolve({rows:[]}),
-   (async()=>{
+   !facebookAvailable?Promise.resolve({rows:[]}):(async()=>{
     const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('auth');
     const r=await fetch('/api/operaciones/facebook-messenger-read-state',{cache:'no-store',
      headers:{Authorization:'Bearer '+data.session.access_token}});
@@ -74,16 +79,18 @@ export default function CommercialInbox({instagramAvailable}){
    }catch{}
   }
   if(gen!==generation.current)return;
+  const wa=results.find(r=>r.channel==='whatsapp_admin');
+  if(wa)setWaList({phase:wa.error?'error':'ready',count:wa.rows.length,status:wa.status});
   setThreads(results.flatMap(r=>r.rows).map(t=>{
    const name=t.channel==='facebook'?(names[t.thread_ref]||{}):{};
    const read=facebookRead.get(t.thread_ref);
-   const unread=t.channel==='instagram'?igUnread.has(t.thread_ref):
+   const unread=t.channel==='whatsapp_admin'?false:t.channel==='instagram'?igUnread.has(t.thread_ref):
     Boolean(read?.last_inbound_at)&&(!read?.read_at||Date.parse(read.last_inbound_at)>Date.parse(read.read_at));
    return {...t,...(t.channel==='instagram'?(instagramProfileCache.current.get(t.thread_ref)||{}):{}),...name,unread};
   }).sort((a,b)=>timestamp(b)-timestamp(a)||a.key.localeCompare(b.key)));
   setError(results.filter(r=>r.error).map(r=>`${r.error}: no disponible`).join(' · '));
  }
- useEffect(()=>{void load();return()=>{generation.current++;};},[instagramAvailable]);
+ useEffect(()=>{void load();return()=>{generation.current++;};},[instagramAvailable,facebookAvailable,whatsappAdminAvailable]);
  // List polling is independent of the selected chat and never changes the
  // selected thread or the operator's draft. Only the visible tab polls.
  useEffect(()=>{
@@ -97,7 +104,7 @@ export default function CommercialInbox({instagramAvailable}){
   const onVisible=()=>{if(document.visibilityState==='visible')void tick();};
   document.addEventListener('visibilitychange',onVisible);
   return()=>{alive=false;clearInterval(id);document.removeEventListener('visibilitychange',onVisible);generation.current++;};
- },[instagramAvailable]);
+ },[instagramAvailable,facebookAvailable,whatsappAdminAvailable]);
 
  // Enrich Instagram's unified list with the same Meta profile resolved inside its chat.
  // Bounded batches avoid a large parallel Graph burst; cached for the current session.
@@ -166,19 +173,20 @@ export default function CommercialInbox({instagramAvailable}){
  const visible=threads.filter(t=>(filter==='all'||t.channel===filter)&&(unreadFilter==='all'||t.unread)&&`${t.alias||''} ${t.profile_name||''} ${t.profile_username||''} ${t.channel}`.toLocaleLowerCase('es-MX').includes(query.toLocaleLowerCase('es-MX').trim()));
  return <section aria-label="Inbox comercial omnicanal" className="commercialInbox">
   <header className="inboxHeader"><div><span className="eyebrow">EMPORIO · MENSAJERÍA</span><h1>Inbox</h1><p className="subtitle">Conversaciones y atención desde un solo lugar</p></div>
-  <div className="inboxActions">{instagramAvailable&&canSyncHistory&&<button type="button" className="refresh" disabled={syncBusy} onClick={recoverHistory}>{syncBusy?'Recuperando…':'↻ Recuperar 7 días IG'}</button>}{canSyncHistory&&<button type="button" className="refresh" disabled={syncBusy} onClick={recoverFacebookHistory}>{syncBusy?'Recuperando…':'↻ Recuperar 7 días FB'}</button>}<button type="button" className="refresh" onClick={load} aria-label="Actualizar conversaciones">↻ Actualizar</button></div></header>
-  <nav aria-label="Canales" className="channelTabs">{[['all','Todos'],['instagram','Instagram'],['facebook','Facebook'],['comments','Comentarios']].map(([id,label])=>
+  <div className="inboxActions">{instagramAvailable&&canSyncHistory&&<button type="button" className="refresh" disabled={syncBusy} onClick={recoverHistory}>{syncBusy?'Recuperando…':'↻ Recuperar 7 días IG'}</button>}{facebookAvailable&&canSyncHistory&&<button type="button" className="refresh" disabled={syncBusy} onClick={recoverFacebookHistory}>{syncBusy?'Recuperando…':'↻ Recuperar 7 días FB'}</button>}<button type="button" className="refresh" onClick={load} aria-label="Actualizar conversaciones">↻ Actualizar</button></div></header>
+  <nav aria-label="Canales" className="channelTabs">{[['all','Todos'],['instagram','Instagram'],['facebook','Facebook'],['comments','Comentarios'],...(whatsappAdminAvailable?[['whatsapp_admin','WhatsApp Administración']]:[])].map(([id,label])=>
    <button type="button" key={id} className={filter===id?'active':''} aria-pressed={filter===id} onClick={()=>{setFilter(id);setSelected(null);}}>{label}{id==='all'&&<span className="counter">{threads.length}</span>}{(id==='instagram'||id==='facebook')&&<span className="counter">{threads.filter(t=>t.channel===id).length}</span>}</button>)}</nav>
   {syncStatus&&<p role="status" className="loadWarning">{syncStatus}</p>}
   {error&&<p role="status" className="loadWarning">Algunos canales no están disponibles: {error}</p>}
+  {filter==='whatsapp_admin'&&<p role="status" className="loadWarning">{whatsappAdminListMessage(waList)}{waList.phase==='ready'&&waList.status?.data_source&&<span> Origen: {waList.status.data_source.project_ref} · API HTTP 200 · acceso autorizado.</span>}</p>}
   {filter==='comments'?<InstagramCommentsPanel open onClose={()=>setFilter('all')}/>:<div className={'workspace '+(selected?'hasSelection':'')}>
    <aside aria-label="Conversaciones" className="threadsPane"><div className="paneHeading"><strong>Conversaciones</strong><span>{visible.length}</span></div>
     <div className="readFilters"><button className={unreadFilter==='all'?'active':''} onClick={()=>setUnreadFilter('all')}>Todas</button><button className={unreadFilter==='unread'?'active':''} onClick={()=>setUnreadFilter('unread')}>No leídas ({threads.filter(t=>t.unread&&(filter==='all'||t.channel===filter)).length})</button></div>
     <label className="searchBox"><span aria-hidden="true">⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar conversaciones" aria-label="Buscar conversaciones"/></label>
-    <div className="threadList">{!visible.length&&<p className="emptyThreads">{query?'No hay coincidencias.':'No hay conversaciones autorizadas en este canal.'}</p>}
+    <div className="threadList">{!visible.length&&<p className="emptyThreads">{filter==='whatsapp_admin'||filter==='all'&&whatsappAdminAvailable&&waList.phase==='error'?whatsappAdminListMessage({...waList,filtered:Boolean(query)||unreadFilter!=='all'}):query?'No hay coincidencias.':'No hay conversaciones autorizadas en este canal.'}</p>}
      {visible.map((t,i)=><button type="button" key={t.key} className={`thread ${t.unread?'unread':''}`} aria-pressed={selected?.key===t.key} onClick={()=>{setSelected(t);void markThreadRead(t)}}>
-      <span className={'avatar '+(t.channel==='facebook'?'fb':'ig')}>{t.channel==='facebook'?'f':'◎'}</span>
-      <span className="threadCopy"><strong>{t.alias||(t.channel==='instagram'&&t.profile_username?'@'+String(t.profile_username).replace(/^@/,''):null)||t.profile_name||(t.channel==='facebook'?'Contacto de Facebook':'Contacto de Instagram')}</strong><small>{t.channel==='facebook'?(t.preview||'Facebook Messenger') :(t.preview||'Instagram Direct')}</small>{t.unread&&<em className="unreadTag">Nuevo</em>}</span>
+      <span className={'avatar '+(t.channel==='whatsapp_admin'?'wa':t.channel==='facebook'?'fb':'ig')}>{t.channel==='whatsapp_admin'?'W':t.channel==='facebook'?'f':'◎'}</span>
+      <span className="threadCopy"><strong>{t.alias||(t.channel==='instagram'&&t.profile_username?'@'+String(t.profile_username).replace(/^@/,''):null)||t.profile_name||(t.channel==='facebook'?'Contacto de Facebook':'Contacto de Instagram')}</strong><small>{t.channel==='whatsapp_admin'?'WhatsApp Administración · '+t.preview:t.channel==='facebook'?(t.preview||'Facebook Messenger') :(t.preview||'Instagram Direct')}</small>{t.unread&&<em className="unreadTag">Nuevo</em>}</span>
       <span className="threadDate">{timestamp(t)?new Date(timestamp(t)).toLocaleDateString('es-MX',{day:'2-digit',month:'short'}):''}</span><span className="threadArrow" aria-hidden="true">›</span>
      </button>)}</div>
    </aside>
@@ -187,12 +195,14 @@ export default function CommercialInbox({instagramAvailable}){
      ?<FacebookMessengerConversation key={selected.key} thread={selected.thread_ref}
       displayName={threads.find(t=>t.key===selected.key)?.alias||threads.find(t=>t.key===selected.key)?.profile_name||''}
       onNameSaved={load}/>
+     :selected.channel==='whatsapp_admin'?<WhatsAppAdminConversation key={selected.key} thread={selected.thread_ref} request={inboxRequest}/>
      :<InstagramBusinessInbox key={selected.key+':'+historyRevision} embedded externalThread={selected.thread_ref}
        externalDisplayName={threads.find(t=>t.key===selected.key)?.alias||threads.find(t=>t.key===selected.key)?.profile_username&&('@'+String(threads.find(t=>t.key===selected.key)?.profile_username).replace(/^@/,''))||threads.find(t=>t.key===selected.key)?.profile_name||''}
        onBack={()=>setSelected(null)}/>}
    </main>
   </div>}
   <style jsx>{`
+  .avatar.wa{background:#127c56}
   .commercialInbox{height:calc(100dvh - 118px);max-height:calc(100dvh - 118px);display:flex;flex-direction:column;overflow:hidden;background:#fff;color:#202b3c;min-width:0;border:1px solid #e8e9ec;border-radius:14px;overflow:hidden}
    .inboxActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.inboxHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px 8px;background:white}
   .eyebrow{font-size:10px;letter-spacing:1.5px;font-weight:800;color:#a4a9b4}.inboxHeader h1{margin:2px 0;font-size:21px;letter-spacing:-.7px}.subtitle{font-size:12px;color:#87909c;margin:0}

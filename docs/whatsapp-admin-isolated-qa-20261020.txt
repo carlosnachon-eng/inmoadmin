@@ -1,0 +1,80 @@
+PR #253 — QA aislada sintética — 20 octubre 2026
+
+Instrucción ejecutada: issuecomment-6303438387 y autorización explícita de QA
+aislada. No se creó infraestructura ni se conectó a DEV operativo/Producción.
+No se repitió la investigación de los cero históricos de DEV.
+
+Método
+- Store RPC en memoria, 3 sujetos ficticios, 3 mensajes por sujeto (9 en total).
+- Lector real createInboxReader(includeContext:false) + handler real
+  createWhatsAppAdminHandler + componentes reales CommercialInbox y
+  WhatsAppAdminConversation. Estilos styled-jsx compilados de los dos componentes.
+- Roles y sesión son fixtures, NO una nueva prueba de login/RLS remoto.
+  Pruebas previas de Preview autenticado con cero datos siguen siendo separadas.
+- Evidencia native_verified/scope_verified es fixture del contrato, no acredita
+  identidades reales, cifrado histórico ni captura de Meta. Ningún guard se relajó.
+- Servidor localhost, CSP connect-src self, sin cliente de DB ni Meta; API del
+  harness permite exclusivamente lectura WA. Otros endpoints bloqueados.
+- Echo histórico sin cuerpo/autor acreditado; no se simula un envío exitoso.
+
+Resultados
+PASS: tres conversaciones, selección independiente de cada una.
+PASS: lista por actividad descendente (20, 19, 18 octubre), previews correctos.
+PASS: historial ascendente, entrantes y ecos diferenciados, sin duplicados.
+PASS: referencia image presentada sin descarga/reproducción ni solicitud externa.
+PASS: matched/unmatched/ambiguous; no se publica información privada de pruebas.
+PASS: rol asesor 403 antes de leer; historial desaparece en siguiente consulta.
+PASS: rol admin permitido; gates de roles adicionales cubiertos en suite existente.
+PASS: rechazo de selección de scope Ventas, evidencia inválida, interna o stale.
+PASS: polling real de 10s actualiza preview e historial sin cambiar selección.
+PASS: error 503 diferenciado de HTTP 200 vacío; carga lenta de 5s visible y recupera.
+PASS: escritorio y móvil 390x844, volver a lista y elegir otro hilo, ancho 390/390.
+PASS: cero composer, cero escrituras HTTP observadas, cero RPC de claim/envío.
+
+Defecto corregido
+En filtro Todos, con error WA y cero filas, se mostraba un falso mensaje de vacío
+debajo de la advertencia. Ahora usa el diagnóstico WA. Cambio de una expresión;
+Instagram/Facebook no cambian cuando WA no está habilitado. Regresión añadida.
+
+Evidencias
+docs/evidence/pr253/pr253-synthetic-desktop.png
+docs/evidence/pr253/pr253-synthetic-mobile.png
+docs/evidence/pr253/pr253-synthetic-loading.png
+docs/evidence/pr253/pr253-synthetic-error-fixed.png
+Capturas corresponden al harness sintético, NO a conversaciones en Preview real.
+El texto de origen DEV es el contrato de la API real: no implica conexión remota
+en estas capturas; el banner superior explicita aislamiento y sesión sintética.
+
+Pruebas reproducibles
+node --test tests/whatsappAdminInbox.test.mjs tests/whatsappAdminSynthetic.test.mjs
+  tests/metaAdminInbox.test.mjs tests/metaObserver.test.mjs tests/metaAdminCapture.test.mjs
+Resultado: 156 tests, 156 PASS, 0 fallos/skips.
+Build: NEXT_PUBLIC_SUPABASE_URL=https://qa.invalid
+ NEXT_PUBLIC_SUPABASE_ANON_KEY=synthetic-build-only
+ SUPABASE_SERVICE_ROLE_KEY=synthetic-build-only node node_modules/next/dist/bin/next build
+PASS. Intento inicial sin configuración falló por supabaseUrl requerida; no bug WA.
+Visual: WA_QA_DEPS=<directorio con esbuild 0.25.12> node tests/whatsappAdminVisualServer.mjs
+No se agregó dependencia productiva. Navegación y capturas mediante navegador conectado.
+git diff --check PASS.
+
+Limpieza
+Servidores locales terminados y pestaña QA cerrada; fixtures sólo en memoria.
+Cero filas creadas en DEV o Producción, por lo tanto cero residuos operativos.
+Sólo permanecen código reproducible de fixtures, reporte y capturas deliberadamente
+versionados. No tokens, credenciales ni datos de clientes. No cambios Meta/Respond/
+WABA/iPhone, recepción, agentes, envíos ni otros canales.
+
+Pendientes / límites
+- Ficha actual muestra identidad y disponibilidad, NO perfil comercial completo,
+  nombre/teléfono del contacto, asignaciones, citas ni propiedades operativas.
+- Multimedia sólo referencia segura; no descarga ni reproducción.
+- Ecos no acreditan autor ni contenido saliente cuando no existe en histórico.
+- No certifica Coexistence, historial productivo poblado, transporte Meta ni RLS
+  remoto con fixtures. No se activó recepción o envío.
+
+Recomendación: MERGE del alcance de preparación de sólo lectura del PR #253,
+con gate Preview/DEV y Producción cerrada, sujeto a revisión y autorización del
+propietario. NO habilitar Coexistence/atención productiva con esta evidencia.
+Si el criterio de merge exige ficha comercial completa o canal operativo, NO
+MERGE para ese alcance mayor: esas funcionalidades siguen pendientes.
+No se realizó merge ni deployment productivo.
