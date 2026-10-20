@@ -1,5 +1,6 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useState,useRef} from 'react';
 import {supabase} from '../lib/supabase';
+import CommentObservation from './CommentObservation';
 
 async function request(op,{body,query={}}={}){
  const {data}=await supabase.auth.getSession();
@@ -25,7 +26,9 @@ const CANNED=[
  'Con gusto. Mándanos DM y te compartimos precio, ubicación y disponibilidad 🙌'
 ];
 
-export default function InstagramCommentsPanel({open,onClose}){
+export default function InstagramCommentsPanel({open,onClose,observationEnabled=false}){
+ const [observation,setObservation]=useState(null);
+ const loading=useRef(false);
  const [rows,setRows]=useState([]);
  const [allowed,setAllowed]=useState(false);
  const [busy,setBusy]=useState(false);
@@ -40,6 +43,8 @@ export default function InstagramCommentsPanel({open,onClose}){
  const [replyRevision,setReplyRevision]=useState(0);
 
  async function load(){
+  if(loading.current)return;
+  loading.current=true;
   setBusy(true);setStatus('');
   try{
    const r=await request('comments');
@@ -51,10 +56,31 @@ export default function InstagramCommentsPanel({open,onClose}){
   }catch(e){
    setRows([]);setSelected(null);
    setStatus(e.message==='forbidden'?'Comentarios disponibles para Dirección/Gerencia de Ventas.':'No fue posible cargar comentarios.');
-  }finally{setBusy(false);}
+  }finally{loading.current=false;setBusy(false);}
  }
 
  useEffect(()=>{if(open)void load();},[open]);
+ useEffect(()=>{
+  if(!open||!observationEnabled)return;
+  let live=true,pending=false;
+  async function refresh(){
+   if(pending||document.hidden)return;
+   pending=true;
+   try{
+    const {data}=await supabase.auth.getSession();
+    if(!data?.session)throw Error('session');
+    const response=await fetch('/api/operaciones/comment-observation',{cache:'no-store',redirect:'error',headers:{Authorization:`Bearer ${data.session.access_token}`}});
+    if(!response.ok)throw Error('observation');
+    const result=await response.json();
+    if(!Array.isArray(result.rows)||!result.metrics)throw Error('shape');
+    if(live)setObservation(result);
+    if(live)await load();
+   }catch{if(live)setObservation(null);}finally{pending=false;}
+  }
+  void refresh();
+  const timer=setInterval(refresh,10000);
+  return()=>{live=false;clearInterval(timer);};
+ },[open,observationEnabled]);
  useEffect(()=>{if(!open||!selected||mediaInfo[selected])return;
   let cancelled=false;
   request('comment-media',{body:{comment:selected}}).then(data=>{
@@ -143,6 +169,7 @@ export default function InstagramCommentsPanel({open,onClose}){
   </aside>
 
   <main className="commentDetailPane">
+   {observationEnabled&&<CommentObservation data={observation} comment={active?.comment_ref} onUse={text=>{if(active)setDrafts(v=>({...v,[active.comment_ref]:text}));}}/>}
    {active?<>
     <header className="detailHeader">
      <button type="button" className="mobileBack" onClick={()=>setSelected(null)}>‹</button>
