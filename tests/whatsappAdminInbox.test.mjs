@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createWhatsAppAdminHandler,whatsappAdminPreviewAllowed} from '../lib/messaging/whatsappAdmin/inbox.js';
+import {createWhatsAppAdminHandler,whatsappAdminPreviewAllowed,whatsappAdminSource} from '../lib/messaging/whatsappAdmin/inbox.js';
 import {createInboxReader} from '../lib/messaging/metaAdminInbox/read.js';
 import {validateWhatsAppAdminList,whatsappAdminListMessage} from '../lib/messaging/whatsappAdmin/listState.js';
 const id='a0000000-0000-4000-8000-000000000001';
@@ -9,14 +9,18 @@ const response=()=>({setHeader(){},status(code){this.code=code;return this;},jso
 const actor={active:true,role_id:'admin'};
 const detail={input_id:id,identity_state:'unmatched',history_truncated:false,messages:[
  {message_ref:id,text:'fixture',type:'text',occurred_at:'2026-10-20T12:00:00Z',provenance:'customer_inbound'}]};
-const make=(overrides={})=>createWhatsAppAdminHandler({allowed:()=>true,authorize:async()=>actor,
+const make=(overrides={})=>createWhatsAppAdminHandler({allowed:()=>true,source:()=>({environment:'dev',project_ref:'hjfwjnejbcpmknvfpdcq',scope:'whatsapp_administracion'}),authorize:async()=>actor,
  reader:()=>({list:async()=>[{input_id:id,label:'Contacto',last_activity:'2026-10-20T12:00:00Z',identity_state:'unmatched'}],
  detail:async()=>structuredClone(detail)}),...overrides});
-test('DEV host and explicit Preview required; production and missing config denied',()=>{
+test('Production read only requires exact project, env, and explicit flag',()=>{
  const env={VERCEL_ENV:'preview',NEXT_PUBLIC_SUPABASE_URL:'https://hjfwjnejbcpmknvfpdcq.supabase.co'};
  assert.equal(whatsappAdminPreviewAllowed(env),true);
  for(const change of [{VERCEL_ENV:'production'},{VERCEL_ENV:undefined},{NEXT_PUBLIC_SUPABASE_URL:'https://bnzrnizrmonjxlktbhlp.supabase.co'},{NEXT_PUBLIC_SUPABASE_URL:'bad'}])
   assert.equal(whatsappAdminPreviewAllowed({...env,...change}),false);
+ const prod={VERCEL_ENV:'production',NEXT_PUBLIC_SUPABASE_URL:'https://bnzrnizrmonjxlktbhlp.supabase.co',WHATSAPP_ADMIN_READONLY_PRODUCTION_ENABLED:'true'};
+ assert.equal(whatsappAdminPreviewAllowed(prod),true);
+ assert.equal(whatsappAdminSource(prod).environment,'production');
+ for(const patch of [{WHATSAPP_ADMIN_READONLY_PRODUCTION_ENABLED:'false'},{WHATSAPP_ADMIN_READONLY_PRODUCTION_ENABLED:undefined},{VERCEL_ENV:'preview'},{NEXT_PUBLIC_SUPABASE_URL:'https://hjfwjnejbcpmknvfpdcq.supabase.co'}])assert.equal(whatsappAdminPreviewAllowed({...prod,...patch}),false);
 });
 for(const role of ['asesor','gerente_ventas','juridico',null])test('role denied: '+role,async()=>{
  const res=response();await make({authorize:async()=>role?{active:true,role_id:role}:null,reader:()=>assert.fail('read')})({method:'GET',query:{op:'threads'}},res);
