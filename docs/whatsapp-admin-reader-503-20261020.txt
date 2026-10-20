@@ -1,0 +1,27 @@
+PR A — Diagnóstico reproducible sin datos productivos
+Base main aeec321 (#254).
+Causa exacta: createWhatsAppAdminHandler recibe source (factory de metadata),
+pero declara const source=reader() en el mismo bloque que ejecuta source().
+El identificador resuelve al objeto lector, no a la factory: TypeError source is
+not a function. El catch lo convierte en HTTP 503 stored_history_unavailable.
+Sucede ANTES de list/detail/RPC; no demuestra un fallo de los 28 registros.
+
+Reproducción: ejecutar las suites whatsappAdminInbox y whatsappAdminSynthetic
+contra main; list/history retornan 503 incluso con fixtures válidos.
+Fix mínimo: renombrar el parámetro a source:getDataSource y llamar getDataSource().
+Se conserva contrato público de inyección, gates, lector, RPC, RLS y autorización.
+No migración. Ningún cambio ni lectura de conversaciones de Producción.
+Fixture sintético actualizado para inyectar metadata explícita, sin depender de env.
+
+Regresión dedicada comprueba exactamente una llamada de metadata y list/detail
+por operación; falta de metadata => 404 sin operaciones de lectura. Pruebas de
+roles, scope Sales, freshness, evidencia, dedup y producción cerrada conservadas.
+158/158 pruebas PASS con node --test tests/whatsappAdminInbox.test.mjs
+tests/whatsappAdminSynthetic.test.mjs tests/metaAdminInbox.test.mjs
+tests/metaObserver.test.mjs tests/metaAdminCapture.test.mjs.
+
+Riesgo bajo: no cambia el procesamiento de datos. Si existe un segundo rechazo
+de evidencia en algún hilo productivo, seguirá fallando cerrado; no se oculta ni
+se omite. No se afirma recepción productiva reparada hasta despliegue autorizado.
+Recomendación MERGE del fix tras checks Preview; no merge/deployment productivo
+ejecutados. Meta no interviene en esta reparación de lectura.
