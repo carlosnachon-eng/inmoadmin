@@ -28,7 +28,9 @@ Comprobación READ-ONLY Supabase DEV hjfwjnejbcpmknvfpdcq:
 meta_admin_inbox_list_v1, meta_admin_inbox_history_v1,
 meta_admin_memory_evidence_v1 y meta_admin_shadow_snapshot_v1 existen.
 Las cuatro son SECURITY DEFINER; anon/authenticated no tienen EXECUTE,
-service_role sí. La lectura de lista devuelve un hilo almacenado.
+service_role sí. Corrección del diagnóstico: DEV tiene cero hilos almacenados.
+El conteo anterior de uno correspondía a la fila contenedora de la función JSONB,
+no a un elemento del arreglo. Se verificó con jsonb_array_length el 20-oct-2026.
 Esto no acredita conectividad actual de Meta.
 
 2. Contrato implementado

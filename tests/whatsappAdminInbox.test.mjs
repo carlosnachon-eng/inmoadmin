@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createWhatsAppAdminHandler,whatsappAdminPreviewAllowed} from '../lib/messaging/whatsappAdmin/inbox.js';
 import {createInboxReader} from '../lib/messaging/metaAdminInbox/read.js';
+import {validateWhatsAppAdminList,whatsappAdminListMessage} from '../lib/messaging/whatsappAdmin/listState.js';
 const id='a0000000-0000-4000-8000-000000000001';
 const response=()=>({setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}});
 const actor={active:true,role_id:'admin'};
@@ -34,7 +35,28 @@ for(const query of [{op:'send'},{op:'history',thread:id,waba_id:'sales'},{op:['t
 test('list preview uses authorized history and contains no private context',async()=>{
  const res=response();await make()({method:'GET',query:{op:'threads'}},res);
  assert.equal(res.code,200);assert.equal(res.body.rows[0].preview,'fixture');
- assert.deepEqual(res.body.status,{mode:'read_only',connection:'not_certified',sender:false,onboarding:false});
+ assert.deepEqual(res.body.status,{mode:'read_only',connection:'not_certified',sender:false,onboarding:false,
+  data_source:{environment:'dev',project_ref:'hjfwjnejbcpmknvfpdcq',scope:'whatsapp_administracion'}});
+});
+test('empty database produces a valid authorized empty list, never reads history',async()=>{
+ const res=response();await make({reader:()=>({list:async()=>[],detail:()=>assert.fail('history')})})({method:'GET',query:{op:'threads'}},res);
+ assert.equal(res.code,200);assert.deepEqual(validateWhatsAppAdminList(res.body).rows,[]);
+ assert.match(whatsappAdminListMessage({phase:'ready',count:0}),/Lectura autorizada completada en DEV/);
+});
+test('list RPC failure is unavailable, not empty success',async()=>{
+ const res=response();await make({reader:()=>({list:async()=>{throw Error('private sql');}})})({method:'GET',query:{op:'threads'}},res);
+ assert.equal(res.code,503);assert.equal(res.body.rows,undefined);
+ assert.match(whatsappAdminListMessage({phase:'error',filtered:true}),/No se puede determinar/);
+});
+test('malformed HTTP 200 cannot silently become zero conversations',()=>{
+ for(const result of [null,{}, {rows:null}, {rows:{}}, {rows:[]}, {rows:[],status:{sender:true}}])
+  assert.throws(()=>validateWhatsAppAdminList(result));
+ assert.match(whatsappAdminListMessage({phase:'loading'}),/Consultando/);
+ assert.match(whatsappAdminListMessage({phase:'ready',filtered:true,count:2}),/filtros/);
+});
+test('RPC jsonb [] is empty; object/null payloads are errors, not zero',async()=>{
+ assert.deepEqual(await createInboxReader({db:{rpc:async()=>({data:[]})},includeContext:false}).list(),[]);
+ for(const data of [null,{},'[]'])await assert.rejects(createInboxReader({db:{rpc:async()=>({data})}}).list());
 });
 test('duplicate history is rendered once; conflicting evidence fails closed',async()=>{
  for(const conflict of [false,true]){

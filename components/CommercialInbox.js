@@ -4,6 +4,7 @@ import InstagramBusinessInbox from './InstagramBusinessInbox';
 import InstagramCommentsPanel from './InstagramCommentsPanel';
 import FacebookMessengerConversation from './FacebookMessengerConversation';
 import WhatsAppAdminConversation from './WhatsAppAdminConversation';
+import {validateWhatsAppAdminList,whatsappAdminListMessage} from '../lib/messaging/whatsappAdmin/listState';
 
 export async function inboxRequest(channel,op,{thread,body}={}){
  if(!['instagram','facebook','whatsapp_admin'].includes(channel)||channel==='whatsapp_admin'&&body)throw Error('Canal de sólo lectura');
@@ -16,11 +17,13 @@ export async function inboxRequest(channel,op,{thread,body}={}){
   ...(body?{body:JSON.stringify(body)}:{})});
  const result=await response.json().catch(()=>null);
  if(!response.ok||!result)throw Error('No fue posible consultar el canal.');
+ if(channel==='whatsapp_admin'&&op==='threads')validateWhatsAppAdminList(result);
  return result;
 }
 
 export default function CommercialInbox({instagramAvailable,facebookAvailable=true,whatsappAdminAvailable=false}){
  const [filter,setFilter]=useState('all'),[query,setQuery]=useState(''),[threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState('');
+ const [waList,setWaList]=useState({phase:'loading'});
  const [canSyncHistory,setCanSyncHistory]=useState(false),[syncBusy,setSyncBusy]=useState(false),[syncStatus,setSyncStatus]=useState(''),[historyRevision,setHistoryRevision]=useState(0);
  const generation=useRef(0);
  const listPolling=useRef(false);
@@ -48,8 +51,8 @@ export default function CommercialInbox({instagramAvailable,facebookAvailable=tr
   const gen=++generation.current;
   const channels=[...(instagramAvailable?['instagram']:[]),...(facebookAvailable?['facebook']:[]),...(whatsappAdminAvailable?['whatsapp_admin']:[])];
   const results=await Promise.all(channels.map(async channel=>{
-   try{const r=await inboxRequest(channel,'threads');return {rows:(r.rows||[]).map(t=>({...t,channel,key:channel+':'+t.thread_ref}))};}
-   catch{return {rows:[],error:channel};}
+   try{const r=await inboxRequest(channel,'threads');return {channel,status:r.status,rows:(r.rows||[]).map(t=>({...t,channel,key:channel+':'+t.thread_ref}))};}
+   catch{return {channel,rows:[],error:channel};}
   }));
   if(gen!==generation.current)return;
   let igUnread=new Set(),facebookRead=new Map();
@@ -76,6 +79,8 @@ export default function CommercialInbox({instagramAvailable,facebookAvailable=tr
    }catch{}
   }
   if(gen!==generation.current)return;
+  const wa=results.find(r=>r.channel==='whatsapp_admin');
+  if(wa)setWaList({phase:wa.error?'error':'ready',count:wa.rows.length,status:wa.status});
   setThreads(results.flatMap(r=>r.rows).map(t=>{
    const name=t.channel==='facebook'?(names[t.thread_ref]||{}):{};
    const read=facebookRead.get(t.thread_ref);
@@ -173,11 +178,12 @@ export default function CommercialInbox({instagramAvailable,facebookAvailable=tr
    <button type="button" key={id} className={filter===id?'active':''} aria-pressed={filter===id} onClick={()=>{setFilter(id);setSelected(null);}}>{label}{id==='all'&&<span className="counter">{threads.length}</span>}{(id==='instagram'||id==='facebook')&&<span className="counter">{threads.filter(t=>t.channel===id).length}</span>}</button>)}</nav>
   {syncStatus&&<p role="status" className="loadWarning">{syncStatus}</p>}
   {error&&<p role="status" className="loadWarning">Algunos canales no están disponibles: {error}</p>}
+  {filter==='whatsapp_admin'&&<p role="status" className="loadWarning">{whatsappAdminListMessage(waList)}{waList.phase==='ready'&&waList.status?.data_source&&<span> Origen: {waList.status.data_source.project_ref} · API HTTP 200 · acceso autorizado.</span>}</p>}
   {filter==='comments'?<InstagramCommentsPanel open onClose={()=>setFilter('all')}/>:<div className={'workspace '+(selected?'hasSelection':'')}>
    <aside aria-label="Conversaciones" className="threadsPane"><div className="paneHeading"><strong>Conversaciones</strong><span>{visible.length}</span></div>
     <div className="readFilters"><button className={unreadFilter==='all'?'active':''} onClick={()=>setUnreadFilter('all')}>Todas</button><button className={unreadFilter==='unread'?'active':''} onClick={()=>setUnreadFilter('unread')}>No leídas ({threads.filter(t=>t.unread&&(filter==='all'||t.channel===filter)).length})</button></div>
     <label className="searchBox"><span aria-hidden="true">⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar conversaciones" aria-label="Buscar conversaciones"/></label>
-    <div className="threadList">{!visible.length&&<p className="emptyThreads">{query?'No hay coincidencias.':'No hay conversaciones autorizadas en este canal.'}</p>}
+    <div className="threadList">{!visible.length&&<p className="emptyThreads">{filter==='whatsapp_admin'?whatsappAdminListMessage({...waList,filtered:Boolean(query)||unreadFilter!=='all'}):query?'No hay coincidencias.':'No hay conversaciones autorizadas en este canal.'}</p>}
      {visible.map((t,i)=><button type="button" key={t.key} className={`thread ${t.unread?'unread':''}`} aria-pressed={selected?.key===t.key} onClick={()=>{setSelected(t);void markThreadRead(t)}}>
       <span className={'avatar '+(t.channel==='whatsapp_admin'?'wa':t.channel==='facebook'?'fb':'ig')}>{t.channel==='whatsapp_admin'?'W':t.channel==='facebook'?'f':'◎'}</span>
       <span className="threadCopy"><strong>{t.alias||(t.channel==='instagram'&&t.profile_username?'@'+String(t.profile_username).replace(/^@/,''):null)||t.profile_name||(t.channel==='facebook'?'Contacto de Facebook':'Contacto de Instagram')}</strong><small>{t.channel==='whatsapp_admin'?'WhatsApp Administración · '+t.preview:t.channel==='facebook'?(t.preview||'Facebook Messenger') :(t.preview||'Instagram Direct')}</small>{t.unread&&<em className="unreadTag">Nuevo</em>}</span>
