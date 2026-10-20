@@ -25,3 +25,12 @@ de evidencia en algún hilo productivo, seguirá fallando cerrado; no se oculta 
 se omite. No se afirma recepción productiva reparada hasta despliegue autorizado.
 Recomendación MERGE del fix tras checks Preview; no merge/deployment productivo
 ejecutados. Meta no interviene en esta reparación de lectura.
+
+QA visual adicional: componente Inbox real + handler/lector real con RPC y
+sesión sintéticos en memoria, sin Supabase. Tres contactos listados; selección
+de historial y separación de canal visibles en escritorio y 390x844 móvil.
+Evidencia: docs/evidence/pr255/desktop.png y mobile.png.
+Métricas del harness al cierre: writes=0, 58 lecturas sintéticas, cinco RPC de
+lectura esperadas. Ninguna fila creada en DEV ni Producción. Servidor cerrado.
+No confundir esta QA aislada con sesión autenticada real del Preview.
+Check Vercel PASS para eedcc12 (deployment 3pkjCKHLwyp6d7mykEJetSAdET3d).
