@@ -1,0 +1,135 @@
+WHATSAPP ADMINISTRACIÓN — AUDITORÍA Y PREPARACIÓN DEV
+Fecha: 2026-10-20. Base auditada: main b592007.
+Estado: READ-ONLY PREPARADO. COEXISTENCE / ENVÍO NO CERTIFICADOS.
+
+1. Alcance y evidencia
+
+No se modifica Producción, Meta, iPhone, crédito, tokens, suscripciones,
+webhooks ni emisores. No hay onboarding ni mensajes de prueba en esta tarea.
+Los 710 eventos, 303 inputs y errores históricos de envío son antecedentes
+aportados por el usuario, no una nueva medición productiva.
+
+Código reutilizado:
+- CommercialInbox: lista unificada y navegación responsive; adaptador explícito
+  whatsapp_admin. No se redirige WhatsApp al backend Instagram/Facebook.
+- metaObserver: firma raw bytes, recepción y normalización; sin modificaciones.
+- metaAdminCapture: evidencia de alcance y sujeto, dirección/media cifradas,
+  deduplicación existente; sin modificaciones. El texto histórico es sanitizado:
+  no afirmar que todo el cuerpo del mensaje está cifrado.
+- metaAdminInbox: lista e historial con prueba nativa y comprobación de identidad
+  antes/después. Nueva opción includeContext=false evita leer contratos/memoria.
+  Comportamiento anterior permanece como valor predeterminado.
+- authorizeShadowAdministrator: getUser y perfil activo server-side, sólo admin
+  y coord_operaciones. Su nombre no implica ejecución de modelos.
+- RPCs existentes acotan WABA/phone Administración y subject/key_tag.
+  No tablas, clientes, asignaciones, journal o migraciones nuevas.
+
+Comprobación READ-ONLY Supabase DEV hjfwjnejbcpmknvfpdcq:
+meta_admin_inbox_list_v1, meta_admin_inbox_history_v1,
+meta_admin_memory_evidence_v1 y meta_admin_shadow_snapshot_v1 existen.
+Las cuatro son SECURITY DEFINER; anon/authenticated no tienen EXECUTE,
+service_role sí. La lectura de lista devuelve un hilo almacenado.
+Esto no acredita conectividad actual de Meta.
+
+2. Contrato implementado
+
+GET /api/operaciones/whatsapp-admin-inbox?op=threads[&before=ISO]
+GET /api/operaciones/whatsapp-admin-inbox?op=history&thread=UUID_OPACO
+Producción y proyecto Supabase ajeno a DEV: 404 antes de consultar datos.
+Roles comerciales sin autorización Administración: 403.
+Operaciones de escritura: 405. Consultas con scope/entidad arbitraria: 400.
+Errores de almacenamiento/evidencia: 503 genérico, sin SQL ni contenido.
+No hay secretos, números de clientes, IDs de Meta ni ciphertext en la respuesta.
+El texto autorizado sólo se devuelve a los operadores habilitados; no se registra.
+Lista: hasta 30 hilos, preview obtenido del mismo historial autorizado.
+Historial: hasta 100 mensajes, dedupe por referencia y conflicto fail-closed.
+El identificador de selección es una capacidad de input existente, no un número
+ni identidad global. Una entrada nueva puede reemplazar esa capacidad en la lista;
+el historial del input seleccionado sigue leyendo el sujeto exacto.
+El eco de la app no acredita al operador humano. Mutaciones ocultan texto anterior.
+Adjuntos sin descarga/reproducción. Sin marcas de leído escritas.
+Polling sólo visible, sin enviar; respuesta antigua de otro hilo descartada.
+Ficha desplegable: asignaciones/citas/propiedades/multimedia futuras, no operativas.
+Disponibilidad declarada: historial almacenado; conexión oficial no certificada.
+Sender, onboarding y capacidades futuras false. No IA.
+
+3. Fuentes oficiales consultadas
+
+A. Onboarding business app users / Coexistence:
+https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-business-app-users
+B. Business customer support — switch partners and remove previous line of credit:
+https://developers.facebook.com/documentation/business-messaging/whatsapp/solution-providers/support/business-customer-support
+C. Reconnect offboarded coexistence clients:
+https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/reconnect-offboarded-coexistence-clients
+
+Hechos documentados en A:
+- Embedded Signup específico de Coexistence y session logging son requisitos.
+- La guía está dirigida a Solution Partners/Tech Providers; no acredita una
+  excepción de onboarding directo para esta app interna. No convertir la app.
+- Aviso de retiro de Embedded Signup v2/v3 el 15-oct-2026: verificar v4 antes
+  de construir un contrato. No copiar sin revisión snippets de versiones previas.
+- Mantiene WhatsApp Business App y convierte su cuenta de mensajes conservando
+  el WABA ID; no demuestra que una WABA nueva sea obligatoria para Emporio.
+- Requiere versión compatible de la app, autorización en Meta y confirmación
+  desde el teléfono. No se realiza registro normal del número por API.
+- La comprobación posterior incluye is_on_biz_app=true y platform_type=CLOUD_API.
+  ON_PREMISE + token que consulta WABA no acreditan capacidad de envío.
+- Historial individual hasta seis meses, grupos no sincronizados; funciones de
+  la app y dispositivos vinculados tienen limitaciones. Revisar aviso vigente
+  con el administrador antes de aceptar el flujo.
+- La sincronización inicial tiene ventana de 24 horas y acciones específicas;
+  no se inicia en esta fase. La ventana de atención API requiere inbound nuevo
+  posterior al onboarding; el historial anterior no autoriza respuesta.
+
+Hechos en B:
+La línea de crédito de un socio anterior puede impedir el cambio. La guía
+propone respaldo, desconexión/reconexión de WhatsApp Business y nuevo onboarding.
+NO ejecutar ese procedimiento automáticamente: afecta la continuidad prioritaria.
+No borrar WABA, no cambiar facturación ni interpretar esa guía como autorización.
+
+Hechos en C:
+La reconexión documentada restaura la relación del socio anterior y conserva
+la cuenta; exige que otro socio no haya establecido coexistencia durante el
+intervalo. No demuestra una transferencia directa Respond -> app interna.
+
+No se utilizaron experiencias comunitarias como prueba de elegibilidad.
+
+4. Bloqueos y procedimiento seguro
+
+PENDIENTE de confirmación específica por Meta:
+- Elegibilidad de Emporio Inmoadmin para Coexistence con cuenta propia sin
+  Tech Provider; producto/configuración Embedded Signup v4 autorizada.
+- Tratamiento de Rocketbots/Respond y línea de crédito histórica.
+- Si estos activos concretos pueden conservar su WABA y relación móvil.
+- Estado real de la app existente y requisitos de revisión/acceso para ese flujo.
+No hay evidencia de que crear una app independiente solucione esos bloqueos.
+No se implementa URL OAuth, QR, config_id ni callback de onboarding especulativo.
+
+Siguiente acción exacta del administrador (sin cambios de activos):
+Abrir caso de soporte Meta, categoría WABiz: Onboarding / Embedded Signup -
+Coexistence Onboarding, adjuntando los IDs de su app/WABA/phone y captura de la
+línea Rocketbots. Solicitar confirmación por escrito de:
+  “Somos el propietario, no proveedor de terceros. El teléfono sigue activo en
+   WhatsApp Business iPhone; Respond fue retirado pero conserva crédito visible.
+   ¿Puede nuestra app incorporar este activo mediante Coexistence v4 sin
+   Tech Provider? ¿Cómo liberamos la asociación anterior sin desconectar el
+   teléfono ni perder historial? ¿Se conserva la WABA actual?”
+Si la categoría sólo está disponible para proveedores, pedir escalamiento a
+Meta Business Support desde el portfolio propietario; no falsear actividad.
+
+Sólo tras respuesta y autorización posterior:
+inventario/respaldo comprobado, ventana operativa y plan de recuperación,
+configuración oficial acreditada, aceptación explícita del administrador en
+Meta/iPhone, verificación Cloud/eco/historial y finalmente prueba manual.
+No prometer reversibilidad instantánea ni recuperación completa del historial.
+Ninguno de esos pasos se ejecutó aquí.
+
+5. Verificación
+
+Build Next.js PASS con variables ficticias locales; warnings de fuentes remotas.
+Suite WhatsApp + metaAdminInbox + observer + capture: 151 pruebas.
+Compatibilidad adicional: dos fallos preexistentes reproducidos sin cambios sobre
+b592007 (commercialInboxSharedRoles regex senderEnabled; facebookMessengerInbox
+expectativa de disponibilidad). No corregidos fuera de alcance.
+No confundir pruebas con fixtures locales con recepción/envío reales.
+Preview y QA autenticada se documentan en el PR con su estado real.
