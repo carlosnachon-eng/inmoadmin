@@ -266,7 +266,7 @@ async function cargarDatosOperativos(metrics) {
       .select('propiedad_id, envios(created_at)')),
     safe('operativo.recibos_apartado', () => supabase
       .from('recibos_apartado')
-      .select('id, folio, tipo, cliente_nombre, inmueble, propiedad_id, firma_id, estatus, monto, monto_total_acordado, apartado_vigencia_hasta, fecha_limite_firma, created_at, updated_at, recibos_abonos(id, monto, fecha, created_at)')
+      .select('id, folio, tipo, cliente_nombre, inmueble, propiedad_id, firma_id, estatus, monto, monto_total_acordado, apartado_vigencia_hasta, fecha_limite_firma, created_at, recibos_abonos(id, monto, fecha, created_at)')
       .neq('estatus', 'cancelado')
       .order('created_at', { ascending: false })),
     safe('operativo.firmas', () => supabase

@@ -1,3 +1,65 @@
+QA AUTENTICADA DEV CON CLAVE DE SERVIDOR — 2026-10-21 (America/Mexico_City)
+ESTADO ACTUAL: NO MERGE; acceso financiero, móvil y no-admin ya comprobados.
+
+- Clave Secret DEV validada sin mostrarla: GET cierres select=id limit=0,
+  HTTP 200. Archivo local ignorado por Git, modo 600; cero coincidencias del
+  valor secreto en .next/static. Ninguna variable remota/Vercel modificada.
+- Misma rama/PR. Dependencias temporales restauradas desde pnpm-lock.yaml,
+  instalación congelada. Servidor loopback 127.0.0.1:3252, DEV exclusivo.
+- CORRECCIÓN: Centro de Inteligencia solicitaba recibos_apartado.updated_at,
+  columna inexistente en DEV. Se retira de SELECT; el lector ya respalda
+  fecha_referencia con created_at. La misma pantalla deja de anunciar fuente
+  fallida, sin cambiar autorización, RLS, migraciones ni atribución.
+- PASS admin real, browser->API->DEV->UI: BI y Centro de Inteligencia HTTP 200;
+  dos fixtures activos octubre, generado 31000, cobrado 100, pendiente 30900.
+  Ejecutivo coincide. Tras limpiar y recargar BI: 0/0/0, cero registros octubre.
+- PASS recibos HTTP reales: fixture sin cobro 400; fixture con cobro 200,
+  application/pdf, cabecera %PDF-, 8026 bytes. Solo documento en memoria;
+  ningún recibo, depósito, cobro ni pago real modificado.
+- PASS móvil autenticado, viewport DOM comprobado 390 (capturas 390x844):
+  botón en tarjeta, diálogo íntegro, motivo vacío/corto bloqueado, motivo
+  válido sin casilla bloqueado, casilla habilita envío, Volver sin cambios.
+  Pago sintético asociado: rechazo real y mensaje legible dentro del modal.
+  No se ejecutó cancelación exitosa móvil persistente.
+- PASS no-admin real: cuenta temporal DEV explícitamente autorizada por usuario,
+  rol asesor, activa. Acceso restringido en /cierres, sin botón. Login real
+  y RPC directa con JWT real: 403, 42501, solo_admin. API BI también 403.
+- Reporte semanal con handler real y cliente DEV real: 200 equivalente,
+  1 cierre/22000 según whitelist de asesores existente (Ivan incluido,
+  Carlos excluido). No equivale al total BI de todos los asesores (31000).
+  Primer assert esperaba erróneamente el total BI; ajustado al alcance real
+  y repetido satisfactoriamente, sin cambiar reglas ni atribuciones.
+  Solo transporte de correo interceptado localmente; cero correos enviados.
+  Esta comprobación NO es HTTP E2E del cron.
+- 25/25 pruebas JS y regresiones financieras PASS después de la corrección.
+  Build PASS, 81/81 páginas. Avisos no bloqueantes: optimización de fuentes
+  Google omitida por falta de acceso y aviso Node de tipo de módulo en tests.
+  No se ejecutó deploy. main aeec321: merge-tree sin conflictos, sin merge.
+- Limpieza MCP verificada: fixtures -252201/-252202, pago sintético, intentos,
+  atribuciones y auditorías: todos cero. Cuenta Auth eliminada después de
+  logout global 204; DELETE 200 y consulta posterior 404. SQL confirma cero
+  usuario/perfil/sesiones/refresh tokens. Credenciales temporales borradas.
+  Hash cierres antes/después fc7bd96fc3fc8a889c96f8d759fb07ef; pagos nulos
+  antes/después. Config PostgREST original, triggers y RLS intactos.
+- Página observadora local de lecturas HTTP retirada antes de compilar; no
+  sustituía cliente, sesión, respuestas ni permisos; ningún bypass al producto.
+- Evidencia: docs/evidence/issue251/dev-server-key-qa/.
+
+PENDIENTE QUE BLOQUEA MERGE
+La sesión admin real y el acceso financiero ya no son bloqueos. Falta observar
+una cancelación COMMIT persistida y su historial/exclusión visual después de
+recargar KPIs/reportes/comisiones. Las pruebas SQL transaccionales previas y
+unitarias verifican exclusión e idempotencia, pero no sustituyen ese escenario.
+El trigger impide borrar un cierre cancelado y su auditoría. No se debe apagar
+para limpiar fixtures. Completar esta certificación en un entorno desechable
+separado que pueda destruirse íntegro, o acordar explícitamente retención de
+un fixture inmutable; no ejecutar esa prueba persistente en DEV compartido
+bajo el requisito actual de cero residuos. No declarar PASS no ejecutado.
+
+PRODUCCIÓN INTACTA. #943/#950 reales no tocados. Sin merge ni despliegue.
+Las secciones siguientes conservan las revisiones previas; los pendientes de
+clave, móvil y no-admin allí descritos quedan sustituidos por lo anterior.
+
 QA AUTENTICADA DEV — actualización 2026-10-21 (America/Mexico_City)
 ESTADO ACTUAL: NO MERGE; certificación parcial, pendientes explícitos.
 

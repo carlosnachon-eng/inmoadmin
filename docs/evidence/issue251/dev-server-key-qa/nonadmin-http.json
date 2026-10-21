@@ -1,0 +1,8 @@
+{
+  "realAuth": true,
+  "syntheticAccount": true,
+  "cancelHTTP": 403,
+  "cancelCode": "42501",
+  "cancelMessage": "solo_admin",
+  "biHTTP": 403
+}

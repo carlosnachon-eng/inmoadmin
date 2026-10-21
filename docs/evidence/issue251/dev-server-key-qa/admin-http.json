@@ -1,0 +1,43 @@
+[
+  {
+    "path": "/api/ejecutivo/bi-cierres-admin?year=2026&month=10&include=events",
+    "http": 200,
+    "ok": true,
+    "metricas": {
+      "ingreso_generado": 31000,
+      "cobrado": 100,
+      "pendiente_reconstruido": 30900
+    },
+    "hasSynthetic": true
+  },
+  {
+    "path": "/api/ejecutivo/centro-inteligencia?year=2026&month=10",
+    "http": 200,
+    "ok": true,
+    "resumen_general": {
+      "total_generado": 31000,
+      "total_cobrado": 100,
+      "total_pendiente": 30900,
+      "costos_directos": 6200,
+      "resultado_operativo": 24800,
+      "resultado_operativo_nota": "Resultado de las unidades de negocio después de costos directos registrados. No incluye gastos corporativos, impuestos ni nómina administrativa general.",
+      "estado_confianza": "calculable",
+      "estado_confianza_label": "Alta",
+      "confianza_porcentaje": 100
+    },
+    "hasSynthetic": true
+  },
+  {
+    "path": "/api/cierres/recibo-comision?id=-252201",
+    "http": 400,
+    "error": "Este cierre aún no tiene comisión cobrada",
+    "hasSynthetic": false
+  },
+  {
+    "path": "/api/cierres/recibo-comision?id=-252202&propietario_manual=QA252%20PROPIETARIO%20SINTETICO",
+    "http": 200,
+    "type": "application/pdf",
+    "bytes": 8026,
+    "pdfHeader": "%PDF-"
+  }
+]
