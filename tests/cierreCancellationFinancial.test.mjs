@@ -29,9 +29,9 @@ const payments = [
 function client() {
   return {auth:{getUser:async()=>({data:{user:{id:'fixture-admin',email:'qa@example.invalid'}}})},from(table){
     let conditions=[],selection='';
-    const value=(row,key)=>key==='cierres.estado'?rows.find(c=>c.id===row.cierre_id)?.estado:row[key];
+    const value=(row,key)=>key.startsWith('cierres.')?rows.find(c=>c.id===row.cierre_id)?.[key.slice(8)]:row[key];
     const q={select(s){selection=s;return q;},eq(key,v){conditions.push(r=>String(value(r,key))===String(v));return q;},
-      gte(key,v){conditions.push(r=>value(r,key)>=v);return q;},lt(key,v){conditions.push(r=>value(r,key)<v);return q;},
+      gt(key,v){conditions.push(r=>Number(value(r,key))>v);return q;},gte(key,v){conditions.push(r=>value(r,key)>=v);return q;},lt(key,v){conditions.push(r=>value(r,key)<v);return q;},
       lte(key,v){conditions.push(r=>value(r,key)<=v);return q;},in(key,v){conditions.push(r=>v.includes(value(r,key)));return q;},order(){return q;},
       maybeSingle(){return q.then(r=>({...r,data:r.data[0]||null}));},then(resolve,reject){
         const data=table==='cierres'?rows:table==='cierre_pagos'?payments:table==='profiles'?[{id:'fixture-admin',role_id:'admin',email:'qa@example.invalid'}]:[];
@@ -66,4 +66,40 @@ test('commission receipt endpoint refuses a cancelled closure before generating 
   const {handler}=load('pages/api/cierres/recibo-comision.js',{createClient:client,process:{env},generarReciboComisionPdf:()=>{generated=true;throw new Error('unexpected_pdf');}});
   const res=response();await handler({method:'GET',headers:{authorization:'Bearer synthetic'},query:{id:'-251943'}},res);
   assert.equal(res.code,404);assert.equal(generated,false);
+});
+
+test('retained cancellation income survives BI without counting as an active sale or adviser commission', async () => {
+  rows.push({ id: -252500, estado: 'cancelado', cancelacion_ingreso_retenido: 25500, fecha_cierre: date, comision: 25500, cobrado: 25500, com_vendedor: 5100 });
+  payments.push({ id: 'retained-original', cierre_id: -252500, monto: 25500, fecha: date });
+  const base = client();
+  const retainedClient = () => ({ ...base, from(table) {
+    if (table === 'v_cierre_ingresos_cancelacion') {
+      const q = { select() { return q; }, gte() { return q; }, lt() { return q; }, then(resolve) { return Promise.resolve({ data: [{ cierre_id: -252500, monto: 25500, fecha: date, recibo_id: 'receipt-retained' }], error: null }).then(resolve); } }; return q;
+    }
+    return base.from(table);
+  } });
+  try {
+    const { handler } = load('pages/api/ejecutivo/bi-cierres-admin.js', { ...bi, createClient: retainedClient, process: { env } });
+    const res = response();
+    await handler({ method: 'GET', headers: { authorization: 'Bearer synthetic' }, query: { year: date.slice(0, 4), month: date.slice(5, 7), include: 'events' } }, res);
+    assert.equal(res.code, 200);
+    assert.equal(res.body.metricas.ingreso_generado, 35500);
+    assert.equal(res.body.metricas.cobrado, 25850);
+    assert.equal(res.body.metricas.pendiente_reconstruido, 9900);
+    const events = res.body.eventos.cierres;
+    assert.equal(events.filter(e => e.event_id === 'cierre_pago:retained-original:cobro_recibido').length, 1);
+    assert.equal(events.filter(e => e.event_id === 'cancelacion:-252500:ingreso_generado').length, 1);
+    assert.ok(!events.some(e => e.event_id === 'cierre:-252500:ingreso_generado'));
+    assert.equal(events.find(e => e.event_id === 'cancelacion:-252500:ingreso_generado').metadata.comision_asesor_vigente, 0);
+  } finally { rows.pop(); payments.pop(); }
+});
+
+test('retention recognition and historic cash belong to independent periods', () => {
+  const recognized = bi.resumirCierres({ ingresosCancelacion: [{ cierre_id: -1, monto: 25500 }], cobrosCancelacion: [] });
+  assert.equal(recognized.metricas.ingreso_generado, 25500);
+  assert.equal(recognized.metricas.cobrado, 0);
+  assert.equal(recognized.metricas.pendiente_reconstruido, 0);
+  const historicCash = bi.resumirCierres({ ingresosCancelacion: [], cobrosCancelacion: [{ cierre_id: -1, monto: 25500 }] });
+  assert.equal(historicCash.metricas.ingreso_generado, 0);
+  assert.equal(historicCash.metricas.cobrado, 25500);
 });

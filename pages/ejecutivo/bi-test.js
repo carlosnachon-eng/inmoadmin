@@ -97,6 +97,7 @@ const UnidadSection = ({ titulo, unidad }) => {
         </p>
       </div>
 
+      {Number(unidad?.conciliacion?.ingresos_por_cancelacion) > 0 && <p style={{ color: '#065f46' }}>Incluye {fmtMoney(unidad.conciliacion.ingresos_por_cancelacion)} de ingreso por cancelación para la inmobiliaria. No cuenta como cierre comercial ni genera comisión de asesores.</p>}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',

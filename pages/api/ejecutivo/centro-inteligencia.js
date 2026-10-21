@@ -4,6 +4,7 @@ import {
   resolverPeriodo,
   resumirAdministracion,
   resumirCierres,
+  cargarIngresosCancelacion,
   toNumber,
 } from '../../../lib/ejecutivo/lecturaBiCierresAdmin';
 import {
@@ -96,6 +97,7 @@ async function cargarCierres(periodo, metrics) {
     cierres: cierres || [],
     pagosPeriodo: pagosPeriodo || [],
     pagosConciliacion,
+    ...await cargarIngresosCancelacion(supabase, periodo),
   };
 }
 
@@ -342,6 +344,7 @@ const construirUnidadFinanciera = ({ periodo, datosCierres, datosAdmin, datosPol
   const resumenPoliza = resumirPolizaCentro({ periodo, ...datosPoliza });
   const resumenMantenimiento = resumirMantenimientoCentro({ periodo, ...datosMantenimiento });
   const resultadoCierres = roundMoney(
+    (datosCierres.ingresosCancelacion || []).reduce((acc, ingreso) => acc + toNumber(ingreso.monto), 0) +
     (datosCierres.cierres || []).reduce((acc, cierre) => (
       acc + Math.max(0, toNumber(cierre.comision_inmobiliaria) - toNumber(cierre.monto_gerente))
     ), 0),
@@ -356,7 +359,7 @@ const construirUnidadFinanciera = ({ periodo, datosCierres, datosAdmin, datosPol
     periodo,
     cierres: unidadDesdeLecturaBi({
       key: 'cierres',
-      label: 'Ventas y rentas',
+      label: 'Ventas, rentas e ingresos por cancelación',
       unidad: resumenCierres,
       resultado: resultadoCierres,
       costosDirectos: costosCierres,

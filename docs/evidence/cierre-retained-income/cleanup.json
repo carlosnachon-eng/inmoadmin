@@ -1,0 +1,18 @@
+[
+  {
+    "new_closures": 0,
+    "new_receipts": 0,
+    "new_payments": 0,
+    "new_audits": 0,
+    "previous_authorized_fixture_preserved": 1,
+    "applied_migration": [
+      {
+        "name": "cierre_cancelacion_ingreso_retenido",
+        "version": "20261021154311"
+      }
+    ],
+    "view_security": [
+      "security_invoker=true"
+    ]
+  }
+]

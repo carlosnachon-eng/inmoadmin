@@ -6,6 +6,8 @@ import {
   resolverPeriodo,
   resumirAdministracion,
   resumirCierres,
+  cargarIngresosCancelacion,
+  mapearEventosIngresosCancelacion,
 } from '../../../lib/ejecutivo/lecturaBiCierresAdmin';
 
 const supabase = createClient(
@@ -81,6 +83,7 @@ async function cargarCierres(periodo) {
     cierres: cierres || [],
     pagosPeriodo: pagosPeriodo || [],
     pagosConciliacion,
+    ...await cargarIngresosCancelacion(supabase, periodo),
   };
 }
 
@@ -153,10 +156,10 @@ export default async function handler(req, res) {
       ...resumen,
       eventos: incluirEventos
         ? {
-          cierres: mapearEventosCierres({
+          cierres: [...mapearEventosIngresosCancelacion(datosCierres), ...mapearEventosCierres({
             cierres: datosCierres.cierres,
             pagos: datosCierres.pagosPeriodo,
-          }),
+          })],
           administracion: mapearEventosAdministracion({
             comisionesGeneradas: datosAdmin.comisionesPeriodo,
             comisionesCobradas: datosAdmin.comisionesCobradasPeriodo,

@@ -26,13 +26,17 @@ export default async function handler(req, res) {
     { data: expedientes },
     { data: cierres },
     { data: kpis },
+    { data: retenciones, error: retencionesError },
   ] = await Promise.all([
     supabase.from("properties").select("status, rent_amount"),
     supabase.from("payments").select("status, amount, due_date").gte("due_date", inicioMes).lte("due_date", finMes),
     supabase.from("poliza_expedientes").select("status, fecha_vigencia, nombre_arrendatario, direccion_inmueble").eq("status", "activo"),
     supabase.from("cierres").select("vendedor, comision").eq('estado', 'activo').gte("fecha_cierre", inicioMes).lte("fecha_cierre", finMes),
     supabase.from("kpis_diarios").select("asesor, citas_efectivas").gte("fecha", inicioMes).lte("fecha", finMes),
+    supabase.from("v_cierre_ingresos_cancelacion").select("monto, fecha").gte("fecha", inicioMes).lte("fecha", finMes),
   ]);
+  if (retencionesError) return res.status(500).json({ error: 'No se pudieron consultar ingresos por cancelación' });
+  const ingresoRetenido = (retenciones || []).reduce((sum, row) => sum + Number(row.monto || 0), 0);
 
   const propOcupadas    = (properties || []).filter(p => p.status === "ocupada");
   const propDisponibles = (properties || []).filter(p => p.status === "disponible");
@@ -69,6 +73,7 @@ export default async function handler(req, res) {
   const mes = hoy.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
 
   const html = `
+  <p>Ingreso por cancelación para la inmobiliaria: ${fmt(ingresoRetenido)}. Sin operaciones ni comisiones de asesores.</p>
   <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;background:#f8f8f8;padding:24px;">
     <div style="background:#1a1a2e;border-radius:12px;padding:24px;text-align:center;margin-bottom:16px;">
       <img src="https://www.emporioinmobiliario.com.mx/logo.png" alt="Emporio" style="height:48px;margin-bottom:8px;" />
@@ -160,5 +165,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: e.message });
   }
 
-  return res.status(200).json({ ok: true, mes, totalCierres, totalIngresos, cobrado, atrasado });
+  return res.status(200).json({ ok: true, ingresoRetenido, mes, totalCierres, totalIngresos, cobrado, atrasado });
 }

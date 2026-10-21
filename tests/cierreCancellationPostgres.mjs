@@ -156,5 +156,58 @@ try{
  await assert.rejects(()=>db.query("update cierre_audit_private.cancelaciones set motivo='overwrite'"));checks++;
  ok(!(await db.query("select has_function_privilege('anon','cancelar_cierre(bigint,text)','execute') p")).rows[0].p);
  ok((await db.query("select relrowsecurity from pg_class where oid='cierre_audit_private.cancelaciones'::regclass")).rows[0].relrowsecurity);
+ // Retained income: separate financial recognition, original money and attribution immutable.
+ await db.query('alter table cierre_pagos add column fecha date; alter table cierres add column com_vendedor numeric default 0');
+ await db.query(await readFile(new URL('../supabase/migrations/20261021150845_cierre_cancelacion_ingreso_retenido.sql',import.meta.url),'utf8'));
+ const retainedReceipt=randomUUID(); await db.query('insert into recibos_apartado values($1)',[retainedReceipt]);
+ await db.query("insert into cierres(id,comision,cobrado,com_vendedor,recibo_id) values(1000,25500,25500,5100,$1)",[retainedReceipt]);
+ const retainedPayment=(await db.query("insert into cierre_pagos(cierre_id,monto,fecha) values(1000,25500,'2026-09-10') returning id")).rows[0].id;
+ const originalPayment=(await db.query('select to_jsonb(p) v from cierre_pagos p where id=$1',[retainedPayment])).rows;
+ const attrId=randomUUID();await db.query('insert into commercial_attributions(id,occurred_at,plaza_id,team_id,cierre_id) values($1,now(),$2,$3,1000)',[attrId,plaza,team]);
+ const retainedAttr=(await db.query('select to_jsonb(a) v from commercial_attributions a where id=$1',[attrId])).rows;
+ const rpc=(client,id,amount=25500)=>client.query('select cancelar_cierre_con_ingreso_retenido($1,$2,$3) r',[id,reason,amount]);
+ await login(db,nonadmin);await assert.rejects(()=>rpc(db,1000),e=>e.code==='42501');checks++;
+ await login(db,inactive);await assert.rejects(()=>rpc(db,1000),e=>e.code==='42501');checks++;
+ await login(db,admin);
+ await assert.rejects(()=>rpc(db,1000,25000),/retencion_desactualizada/);checks++;
+ await assert.rejects(()=>rpc(db,1000,-1),/retencion_invalida/);checks++;
+ await assert.rejects(()=>rpc(db,1000,'NaN'),/retencion_invalida/);checks++;
+ await db.query('update cierres set pag_vendedor=10 where id=1000');
+ await assert.rejects(()=>rpc(db,1000),/comisiones_pagadas_requieren_conciliacion/);checks++;
+ await db.query('update cierres set pag_vendedor=0 where id=1000');
+ await assert.rejects(()=>db.query('select cancelar_cierre(1000,$1)',[reason]),/cobros_requieren_conciliacion/);checks++;
+ await db.query('begin');await rpc(db,1000);await db.query('rollback');
+ ok((await db.query('select estado from cierres where id=1000')).rows[0].estado==='activo');
+ const results=await Promise.all([rpc(db,1000),rpc(other,1000)]);
+ ok(results.filter(r=>r.rows[0].r.status==='cancelado').length===1);
+ ok(results.filter(r=>r.rows[0].r.status==='ya_cancelado').length===1);
+ await assert.rejects(()=>rpc(db,1000,20000),/cancelacion_tipo_distinto/);checks++;
+ await db.query('reset role');
+ const audit=(await db.query('select * from cierre_audit_private.cancelaciones where cierre_id=1000')).rows[0];
+ ok(Number(audit.ingreso_retenido)===25500 && Number(audit.comision_asesor_vigente)===0 && Number(audit.comision_gerente_vigente)===0);
+ ok(Number(audit.cierre_original.com_vendedor)===5100);
+ assert.deepEqual((await db.query('select to_jsonb(p) v from cierre_pagos p where id=$1',[retainedPayment])).rows,originalPayment);checks++;
+ assert.deepEqual((await db.query('select to_jsonb(a) v from commercial_attributions a where id=$1',[attrId])).rows,retainedAttr);checks++;
+ ok((await db.query('select count(*)::int n from recibos_apartado where id=$1',[retainedReceipt])).rows[0].n===1);
+ ok((await db.query("select count(*)::int n from v_commercial_kpi_events where event_type='CIERRE' and event_key='1000'")).rows[0].n===0);
+ ok(Number((await db.query('select monto from v_cierre_ingresos_cancelacion where cierre_id=1000')).rows[0].monto)===25500);
+ await assert.rejects(()=>db.query('delete from cierre_pagos where id=$1',[retainedPayment]),/cierre_cancelado_no_admite_pagos/);checks++;
+ await assert.rejects(()=>db.query('update cierres set cancelacion_ingreso_retenido=1 where id=1000'),/cierre_cancelado_inmutable/);checks++;
+ await assert.rejects(()=>db.query('update cierre_audit_private.cancelaciones set ingreso_retenido=1 where cierre_id=1000'),/cierre_audit_immutable/);checks++;
+ await assert.rejects(()=>db.query('insert into cierres(id,comision,recibo_id) values(1001,25500,$1)',[retainedReceipt]),/origen_cierre_cancelado/);checks++;
+ await login(db,admin);await login(other,admin);
+ await db.query('insert into cierres(id,comision,cobrado) values(1002,25500,25500),(1003,25500,25500)');
+ await db.query("insert into cierre_pagos(cierre_id,monto,fecha) values(1002,25500,current_date),(1003,25500,current_date)");
+ // Cancellation owns the parent first: late payment cannot change the retained sum.
+ await db.query('begin');await rpc(db,1002);
+ const late=other.query("insert into cierre_pagos(cierre_id,monto,fecha) values(1002,1,current_date)").then(()=>false,e=>e.message==='cierre_cancelado_no_admite_pagos');
+ await waiting(other.processID);await db.query('commit');ok(await late);
+ // Payment owns parent first: expected amount must be rejected after it commits.
+ await db.query('begin');await db.query("insert into cierre_pagos(cierre_id,monto,fecha) values(1003,1,current_date)");
+ const stale=rpc(other,1003).then(()=>false,e=>e.message==='retencion_desactualizada');
+ await waiting(other.processID);await db.query('commit');ok(await stale);
+ await db.query('reset role');
+ ok(!(await db.query("select has_function_privilege('anon','cancelar_cierre_con_ingreso_retenido(bigint,text,numeric)','execute') p")).rows[0].p);
+ ok(!(await db.query("select has_function_privilege('service_role','cancelar_cierre_con_ingreso_retenido(bigint,text,numeric)','execute') p")).rows[0].p);
  console.log(JSON.stringify({postgres:'PASS',checks,production_touched:false,fixtures:'disposable_local_only'}));
 }finally{await db?.end();await other?.end();await observer?.end();if(started)execFileSync(path.join(bin,'pg_ctl'),['-D',dir+'/db','stop','-m','fast','-w'],{stdio:'ignore'});await rm(dir,{recursive:true,force:true});}

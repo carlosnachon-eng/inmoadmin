@@ -1,0 +1,91 @@
+Cancelación con ingreso retenido — implementación DEV, 2026-10-21
+
+Alcance autorizado: DEV exclusivamente. No se consultó ni modificó Producción
+durante esta tarea. No se modificaron #950 ni #943. Sin merge, push o despliegue.
+Rama local: codex/cierre-cancelacion-ingreso-retenido, basada en 6b0743f.
+El PR #252 ya estaba fusionado; esta extensión no modifica ese historial.
+
+Regla implementada
+- Administrador activo, motivo de 10–1000 caracteres y confirmación explícita
+  del cobro retenido completo, sin devolución ni comisión de asesor/gerente.
+- RPC nueva cancelar_cierre_con_ingreso_retenido(bigint,text,numeric).
+  Conserva RPC ordinaria y su rechazo de cierres con movimientos.
+- Importe esperado positivo de dos decimales, igual al cobrado y a la suma de
+  pagos. Rechaza pagos negativos, sin monto/fecha, discrepancias y comisiones
+  ya pagadas (incluidas banderas). No modifica ni crea otro cobro.
+- Locks de perfil, cierre y origen conservados. Repetición del mismo importe
+  devuelve ya_cancelado; otro tratamiento/importe no reemplaza la auditoría.
+- Cierre cancelado inmutable; recibo, pagos y atribución comercial originales
+  intactos. Auditoría incluye snapshot completo del cierre y sus pagos,
+  importe retenido y comisiones vigentes en cero. Los importes de comisión
+  originales se conservan como historia, no se sobrescriben con cero.
+- Historial muestra ingreso por cancelación para inmobiliaria, asesor/gerente
+  vigentes $0, motivo, fecha y autor. Cancelado excluido de KPI comercial,
+  ranking y comisiones activas, sin perder el ingreso financiero.
+
+Lectura financiera
+- Vista security_invoker v_cierre_ingresos_cancelacion bajo RLS del padre.
+- BI, Centro y Ejecutivo incorporan ingreso por cancelación y los cobros
+  originales exactamente una vez, separados de ventas activas. Centro incluye
+  todo el retenido en resultado y ningún costo de comisión de ese cierre.
+- Reconocimiento del ingreso por cancelación en fecha de cancelación CDMX;
+  caja en fecha original del pago. No hay un nuevo movimiento de caja.
+  El cierre cancelado deja de contribuir al devengado comercial original;
+  no se suman simultáneamente comisión histórica y retención.
+- Semanal informa retención separada, sin incorporarla al ranking o cantidad
+  de operaciones. Pruebas no envían correos.
+- Conciliación operativa de cierres activos sigue excluyendo cancelados;
+  retención y evidencia están en historial y trazabilidad BI.
+
+Migración
+- Archivo: 20261021150845_cierre_cancelacion_ingreso_retenido.sql.
+- Aplicado solamente en DEV hjfwjnejbcpmknvfpdcq con apply_migration;
+  versión remota exacta en evidence/cierre-retained-income/cleanup.json.
+  El conector asigna su propia versión. Reconciliar por nombre y contenido;
+  no db push masivo ni reaplicar baselines/migraciones históricas.
+- No se alteraron privilegios de la RPC ordinaria. La RPC nueva tiene
+  EXECUTE authenticated y control de admin activo dentro del backend;
+  PUBLIC, anon y service_role sin EXECUTE.
+- Advisor ejecutado: aviso esperado 0029 por RPC SECURITY DEFINER expuesta
+  a authenticated, necesario para auditar atómicamente con autorización
+  propia. search_path vacío, auth.uid verificado y perfil bloqueado FOR SHARE.
+  La tabla privada de auditoría sigue denegada a roles API y sin políticas
+  permisivas. No se debilitaron RLS/triggers para pasar pruebas.
+  Referencia: https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable
+  Otros avisos generales DEV fuera del alcance; no se declara proyecto sin avisos.
+
+Pruebas ejecutadas
+- 27/27 JS (incluye handler BI real con cliente de consultas simulado,
+  ingresos/cobros en periodos distintos, no doble conteo y recibo bloqueado).
+- 81 controles PostgreSQL local desechable: los 55 previos más retención,
+  COMMIT/idempotencia concurrente, rollback, discrepancias, autorización,
+  recibo/pagos/atribución sin cambio, auditoría inmutable y carreras de pagos.
+- Supabase DEV: recibo sintético 25,500, pago 25,500, comisión histórica asesor
+  5,100. Cancelación ordinaria rechazada, importe erróneo rechazado, nueva RPC
+  correcta, vista 25,500, KPI cero, auditoría completa, repetición idempotente
+  y pago inmutable. ROLLBACK final, limpieza comprobada en consulta posterior.
+- DEV autorización: 19 perfiles bajo SET LOCAL ROLE authenticated y sujetos
+  JWT simulados, cierre_id=NULL. Solo admin activo llega a cierre_no_encontrado;
+  los demás obtienen solo_admin/42501. Sin editar perfiles ni cierres reales.
+- Build PASS, 81/81 páginas; secretos ficticios, directorio aislado. Avisos de
+  descarga de fuentes no bloqueantes. diff --check limpio.
+- UI escritorio y 390x844 con fixture/sesión SIMULADOS, sin red DEV/Prod.
+  Motivo, importe retenido, doble confirmación, éxito e historial verificables
+  en capturas. No se confunde esa maqueta con QA autenticada de cancelación.
+- Lecturas BI y Centro autenticadas reales contra DEV cargan sin error tras
+  rollback; no es prueba de HTTP con retención persistida.
+
+Límites y entrega
+- No se ejecutó cancelación retenida HTTP autenticada con COMMIT en DEV;
+  el caso completo DEV se verificó por SQL con rollback. COMMIT y concurrencia
+  certificados en PostgreSQL local desechable. No declarar ese E2E como PASS.
+- Cero fixtures nuevos persistentes; -252301 previamente autorizado permanece
+  igual. Nunca se deshabilitaron triggers ni se eliminó auditoría para limpiar.
+- No probado en dispositivo físico ni navegador distinto de Chrome.
+- Antes de publicar: revisión del cambio, autorización de migración/código
+  productivos y QA E2E persistente en entorno desechable o plan explícito de
+  retención sintética. Aplicar migración antes del código. No ejecutado aquí.
+- No revertir a consumidores que oculten retenciones una vez utilizadas.
+  Ante incidente revocar EXECUTE de la nueva RPC y corregir hacia adelante.
+
+Evidencia: docs/evidence/cierre-retained-income/.

@@ -1,0 +1,52 @@
+{
+  "devProject": "hjfwjnejbcpmknvfpdcq",
+  "productionAccessed": false,
+  "productionChanged": false,
+  "syntheticDEVTransaction": [
+    {
+      "result": "PASS",
+      "scope": "DEV synthetic transaction; rollback follows",
+      "retained_income": 25500,
+      "adviser_commission": 0,
+      "original_receipt_and_payment_unchanged": true,
+      "audited": true,
+      "idempotent": true
+    }
+  ],
+  "DEVAuthorization": [
+    {
+      "authorization": "PASS",
+      "checked_profiles": 19,
+      "scope": "authenticated SQL role / simulated JWT subject / NULL closure ID"
+    }
+  ],
+  "localPostgres": {
+    "result": "PASS",
+    "checks": 81,
+    "fixtures": "disposable local only",
+    "commitAndConcurrencyTested": true
+  },
+  "javascript": {
+    "pass": 27,
+    "fail": 0
+  },
+  "build": {
+    "result": "PASS",
+    "staticPages": 81,
+    "credentials": "synthetic build values; no real secrets"
+  },
+  "visual": {
+    "desktop": "PASS",
+    "mobile390x844": "PASS",
+    "scope": "isolated synthetic UI; simulated session, no DEV or Production connection"
+  },
+  "authenticatedDEVReads": {
+    "BI": "loaded/calculable after rollback",
+    "center": "loaded after rollback"
+  },
+  "limits": [
+    "Retained-income cancellation through real DEV authenticated HTTP with COMMIT not executed; DEV SQL test rolled back to avoid immutable residual fixtures.",
+    "No new permanent fixtures retained; existing authorized -252301 untouched.",
+    "Initial synthetic receipt test rejected invalid tipo=renta; corrected to arrendamiento, then full test passed."
+  ]
+}

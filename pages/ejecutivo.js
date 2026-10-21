@@ -55,10 +55,12 @@ export default function Ejecutivo() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [errorLectura, setErrorLectura] = useState(false);
   const [anio, setAnio] = useState(new Date().getFullYear());
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth());
 
   const [cierres, setCierres] = useState([]);
+  const [ingresosCancelacion, setIngresosCancelacion] = useState([]);
   const [cierrePagos, setCierrePagos] = useState([]);
   const [polizaCaja, setPolizaCaja] = useState([]);
   const [cashMovements, setCashMovements] = useState([]);
@@ -81,7 +83,8 @@ export default function Ejecutivo() {
 
   const loadData = async () => {
     setLoading(true);
-    const [c, cp, pc, cm, t, cond, ca, ct, gc] = await Promise.all([
+    setErrorLectura(false);
+    const [c, cp, pc, cm, t, cond, ca, ct, gc, ic, cc] = await Promise.all([
       supabase.from("cierres").select("fecha_cierre, comision, cobrado, pendiente, anio, mes").eq('estado', 'activo'),
       supabase.from("cierre_pagos").select("cierre_id, monto, fecha, cierres!inner(estado)").eq("cierres.estado", "activo"),
       supabase.from("poliza_caja").select("fecha, monto, tipo, concepto"),
@@ -91,9 +94,13 @@ export default function Ejecutivo() {
       supabase.from("comisiones_admin").select("periodo, monto, status, fecha_cobro").eq("status", "cobrada"),
       supabase.from("contracts").select("commission_status, commission_type, commission_value, monthly_rent, updated_at").eq("status", "activo").eq("commission_status", "cobrada"),
       supabase.from("gastos_condominio").select("concepto, monto, fecha, categoria"),
+      supabase.from("v_cierre_ingresos_cancelacion").select("cierre_id, monto, fecha"),
+      supabase.from("cierre_pagos").select("cierre_id, monto, fecha, cierres!inner(estado,cancelacion_ingreso_retenido)").eq("cierres.estado", "cancelado").gt("cierres.cancelacion_ingreso_retenido", 0),
     ]);
+    if ([c, cp, ic, cc].some(result => result.error)) { setErrorLectura(true); setLoading(false); return; }
+    setIngresosCancelacion(ic.data || []);
     setCierres(c.data || []);
-    setCierrePagos(cp.data || []);
+    setCierrePagos([...(cp.data || []), ...(cc.data || [])]);
     setPolizaCaja(pc.data || []);
     setCashMovements(cm.data || []);
     setTickets(t.data || []);
@@ -103,6 +110,8 @@ export default function Ejecutivo() {
     setGastosCondominio(gc.data || []);
     setLoading(false);
   };
+
+  if (errorLectura) return <main role="alert" style={{ padding: 32 }}>No se pudo completar la lectura financiera. Los totales no están disponibles. <button onClick={loadData}>Reintentar</button></main>;
 
   if (authLoading) return (
     <div style={{ minHeight: "100vh", background: "#f8f8f8", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -129,7 +138,7 @@ export default function Ejecutivo() {
   const ingresoPorMes = (m, a) => {
     // Cierres generado — por mes de cierre (cuando se cerró el trato)
     const cierresMes = cierres.filter(c => c.anio === a && c.mes === (m + 1));
-    const cierresGenerado = cierresMes.reduce((acc, c) => acc + (c.comision || 0), 0);
+    const cierresGenerado = cierresMes.reduce((acc, c) => acc + (c.comision || 0), 0) + ingresosCancelacion.filter(i => enMes(i.fecha, m, a)).reduce((acc, i) => acc + Number(i.monto || 0), 0);
 
     // Cierres cobrado — por fecha real del pago (de cierre_pagos)
     const cierresCobrado = cierrePagos
@@ -301,7 +310,7 @@ export default function Ejecutivo() {
                 <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Distribución por rubro — {MESES[mesSeleccionado]}</h3>
                 <span style={{ fontSize: 18, fontWeight: 900, color: "#1a1a2e" }}>{fmt(datosMes.total)}</span>
               </div>
-              <BarraRubro label="Cierres (cobrado)" icon="🏠" value={datosMes.cierresCobrado} total={datosMes.total} color="#b91c3c" />
+              <BarraRubro label="Cierres y retenciones (cobrado)" icon="🏠" value={datosMes.cierresCobrado} total={datosMes.total} color="#b91c3c" />
               {RUBROS.map(r => (
                 <BarraRubro key={r.id} label={r.label} icon={r.icon} value={datosMes[r.id]} total={datosMes.total} color={r.color} />
               ))}
@@ -312,12 +321,12 @@ export default function Ejecutivo() {
 
             {/* Cierres acumulado — bloque especial */}
             <div style={{ background: "#fff", borderRadius: 16, padding: "16px 20px", marginBottom: 12, border: "1px solid #f0f0f0", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5 }}>🏠 Cierres / Ventas — {anio}</p>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5 }}>🏠 Cierres e ingresos por cancelación — {anio}</p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
                 <div style={{ background: "#f9fafb", borderRadius: 10, padding: "12px 14px" }}>
                   <p style={{ margin: "0 0 4px", fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Generado</p>
                   <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#1a1a2e" }}>{fmt(porRubroAnio.cierresGenerado)}</p>
-                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Comisiones cerradas en {anio}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Cierres activos e ingresos por cancelación en {anio}</p>
                 </div>
                 <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "12px 14px", border: "1px solid #bbf7d0" }}>
                   <p style={{ margin: "0 0 4px", fontSize: 10, color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>Cobrado ✅</p>
@@ -347,7 +356,7 @@ export default function Ejecutivo() {
                 <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>Distribución por rubro — {anio}</h3>
                 <span style={{ fontSize: 18, fontWeight: 900, color: "#1a1a2e" }}>{fmt(totalAnio)}</span>
               </div>
-              <BarraRubro label="Cierres (cobrado)" icon="🏠" value={porRubroAnio.cierresCobrado} total={totalAnio} color="#b91c3c" />
+              <BarraRubro label="Cierres y retenciones (cobrado)" icon="🏠" value={porRubroAnio.cierresCobrado} total={totalAnio} color="#b91c3c" />
               {RUBROS.map(r => (
                 <BarraRubro key={r.id} label={r.label} icon={r.icon} value={porRubroAnio[r.id]} total={totalAnio} color={r.color} />
               ))}

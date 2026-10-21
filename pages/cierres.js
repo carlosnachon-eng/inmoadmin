@@ -425,13 +425,13 @@ export default function Cierres() {
     }
   };
 
-  const cancelarCierre = async motivo => {
+  const cancelarCierre = async (motivo, tratamiento = {}) => {
     if (!adminActivo || !cierreACancelar || cancellationLock.current || !motivoCancelacionValido(motivo)) return;
     setCancelacionError(null);
     cancellationLock.current = true;
     setCancelando(cierreACancelar.id);
     try {
-      const { data, error } = await supabase.rpc('cancelar_cierre', { p_cierre_id: cierreACancelar.id, p_motivo: motivo.trim() });
+      const { data, error } = await supabase.rpc(tratamiento.retener ? 'cancelar_cierre_con_ingreso_retenido' : 'cancelar_cierre', { p_cierre_id: cierreACancelar.id, p_motivo: motivo.trim(), ...(tratamiento.retener ? { p_importe_esperado: tratamiento.importe } : {}) });
       if (error) { setCancelacionError(cancellationError(error)); return; }
       setCierreACancelar(null);
       const refreshed = await loadCierres();
@@ -1206,10 +1206,12 @@ export default function Cierres() {
 
       <section aria-label="Historial de cierres cancelados" style={{ padding: 16 }}>
         <button onClick={() => setMostrarCancelados(v => !v)}>{mostrarCancelados ? 'Ocultar' : 'Mostrar'} cancelados ({cancelados.length})</button>
-        {mostrarCancelados && <><p>Historial excluido de totales, comisiones y KPIs. No modifica recibos ni firmas.</p>
+        {mostrarCancelados && <><p>Operaciones excluidas de los KPIs comerciales y de comisiones vigentes. Los cobros retenidos se conservan como ingreso por cancelación. No modifica recibos ni firmas.</p>
           {cancelados.map(c => <article key={c.id} style={{ padding: 12, borderBottom: '1px solid #ddd' }}>
             <strong>Cancelado · #{c.id} · {c.propiedad}</strong>
             <p style={{ fontSize: 14 }}>Asesor original: {c.vendedor || 'Sin asignar'} · Comisión histórica: {fmt(c.comision)}</p>
+            <p>Comisión vigente del asesor: {fmt(0)} · Gerente: {fmt(0)}</p>
+            {Number(c.cancelacion_ingreso_retenido) > 0 && <p style={{ color: '#065f46', fontWeight: 700 }}>Ingreso por cancelación para la inmobiliaria: {fmt(c.cancelacion_ingreso_retenido)}. Cobro y recibo originales conservados; sin devolución.</p>}
             <p style={{ overflowWrap: 'anywhere' }}>{c.cancelacion_motivo}</p>
             <small style={{ overflowWrap: 'anywhere' }}>Fecha: {new Date(c.cancelado_en).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })} · Canceló: {autores[c.cancelado_por] || c.cancelado_por}</small>
           </article>)}
