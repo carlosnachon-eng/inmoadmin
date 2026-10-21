@@ -1,3 +1,77 @@
+CERTIFICACIÓN FINAL CON FIXTURE RETENIDO AUTORIZADO — 2026-10-21
+RECOMENDACIÓN TÉCNICA: MERGE. NO se realizó merge, despliegue ni migración productiva.
+
+AUTORIZACIÓN Y ESTADO DEV
+- El usuario autorizó expresamente conservar UN único fixture sintético cancelado
+  y su auditoría en DEV, sustituyendo sólo para él el requisito de cero residuos.
+- Cierre -252301: QA252 — NO REAL — RETENIDO AUTORIZADO. Comisión 252,
+  comisión vendedor 50.40, cobrado/pagos cero. Propiedad y asesor sintéticos
+  preexistentes DEV reutilizados; no se creó otra propiedad, usuario o equipo.
+- Retención esperada: 1 cierre cancelado, 1 auditoría, 1 atribución canónica y
+  1 intento de atribución asociado. Cero pagos y cero otros cierres de prueba.
+  NO borrar, reactivar ni deshabilitar triggers para limpiar este registro.
+
+PRUEBA PERSISTENTE REAL COMPLETADA
+- Sesión administrativa real, página original /cierres, backend DEV exclusivo
+  hjfwjnejbcpmknvfpdcq. Motivo y casilla explícita. Sin rollback ni simulación
+  de sesión/cliente/respuesta. Cancelación confirmada 2026-10-21 08:20:41 CDMX.
+- Auditoría: actor e04ad988-7b62-49ee-9f70-184b31100519, fecha y motivo idénticos
+  a la fila. Repetición RPC autenticada: ya_cancelado; sigue una sola auditoría.
+- Comparación exacta: únicamente cambian estado, cancelado_por, cancelado_en y
+  cancelacion_motivo. Atribución completa idéntica, vendedor Ivan e importes
+  originales conservados. Preexistentes hash fc7bd96fc3fc8a889c96f8d759fb07ef.
+- Historial real después de recargar: Cancelado #-252301, etiqueta NO REAL,
+  asesor original, comisión histórica 252, motivo, fecha CDMX y autor UUID.
+  Autor UUID es el respaldo previsto cuando no hay nombre disponible.
+  Verificado en Chrome escritorio y viewport móvil 390x844.
+- Antes: Scoreboard Ventas Puebla 1 operación/252; RPC KPI 1/252, evento presente;
+  BI/Centro generado 252, pendiente 252, costo directo 50.40.
+- Después de COMMIT y recarga: Scoreboard 0/0; ambas RPC KPI excluyen fixture;
+  BI y Centro HTTP 200, generado/cobrado/pendiente/costos 0, sin evento/alerta
+  del fixture. Ejecutivo octubre 0; acumulado conserva 22000 preexistentes.
+- Comisiones activas /cierres: vendedor y pendiente vendedor pasan de 50.40 a
+  cero. Historial conserva la comisión histórica. No se cambió ninguna comisión
+  pagada. /comisiones administra contratos, no consume cierres; no se confunde
+  su cálculo independiente con comisiones comerciales del cierre.
+- Recibo de comisión: antes 400 por no cobrado; después 404 por cancelado.
+  No genera PDF/documento para el cierre cancelado. No había recibo/firma
+  asociados al fixture manual; ningún documento real fue alterado.
+- Semanal: handler original y cliente DEV real pasan de 1/252 a 0/0; sólo el
+  transporte de correo se intercepta localmente. Cero correos enviados.
+  No es una prueba HTTP completa del cron ni se declara como tal.
+- Observador local de lecturas/RPC idempotente retirado; utilizaba sesión
+  real, sin respuestas simuladas, credenciales privilegiadas ni bypass.
+
+VALIDACIONES CONSERVADAS Y ALCANCE
+- 25/25 JS y regresiones financieras PASS; build 81/81 PASS después del último
+  cambio de producto (9a1a858). Esta fase sólo añade evidencia/documentación;
+  no se repiten pruebas de build por cambios documentales.
+- 55 controles PostgreSQL locales previos PASS: autorización activa, ACL/RLS,
+  inmutabilidad, idempotencia, pagos y carreras con bloqueo observado. Las
+  pruebas de concurrencia inicial son locales, no una nueva carrera HTTP DEV.
+- QA DEV previa: no-admin real 403 solo_admin, UI acceso restringido; sin token
+  o token inválido 401 en reportes; pago sintético asociado rechazado. Cuenta,
+  sesiones y fixtures anteriores ya eliminados; no se recrearon en esta fase.
+- main aeec321: fetch y merge-tree sin conflictos; no merge/rebase.
+- Pendientes no bloqueantes: navegadores distintos de Chrome y dispositivos
+  físicos. No se declara PASS sobre ellos. Bootstrap automático de ramas
+  Supabase sigue fallando por baseline histórica; ya no bloquea esta QA,
+  completada en DEV con la excepción de retención autorizada.
+
+EVIDENCIA Y SIGUIENTE PASO
+- docs/evidence/issue251/retained-fixture/: snapshots antes/después, diff de
+  preservación, HTTP real, idempotencia, inventario y capturas desktop/móvil.
+- Recomendación MERGE para revisión/autorización humana. PR permanece draft
+  mientras el usuario decide; no se marca listo ni se fusiona automáticamente.
+- Preparación productiva A–F y cinco migraciones en orden antes del código
+  (más abajo) siguen vigentes, con autorización INDEPENDIENTE. Este cierre de
+  QA satisface el gate DEV; no autoriza ejecutar ninguna etapa productiva.
+- Nunca usar #943/#950 reales para smoke tests. Producción no consultada ni
+  modificada. No intervención en canales de mensajería o redes sociales.
+
+Las secciones siguientes son evidencia histórica. Sus NO MERGE y pendientes
+previos quedan sustituidos por esta certificación final y la retención autorizada.
+
 INTENTO DE CERTIFICACIÓN EN RAMA DESECHABLE — 2026-10-21
 ESTADO: NO MERGE; escenario persistente todavía NO ejecutado.
 
