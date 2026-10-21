@@ -26,6 +26,7 @@ export default function CommentReviewPanel(){
   <p>Propuestas por reglas verificables; IA generativa no activada. Aprobar guarda auditoría, no envía.</p>
   <nav aria-label="Plataforma de comentarios">{['instagram','facebook'].map(p=><button key={p} disabled={busy} aria-pressed={platform===p} onClick={()=>setPlatform(p)}>{p==='instagram'?'Instagram':'Facebook'}</button>)}</nav>
   <button disabled={busy||readOnly} onClick={()=>action({op:'evaluate'})}>Evaluar comentarios (sin publicar)</button>
+  {platform==='facebook'&&<button disabled={busy} onClick={async()=>{if(acting.current)return;acting.current=true;setBusy(true);try{const r=await request({op:'diagnose_read'});setActionResult(JSON.stringify(r));setActionError('');}catch(e){setActionError(e.message);}finally{acting.current=false;setBusy(false);}}}>Diagnóstico Meta · sólo lectura</button>}
   {readOnly&&<p role="status">Puente DEV autenticado · sólo lectura. Evaluación y aprobación pendientes de certificación.</p>}
   {error&&<p role="alert">{error}</p>}
   {actionError&&<p role="alert">{actionError}</p>}

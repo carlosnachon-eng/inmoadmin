@@ -15,6 +15,7 @@ import {readThroughBridge,writeThroughBridge} from '../../../lib/messaging/comme
 import {evaluateInstagram} from '../../../lib/messaging/commentAgent/evaluateInstagram.js';
 import {projectReviews} from '../../../lib/messaging/commentAgent/reviewProjection.js';
 import {bridgeDiagnostic,safeBridgeDiagnostic} from '../../../lib/messaging/commentAgent/bridgeDiagnostic.js';
+import {diagnoseFacebookRead} from '../../../lib/messaging/commentAgent/facebookReadDiagnostic.js';
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private,no-store');
  if(!commentObservationAllowed(process.env))return res.status(404).end();
@@ -33,6 +34,10 @@ export default async function handler(req,res){
   const crypto=platform==='instagram'?igCrypto:fbCrypto;
   stage='database_client';
   const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}}),store=reviewStore(db,platform,c,actor);
+  if(req.method==='POST'&&platform==='facebook'&&req.body?.op==='diagnose_read'){
+   if(Object.keys(req.body).join(',')!=='op'||c.senderEnabled)return res.status(403).end();
+   return res.status(200).json(await diagnoseFacebookRead({c,credential:await messengerStore(db,c.connection,c).credential()}));
+  }
   stage='journal_read';
   const rows=await store('list');if(!Array.isArray(rows))throw Error('shape');
   if(req.method==='GET'){
