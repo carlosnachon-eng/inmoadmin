@@ -20,7 +20,7 @@ export function syntheticQA(){
   if(name==='meta_admin_inbox_history_v1')return {data:history(c)};
   throw Error('Non-read RPC forbidden: '+name);
  }};
- const handler=createWhatsAppAdminHandler({allowed:()=>true,authorize:async()=>({active:true,role_id:state.role}),reader:()=>createInboxReader({db,includeContext:false})});
+ const handler=createWhatsAppAdminHandler({allowed:()=>true,source:()=>({environment:'dev',project_ref:'hjfwjnejbcpmknvfpdcq',scope:'whatsapp_administracion'}),authorize:async()=>({active:true,role_id:state.role}),reader:()=>createInboxReader({db,includeContext:false})});
  async function request(query,method='GET'){
   const res={setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
   await handler({method,query},res);return res;
