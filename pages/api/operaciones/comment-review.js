@@ -14,6 +14,8 @@ import {projectFacebookComment} from '../../../lib/messaging/commentAgent/facebo
 import {inspectMetaComment,publicationFacts} from '../../../lib/messaging/commentAgent/verifiedPublication.js';
 import {reviewStore,recordReview,approveReview} from '../../../lib/messaging/commentAgent/review.js';
 import {reviewDiagnostic} from '../../../lib/messaging/commentAgent/diagnostics.js';
+import {readThroughBridge} from '../../../lib/messaging/commentAgent/bridge.js';
+import {projectReviews} from '../../../lib/messaging/commentAgent/reviewProjection.js';
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private,no-store');
  if(!commentObservationAllowed(process.env))return res.status(404).end();
@@ -23,6 +25,11 @@ export default async function handler(req,res){
   const actor=await authorizeInboxStaff(req);if(!actor?.active||!['admin','gerente_ventas'].includes(actor.role_id))return res.status(403).end();
   if(req.method==='POST'&&new URL(req.headers.origin||'https://invalid').host!==req.headers.host)return res.status(403).end();
   const platform=req.query.platform;if(!['instagram','facebook'].includes(platform))return res.status(400).end();
+  if(platform==='instagram'&&process.env.COMMENT_REVIEW_BRIDGE_URL){
+   if(req.method!=='GET')return res.status(409).json({status:'bridge_read_only',diagnostic:{stage:'bridge_read',code:'writes_not_certified'}});
+   try{return res.status(200).json(await readThroughBridge(process.env,req.headers.authorization,fetch,req.headers['x-vercel-oidc-token']));}
+   catch{return res.status(503).json({status:'review_unavailable',diagnostic:{stage:'bridge_read',code:'bridge_unavailable'}});}
+  }
   stage='configuration';
   const c=platform==='instagram'?businessConfig(process.env):messengerConfig(process.env);if(!c)return res.status(503).json({status:'configuration_missing',diagnostic:{stage,code:'platform_disabled'}});
   const crypto=platform==='instagram'?igCrypto:fbCrypto;
@@ -32,8 +39,7 @@ export default async function handler(req,res){
   const rows=await store('list');if(!Array.isArray(rows))throw Error('shape');
   if(req.method==='GET'){
    stage='projection';
-   return res.status(200).json({rows:rows.map(r=>({...crypto.open(c,'commercial-review',[r.comment_ref,r.revision],r.decision_box),approved_text:r.approval_box?crypto.open(c,'commercial-approval',[r.comment_ref,r.revision,r.approved_by],r.approval_box).text:null,revision:r.revision,status:r.status,destination:r.destination,opportunity:r.opportunity,updated_at:r.updated_at})),sender:false,private_replies:false,
-    metrics:{received:rows.length,pending:rows.filter(r=>['proposed','approved'].includes(r.status)).length,escalated:rows.filter(r=>r.status==='escalated').length,opportunities:rows.filter(r=>r.opportunity).length,accepted:rows.filter(r=>r.status==='accepted').length}});
+   return res.status(200).json(projectReviews(rows,crypto,c));
   }
   const body=req.body||{};
   stage=body.op==='approve'?'approval':'evaluation';
