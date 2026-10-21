@@ -27,6 +27,7 @@ export default function CommentReviewPanel(){
   <nav aria-label="Plataforma de comentarios">{['instagram','facebook'].map(p=><button key={p} disabled={busy} aria-pressed={platform===p} onClick={()=>setPlatform(p)}>{p==='instagram'?'Instagram':'Facebook'}</button>)}</nav>
   <button disabled={busy||readOnly} onClick={()=>action({op:'evaluate'})}>Evaluar comentarios (sin publicar)</button>
   {platform==='facebook'&&<p>Conexión aislada: Emporio Comentarios DEV · Sender OFF. No utiliza la conexión de Messenger.</p>}
+  {platform==='facebook'&&<button disabled={busy} onClick={async()=>{if(acting.current)return;acting.current=true;setBusy(true);try{const r=await request({op:'import_history'});setActionResult(JSON.stringify(r));setActionError('');}catch(e){setActionError(e.message);}finally{acting.current=false;setBusy(false);}}}>Importar muestra histórica autorizada (máximo 1)</button>}
   {platform==='facebook'&&<button disabled={busy} onClick={async()=>{if(acting.current)return;acting.current=true;setBusy(true);try{const r=await request({op:'diagnose_isolated_dev'});setActionResult(JSON.stringify(r));setActionError('');}catch(e){setActionError(e.message);}finally{acting.current=false;setBusy(false);}}}>Validar token · Emporio Comentarios DEV</button>}
   {readOnly&&<p role="status">Puente DEV autenticado · sólo lectura. Evaluación y aprobación pendientes de certificación.</p>}
   {error&&<p role="alert">{error}</p>}
@@ -35,7 +36,7 @@ export default function CommentReviewPanel(){
   <p>En esta vista: {rows.length} · Escalados: {rows.filter(r=>r.status==='escalated').length} · Candidatos para Ventas: {rows.filter(r=>r.opportunity).length}</p>
   {!rows.length&&!error&&<p>No hay revisiones registradas.</p>}
   <select aria-label="Comentario a revisar" value={selected||''} onChange={e=>setSelected(e.target.value)} style={{maxWidth:'100%'}}><option value="">Selecciona comentario</option>{rows.map((r,i)=><option key={r.comment_ref} value={r.comment_ref}>{i+1}. {r.status} · {r.intent||r.reason}</option>)}</select>
-  {row&&<div><p>{row.status} · {row.reason} · Destino: Ventas</p><p>{row.approved_text||row.public_proposal||'Requiere revisión humana; faltan datos o evidencia.'}</p>
+  {row&&<div>{row.historical&&<p>Histórico importado de Meta · no acredita webhook orgánico.</p>}<p>{row.status} · {row.reason} · Destino: Ventas</p><p>{row.approved_text||row.public_proposal||'Requiere revisión humana; faltan datos o evidencia.'}</p>
    {row.status==='proposed'&&<><label>Editar propuesta<textarea aria-label="Editar propuesta" value={drafts[key]??row.public_proposal??''} onChange={e=>setDrafts(d=>({...d,[key]:e.target.value}))} maxLength={900} style={{width:'100%',boxSizing:'border-box'}}/></label>
     <button disabled={busy||readOnly} onClick={()=>action({op:'approve',comment:row.comment_ref,revision:row.revision,text:drafts[key]??row.public_proposal})}>Aprobar sin publicar</button></>}
    {row.status==='approved'&&<p>Aprobada y registrada. Envío deshabilitado.</p>}
