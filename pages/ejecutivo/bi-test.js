@@ -110,10 +110,10 @@ const UnidadSection = ({ titulo, unidad }) => {
           hint="Fuente primaria del devengado"
         />
         <MetricCard
-          title="Cobrado"
+          title={Number(unidad?.conciliacion?.devuelto_periodo) > 0 ? "Cobrado neto de devoluciones" : "Cobrado"}
           value={metricas.cobrado}
           estado={estado}
-          hint="Cobros del periodo por fecha real"
+          hint={Number(unidad?.conciliacion?.devuelto_periodo) > 0 ? `Cobro bruto ${fmtMoney(unidad.conciliacion.cobrado_bruto_periodo)} · Devolución ${fmtMoney(unidad.conciliacion.devuelto_periodo)}` : "Cobros del periodo por fecha real"}
         />
         <MetricCard
           title="Pendiente reconstruido"

@@ -1,0 +1,61 @@
+DEV · Cancelación con devolución parcial externa · 2026-10-21
+
+Alcance
+Registra una devolución ya realizada fuera del sistema: cobro original $5,000,
+devolución $4,000, ingreso neto de la inmobiliaria $1,000, comisión vigente de
+asesor y gerente $0. No transfiere dinero ni altera el recibo o pago originales.
+No se consultó ni modificó Producción ni el cierre real de Bosques de Amalucan.
+No se publicó código, abrió PR, hizo merge ni desplegó este cambio.
+
+Implementación
+Migración 20261021170825_cierre_cancelacion_devolucion_parcial.sql aplicada solo
+al proyecto DEV hjfwjnejbcpmknvfpdcq. RPC nueva, limitada a administradores activos,
+motivo y confirmación explícita en UI, importe esperado, fecha real y referencia
+externa única. Rechaza comisiones pagadas, importes inválidos, discrepancias entre
+cobros y movimientos, fechas anteriores al último cobro o futuras, origen duplicado
+y referencia externa duplicada. Mantiene auditoría inmutable, locks e idempotencia.
+La referencia única no sustituye la conciliación: no usar si la devolución ya
+está registrada como egreso en otra parte del sistema.
+
+Reportes
+Ingreso generado por cancelación: neto $1,000. Flujo de efectivo: entrada original
+$5,000 por fecha del cobro y salida $4,000 por fecha real de devolución. Puede haber
+flujo negativo en un periodo que solo incluya la devolución. KPIs comerciales,
+rankings y comisiones excluyen el cierre cancelado. Conserva comisión histórica.
+
+Validación ejecutada
+- 30/30 pruebas JS de cancelación, finanzas y regresión de condominios.
+- 117 controles PostgreSQL en base local desechable: COMMIT, concurrencia real,
+  autorización, integridad, recibo, atribución, KPI, auditoría e idempotencia.
+- DEV real: tests/cierrePartialRefundDEV.sql ejecutó el flujo completo y terminó
+  en ROLLBACK. Incluye rechazo de devolución total, repetición y mutación directa.
+- DEV: fixture -252610, pago, recibo, atribución y auditoría ausentes al terminar.
+  Siguen las dos auditorías previas; no se crearon residuos persistentes nuevos.
+  Huella cierres antes/después (sin las tres columnas nuevas, separador |):
+  0f0f2db56ad11ace4b94ee82149d60d5.
+  Huella pagos antes/después: e043db7e5ef99fb2539bf09d03e9e17c.
+- Grants DEV comprobados: authenticated EXECUTE sí; anon y service_role no.
+  La autorización de administrador activo se comprueba dentro de la RPC.
+- Compilación Next.js correcta y git diff --check limpio.
+- QA visual LOCAL AISLADA, sesión simulada, sin conexión a Supabase: selección,
+  motivo, fecha real, referencia, confirmación, éxito, exclusión de ranking e
+  historial con 5000/4000/1000 y comisión cero. Escritorio y móvil real 390x844.
+  El input date requirió teclado nativo por formato dd/mm/aaaa del navegador.
+  Evidencia en docs/evidence/cierre-partial-refund/.
+
+Pendientes y límites
+NO MERGE / NO PUBLICAR aún: falta prueba HTTP autenticada con COMMIT persistente
+en DEV del nuevo flujo, incluyendo reportes por la misma sesión. La prueba SQL
+con auth.uid de administrador no equivale a una sesión HTTP autenticada.
+No se certificó PDF: se preservó la fila del recibo sintético y el pago.
+Devolución total y múltiples devoluciones no están incluidas en este alcance.
+Advisors de DEV muestra advertencias del esquema general; no se alteraron para
+esta función. Auditoría privada con RLS y sin políticas es denegación deliberada.
+Otros errores de RLS se listan en dev-security-advisors.json; referencia oficial:
+https://supabase.com/docs/guides/database/database-linter?lint=0007_policy_exists_rls_disabled
+
+Preparación futura, sin ejecutar
+Tras cerrar QA HTTP y recibir autorización separada: respaldo y preflight,
+aplicar únicamente esta migración aditiva después de las de ingreso retenido;
+verificar grants/locks/vistas; desplegar código; revisar lecturas autenticadas.
+No ejecutar cancelaciones reales como prueba ni hacer db push masivo.

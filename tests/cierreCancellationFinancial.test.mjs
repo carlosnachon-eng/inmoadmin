@@ -26,6 +26,7 @@ const payments = [
   {id:'active-movement',cierre_id:-251950,monto:100,fecha:date},
   {id:'prior-close-current-payment',cierre_id:-251959,monto:250,fecha:date},
 ];
+const retentions=[], refunds=[];
 function client() {
   return {auth:{getUser:async()=>({data:{user:{id:'fixture-admin',email:'qa@example.invalid'}}})},from(table){
     let conditions=[],selection='';
@@ -34,7 +35,7 @@ function client() {
       gt(key,v){conditions.push(r=>Number(value(r,key))>v);return q;},gte(key,v){conditions.push(r=>value(r,key)>=v);return q;},lt(key,v){conditions.push(r=>value(r,key)<v);return q;},
       lte(key,v){conditions.push(r=>value(r,key)<=v);return q;},in(key,v){conditions.push(r=>v.includes(value(r,key)));return q;},order(){return q;},
       maybeSingle(){return q.then(r=>({...r,data:r.data[0]||null}));},then(resolve,reject){
-        const data=table==='cierres'?rows:table==='cierre_pagos'?payments:table==='profiles'?[{id:'fixture-admin',role_id:'admin',email:'qa@example.invalid'}]:[];
+        const data=table==='cierres'?rows:table==='cierre_pagos'?payments:table==='v_cierre_devoluciones'?refunds:table==='v_cierre_ingresos_cancelacion'?retentions:table==='profiles'?[{id:'fixture-admin',role_id:'admin',email:'qa@example.invalid'}]:[];
         if(selection.includes('cierres!inner'))assert.equal(table,'cierre_pagos');
         return Promise.resolve({data:data.filter(r=>conditions.every(f=>f(r))),error:null}).then(resolve,reject);
       }};return q;
@@ -102,4 +103,39 @@ test('retention recognition and historic cash belong to independent periods', ()
   const historicCash = bi.resumirCierres({ ingresosCancelacion: [], cobrosCancelacion: [{ cierre_id: -1, monto: 25500 }] });
   assert.equal(historicCash.metricas.ingreso_generado, 0);
   assert.equal(historicCash.metricas.cobrado, 25500);
+});
+
+
+test('partial refund preserves 5000 gross cash, records 4000 outflow and reports 1000 net without a commercial sale', async()=>{
+ const id=-252600;
+ rows.push({id,estado:'cancelado',cancelacion_ingreso_retenido:1000,cancelacion_devolucion:4000,fecha_cierre:date,comision:5000,cobrado:5000,com_vendedor:1000});
+ payments.push({id:'original-5000',cierre_id:id,monto:5000,fecha:date});
+ retentions.push({cierre_id:id,monto:1000,fecha:date});
+ refunds.push({cierre_id:id,monto:4000,fecha:date,referencia:'QA transferencia externa realizada'});
+ try {
+  const {handler}=load('pages/api/ejecutivo/bi-cierres-admin.js',{...bi,createClient:client,process:{env}});
+  const res=response();await handler({method:'GET',headers:{authorization:'Bearer synthetic'},query:{year:date.slice(0,4),month:date.slice(5,7),include:'events'}},res);
+  assert.equal(res.code,200);
+  assert.equal(res.body.metricas.ingreso_generado,11000);
+  assert.equal(res.body.metricas.cobrado,1350);
+  assert.equal(res.body.metricas.pendiente_reconstruido,9900);
+  const events=res.body.eventos.cierres.filter(e=>e.source_id===id||e.metadata.cierre_id===id);
+  assert.equal(events.length,3);
+  assert.equal(events.find(e=>e.event_type==='ingreso_generado').amount,1000);
+  assert.equal(events.find(e=>e.event_type==='cobro_recibido').amount,5000);
+  const refund=events.find(e=>e.event_type==='devolucion_registrada');
+  assert.equal(refund.amount,4000);assert.equal(refund.direction,'salida');
+  assert.equal(res.body.unidades.cierres.conciliacion.devuelto_periodo,4000);
+ } finally {rows.pop();payments.pop();retentions.pop();refunds.pop();}
+});
+
+test('refund cash follows its real date, including a refund-only period with negative cash',()=>{
+ const received=bi.resumirCierres({cobrosCancelacion:[{monto:5000}]});
+ const returned=bi.resumirCierres({devolucionesCancelacion:[{monto:4000}]});
+ const recognized=bi.resumirCierres({ingresosCancelacion:[{monto:1000}]});
+ assert.equal(received.metricas.cobrado,5000);
+ assert.equal(returned.metricas.cobrado,-4000);
+ assert.equal(returned.metricas.ingreso_generado,0);
+ assert.equal(recognized.metricas.ingreso_generado,1000);
+ assert.equal(received.metricas.cobrado+returned.metricas.cobrado,1000);
 });

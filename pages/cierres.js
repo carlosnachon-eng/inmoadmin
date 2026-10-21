@@ -431,7 +431,12 @@ export default function Cierres() {
     cancellationLock.current = true;
     setCancelando(cierreACancelar.id);
     try {
-      const { data, error } = await supabase.rpc(tratamiento.retener ? 'cancelar_cierre_con_ingreso_retenido' : 'cancelar_cierre', { p_cierre_id: cierreACancelar.id, p_motivo: motivo.trim(), ...(tratamiento.retener ? { p_importe_esperado: tratamiento.importe } : {}) });
+      const parcial = Number(tratamiento.devolucion) > 0;
+      const { data, error } = await supabase.rpc(parcial ? 'cancelar_cierre_con_devolucion_parcial' : tratamiento.retener ? 'cancelar_cierre_con_ingreso_retenido' : 'cancelar_cierre', {
+        p_cierre_id: cierreACancelar.id, p_motivo: motivo.trim(),
+        ...(tratamiento.retener ? { p_importe_esperado: tratamiento.importe } : {}),
+        ...(parcial ? { p_monto_devuelto: tratamiento.devolucion, p_fecha_devolucion: tratamiento.fechaDevolucion, p_referencia_devolucion: tratamiento.referenciaDevolucion } : {}),
+      });
       if (error) { setCancelacionError(cancellationError(error)); return; }
       setCierreACancelar(null);
       const refreshed = await loadCierres();
@@ -1211,7 +1216,8 @@ export default function Cierres() {
             <strong>Cancelado · #{c.id} · {c.propiedad}</strong>
             <p style={{ fontSize: 14 }}>Asesor original: {c.vendedor || 'Sin asignar'} · Comisión histórica: {fmt(c.comision)}</p>
             <p>Comisión vigente del asesor: {fmt(0)} · Gerente: {fmt(0)}</p>
-            {Number(c.cancelacion_ingreso_retenido) > 0 && <p style={{ color: '#065f46', fontWeight: 700 }}>Ingreso por cancelación para la inmobiliaria: {fmt(c.cancelacion_ingreso_retenido)}. Cobro y recibo originales conservados; sin devolución.</p>}
+            {Number(c.cancelacion_devolucion) > 0 && <p>Cobro original: {fmt(c.cobrado)} · Devolución al cliente: {fmt(c.cancelacion_devolucion)} · Fecha real: {c.cancelacion_devolucion_fecha} · Referencia: {c.cancelacion_devolucion_referencia}</p>}
+            {Number(c.cancelacion_ingreso_retenido) > 0 && <p style={{ color: '#065f46', fontWeight: 700 }}>Ingreso por cancelación para la inmobiliaria: {fmt(c.cancelacion_ingreso_retenido)}. Cobro y recibo originales conservados{Number(c.cancelacion_devolucion) > 0 ? '; devolución parcial registrada, sin nueva transferencia.' : '; sin devolución.'}</p>}
             <p style={{ overflowWrap: 'anywhere' }}>{c.cancelacion_motivo}</p>
             <small style={{ overflowWrap: 'anywhere' }}>Fecha: {new Date(c.cancelado_en).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })} · Canceló: {autores[c.cancelado_por] || c.cancelado_por}</small>
           </article>)}

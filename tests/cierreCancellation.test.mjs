@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {cierreVigente,motivoCancelacionValido,cancellationError} from '../lib/cierreCancellation.js';
+import {cierreVigente,motivoCancelacionValido,cancellationError,devolucionParcialValida} from '../lib/cierreCancellation.js';
 test('active totals exclude cancelled historical values',()=>{
  const rows=[{id:943,estado:'cancelado',comision:22000,pendiente:22000},{id:950,estado:'activo',comision:10000,pendiente:10000}];
  assert.deepEqual(rows.filter(cierreVigente).map(c=>c.id),[950]);
@@ -27,4 +27,12 @@ test('receipt sync sees cancellation, history excludes cancelled from active sta
  const dialog=readFileSync(new URL('../components/CierreCancellationDialog.js',import.meta.url),'utf8');
  assert.match(dialog,/type="checkbox"/);assert.match(dialog,/confirmed && motivoCancelacionValido/);
  assert.match(readFileSync(new URL('../pages/api/recibos/sincronizar-abono-cierre.js',import.meta.url),'utf8'),/cierre.estado === 'cancelado'/);
+});
+
+test('partial refund requires exact money, real date and external reference',()=>{
+ const valid={importe:5000,monto:4000,fecha:'2026-09-04',referencia:'Transferencia QA comprobante 4000'};
+ assert.equal(devolucionParcialValida(valid,'2026-10-21'),true);
+ for(const monto of [0,-1,5000,6000,4000.001,NaN,Infinity])assert.equal(devolucionParcialValida({...valid,monto},'2026-10-21'),false);
+ for(const fecha of ['','2026-02-30','2026-10-22'])assert.equal(devolucionParcialValida({...valid,fecha},'2026-10-21'),false);
+ assert.equal(devolucionParcialValida({...valid,referencia:'short'},'2026-10-21'),false);
 });
