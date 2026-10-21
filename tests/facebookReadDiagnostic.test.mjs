@@ -6,7 +6,7 @@ const now=Date.now(),token='synthetic-only-token-not-real';
 const c={connection:'11111111-1111-4111-8111-111111111111',app:'101',page:'202',version:'v26.0',secret:'a'.repeat(32),indexKey:'b'.repeat(64),dataKey:'c'.repeat(64),tokenKey:'d'.repeat(64),senderEnabled:false};
 const scopes=['pages_messaging','pages_manage_metadata','pages_read_engagement','pages_read_user_content'];
 const credential=()=>{const row={app_id:c.app,page_id:c.page,token_type:'PAGE',generation:1,valid_until:new Date(now-1000).toISOString(),verified_at:new Date(now-86401000).toISOString()};return {...row,token_box:seal(c,'token',[row.generation,row.valid_until],token)};};
-function mock({permissions=scopes,posts={data:[{id:'202_303',from:{id:'202'}}]},comments={data:[{id:'303_404',parent:{id:'202_303'}}]},errorAt=null}={}){
+function mock({permissions=scopes,posts={data:[{id:'202_303',from:{id:'202'}}]},comments={data:[{id:'303_404'}]},errorAt=null}={}){
  const calls=[];
  const fetchImpl=async(u,i)=>{calls.push(u.pathname);assert.equal(i.method,'GET');assert.equal(i.redirect,'error');assert.equal(u.hostname,'graph.facebook.com');
  if(u.pathname.endsWith(errorAt||'never'))return {ok:false,status:403,json:async()=>({error:{code:200,error_subcode:42,message:token}})};
@@ -43,4 +43,17 @@ test('unexpected shapes and wrong owner/parent fail closed',async()=>{
 });
 test('thrown provider errors never reveal URL/token',async()=>{
  const r=await diagnoseFacebookRead({c,credential:credential(),now,fetchImpl:async()=>{throw Error(token);}});assert.equal(r.status,'blocked');assert.ok(!JSON.stringify(r).includes(token));
+});
+test('bounded search skips empty own posts and stops at first actual comment',async()=>{
+ const m=mock({posts:{data:[{id:'202_303',from:{id:'202'}},{id:'202_304',from:{id:'202'}},{id:'202_305',from:{id:'202'}}]}});
+ const fetchImpl=async(u,i)=>u.pathname.endsWith('/202_303/comments')?{ok:true,status:200,json:async()=>({data:[],paging:{next:'https://untrusted.invalid'}})}:m.fetchImpl(u,i);
+ const r=await diagnoseFacebookRead({c,credential:credential(),fetchImpl,now});
+ assert.equal(r.status,'read_pass');assert.equal(r.posts_checked,2);assert.equal(r.binding_method,'verified_own_post_comments_edge');
+ assert.ok(!m.calls.some(p=>p.includes('202_305')));
+});
+test('search never exceeds ten posts, validates every owner, and rejects reply-as-top-level',async()=>{
+ for(const posts of [{data:Array.from({length:11},()=>({id:'202_303',from:{id:'202'}}))},{data:[{id:'202_303',from:{id:'202'}},{id:'999_304',from:{id:'999'}}]}]){
+ const m=mock({posts});const r=await diagnoseFacebookRead({c,credential:credential(),...m,now});assert.equal(r.status,'blocked');assert.equal(m.calls.length,4);
+ }
+ const m=mock({comments:{data:[{id:'303_404',parent:{id:'202_303'}}]}});assert.equal((await diagnoseFacebookRead({c,credential:credential(),...m,now})).diagnostic,'comment_binding');
 });
