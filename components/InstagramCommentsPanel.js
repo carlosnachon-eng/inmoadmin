@@ -113,6 +113,7 @@ export default function InstagramCommentsPanel({open,onClose,observationEnabled=
  }
 
  if(!open)return null;
+ if(observationEnabled)return <section aria-label="Comentarios DEV"><button type="button" onClick={onClose}>Volver a mensajes</button><CommentReviewPanel/></section>;
  return <section className="commentsInbox" aria-label="Comentarios de Instagram">
   <aside className="commentListPane">
    <header className="listHeader">
@@ -152,7 +153,6 @@ export default function InstagramCommentsPanel({open,onClose,observationEnabled=
   </aside>
 
   <main className="commentDetailPane">
-   {observationEnabled&&<CommentReviewPanel/>}
    {active?<>
     <header className="detailHeader">
      <button type="button" className="mobileBack" onClick={()=>setSelected(null)}>‹</button>

@@ -13,23 +13,30 @@ import {projectBusinessComments} from '../../../lib/messaging/instagram/business
 import {projectFacebookComment} from '../../../lib/messaging/commentAgent/facebook.js';
 import {inspectMetaComment,publicationFacts} from '../../../lib/messaging/commentAgent/verifiedPublication.js';
 import {reviewStore,recordReview,approveReview} from '../../../lib/messaging/commentAgent/review.js';
+import {reviewDiagnostic} from '../../../lib/messaging/commentAgent/diagnostics.js';
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private,no-store');
  if(!commentObservationAllowed(process.env))return res.status(404).end();
  if(!['GET','POST'].includes(req.method))return res.status(405).end();
+ let stage='authorization';
  try{
   const actor=await authorizeInboxStaff(req);if(!actor?.active||!['admin','gerente_ventas'].includes(actor.role_id))return res.status(403).end();
   if(req.method==='POST'&&new URL(req.headers.origin||'https://invalid').host!==req.headers.host)return res.status(403).end();
   const platform=req.query.platform;if(!['instagram','facebook'].includes(platform))return res.status(400).end();
-  const c=platform==='instagram'?businessConfig(process.env):messengerConfig(process.env);if(!c)return res.status(503).json({status:'configuration_missing'});
+  stage='configuration';
+  const c=platform==='instagram'?businessConfig(process.env):messengerConfig(process.env);if(!c)return res.status(503).json({status:'configuration_missing',diagnostic:{stage,code:'platform_disabled'}});
   const crypto=platform==='instagram'?igCrypto:fbCrypto;
+  stage='database_client';
   const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}}),store=reviewStore(db,platform,c,actor);
+  stage='journal_read';
   const rows=await store('list');if(!Array.isArray(rows))throw Error('shape');
   if(req.method==='GET'){
-   return res.status(200).json({rows:rows.map(r=>({...crypto.open(c,'commercial-review',[r.comment_ref,r.revision],r.decision_box),revision:r.revision,status:r.status,destination:r.destination,opportunity:r.opportunity,updated_at:r.updated_at})),sender:false,private_replies:false,
+   stage='projection';
+   return res.status(200).json({rows:rows.map(r=>({...crypto.open(c,'commercial-review',[r.comment_ref,r.revision],r.decision_box),approved_text:r.approval_box?crypto.open(c,'commercial-approval',[r.comment_ref,r.revision,r.approved_by],r.approval_box).text:null,revision:r.revision,status:r.status,destination:r.destination,opportunity:r.opportunity,updated_at:r.updated_at})),sender:false,private_replies:false,
     metrics:{received:rows.length,pending:rows.filter(r=>['proposed','approved'].includes(r.status)).length,escalated:rows.filter(r=>r.status==='escalated').length,opportunities:rows.filter(r=>r.opportunity).length,accepted:rows.filter(r=>r.status==='accepted').length}});
   }
   const body=req.body||{};
+  stage=body.op==='approve'?'approval':'evaluation';
   if(body.op==='approve'){
    const row=rows.find(r=>r.comment_ref===body.comment&&r.revision===body.revision);
    return res.status(200).json(await approveReview({row,text:body.text,actor,store,crypto,c}));
@@ -63,5 +70,5 @@ export default async function handler(req,res){
    await recordReview({event,facts,store,crypto,c});processed++;
   }
   return res.status(200).json({status:'evaluated',processed,sender:false});
- }catch{return res.status(503).json({status:'review_unavailable'});}
+ }catch(error){return res.status(503).json({status:'review_unavailable',diagnostic:reviewDiagnostic(stage,error)});}
 }

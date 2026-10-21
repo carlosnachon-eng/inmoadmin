@@ -6,7 +6,10 @@ export default function CommentReviewPanel(){
  async function request(body){
   const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('Sesión requerida');
   const r=await fetch('/api/operaciones/comment-review?platform='+platform,{method:body?'POST':'GET',cache:'no-store',redirect:'error',headers:{Authorization:`Bearer ${data.session.access_token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
-  if(!r.ok)throw Error(r.status===403?'Sin permisos de supervisión':'Journal no disponible o conexión DEV no provisionada');return r.json();
+  if(!r.ok){const data=await r.json().catch(()=>null);const d=data?.diagnostic;
+   const safe=d&&/^[a-z_]{1,32}$/.test(d.stage)&&/^[a-zA-Z0-9_]{1,64}$/.test(d.code)?` (${d.stage}: ${d.code})`:'';
+   throw Error(r.status===403?'Sin permisos de supervisión':'Journal no disponible'+safe);
+  }return r.json();
  }
  async function load(){
   if(pending.current)return;pending.current=true;const g=generation.current;
@@ -22,10 +25,10 @@ export default function CommentReviewPanel(){
   <nav aria-label="Plataforma de comentarios">{['instagram','facebook'].map(p=><button key={p} disabled={busy} aria-pressed={platform===p} onClick={()=>setPlatform(p)}>{p==='instagram'?'Instagram':'Facebook'}</button>)}</nav>
   <button disabled={busy} onClick={()=>action({op:'evaluate'})}>Evaluar comentarios (sin publicar)</button>
   {error&&<p role="alert">{error}</p>}
-  <p>En esta vista: {rows.length} · Escalados: {rows.filter(r=>r.status==='escalated').length} · Oportunidades para Ventas: {rows.filter(r=>r.opportunity).length}</p>
+  <p>En esta vista: {rows.length} · Escalados: {rows.filter(r=>r.status==='escalated').length} · Candidatos para Ventas: {rows.filter(r=>r.opportunity).length}</p>
   {!rows.length&&!error&&<p>No hay revisiones registradas.</p>}
   <select aria-label="Comentario a revisar" value={selected||''} onChange={e=>setSelected(e.target.value)} style={{maxWidth:'100%'}}><option value="">Selecciona comentario</option>{rows.map((r,i)=><option key={r.comment_ref} value={r.comment_ref}>{i+1}. {r.status} · {r.intent||r.reason}</option>)}</select>
-  {row&&<div><p>{row.status} · {row.reason} · Destino: Ventas</p><p>{row.public_proposal||'Requiere revisión humana; faltan datos o evidencia.'}</p>
+  {row&&<div><p>{row.status} · {row.reason} · Destino: Ventas</p><p>{row.approved_text||row.public_proposal||'Requiere revisión humana; faltan datos o evidencia.'}</p>
    {row.status==='proposed'&&<><label>Editar propuesta<textarea aria-label="Editar propuesta" value={drafts[key]??row.public_proposal??''} onChange={e=>setDrafts(d=>({...d,[key]:e.target.value}))} maxLength={900} style={{width:'100%',boxSizing:'border-box'}}/></label>
     <button disabled={busy} onClick={()=>action({op:'approve',comment:row.comment_ref,revision:row.revision,text:drafts[key]??row.public_proposal})}>Aprobar sin publicar</button></>}
    {row.status==='approved'&&<p>Aprobada y registrada. Envío deshabilitado.</p>}
