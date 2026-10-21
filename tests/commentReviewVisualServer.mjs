@@ -1,0 +1,15 @@
+// Memory-only UI QA; real component. No Meta/Supabase network or credentials.
+import http from 'node:http';import {createRequire} from 'node:module';import path from 'node:path';
+const require=createRequire(path.join(process.env.WA_QA_DEPS,'package.json')),{build}=require('esbuild');
+let approvals=0,posts=0;const rows={};for(const platform of ['instagram','facebook'])rows[platform]=[{platform,comment_ref:'a'.repeat(64),revision:'b'.repeat(64),status:'proposed',reason:'verified_public_facts',intent:'price',public_proposal:'El precio de venta es $2,000,000 MXN.',opportunity:true,destination:'SALES'},{platform,comment_ref:'c'.repeat(64),revision:'d'.repeat(64),status:'escalated',reason:'property_binding_or_freshness',intent:'appointment',opportunity:true,destination:'SALES'}];
+const bundle=await build({stdin:{contents:"import React from 'react';import{createRoot}from'react-dom/client';import Panel from './components/CommentReviewPanel';createRoot(document.getElementById('root')).render(<Panel/>);",loader:'jsx',resolveDir:process.cwd()},bundle:true,write:false,jsx:'automatic',loader:{'.js':'jsx'},plugins:[{name:'session-fixture',setup(b){b.onResolve({filter:/lib\/supabase$/},()=>({path:'session',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:"export const supabase={auth:{getSession:async()=>({data:{session:{access_token:'synthetic'}}})}};"}));}}]});
+const server=http.createServer(async(req,res)=>{const u=new URL(req.url,'http://localhost');res.setHeader('Cache-Control','no-store');
+ if(u.pathname==='/metrics'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({approvals,posts,real_sends:0}));}
+ if(u.pathname==='/api/operaciones/comment-review'){
+  const platform=u.searchParams.get('platform');if(!rows[platform]){res.writeHead(400);return res.end();}
+  res.setHeader('Content-Type','application/json');
+  if(req.method==='POST'){posts++;let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);if(body.op==='approve'){const r=rows[platform].find(r=>r.comment_ref===body.comment&&r.revision===body.revision&&r.status==='proposed');if(r){r.status='approved';approvals++;return res.end(JSON.stringify({status:'approved_not_sent'}));}return res.end(JSON.stringify({status:'stale_or_blocked'}));}return res.end(JSON.stringify({status:'evaluated'}));}
+  return res.end(JSON.stringify({rows:rows[platform],sender:false}));
+ }
+ res.setHeader('Content-Type','text/html');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'");res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:16px Arial;margin:12px}button{padding:10px;margin:3px}main{max-width:850px;margin:auto}textarea{min-height:100px}</style><main><h2>QA sintética · sin conexión externa</h2><div id="root"></div></main><script>${bundle.outputFiles[0].text}</script>`);
+});server.listen(0,'127.0.0.1',()=>console.log('QA_URL=http://127.0.0.1:'+server.address().port));

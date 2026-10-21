@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useState,useRef} from 'react';
 import {supabase} from '../lib/supabase';
-import CommentObservation from './CommentObservation';
+import CommentReviewPanel from './CommentReviewPanel';
 
 async function request(op,{body,query={}}={}){
  const {data}=await supabase.auth.getSession();
@@ -27,7 +27,6 @@ const CANNED=[
 ];
 
 export default function InstagramCommentsPanel({open,onClose,observationEnabled=false}){
- const [observation,setObservation]=useState(null);
  const loading=useRef(false);
  const [rows,setRows]=useState([]);
  const [allowed,setAllowed]=useState(false);
@@ -62,24 +61,8 @@ export default function InstagramCommentsPanel({open,onClose,observationEnabled=
  useEffect(()=>{if(open)void load();},[open]);
  useEffect(()=>{
   if(!open||!observationEnabled)return;
-  let live=true,pending=false;
-  async function refresh(){
-   if(pending||document.hidden)return;
-   pending=true;
-   try{
-    const {data}=await supabase.auth.getSession();
-    if(!data?.session)throw Error('session');
-    const response=await fetch('/api/operaciones/comment-observation',{cache:'no-store',redirect:'error',headers:{Authorization:`Bearer ${data.session.access_token}`}});
-    if(!response.ok)throw Error('observation');
-    const result=await response.json();
-    if(!Array.isArray(result.rows)||!result.metrics)throw Error('shape');
-    if(live)setObservation(result);
-    if(live)await load();
-   }catch{if(live)setObservation(null);}finally{pending=false;}
-  }
-  void refresh();
-  const timer=setInterval(refresh,10000);
-  return()=>{live=false;clearInterval(timer);};
+  const timer=setInterval(()=>{if(!document.hidden)void load();},10000);
+  return()=>clearInterval(timer);
  },[open,observationEnabled]);
  useEffect(()=>{if(!open||!selected||mediaInfo[selected])return;
   let cancelled=false;
@@ -169,7 +152,7 @@ export default function InstagramCommentsPanel({open,onClose,observationEnabled=
   </aside>
 
   <main className="commentDetailPane">
-   {observationEnabled&&<CommentObservation data={observation} comment={active?.comment_ref} onUse={text=>{if(active)setDrafts(v=>({...v,[active.comment_ref]:text}));}}/>}
+   {observationEnabled&&<CommentReviewPanel/>}
    {active?<>
     <header className="detailHeader">
      <button type="button" className="mobileBack" onClick={()=>setSelected(null)}>‹</button>
