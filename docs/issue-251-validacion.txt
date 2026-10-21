@@ -1,3 +1,47 @@
+QA AUTENTICADA DEV — actualización 2026-10-21 (America/Mexico_City)
+ESTADO ACTUAL: NO MERGE; certificación parcial, pendientes explícitos.
+
+- Rama real 0ebbb32c, servidor local 127.0.0.1:3252, proyecto DEV exclusivo
+  hjfwjnejbcpmknvfpdcq. Sesión administrativa real del usuario en Chrome.
+- PASS escritorio: botón por fila, identidad y asesor original en diálogo,
+  motivo vacío/corto bloqueado, confirmación desmarcada bloqueada.
+- PASS HTTP autenticado: cancelar_cierre(-252101) respondió 200/cancelado,
+  interfaz mostró éxito. Prueba con Prefer: tx=rollback, no commit.
+  SQL posterior: tres fixtures activos, cero auditorías persistidas.
+- PASS rechazo financiero: fixture -252103 con pago sintético de 100;
+  RPC 400/cobros_requieren_conciliacion y error legible dentro del diálogo.
+- Instrumentación LOCAL temporal añadió rollback SOLO para esos tres IDs;
+  sesión, autorización, RPC y reglas reales. No simuló respuestas ni permisos.
+  El header Preference-Applied no es visible por CORS: verificación por SQL.
+  Un primer intento produjo error local al exigir ese header; corregido el
+  observador temporal y repetida la prueba. No fue un fallo del producto.
+- NO certificado: persistencia tras commit, historial cancelado persistente,
+  exclusión visual posterior en KPIs/reportes/comisiones y usuario no admin.
+  El rollback no puede certificar estos escenarios. No se confirmó cancelación
+  sintética permanente porque el historial inmutable impediría su limpieza.
+- Móvil autenticado PENDIENTE: override solicitado no produjo viewport móvil
+  verificable; capturas de esta sesión son de escritorio. QA móvil local
+  anterior se conserva como evidencia distinta, no como sesión DEV real.
+- Reportes financieros PENDIENTES: falta clave de servidor DEV válida.
+  CLI oficial 2.121 con --reveal terminó sin access token, incluso después
+  de la autorización del Llavero. Dashboard no entregó la clave existente.
+  No se crearon/rotaron claves ni se relajaron autorizaciones.
+- Limpieza 2026-10-21 autorizada por usuario y ejecutada desde SQL Editor DEV
+  al fallar el conector: cero cierres/pagos/auditorías/atribuciones/intentos
+  para -252101/-252102/-252103. Config pgrst.db_tx_end restablecida al valor
+  previo (ausente). Sin deshabilitar triggers ni modificar RLS.
+  Hash cierres antes/después: fc7bd96fc3fc8a889c96f8d759fb07ef.
+- Instrumentación temporal retirada; lib/supabase.js restaurado idéntico a HEAD.
+  Cambios de esta actualización: solo documentación y evidencia.
+- Evidencia: docs/evidence/issue251/authenticated/ (capturas + resultado SQL).
+- No Producción, no cierres reales, no merge, no despliegue.
+- Se conservan resultados previos: 55 checks PostgreSQL, 25 JS y build PASS;
+  no se reejecutan por esta actualización exclusivamente documental.
+
+La revisión anterior que sigue es histórica; su pendiente de sesión se
+sustituye por el alcance parcial descrito arriba. Recomendación NO MERGE
+hasta cerrar los escenarios pendientes sin vulnerar la inmutabilidad.
+
 REVALIDACIÓN DEL PR #252 — 2026-10-20 (America/Mexico_City)
 ESTADO ACTUAL: NO MERGE. Falta QA autenticada real en DEV, escritorio/móvil.
 La QA sintética local NO sustituye esa comprobación.
