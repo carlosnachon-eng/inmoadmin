@@ -19,5 +19,11 @@ conservan la etiqueta histórica; el panel muestra que no acredita entrega orgá
 La evaluación reutiliza la comprobación de respuestas externas y propiedad
 verificada; falta de evidencia implica escalamiento, no información inventada.
 
+Meta omitió from.id en seis comentarios leídos. Esto no invalida la pertenencia
+acreditada a la publicación propia. Se permite conservar el comentario con autor
+explícitamente desconocido: author_verified=false, own_author=null; nunca se crea
+una identidad. El clasificador bloquea propuestas y escala cualquier intención
+comercial con autor no verificado. No cambia autorización, RLS o scopes.
+
 Pruebas locales: 93/93 PASS (incluye seis casos nuevos de importación, cifrado,
 deduplicación, procedencia alterada, publicación ajena y exclusiones).
