@@ -6,6 +6,12 @@ import {createBridgeReceiver} from '../lib/messaging/commentAgent/bridgeReceiver
 import * as crypto from '../lib/messaging/instagram/business/crypto.js';
 import {businessConfig} from '../lib/messaging/instagram/business/config.js';
 import {evaluateInstagram} from '../lib/messaging/commentAgent/evaluateInstagram.js';
+import {bridgeDiagnostic,safeBridgeDiagnostic} from '../lib/messaging/commentAgent/bridgeDiagnostic.js';
+test('bridge diagnostics reject arbitrary stages and sensitive exception values',()=>{
+ assert.deepEqual(bridgeDiagnostic('body_read',Error('parsed_body')),{stage:'body_read',code:'parsed_body'});
+ assert.equal(safeBridgeDiagnostic({stage:'body_read',code:'private credential'}),null);
+ assert.deepEqual(bridgeDiagnostic('secret',Error('private credential')),{stage:'bridge_transport',code:'bridge_read_denied'});
+});
 const keys=generateKeyPairSync('ed25519');
 const env={VERCEL_ENV:'preview',VERCEL_GIT_COMMIT_REF:BRIDGE_BRANCH,NEXT_PUBLIC_SUPABASE_URL:DEV_URL,APP_ENV:'preview',
  COMMENT_REVIEW_BRIDGE_PRIVATE_KEY:keys.privateKey.export({type:'pkcs8',format:'pem'}),COMMENT_REVIEW_BRIDGE_PUBLIC_KEY:keys.publicKey.export({type:'spki',format:'pem'}),
@@ -36,6 +42,15 @@ test('authorized read uses verified user+role and only list RPC; no Meta or writ
  assert.equal(JSON.stringify(res.body).includes('synthetic-service'),false);
 });
 const post=body=>{const rawBody=JSON.stringify(body);return{method:'POST',url:BRIDGE_PATH,rawBody,headers:{...bridgeHeaders(env,auth,Date.now(),'POST',rawBody,randomUUID()),'content-type':'application/json'}};};
+test('runtime parsed body rejects before journal with exact sanitized stage',async()=>{
+ const request=post({op:'evaluate'});delete request.rawBody;request.body={op:'evaluate'};
+ const {res,calls}=await run({request});assert.equal(res.code,403);assert.equal(calls.length,0);
+ assert.deepEqual(res.body.diagnostic,{stage:'body_read',code:'parsed_body'});
+});
+test('proxy preserves only allowlisted remote diagnostic, never upstream content',async()=>{
+ const remote=async()=>({ok:false,json:async()=>({diagnostic:{stage:'body_read',code:'parsed_body'},secret:'never surface'})});
+ await assert.rejects(readThroughBridge(env,auth,remote,'synthetic-oidc'),e=>e.diagnostic?.code==='parsed_body'&&!JSON.stringify(e).includes('never surface'));
+});
 test('signed operation rejects body tamper, publish, arbitrary fields, native IDs and missing nonce',()=>{
  const r=post({op:'evaluate'});assert.equal(verifyBridge(r,env),'synthetic.user.token');
  assert.throws(()=>verifyBridge({...r,rawBody:JSON.stringify({op:'approve'})},env));

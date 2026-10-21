@@ -14,6 +14,7 @@ import {reviewDiagnostic} from '../../../lib/messaging/commentAgent/diagnostics.
 import {readThroughBridge,writeThroughBridge} from '../../../lib/messaging/commentAgent/bridge.js';
 import {evaluateInstagram} from '../../../lib/messaging/commentAgent/evaluateInstagram.js';
 import {projectReviews} from '../../../lib/messaging/commentAgent/reviewProjection.js';
+import {bridgeDiagnostic,safeBridgeDiagnostic} from '../../../lib/messaging/commentAgent/bridgeDiagnostic.js';
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private,no-store');
  if(!commentObservationAllowed(process.env))return res.status(404).end();
@@ -25,7 +26,7 @@ export default async function handler(req,res){
   const platform=req.query.platform;if(!['instagram','facebook'].includes(platform))return res.status(400).end();
   if(platform==='instagram'&&process.env.COMMENT_REVIEW_BRIDGE_URL){
    try{return res.status(200).json(req.method==='GET'?await readThroughBridge(process.env,req.headers.authorization,fetch,req.headers['x-vercel-oidc-token']):await writeThroughBridge(process.env,req.headers.authorization,req.body,fetch,req.headers['x-vercel-oidc-token']));}
-   catch{return res.status(503).json({status:'review_unavailable',diagnostic:{stage:'bridge_read',code:'bridge_unavailable'}});}
+   catch(error){return res.status(503).json({status:'review_unavailable',diagnostic:safeBridgeDiagnostic(error?.diagnostic)||bridgeDiagnostic('bridge_transport',error)});}
   }
   stage='configuration';
   const c=platform==='instagram'?businessConfig(process.env):messengerConfig(process.env);if(!c)return res.status(503).json({status:'configuration_missing',diagnostic:{stage,code:'platform_disabled'}});
