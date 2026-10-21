@@ -57,7 +57,8 @@ export default async function handler(req,res){
   let token=null;
   try{
    const credential=await legacy.credential();
-   if(platform==='facebook'&&!['pages_read_engagement','pages_read_user_content','pages_manage_engagement'].every(s=>credential?.scopes?.includes(s)))throw Error('permissions');
+   // Observation needs read scopes, never a publishing permission.
+   if(platform==='facebook'&&!['pages_read_engagement','pages_read_user_content'].every(s=>credential?.scopes?.includes(s)))throw Error('permissions');
    token=pageToken(c,credential);
   }catch{/* Missing permissions never trigger OAuth or a scope change. */}
   let processed=0;
