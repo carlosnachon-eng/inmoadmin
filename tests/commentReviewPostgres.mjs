@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {readFile,mkdtemp,rm} from 'node:fs/promises';import {execFileSync} from 'node:child_process';import {randomUUID} from 'node:crypto';import net from 'node:net';import path from 'node:path';
+import {certifyDurableBridge} from './commentBridgeDurableFixture.mjs';
 const require=createRequire(path.join(process.env.IG_PG_DEPS,'test.cjs')),{Client}=require('pg'),bin=process.env.IG_PG_BIN,dir=await mkdtemp('/private/tmp/comment-review-pg-');
 const port=await new Promise(resolve=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});});let db,db2,started=false,checks=0;const ok=x=>{assert.ok(x);checks++;};
 try{
@@ -43,5 +44,6 @@ try{
  ok((await db.query("select destination from commercial_comment_private.reviews")).rows[0].destination==='SALES');
  for(const role of ['anon','authenticated']){ok(!(await db.query("select has_function_privilege($1,'public.comment_review_v1(text,uuid,uuid,text,jsonb)','execute') v",[role])).rows[0].v);ok(!(await db.query("select has_schema_privilege($1,'commercial_comment_private','usage') v",[role])).rows[0].v);}
  ok((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='commercial_comment_private' and c.relkind='r' and relrowsecurity")).rows[0].n===6);
+ await certifyDurableBridge(db);
  console.log(JSON.stringify({checks,result:'PASS',real_dispatches:0,synthetic_claims:1,synthetic_starts:1,cleanup:'disposable_local_database'}));
 }finally{await db?.end();await db2?.end();if(started)execFileSync(path.join(bin,'pg_ctl'),['-D',dir+'/db','stop','-m','fast','-w'],{stdio:'ignore'});if(dir.startsWith('/private/tmp/comment-review-pg-'))await rm(dir,{recursive:true,force:true});}
