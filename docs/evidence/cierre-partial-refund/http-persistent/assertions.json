@@ -1,0 +1,16 @@
+{
+  "result": "PASS",
+  "fixture": -252610,
+  "scope": "Actual authenticated HTTP DEV + persisted SQL audit",
+  "gross_original": 5000,
+  "refund_external_recorded": 4000,
+  "net_company": 1000,
+  "commission_effective": 0,
+  "kpi_before": 1,
+  "kpi_after": 0,
+  "bi_and_center_http": 200,
+  "anonymous_http": 401,
+  "idempotency": "ya_cancelado",
+  "persistent_fixture_authorized": true,
+  "production_accessed": false
+}

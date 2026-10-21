@@ -1,0 +1,160 @@
+{
+  "scope": "HTTP autenticada real DEV",
+  "active_admin": true,
+  "bi_http": 200,
+  "center_http": 200,
+  "biKeys": [
+    "ok",
+    "generated_at",
+    "generated_by",
+    "periodo",
+    "alcance",
+    "metricas",
+    "estado_confianza",
+    "unidades",
+    "eventos"
+  ],
+  "centerKeys": [
+    "ok",
+    "generated_at",
+    "generated_by",
+    "periodo",
+    "alcance",
+    "resumen_general",
+    "caja_vs_resultado",
+    "unidades",
+    "calidad_informacion",
+    "acciones_pendientes",
+    "proyeccion_anual",
+    "excepciones",
+    "fuentes_excepciones_con_error",
+    "_performance"
+  ],
+  "biMetrics": {
+    "ingreso_generado": 26500,
+    "cobrado": 26500,
+    "pendiente_reconstruido": 0
+  },
+  "centerUnits": [
+    {
+      "key": "cierres",
+      "metricas": {
+        "generado": 26500,
+        "cobrado": 26500,
+        "pendiente": 0,
+        "costos_directos": 0,
+        "resultado": 26500
+      }
+    },
+    {
+      "key": "administracion",
+      "metricas": {
+        "generado": 0,
+        "cobrado": 0,
+        "pendiente": 0,
+        "costos_directos": 0,
+        "resultado": 0
+      }
+    },
+    {
+      "key": "poliza_juridica",
+      "metricas": {
+        "generado": 0,
+        "cobrado": 0,
+        "pendiente": 0,
+        "costos_directos": 0,
+        "resultado": 0
+      }
+    },
+    {
+      "key": "mantenimiento",
+      "metricas": {
+        "generado": 0,
+        "cobrado": 0,
+        "pendiente": 0,
+        "costos_directos": 0,
+        "resultado": 0,
+        "margen_estimado": 0
+      }
+    }
+  ],
+  "fixture": [
+    {
+      "id": -252610,
+      "estado": "cancelado",
+      "cobrado": 5000,
+      "cancelacion_ingreso_retenido": 1000,
+      "cancelacion_devolucion": 4000,
+      "cancelacion_devolucion_fecha": "2026-10-21",
+      "cancelacion_devolucion_referencia": "QA HTTP DEV comprobante externo parcial 610"
+    }
+  ],
+  "kpi_count": 0,
+  "events": [
+    {
+      "event_id": "cancelacion:-252610:ingreso_generado",
+      "source_table": "cierres",
+      "source_id": -252610,
+      "source_key": "cancelacion:-252610",
+      "business_unit": "cierres",
+      "event_type": "ingreso_generado",
+      "economic_classification": "ingreso_propio",
+      "direction": "entrada",
+      "amount": 1000,
+      "currency": "MXN",
+      "event_date": "2026-10-21",
+      "normalized_status": "confirmado",
+      "original_status": "cancelado_ingreso_retenido",
+      "metadata": {
+        "concepto": "Ingreso por cancelación",
+        "recibo_id": "aaaaaaaa-2525-4000-8000-000000000610",
+        "comision_asesor_vigente": 0
+      }
+    },
+    {
+      "event_id": "cierre_devolucion:-252610",
+      "source_table": "cierres",
+      "source_id": -252610,
+      "source_key": "cierre_devolucion:-252610",
+      "business_unit": "cierres",
+      "event_type": "devolucion_registrada",
+      "economic_classification": "ingreso_propio",
+      "direction": "salida",
+      "amount": 4000,
+      "currency": "MXN",
+      "event_date": "2026-10-21",
+      "normalized_status": "confirmado",
+      "original_status": "devolucion_externa_ya_realizada",
+      "metadata": {
+        "cierre_id": -252610,
+        "recibo_id": "aaaaaaaa-2525-4000-8000-000000000610",
+        "referencia": "QA HTTP DEV comprobante externo parcial 610",
+        "registrado_en": "2026-10-21T17:25:30.220867+00:00"
+      }
+    },
+    {
+      "event_id": "cierre_pago:aaaaaaaa-2525-4000-8000-000000000611:cobro_recibido",
+      "source_table": "cierre_pagos",
+      "source_id": "aaaaaaaa-2525-4000-8000-000000000611",
+      "source_key": "cierre_pago:aaaaaaaa-2525-4000-8000-000000000611",
+      "business_unit": "cierres",
+      "event_type": "cobro_recibido",
+      "economic_classification": "ingreso_propio",
+      "direction": "entrada",
+      "amount": 5000,
+      "currency": "MXN",
+      "event_date": "2026-10-21",
+      "normalized_status": "confirmado",
+      "original_status": "cancelado_ingreso_retenido",
+      "metadata": {
+        "cierre_id": -252610,
+        "concepto": "Cobro original conservado por cancelación"
+      }
+    }
+  ],
+  "retry": {
+    "id": -252610,
+    "status": "ya_cancelado",
+    "ingreso_retenido": 1000
+  }
+}

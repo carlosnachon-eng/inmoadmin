@@ -1,0 +1,16 @@
+// TEMPORARY local-only observer; remove before commit/build.
+import {useState} from 'react';
+import {supabase} from '../../../lib/supabase';
+export default function QA(){const [out,setOut]=useState('Pendiente');
+async function run(repeat=false){try{
+if(location.origin!=='http://127.0.0.1:3252'||process.env.NEXT_PUBLIC_SUPABASE_URL!=='https://hjfwjnejbcpmknvfpdcq.supabase.co')throw Error('DEV guard');
+const {data:{session}}=await supabase.auth.getSession();if(!session)throw Error('Sesión DEV requerida');
+const {data:profile,error:pe}=await supabase.from('profiles').select('role_id,active').eq('id',session.user.id).single();if(pe||!profile?.active||profile.role_id!=='admin')throw Error('Administrador activo requerido');
+const headers={Authorization:`Bearer ${session.access_token}`};
+const report=async(path)=>{const r=await fetch(path+'?year=2026&month=10&include=events',{headers});const b=await r.json();if(!r.ok)throw Error(path+': '+r.status+' '+b.error);return b;};
+const unauthBi=await fetch('/api/ejecutivo/bi-cierres-admin?year=2026&month=10'); const unauthCenter=await fetch('/api/ejecutivo/centro-inteligencia?year=2026&month=10'); const anonRpc=await fetch(process.env.NEXT_PUBLIC_SUPABASE_URL+'/rest/v1/rpc/cancelar_cierre_con_devolucion_parcial',{method:'POST',headers:{apikey:process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,'Content-Type':'application/json'},body:JSON.stringify({p_cierre_id:-252610,p_motivo:'QA anonymous must fail',p_importe_esperado:5000,p_monto_devuelto:4000,p_fecha_devolucion:'2026-10-21',p_referencia_devolucion:'QA HTTP DEV comprobante externo parcial 610'})}); const anonymousChecks={bi:unauthBi.status,center:unauthCenter.status,rpc:anonRpc.status}; let retry=null;if(repeat){const r=await supabase.rpc('cancelar_cierre_con_devolucion_parcial',{p_cierre_id:-252610,p_motivo:'QA HTTP repetición idempotente DEV',p_importe_esperado:5000,p_monto_devuelto:4000,p_fecha_devolucion:'2026-10-21',p_referencia_devolucion:'QA HTTP DEV comprobante externo parcial 610'});if(r.error)throw r.error;retry=r.data;}
+const [bi,ci,row,kpi]=await Promise.all([report('/api/ejecutivo/bi-cierres-admin'),report('/api/ejecutivo/centro-inteligencia'),supabase.from('cierres').select('id,estado,cobrado,cancelacion_ingreso_retenido,cancelacion_devolucion,cancelacion_devolucion_fecha,cancelacion_devolucion_referencia').eq('id',-252610),supabase.from('v_commercial_kpi_events').select('event_key').eq('event_type','CIERRE').eq('event_key','-252610')]);
+if(row.error||kpi.error)throw row.error||kpi.error;
+setOut(JSON.stringify({scope:'HTTP autenticada real DEV',active_admin:true,anonymousChecks,bi_http:200,center_http:200,biKeys:Object.keys(bi),centerKeys:Object.keys(ci),biMetrics:bi.unidades?.cierres?.metricas,centerUnits:ci.unidades?.map(x=>({key:x.key,metricas:x.metricas})),fixture:row.data,kpi_count:kpi.data.length,events:bi.eventos?.cierres.filter(e=>JSON.stringify(e).includes('-252610')),retry},null,2));
+}catch(e){setOut(JSON.stringify({error:e.message}));}}
+return <main style={{padding:24}}><h1>QA HTTP real · DEV · Fixture -252610</h1><p>Sin operaciones reales. Sesión del navegador; credenciales nunca se muestran.</p><button onClick={()=>run(false)}>Leer reportes y fixture</button> <button onClick={()=>run(true)}>Repetir cancelación sintética</button><pre id="qa-result" style={{whiteSpace:'pre-wrap'}}>{out}</pre></main>}
