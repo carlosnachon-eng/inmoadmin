@@ -118,8 +118,21 @@ app/Page/connection configuration is pinned and sender must be explicitly OFF.
 
 75/75 relevant synthetic JS tests passed. Deployed health function has JWT
 verification enabled; unauthenticated access returns HTTP 401. DEV connection
-remains `active=false`, `sender_enabled=false`. Authenticated real-token result
-is pending execution in the updated Preview; this is not yet a token PASS.
+remains `active=false`, `sender_enabled=false` before and after execution.
+
+Authenticated real-token PASS at 2026-10-21T23:10:00.091Z on commit c748640,
+Preview READY `dpl_AQzb9JSh9SKqKHawKihpPigtZ9wY`. Exact app and Page bindings
+verified server-side; PAGE type; granted pages_show_list, pages_manage_metadata,
+pages_read_engagement, pages_read_user_content and public_profile. This app's
+Page subscription contains only feed. No writes or dispatches performed.
+`expires_at=1792627200`, `data_access_expires_at=1800399028`: token has a short
+remaining lifetime, NOT a durable/non-expiring credential. No renewal performed.
+App remains unpublished and capture inactive; this is credential health proof,
+not organic-webhook or commercial-processing certification.
+
+Local Next build passed using synthetic public configuration (no credentials);
+remote Preview build READY. Sanitized visual evidence:
+`docs/evidence/pr256-review/isolated-dev-token-health-pass.png`.
 
 66 JS tests PASS across receiver, observation, review, bridge, synthetic Preview
 and Facebook read diagnostics. No real messages, credentials or customer data
