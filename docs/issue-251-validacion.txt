@@ -1,3 +1,32 @@
+INTENTO DE CERTIFICACIÓN EN RAMA DESECHABLE — 2026-10-21
+ESTADO: NO MERGE; escenario persistente todavía NO ejecutado.
+
+- Rama Supabase hija de DEV hjfwjnejbcpmknvfpdcq, sin datos copiados:
+  qa-pr252-cancelacion-desechable, ref akjvmlvdgryjckxmivco.
+- La creación devolvió CREATING_PROJECT; después MIGRATIONS_FAILED.
+  Consulta en la rama: cero tablas public, cero migraciones aplicadas,
+  sin tabla cron.job. No se configuró la aplicación contra esta rama,
+  no se crearon usuarios/fixtures y no se ejecutó cancelación COMMIT.
+- Brecha identificada: historial DEV empieza en condominium_transition_viewer;
+  exige roles/profiles/modelo condominal, ausentes en instalación vacía.
+  supabase/baselines/README.md documenta baselines aplicados manualmente
+  fuera del historial y prohíbe su repetición en DEV/Producción. No se obtuvo
+  log detallado del runner: el diagnóstico se basa en estado/catalogo,
+  precondiciones de la primera migración y documentación del repositorio.
+- No se reparó historial ni se reaplicó ninguna migración en DEV/Producción.
+  No se reconstruyó un esquema reducido para declararlo equivalente a DEV.
+- Rama temporal eliminada correctamente por delete_branch. list_branches
+  posterior: sólo registro main predeterminado, asociado a DEV; cero ramas
+  temporales. Supabase registró ese main al iniciar branching; no eliminar
+  el registro predeterminado como si fuera un fixture.
+- Verificación DEV posterior: dos cierres, cero cancelados, cero fixtures;
+  hash fc7bd96fc3fc8a889c96f8d759fb07ef, idéntico al previo.
+- Evidencia: docs/evidence/issue251/disposable-branch-attempt/results.json.
+- Pendiente decisión sobre ampliar trabajo a bootstrap del entorno aislado
+  o permitir retención explícita de un fixture inmutable en DEV. El requisito
+  actual de cero residuos sigue vigente hasta que el usuario lo cambie.
+- Producción no consultada ni modificada. Sin merge ni despliegue de la app.
+
 QA AUTENTICADA DEV CON CLAVE DE SERVIDOR — 2026-10-21 (America/Mexico_City)
 ESTADO ACTUAL: NO MERGE; acceso financiero, móvil y no-admin ya comprobados.
 
