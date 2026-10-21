@@ -25,6 +25,14 @@ export default async function handler(req,res){
   const actor=await authorizeInboxStaff(req);if(!actor?.active||!['admin','gerente_ventas'].includes(actor.role_id))return res.status(403).end();
   if(req.method==='POST'&&new URL(req.headers.origin||'https://invalid').host!==req.headers.host)return res.status(403).end();
   const platform=req.query.platform;if(!['instagram','facebook'].includes(platform))return res.status(400).end();
+  if(req.method==='POST'&&platform==='facebook'&&req.body?.op==='diagnose_isolated_dev'){
+   if(process.env.VERCEL_ENV!=='preview'||process.env.NEXT_PUBLIC_SUPABASE_URL!=='https://hjfwjnejbcpmknvfpdcq.supabase.co'||Object.keys(req.body).join(',')!=='op')return res.status(403).end();
+   stage='isolated_dev_health';
+   const r=await fetch('https://hjfwjnejbcpmknvfpdcq.supabase.co/functions/v1/facebook-comments-dev-health',{method:'GET',headers:{Authorization:req.headers.authorization,apikey:process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY},redirect:'error',cache:'no-store',signal:AbortSignal.timeout(45000)});
+   const d=await r.json();
+   if(!r.ok||!['PASS','FAIL'].includes(d?.status))throw Error('health_unavailable');
+   return res.status(200).json(d);
+  }
   if(platform==='instagram'&&process.env.COMMENT_REVIEW_BRIDGE_URL){
    try{return res.status(200).json(req.method==='GET'?await readThroughBridge(process.env,req.headers.authorization,fetch,req.headers['x-vercel-oidc-token']):await writeThroughBridge(process.env,req.headers.authorization,req.body,fetch,req.headers['x-vercel-oidc-token']));}
    catch(error){return res.status(503).json({status:'review_unavailable',diagnostic:safeBridgeDiagnostic(error?.diagnostic)||bridgeDiagnostic('bridge_transport',error)});}
