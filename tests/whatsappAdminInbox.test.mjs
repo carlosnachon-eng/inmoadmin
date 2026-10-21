@@ -12,6 +12,21 @@ const detail={input_id:id,identity_state:'unmatched',history_truncated:false,mes
 const make=(overrides={})=>createWhatsAppAdminHandler({allowed:()=>true,source:()=>({environment:'dev',project_ref:'hjfwjnejbcpmknvfpdcq',scope:'whatsapp_administracion'}),authorize:async()=>actor,
  reader:()=>({list:async()=>[{input_id:id,label:'Contacto',last_activity:'2026-10-20T12:00:00Z',identity_state:'unmatched'}],
  detail:async()=>structuredClone(detail)}),...overrides});
+test('source metadata factory is distinct from the reader object for list and history',async()=>{
+ for(const op of ['threads','history']){
+  let metadataCalls=0,listCalls=0,detailCalls=0;
+  const handler=make({source:()=>{metadataCalls++;return {environment:'production',project_ref:'bnzrnizrmonjxlktbhlp',scope:'whatsapp_administracion'};},
+   reader:()=>({list:async()=>{listCalls++;return [{input_id:id,last_activity:detail.messages[0].occurred_at,label:'Fixture',identity_state:'unmatched'}];},
+    detail:async()=>{detailCalls++;return structuredClone(detail);}})});
+  const res=response();await handler({method:'GET',query:{op,...(op==='history'?{thread:id}:{})}},res);
+  assert.equal(res.code,200);assert.equal(metadataCalls,1);assert.equal(listCalls,op==='threads'?1:0);assert.equal(detailCalls,1);
+  assert.equal(res.body.status.data_source.environment,'production');assert.equal(res.body.status.sender,false);
+ }
+});
+test('missing source metadata denies without invoking reader operations',async()=>{
+ const res=response();await make({source:()=>null,reader:()=>({list:()=>assert.fail('read'),detail:()=>assert.fail('read')})})({method:'GET',query:{op:'threads'}},res);
+ assert.equal(res.code,404);
+});
 test('Production read only requires exact project, env, and explicit flag',()=>{
  const env={VERCEL_ENV:'preview',NEXT_PUBLIC_SUPABASE_URL:'https://hjfwjnejbcpmknvfpdcq.supabase.co'};
  assert.equal(whatsappAdminPreviewAllowed(env),true);
