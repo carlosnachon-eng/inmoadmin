@@ -38,15 +38,40 @@
   "visual": {
     "desktop": "PASS",
     "mobile390x844": "PASS",
-    "scope": "isolated synthetic UI; simulated session, no DEV or Production connection"
+    "scope": "isolated synthetic UI; simulated session, no DEV or Production connection",
+    "authenticatedDesktop": "PASS: original DEV interface and session after full reload"
   },
   "authenticatedDEVReads": {
-    "BI": "loaded/calculable after rollback",
-    "center": "loaded after rollback"
+    "BI": "200, retained income 25500 after COMMIT",
+    "center": "200, retained income/net result 25500, direct costs 0",
+    "executive": "25500 month / 47500 accumulated generated, previous 22000 conserved"
   },
   "limits": [
-    "Retained-income cancellation through real DEV authenticated HTTP with COMMIT not executed; DEV SQL test rolled back to avoid immutable residual fixtures.",
-    "No new permanent fixtures retained; existing authorized -252301 untouched.",
-    "Initial synthetic receipt test rejected invalid tipo=renta; corrected to arrendamiento, then full test passed."
-  ]
+    "Initial synthetic receipt test rejected invalid tipo=renta; corrected to arrendamiento, then full test passed.",
+    "Prior rollback/mock evidence is historical. See http-persistent for completed authenticated COMMIT proof; real mobile viewport not certified in that phase."
+  ],
+  "authenticatedHTTPPersistent": {
+    "result": "PASS",
+    "fixture": -252520,
+    "commit": "2026-10-21T16:31:40.565917Z",
+    "biStatus": 200,
+    "centerStatus": 200,
+    "generated": 25500,
+    "collected": 25500,
+    "adviserCommission": 0,
+    "managerCommission": 0,
+    "directCosts": 0,
+    "netResult": 25500,
+    "kpiBefore": 1,
+    "kpiAfter": 0,
+    "idempotentStatus": 200,
+    "idempotentResult": "ya_cancelado",
+    "auditRows": 1,
+    "receiptStatus": 200,
+    "paymentStatus": 200,
+    "newCommissionReceiptStatus": 404,
+    "authorization": "single new retained synthetic fixture bundle expressly authorized",
+    "noProductionAccess": true,
+    "noRealClosuresTouched": true
+  }
 }

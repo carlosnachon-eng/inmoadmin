@@ -75,16 +75,53 @@ Pruebas ejecutadas
 - Lecturas BI y Centro autenticadas reales contra DEV cargan sin error tras
   rollback; no es prueba de HTTP con retención persistida.
 
+CERTIFICACIÓN HTTP AUTENTICADA PERSISTENTE — 2026-10-21
+- El usuario autorizó conservar un único fixture sintético nuevo y su auditoría.
+- Cierre -252520, QA RETENCION HTTP — 25500 — NO REAL — RETENIDO AUTORIZADO.
+  Recibo aaaaaaaa-2525-4000-8000-000000000520; pago ...000521.
+- Cancelación ejecutada desde /cierres original en localhost:3252, cliente
+  Supabase y sesión DEV reales, sin simular respuestas ni rollback. COMMIT
+  2026-10-21T16:31:40.565917Z, actor e04ad988-7b62-49ee-9f70-184b31100519.
+- Backend exclusivo hjfwjnejbcpmknvfpdcq verificado; guard de red DEV conservado.
+- HTTP ordinaria 400/cobros_requieren_conciliacion; flujo de retención desde
+  diálogo original guarda cancelación; repetición HTTP 200/ya_cancelado.
+- Antes: BI/Centro 25,500 generado/cobrado; KPI 1 operación/25,500. Después:
+  BI/Centro HTTP 200, generado/cobrado 25,500, pendiente 0; resultado propio
+  25,500 y costos directos 0. Un devengo y un cobro original, sin duplicación.
+  KPI visual tras recargar 0 operaciones/$0. Ejecutivo octubre 25,500;
+  acumulado generado 47,500 conserva los 22,000 preexistentes.
+- Recibo y pago originales accesibles por HTTP autenticado 200; endpoint de
+  nuevo recibo de comisión 404 para cancelado. No se genera otro documento.
+- Historial persistente: ingreso inmobiliaria 25,500, asesor/gerente vigentes
+  0, asesor y comisión histórica originales, motivo/fecha/actor conservados.
+- Cambian exactamente cinco campos de cancelación; recibo, pago y atribución
+  canónica completos idénticos a snapshot inicial. Auditoría captura cierre
+  y pagos originales. Repetición mantiene una sola auditoría idéntica.
+- Inventario autorizado de ESTA prueba: 1 cierre + 1 auditoría + 1 recibo +
+  1 pago sintéticos + 1 atribución canónica + 2 intentos automáticos asociados
+  (CIERRE atribuido y APARTADO pendiente por recibo sin propiedad/asesor).
+  Propiedad y asesor sintéticos preexistentes reutilizados. Cero cuentas nuevas.
+- Hashes de todos los cierres y pagos preexistentes, excluyendo únicamente el
+  fixture nuevo, coinciden antes/después. -252301 previo intacto.
+- Evidencia actual: evidence/cierre-retained-income/http-persistent/.
+  La evidencia rollback y visual simulada anteriores es histórica y no debe
+  confundirse con esta certificación autenticada persistente.
+- Observador temporal: cliente/sesión/RPC/API reales para lecturas y repetición;
+  no reemplaza respuestas ni expone tokens. Fuente archivada como texto y
+  página retirada antes de entregar. Se corrigió únicamente un rótulo mensual
+  de Ejecutivo para identificar ingresos por cancelación; sin cambios de cálculo.
+
 Límites y entrega
-- No se ejecutó cancelación retenida HTTP autenticada con COMMIT en DEV;
-  el caso completo DEV se verificó por SQL con rollback. COMMIT y concurrencia
-  certificados en PostgreSQL local desechable. No declarar ese E2E como PASS.
-- Cero fixtures nuevos persistentes; -252301 previamente autorizado permanece
-  igual. Nunca se deshabilitaron triggers ni se eliminó auditoría para limpiar.
-- No probado en dispositivo físico ni navegador distinto de Chrome.
+- QA HTTP autenticada persistente completada. No se probó una carrera HTTP
+  nueva; las carreras corresponden a los 81 controles PostgreSQL locales.
+- No borrar ni reactivar el fixture retenido ni deshabilitar triggers para
+  limpiar. No quedan otros fixtures nuevos de ESTA prueba.
+- QA actual persistente en Chrome escritorio. No se certifica viewport móvil
+  real en esta fase: el control de tamaño no cambió las dimensiones efectivas.
+  Se conserva el QA visual móvil sintético previo. Sin dispositivo físico.
 - Antes de publicar: revisión del cambio, autorización de migración/código
-  productivos y QA E2E persistente en entorno desechable o plan explícito de
-  retención sintética. Aplicar migración antes del código. No ejecutado aquí.
+  productivos. Gate HTTP DEV completado con retención expresamente autorizada.
+  Aplicar migración antes del código. No ejecutado aquí.
 - No revertir a consumidores que oculten retenciones una vez utilizadas.
   Ante incidente revocar EXECUTE de la nueva RPC y corregir hacia adelante.
 

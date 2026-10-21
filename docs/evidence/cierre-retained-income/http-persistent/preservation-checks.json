@@ -1,0 +1,22 @@
+{
+  "cancelled": true,
+  "retained": true,
+  "adviserCommission": true,
+  "managerCommission": true,
+  "receiptUnchanged": true,
+  "paymentUnchanged": true,
+  "attributionUnchanged": true,
+  "originalAuditMatches": true,
+  "paymentAuditMatches": true,
+  "kpiExcluded": true,
+  "changedColumns": [
+    "estado",
+    "cancelado_en",
+    "cancelado_por",
+    "cancelacion_motivo",
+    "cancelacion_ingreso_retenido"
+  ],
+  "singleAuditAfterRepeat": true,
+  "preexistingClosuresUnchanged": true,
+  "preexistingPaymentsUnchanged": true
+}

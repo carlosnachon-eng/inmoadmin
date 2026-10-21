@@ -262,12 +262,12 @@ export default function Ejecutivo() {
 
             {/* Cierres — bloque especial con 3 tarjetas */}
             <div style={{ background: "#fff", borderRadius: 16, padding: "16px 20px", marginBottom: 12, border: "1px solid #f0f0f0", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5 }}>🏠 Cierres / Ventas — {MESES[mesSeleccionado]}</p>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5 }}>🏠 Cierres e ingresos por cancelación — {MESES[mesSeleccionado]}</p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
                 <div style={{ background: "#f9fafb", borderRadius: 10, padding: "12px 14px" }}>
                   <p style={{ margin: "0 0 4px", fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase" }}>Generado</p>
                   <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#1a1a2e" }}>{fmt(datosMes.cierresGenerado)}</p>
-                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Comisiones cerradas este mes</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Cierres activos e ingresos por cancelación del mes</p>
                 </div>
                 <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "12px 14px", border: "1px solid #bbf7d0" }}>
                   <p style={{ margin: "0 0 4px", fontSize: 10, color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>Cobrado ✅</p>

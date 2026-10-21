@@ -1,0 +1,11 @@
+{
+  "mode": "repeat",
+  "fixture": -252520,
+  "http_status": 200,
+  "data": {
+    "id": -252520,
+    "status": "ya_cancelado",
+    "ingreso_retenido": 25500
+  },
+  "error": null
+}

@@ -1,0 +1,276 @@
+{
+  "fixture": -252520,
+  "session": "real DEV session",
+  "cierre": {
+    "id": -252520,
+    "estado": "activo",
+    "cancelacion_ingreso_retenido": null,
+    "comision": 25500,
+    "com_vendedor": 5100,
+    "cobrado": 25500,
+    "recibo_id": "aaaaaaaa-2525-4000-8000-000000000520"
+  },
+  "bi": {
+    "http_status": 200,
+    "metricas": {
+      "ingreso_generado": 25500,
+      "cobrado": 25500,
+      "pendiente_reconstruido": 0
+    },
+    "unidades": {
+      "cierres": {
+        "unidad": "cierres",
+        "metricas": {
+          "ingreso_generado": 25500,
+          "cobrado": 25500,
+          "pendiente_reconstruido": 0
+        },
+        "conciliacion": {
+          "estado_confianza": "calculable",
+          "diferencia_cobrado": 0,
+          "diferencia_pendiente": 0,
+          "registros_revisados": 1,
+          "pagos_periodo": 1,
+          "ingresos_por_cancelacion": 0,
+          "detalle_cancelaciones": [],
+          "pagos_conciliacion": 1,
+          "detalle_pendiente": [
+            {
+              "source_table": "cierres",
+              "source_id": -252520,
+              "source_key": "cierre:-252520",
+              "generado": 25500,
+              "cobrado_reconstruido": 25500,
+              "cobrado_sistema": 25500,
+              "pendiente_reconstruido": 0,
+              "pendiente_sistema": 0,
+              "diferencia_cobrado": 0,
+              "diferencia_pendiente": 0
+            }
+          ]
+        },
+        "trazabilidad": {
+          "fuentes": [
+            {
+              "tabla": "cierres",
+              "uso": "ingreso_generado y pendiente_reconstruido"
+            },
+            {
+              "tabla": "cierre_pagos",
+              "uso": "cobrado y conciliacion"
+            }
+          ],
+          "source_tables": [
+            "cierres",
+            "cierre_pagos"
+          ]
+        }
+      },
+      "administracion": {
+        "unidad": "administracion",
+        "metricas": {
+          "ingreso_generado": 0,
+          "cobrado": 0,
+          "pendiente_reconstruido": 0
+        },
+        "conciliacion": {
+          "estado_confianza": "calculable",
+          "registros_revisados": 0,
+          "cobros_periodo": 0,
+          "cobradas_sin_fecha": 0,
+          "detalle_pendiente": []
+        },
+        "trazabilidad": {
+          "fuentes": [
+            {
+              "tabla": "comisiones_admin",
+              "uso": "ingreso_generado, cobrado y pendiente_reconstruido"
+            }
+          ],
+          "source_tables": [
+            "comisiones_admin"
+          ]
+        }
+      }
+    },
+    "fixture_events": [
+      {
+        "event_id": "cierre:-252520:ingreso_generado",
+        "source_table": "cierres",
+        "source_id": -252520,
+        "source_key": "cierre:-252520",
+        "business_unit": "cierres",
+        "event_type": "ingreso_generado",
+        "economic_classification": "ingreso_propio",
+        "direction": "entrada",
+        "amount": 25500,
+        "currency": "MXN",
+        "event_date": "2026-10-21",
+        "normalized_status": "confirmado",
+        "original_status": "pendiente",
+        "metadata": {
+          "operacion": "RENTA",
+          "vendedor": "Ivan",
+          "propiedad_id": "aaaaaaaa-0000-4000-8000-000000000001",
+          "recibo_id": "aaaaaaaa-2525-4000-8000-000000000520",
+          "firma_id": null
+        }
+      },
+      {
+        "event_id": "cierre_pago:aaaaaaaa-2525-4000-8000-000000000521:cobro_recibido",
+        "source_table": "cierre_pagos",
+        "source_id": "aaaaaaaa-2525-4000-8000-000000000521",
+        "source_key": "cierre_pago:aaaaaaaa-2525-4000-8000-000000000521",
+        "business_unit": "cierres",
+        "event_type": "cobro_recibido",
+        "economic_classification": "ingreso_propio",
+        "direction": "entrada",
+        "amount": 25500,
+        "currency": "MXN",
+        "event_date": "2026-10-21",
+        "normalized_status": "confirmado",
+        "original_status": "QA cobro original",
+        "metadata": {
+          "cierre_id": -252520,
+          "concepto": "QA cobro original"
+        }
+      }
+    ]
+  },
+  "center": {
+    "http_status": 200,
+    "resumen_general": {
+      "total_generado": 25500,
+      "total_cobrado": 25500,
+      "total_pendiente": 0,
+      "costos_directos": 5100,
+      "resultado_operativo": 20400,
+      "resultado_operativo_nota": "Resultado de las unidades de negocio después de costos directos registrados. No incluye gastos corporativos, impuestos ni nómina administrativa general.",
+      "estado_confianza": "calculable",
+      "estado_confianza_label": "Alta",
+      "confianza_porcentaje": 100
+    },
+    "unidades": [
+      {
+        "key": "cierres",
+        "label": "Ventas, rentas e ingresos por cancelación",
+        "metricas": {
+          "generado": 25500,
+          "cobrado": 25500,
+          "pendiente": 0,
+          "costos_directos": 5100,
+          "resultado": 20400
+        },
+        "estado_confianza": "calculable",
+        "confianza_porcentaje": 100,
+        "nota": "Información calculable desde fuentes conciliadas.",
+        "calidad": {
+          "total": 1,
+          "conciliados": 1,
+          "inconsistencias_activas": 0,
+          "regularizaciones_pendientes": 0,
+          "revision_manual": 0,
+          "sin_evidencia": 0,
+          "diferencia": 0
+        },
+        "fuentes": [
+          "cierres",
+          "cierre_pagos"
+        ]
+      },
+      {
+        "key": "administracion",
+        "label": "Administración",
+        "metricas": {
+          "generado": 0,
+          "cobrado": 0,
+          "pendiente": 0,
+          "costos_directos": 0,
+          "resultado": 0
+        },
+        "estado_confianza": "calculable",
+        "confianza_porcentaje": 100,
+        "nota": "Información calculable desde fuentes conciliadas.",
+        "calidad": {
+          "total": 0,
+          "conciliados": 0,
+          "inconsistencias_activas": 0,
+          "regularizaciones_pendientes": 0,
+          "revision_manual": 0,
+          "sin_evidencia": 0,
+          "diferencia": 0
+        },
+        "fuentes": [
+          "comisiones_admin"
+        ]
+      },
+      {
+        "key": "poliza_juridica",
+        "label": "Póliza Jurídica",
+        "metricas": {
+          "generado": 0,
+          "cobrado": 0,
+          "pendiente": 0,
+          "costos_directos": 0,
+          "resultado": 0
+        },
+        "estado_confianza": "calculable",
+        "confianza_porcentaje": 100,
+        "nota": "Póliza conciliada; generado usa fecha económica, no fecha de captura.",
+        "calidad": {
+          "total": 0,
+          "conciliados": 0,
+          "inconsistencias_activas": 0,
+          "regularizaciones_pendientes": 0,
+          "revision_manual": 0,
+          "sin_evidencia": 0
+        },
+        "fuentes": [
+          "poliza_expedientes",
+          "solicitudes_inquilino",
+          "poliza_caja"
+        ]
+      },
+      {
+        "key": "mantenimiento",
+        "label": "Mantenimiento",
+        "metricas": {
+          "generado": 0,
+          "cobrado": 0,
+          "pendiente": 0,
+          "costos_directos": 0,
+          "resultado": 0,
+          "margen_estimado": 0
+        },
+        "estado_confianza": "calculable",
+        "confianza_porcentaje": 100,
+        "nota": "Mantenimiento conciliado para el periodo.",
+        "calidad": {
+          "total": 0,
+          "conciliados": 0,
+          "inconsistencias_activas": 0,
+          "regularizaciones_pendientes": 0,
+          "revision_manual": 0,
+          "sin_evidencia": 0
+        },
+        "fuentes": [
+          "maintenance_tickets",
+          "maintenance_quotes",
+          "cash_movements",
+          "properties",
+          "contracts"
+        ]
+      }
+    ]
+  },
+  "kpi": {
+    "events": [
+      {
+        "event_key": "-252520",
+        "event_type": "CIERRE",
+        "cierres": 1,
+        "ingresos": 25500
+      }
+    ]
+  }
+}
