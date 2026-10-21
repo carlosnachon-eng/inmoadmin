@@ -7,6 +7,28 @@ import * as crypto from '../lib/messaging/instagram/business/crypto.js';
 import {businessConfig} from '../lib/messaging/instagram/business/config.js';
 import {evaluateInstagram} from '../lib/messaging/commentAgent/evaluateInstagram.js';
 import {bridgeDiagnostic,safeBridgeDiagnostic} from '../lib/messaging/commentAgent/bridgeDiagnostic.js';
+import {createBridgeWebReceiver} from '../lib/messaging/commentAgent/bridgeWebReceiver.js';
+test('native Web Request retains signed whitespace and UTF-8, journals once, rejects tamper',async()=>{
+ let requests=0;
+ const fetchImpl=async(url)=>({ok:true,json:async()=>{
+  if(url.endsWith('/user'))return{id:actor.id};if(url.includes('/profiles?'))return[actor];
+  if(url.endsWith('/comment_bridge_request_v1')){requests++;return true;}
+  if(url.endsWith('/ig_business_comments_v1'))return[];
+  if(url.endsWith('/ig_business_token_v1'))return null;
+  throw Error('unexpected');
+ }});
+ const handler=createBridgeWebReceiver({env,fetchImpl}),body='{\r\n  "op" : "evaluate"\r\n}';
+ const headers={...bridgeHeaders(env,auth,Date.now(),'POST',body,randomUUID()),'content-type':'application/json'};
+ const good=await handler(new Request('https://example.test'+BRIDGE_PATH,{method:'POST',headers,body}));
+ assert.equal(good.status,200);assert.equal((await good.json()).status,'evaluated');assert.equal(requests,1);
+ const bad=await handler(new Request('https://example.test'+BRIDGE_PATH,{method:'POST',headers,body:body+' '}));
+ assert.equal(bad.status,403);assert.equal((await bad.json()).diagnostic.code,'bridge_signature');assert.equal(requests,1);
+ const unicode=JSON.stringify({op:'approve',comment:'a'.repeat(64),revision:'b'.repeat(64),text:'Precio: información 🏡'});
+ const signed=bridgeHeaders(env,auth,Date.now(),'POST',unicode,randomUUID());
+ const noData=createBridgeWebReceiver({env,fetchImpl:async()=>{throw Error('stop after signature');}});
+ const u=await noData(new Request('https://example.test'+BRIDGE_PATH,{method:'POST',headers:{...signed,'content-type':'application/json'},body:unicode}));
+ assert.equal((await u.json()).diagnostic.stage,'identity');
+});
 test('bridge diagnostics reject arbitrary stages and sensitive exception values',()=>{
  assert.deepEqual(bridgeDiagnostic('body_read',Error('parsed_body')),{stage:'body_read',code:'parsed_body'});
  assert.equal(safeBridgeDiagnostic({stage:'body_read',code:'private credential'}),null);

@@ -1,3 +1,3 @@
-import {createBridgeReceiver} from '../../../lib/messaging/commentAgent/bridgeReceiver.js';
-export const config={api:{bodyParser:false}};
-export default createBridgeReceiver();
+import {createBridgeWebReceiver} from '../../../lib/messaging/commentAgent/bridgeWebReceiver.js';
+export const GET=createBridgeWebReceiver();
+export const POST=GET;
