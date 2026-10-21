@@ -7,9 +7,18 @@ try{
  db=new Client({host:'127.0.0.1',port,user:'postgres',database:'postgres'});db2=new Client({host:'127.0.0.1',port,user:'postgres',database:'postgres'});await db.connect();await db2.connect();
  await db.query('create role anon;create role authenticated;create role service_role;create table public.profiles(id uuid primary key,active boolean,role_id text);');
  await db.query(await readFile(new URL('../supabase/migrations/20261021001227_commercial_comment_review.sql',import.meta.url),'utf8'));
+ await db.query(await readFile(new URL('../supabase/migrations/20261021143357_comment_bridge_requests.sql',import.meta.url),'utf8'));
  const actor=randomUUID(),denied=randomUUID(),connection=randomUUID(),r=n=>String(n).repeat(64),action=randomUUID();
  await db.query("insert into profiles values($1,true,'admin'),($2,true,'asesor')",[actor,denied]);
  await db.query("insert into commercial_comment_private.connections(platform,connection_id,active) values('instagram',$1,true),('facebook',$1,true)",[connection]);
+ const nonce=randomUUID(),stamp=Math.floor(Date.now()/1000),once=async(n=nonce,who=actor,t=stamp,client=db)=>(await client.query('select public.comment_bridge_request_v1($1,$2,$3,$4) v',[connection,who,n,t])).rows[0].v;
+ const replays=await Promise.all([once(),once(nonce,actor,stamp,db2)]);ok(replays.filter(Boolean).length===1);
+ ok(!await once());ok(!await once(randomUUID(),actor,stamp-60));
+ await assert.rejects(once(randomUUID(),denied),e=>e.code==='42501');checks++;
+ await db.query("update commercial_comment_private.connections set sender_enabled=true where platform='instagram'");
+ ok(!await once(randomUUID()));
+ await db.query('update commercial_comment_private.connections set sender_enabled=false');
+ for(const role of ['anon','authenticated'])ok(!(await db.query("select has_function_privilege($1,'public.comment_bridge_request_v1(uuid,uuid,uuid,bigint)','execute') v",[role])).rows[0].v);
  const call=async(op,data={},who=actor,platform='instagram',client=db)=>(await client.query('select public.comment_review_v1($1,$2,$3,$4,$5) v',[platform,connection,who,op,data])).rows[0].v;
  const send=async(op,id=action,client=db)=>(await client.query('select public.comment_action_v1($1,$2,$3,$4,$5,$6,$7) v',['instagram',connection,actor,r(1),r(4),id,op])).rows[0].v;
  const event={comment_ref:r(1),post_ref:r(2),event_ref:r(3),occurred_at:new Date().toISOString(),content_box:{synthetic:true},native_box:{synthetic:true}};
@@ -33,6 +42,6 @@ try{
  ok((await db.query("select count(*)::int n from commercial_comment_private.connections where sender_enabled")).rows[0].n===0);
  ok((await db.query("select destination from commercial_comment_private.reviews")).rows[0].destination==='SALES');
  for(const role of ['anon','authenticated']){ok(!(await db.query("select has_function_privilege($1,'public.comment_review_v1(text,uuid,uuid,text,jsonb)','execute') v",[role])).rows[0].v);ok(!(await db.query("select has_schema_privilege($1,'commercial_comment_private','usage') v",[role])).rows[0].v);}
- ok((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='commercial_comment_private' and c.relkind='r' and relrowsecurity")).rows[0].n===5);
+ ok((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='commercial_comment_private' and c.relkind='r' and relrowsecurity")).rows[0].n===6);
  console.log(JSON.stringify({checks,result:'PASS',real_dispatches:0,synthetic_claims:1,synthetic_starts:1,cleanup:'disposable_local_database'}));
 }finally{await db?.end();await db2?.end();if(started)execFileSync(path.join(bin,'pg_ctl'),['-D',dir+'/db','stop','-m','fast','-w'],{stdio:'ignore'});if(dir.startsWith('/private/tmp/comment-review-pg-'))await rm(dir,{recursive:true,force:true});}

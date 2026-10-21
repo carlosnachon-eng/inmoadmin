@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {supabase} from '../lib/supabase';
 export default function CommentReviewPanel(){
  const [platform,setPlatform]=useState('instagram'),[rows,setRows]=useState([]),[selected,setSelected]=useState(null),[drafts,setDrafts]=useState({}),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- const generation=useRef(0),pending=useRef(false),editing=useRef(false);
+ const generation=useRef(0),pending=useRef(false),editing=useRef(false),acting=useRef(false);
  const [readOnly,setReadOnly]=useState(false);
  async function request(body){
   const {data}=await supabase.auth.getSession();if(!data?.session)throw Error('Sesión requerida');
@@ -19,7 +19,7 @@ export default function CommentReviewPanel(){
  }
  useEffect(()=>{generation.current++;setRows([]);setSelected(null);void load();const t=setInterval(()=>{if(!document.hidden&&!editing.current)void load();},10000);return()=>{generation.current++;clearInterval(t);};},[platform]);
  const row=rows.find(r=>r.comment_ref===selected),key=row?platform+row.comment_ref+row.revision:'';
- async function action(body){setBusy(true);editing.current=true;try{const r=await request(body);if(body.op==='approve'&&r.status!=='approved_not_sent')throw Error('La revisión cambió; vuelve a evaluar antes de aprobar');await load();}catch(e){setError(e.message);}finally{setBusy(false);editing.current=false;}}
+ async function action(body){if(acting.current)return;acting.current=true;setBusy(true);editing.current=true;try{const r=await request(body);if(body.op==='approve'&&r.status!=='approved_not_sent')throw Error('La revisión cambió; vuelve a evaluar antes de aprobar');await load();}catch(e){setError(e.message);}finally{acting.current=false;setBusy(false);editing.current=false;}}
  return <section aria-label="Revisión comercial de comentarios" style={{padding:12,overflow:'auto',maxHeight:'70vh',background:'#f0f5ff'}}>
   <h3>Revisión comercial DEV · sin publicaciones</h3>
   <p>Propuestas por reglas verificables; IA generativa no activada. Aprobar guarda auditoría, no envía.</p>

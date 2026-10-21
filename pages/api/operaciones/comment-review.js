@@ -5,16 +5,14 @@ import {businessConfig} from '../../../lib/messaging/instagram/business/config.j
 import {messengerConfig} from '../../../lib/messaging/facebook/messenger/config.js';
 import * as igCrypto from '../../../lib/messaging/instagram/business/crypto.js';
 import * as fbCrypto from '../../../lib/messaging/facebook/messenger/crypto.js';
-import {createBusinessStore} from '../../../lib/messaging/instagram/business/store.js';
 import {messengerStore} from '../../../lib/messaging/facebook/messenger/store.js';
-import {tokenForComments} from '../../../lib/messaging/instagram/business/tokenLifecycle.js';
 import {pageToken} from '../../../lib/messaging/facebook/messenger/manual.js';
-import {projectBusinessComments} from '../../../lib/messaging/instagram/business/comments.js';
 import {projectFacebookComment} from '../../../lib/messaging/commentAgent/facebook.js';
 import {inspectMetaComment,publicationFacts} from '../../../lib/messaging/commentAgent/verifiedPublication.js';
 import {reviewStore,recordReview,approveReview} from '../../../lib/messaging/commentAgent/review.js';
 import {reviewDiagnostic} from '../../../lib/messaging/commentAgent/diagnostics.js';
-import {readThroughBridge} from '../../../lib/messaging/commentAgent/bridge.js';
+import {readThroughBridge,writeThroughBridge} from '../../../lib/messaging/commentAgent/bridge.js';
+import {evaluateInstagram} from '../../../lib/messaging/commentAgent/evaluateInstagram.js';
 import {projectReviews} from '../../../lib/messaging/commentAgent/reviewProjection.js';
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private,no-store');
@@ -26,8 +24,7 @@ export default async function handler(req,res){
   if(req.method==='POST'&&new URL(req.headers.origin||'https://invalid').host!==req.headers.host)return res.status(403).end();
   const platform=req.query.platform;if(!['instagram','facebook'].includes(platform))return res.status(400).end();
   if(platform==='instagram'&&process.env.COMMENT_REVIEW_BRIDGE_URL){
-   if(req.method!=='GET')return res.status(409).json({status:'bridge_read_only',diagnostic:{stage:'bridge_read',code:'writes_not_certified'}});
-   try{return res.status(200).json(await readThroughBridge(process.env,req.headers.authorization,fetch,req.headers['x-vercel-oidc-token']));}
+   try{return res.status(200).json(req.method==='GET'?await readThroughBridge(process.env,req.headers.authorization,fetch,req.headers['x-vercel-oidc-token']):await writeThroughBridge(process.env,req.headers.authorization,req.body,fetch,req.headers['x-vercel-oidc-token']));}
    catch{return res.status(503).json({status:'review_unavailable',diagnostic:{stage:'bridge_read',code:'bridge_unavailable'}});}
   }
   stage='configuration';
@@ -48,21 +45,14 @@ export default async function handler(req,res){
    return res.status(200).json(await approveReview({row,text:body.text,actor,store,crypto,c}));
   }
   if(body.op!=='evaluate')return res.status(400).json({status:'operation_denied'});
-  const legacy=platform==='instagram'?createBusinessStore(db,c.connection):messengerStore(db,c.connection,c);
-  let inputs;
-  if(platform==='instagram'){
-   const raw=await legacy.comments(actor.id);if(!Array.isArray(raw)||raw.length>200)throw Error('batch');
-   inputs=raw.slice(0,20).map(r=>{
-    const p=projectBusinessComments({config:c,rows:[r]})[0],native=crypto.open(c,'comment-native',[r.comment_ref,r.media_ref,r.event_ref,new Date(r.occurred_at).toISOString()],r.native_box);
-    return {stored:{...r,post_ref:r.media_ref},native:{comment_id:native.comment_id,post_id:native.media_id},event:{...p,event_ref:r.event_ref,platform,post_ref:r.media_ref,connection_ref:crypto.ref(c,'review-connection',c.connection),owned:true,nested:!!p.parent_id}};
-   });
-   for(const input of inputs)await store('capture',input.stored);
-  }else inputs=(await store('events')).slice(0,20).map(r=>projectFacebookComment(c,r));
+  if(platform==='instagram')return res.status(200).json(await evaluateInstagram({db,c,actor,store}));
+  const legacy=messengerStore(db,c.connection,c);
+  const inputs=(await store('events')).slice(0,20).map(r=>projectFacebookComment(c,r));
   let token=null;
   try{
-   const credential=platform==='instagram'?await legacy.loadCredential(c.connection):await legacy.credential();
+   const credential=await legacy.credential();
    if(platform==='facebook'&&!['pages_read_engagement','pages_read_user_content','pages_manage_engagement'].every(s=>credential?.scopes?.includes(s)))throw Error('permissions');
-   token=platform==='instagram'?tokenForComments(c,credential):pageToken(c,credential);
+   token=pageToken(c,credential);
   }catch{/* Missing permissions never trigger OAuth or a scope change. */}
   let processed=0;
   for(const input of inputs){

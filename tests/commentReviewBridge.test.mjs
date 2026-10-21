@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {generateKeyPairSync} from 'node:crypto';
+import {generateKeyPairSync,randomUUID} from 'node:crypto';
 import {bridgeHeaders,verifyBridge,readThroughBridge,BRIDGE_PATH,BRIDGE_BRANCH,DEV_URL} from '../lib/messaging/commentAgent/bridge.js';
 import {createBridgeReceiver} from '../lib/messaging/commentAgent/bridgeReceiver.js';
 import * as crypto from '../lib/messaging/instagram/business/crypto.js';
 import {businessConfig} from '../lib/messaging/instagram/business/config.js';
+import {evaluateInstagram} from '../lib/messaging/commentAgent/evaluateInstagram.js';
 const keys=generateKeyPairSync('ed25519');
 const env={VERCEL_ENV:'preview',VERCEL_GIT_COMMIT_REF:BRIDGE_BRANCH,NEXT_PUBLIC_SUPABASE_URL:DEV_URL,APP_ENV:'preview',
  COMMENT_REVIEW_BRIDGE_PRIVATE_KEY:keys.privateKey.export({type:'pkcs8',format:'pem'}),COMMENT_REVIEW_BRIDGE_PUBLIC_KEY:keys.publicKey.export({type:'spki',format:'pem'}),
@@ -29,10 +30,51 @@ async function run({profile=actor,rows=[],environment=env,request=req()}={}){
  await createBridgeReceiver({env:environment,fetchImpl})(request,res);return {res,calls};
 }
 test('authorized read uses verified user+role and only list RPC; no Meta or write calls',async()=>{
- const {res,calls}=await run();assert.equal(res.code,200);assert.equal(res.body.read_only,true);assert.equal(res.body.sender,false);assert.equal(calls.length,3);
+ const {res,calls}=await run();assert.equal(res.code,200);assert.equal(res.body.read_only,false);assert.equal(res.body.sender,false);assert.equal(calls.length,3);
  assert.ok(calls.every(x=>x.url.startsWith(DEV_URL+'/')));assert.equal(JSON.parse(calls[2].options.body).p_op,'list');
  assert.equal(calls[0].options.headers.Authorization,auth);assert.equal(calls[1].options.headers.Authorization,auth);
  assert.equal(JSON.stringify(res.body).includes('synthetic-service'),false);
+});
+const post=body=>{const rawBody=JSON.stringify(body);return{method:'POST',url:BRIDGE_PATH,rawBody,headers:{...bridgeHeaders(env,auth,Date.now(),'POST',rawBody,randomUUID()),'content-type':'application/json'}};};
+test('signed operation rejects body tamper, publish, arbitrary fields, native IDs and missing nonce',()=>{
+ const r=post({op:'evaluate'});assert.equal(verifyBridge(r,env),'synthetic.user.token');
+ assert.throws(()=>verifyBridge({...r,rawBody:JSON.stringify({op:'approve'})},env));
+ for(const body of [{op:'publish'},{op:'evaluate',platform:'facebook'},{op:'approve',comment:'123',revision:'a'.repeat(64),text:'test'}])assert.throws(()=>verifyBridge(post(body),env));
+ assert.throws(()=>verifyBridge({...r,headers:{...r.headers,'x-review-nonce':''}},env));
+});
+test('write replay is consumed durably before evaluation; no token renewal or Meta writes',async()=>{
+ const seen=new Set(),calls=[];
+ const fetchImpl=async(url,options)=>{
+  calls.push({url,options});let data;
+  if(url.endsWith('/user'))data={id:actor.id};
+  else if(url.includes('/profiles?'))data=[actor];
+  else{const p=JSON.parse(options.body);
+   if(url.endsWith('/comment_bridge_request_v1')){data=!seen.has(p.p_nonce);seen.add(p.p_nonce);}
+   else if(url.endsWith('/ig_business_comments_v1'))data=[];
+   else if(url.endsWith('/ig_business_token_v1')){assert.equal(p.p_op,'load');data=null;}
+   else throw Error('unexpected');
+  }return{ok:true,json:async()=>data};
+ };
+ const handler=createBridgeReceiver({env,fetchImpl}),request=post({op:'evaluate'}),res=()=>({setHeader(){},status(n){this.code=n;return this;},json(x){this.body=x;return this;}});
+ const a=res();await handler(request,a);assert.equal(a.code,200);assert.equal(a.body.processed,0);
+ const b=res();await handler(request,b);assert.equal(b.code,409);
+ assert.equal(calls.filter(x=>x.url.endsWith('/ig_business_comments_v1')).length,1);
+ assert.ok(calls.every(x=>x.url.startsWith(DEV_URL+'/')));
+});
+test('bridge approves only authenticated encrypted exact revision, no dispatch RPC',async()=>{
+ const c=businessConfig(env),row={comment_ref:'a'.repeat(64),revision:'b'.repeat(64),status:'proposed'};
+ row.decision_box=crypto.seal(c,'commercial-review',[row.comment_ref,row.revision],{public_proposal:'Synthetic price'});
+ const ops=[];const fetchImpl=async(url,options)=>{
+  let data;
+  if(url.endsWith('/user'))data={id:actor.id};else if(url.includes('/profiles?'))data=[actor];
+  else if(url.endsWith('/comment_bridge_request_v1'))data=true;
+  else{assert.ok(url.endsWith('/comment_review_v1'));const p=JSON.parse(options.body);ops.push(p.p_op);
+   if(p.p_op==='list')data=[row];else{assert.equal(p.p_op,'approve');assert.equal(crypto.open(c,'commercial-approval',[row.comment_ref,row.revision,actor.id],p.p_data.approval_box).text,'Synthetic approval');data={status:'approved_not_sent'};}
+  }return{ok:true,json:async()=>data};
+ };
+ const res={setHeader(){},status(n){this.code=n;return this;},json(x){this.body=x;return this;}};
+ await createBridgeReceiver({env,fetchImpl})(post({op:'approve',comment:row.comment_ref,revision:row.revision,text:'Synthetic approval'}),res);
+ assert.equal(res.code,200);assert.equal(res.body.sender,false);assert.deepEqual(ops,['list','approve']);
 });
 test('inactive, unauthorized and mismatched profiles deny before journal',async()=>{
  for(const profile of [{...actor,active:false},{...actor,role_id:'asesor'},{...actor,id:'different'}]){const {res,calls}=await run({profile});assert.equal(res.code,403);assert.equal(calls.length,2);}
@@ -51,4 +93,16 @@ test('proxy pins destination, rejects redirects/errors and never retries',async(
  let calls=0;const fetchImpl=async(url,opts)=>{calls++;assert.equal(opts.redirect,'error');throw Error('private error');};
  await assert.rejects(readThroughBridge(env,auth,fetchImpl,'synthetic-oidc'));assert.equal(calls,1);
  for(const url of ['http://localhost'+BRIDGE_PATH,'https://evil.test'+BRIDGE_PATH,env.COMMENT_REVIEW_BRIDGE_URL+'?x=1'])await assert.rejects(readThroughBridge({...env,COMMENT_REVIEW_BRIDGE_URL:url},auth,fetchImpl));assert.equal(calls,1);
+});
+test('populated evaluation reuses encrypted capture and escalates missing evidence; never sends',async()=>{
+ const c=businessConfig(env),r={comment_ref:'1'.repeat(64),media_ref:'2'.repeat(64),event_ref:'3'.repeat(64),occurred_at:new Date(Date.now()-1000).toISOString()};
+ const binding=[r.comment_ref,r.media_ref,r.event_ref,r.occurred_at];
+ r.content_box=crypto.seal(c,'comment-content',binding,{text:'precio',username:'synthetic'});
+ r.native_box=crypto.seal(c,'comment-native',binding,{comment_id:'123',media_id:'456'});
+ const writes=[];const db={rpc:async(name,args)=>{if(name==='ig_business_comments_v1')return{data:[r]};assert.equal(name,'ig_business_token_v1');assert.equal(args.p_op,'load');return{data:null};}};
+ const result=await evaluateInstagram({db,c,actor,store:async(op,data)=>{writes.push({op,data});return{};},fetchImpl:async()=>{throw Error('network forbidden');}});
+ assert.equal(result.processed,1);assert.deepEqual(writes.map(x=>x.op),['capture','evaluate']);
+ assert.equal(writes[1].data.status,'escalated');assert.equal(result.sender,false);
+ const decision=crypto.open(c,'commercial-review',[r.comment_ref,writes[1].data.revision],writes[1].data.decision_box);
+ assert.equal(decision.public_proposal,null);assert.equal(decision.publish_allowed,false);
 });
