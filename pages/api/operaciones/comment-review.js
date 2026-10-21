@@ -16,6 +16,7 @@ import {evaluateInstagram} from '../../../lib/messaging/commentAgent/evaluateIns
 import {projectReviews} from '../../../lib/messaging/commentAgent/reviewProjection.js';
 import {bridgeDiagnostic,safeBridgeDiagnostic} from '../../../lib/messaging/commentAgent/bridgeDiagnostic.js';
 import {diagnoseFacebookRead} from '../../../lib/messaging/commentAgent/facebookReadDiagnostic.js';
+import {facebookDevPanel} from '../../../lib/messaging/commentAgent/facebookDevPanel.js';
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private,no-store');
  if(!commentObservationAllowed(process.env))return res.status(404).end();
@@ -32,6 +33,10 @@ export default async function handler(req,res){
    const d=await r.json();
    if(!r.ok||!['PASS','FAIL'].includes(d?.status))throw Error('health_unavailable');
    return res.status(200).json(d);
+  }
+  if(platform==='facebook'){
+   stage='isolated_dev_review';
+   return res.status(200).json(await facebookDevPanel(process.env,req.headers.authorization,req.method==='POST'?req.body:null));
   }
   if(platform==='instagram'&&process.env.COMMENT_REVIEW_BRIDGE_URL){
    try{return res.status(200).json(req.method==='GET'?await readThroughBridge(process.env,req.headers.authorization,fetch,req.headers['x-vercel-oidc-token']):await writeThroughBridge(process.env,req.headers.authorization,req.body,fetch,req.headers['x-vercel-oidc-token']));}
