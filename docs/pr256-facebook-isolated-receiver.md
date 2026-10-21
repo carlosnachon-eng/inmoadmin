@@ -28,10 +28,23 @@ token refresh or dispatch capability is present. No schema migration needed.
 
 This function must eventually be deployed with JWT verification disabled for
 Meta ingress (HMAC remains mandatory for POST). No such change is applied by
-this PR. Existing project secrets are referenced in runtime, not copied or
-regenerated. Gate remains absent/closed until separate provisioning approval.
+this PR. The receiver now reads only `FACEBOOK_COMMENTS_DEV_*` variables;
+it never falls back to Messenger variables. A literal
+`FACEBOOK_COMMENTS_DEV_MANUAL_SEND_ENABLED=false` is required. Gate remains
+absent/closed until separate provisioning completes.
 
 ## Unresolved real delivery boundary
+
+Meta app `Emporio Comentarios DEV` (`2220237475209417`) was created with the
+owner's explicit approval under the existing Emporio business portfolio.
+It remains unpublished. Required read/subscription permissions, credentials,
+the separate capture connection, deployed callback, and Page `feed`
+subscription are not yet certified. No production app settings were changed.
+Use only new app credentials and dedicated connection/index/data/token keys;
+do not overwrite shared Messenger or Instagram variables. The existing Preview
+evaluation reader still uses its prior Messenger connection; connecting this
+new comment-only identity to evaluation requires a separate read-only adapter,
+not a silent replacement of Messenger credentials.
 
 The existing app's Page callback points to Production. Creating a second URL
 does NOT cause Meta to deliver there. Do not substitute the productive callback
@@ -46,7 +59,7 @@ they do not substitute for deployed Deno + PostgreSQL certification.
 
 ## Verification
 
-65 JS tests PASS across receiver, observation, review, bridge, synthetic Preview
+66 JS tests PASS across receiver, observation, review, bridge, synthetic Preview
 and Facebook read diagnostics. No real messages, credentials or customer data
 are used by these tests. Build and Preview results are reported separately.
 

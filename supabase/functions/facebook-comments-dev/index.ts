@@ -1,11 +1,9 @@
 import {createFacebookCommentReceiver} from '../../../lib/messaging/commentAgent/facebookWebReceiver.js';
+import {facebookCommentDevNames} from '../../../lib/messaging/commentAgent/facebookDevConfig.js';
 // Prepared only: separate function/URL, never replace facebook-messenger-dev.
-const names=['ENABLED','CONNECTION_ID','APP_ID','PAGE_ID','APP_SECRET','VERIFY_TOKEN','INDEX_KEY','DATA_KEY','TOKEN_KEY'];
 Deno.serve(createFacebookCommentReceiver({
  env:()=>({APP_ENV:'development',VERCEL_ENV:'development',NEXT_PUBLIC_SUPABASE_URL:Deno.env.get('SUPABASE_URL'),
-  FACEBOOK_COMMENTS_DEV_ENABLED:Deno.env.get('FACEBOOK_COMMENTS_DEV_ENABLED'),
-  FACEBOOK_MESSENGER_MANUAL_SEND_ENABLED:'false',
-  ...Object.fromEntries(names.map(n=>['FACEBOOK_MESSENGER_'+n,Deno.env.get('FACEBOOK_MESSENGER_'+n)]))}),
+  ...Object.fromEntries(facebookCommentDevNames.map(n=>['FACEBOOK_COMMENTS_DEV_'+n,Deno.env.get('FACEBOOK_COMMENTS_DEV_'+n)]))}),
  capture:async(c,row)=>{
   if(Deno.env.get('SUPABASE_URL')!=='https://hjfwjnejbcpmknvfpdcq.supabase.co')throw Error('environment_denied');
   const key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');if(!key)throw Error('configuration');
