@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { usePermiso, SinAcceso } from "../lib/permisos";
+import CierreCancellationDialog from "../components/CierreCancellationDialog";
+import { cierreVigente, motivoCancelacionValido, cancellationError } from "../lib/cierreCancellation";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
   style: "currency", currency: "MXN", minimumFractionDigits: 0
@@ -22,11 +24,18 @@ const MARCADOR_COBRO_MANUAL = "auto_cobro_manual";
 const esRenovacion = (propiedad) => (propiedad || "").toLowerCase().startsWith("renov");
 
 export default function Cierres() {
-  const { cargando: permisoCargando, puedeVer } = usePermiso("cierres");
+  const { cargando: permisoCargando, puedeVer, esAdmin: adminActivo } = usePermiso("cierres");
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cierres, setCierres] = useState([]);
+  const [cancelados, setCancelados] = useState([]);
+  const [mostrarCancelados, setMostrarCancelados] = useState(false);
+  const [cancelando, setCancelando] = useState(null);
+  const [cierreACancelar, setCierreACancelar] = useState(null);
+  const [cancelacionError, setCancelacionError] = useState(null);
+  const cancellationLock = useRef(false);
+  const [autores, setAutores] = useState({});
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -90,23 +99,42 @@ export default function Cierres() {
 
   const loadCierres = async () => {
     setLoading(true);
-    const [{ data: cierresData }, { data: pagosData }, { data: recibosData }] = await Promise.all([
-      supabase.from("cierres").select("*").order("fecha_cierre", { ascending: false }),
-      supabase.from("cierre_pagos").select("*").order("fecha", { ascending: true }),
-      supabase.from("recibos_apartado")
-        .select("id, folio, tipo, cliente_nombre, inmueble, monto, monto_total_acordado, fecha, forma_pago, created_at, estatus, propiedad_id, asesor_id, firma_id, flujo_estado, recibos_abonos(id, monto, fecha, forma_pago, notas, created_at), propiedades:propiedad_id(id, titulo, operacion, precio), profiles:asesor_id(full_name, email), firmas:firma_id(status)")
-        .eq("flujo_estado", "completo")
-        .order("created_at", { ascending: false }),
-    ]);
-    setCierres(cierresData || []);
-    setCierrePagos(pagosData || []);
-    const recibosConCierre = new Set((cierresData || []).map(c => c.recibo_id).filter(Boolean));
-    setApartadosPendientes((recibosData || []).filter(r =>
-      !recibosConCierre.has(r.id)
-      && r.estatus !== "cancelado"
-      && r.firmas?.status !== "cancelado"
-    ));
-    setLoading(false);
+    try {
+      const [cierresResult, pagosResult, recibosResult] = await Promise.all([
+        supabase.from("cierres").select("*").order("fecha_cierre", { ascending: false }),
+        supabase.from("cierre_pagos").select("*").order("fecha", { ascending: true }),
+        supabase.from("recibos_apartado")
+          .select("id, folio, tipo, cliente_nombre, inmueble, monto, monto_total_acordado, fecha, forma_pago, created_at, estatus, propiedad_id, asesor_id, firma_id, flujo_estado, recibos_abonos(id, monto, fecha, forma_pago, notas, created_at), propiedades:propiedad_id(id, titulo, operacion, precio), profiles:asesor_id(full_name, email), firmas:firma_id(status)")
+          .eq("flujo_estado", "completo")
+          .order("created_at", { ascending: false }),
+      ]);
+      const { data: cierresData, error: cierresError } = cierresResult;
+      const { data: pagosData, error: pagosError } = pagosResult;
+      const { data: recibosData, error: recibosError } = recibosResult;
+      if (cierresError || pagosError || recibosError) {
+        showToast('No se pudieron actualizar los cierres. Recarga antes de operar.', false);
+        setLoading(false);
+        return false;
+      }
+      const authorIds = [...new Set((cierresData || []).map(c => c.cancelado_por).filter(Boolean))];
+      if (authorIds.length) {
+        const { data: authorData } = await supabase.from('profiles').select('id, full_name').in('id', authorIds);
+        setAutores(Object.fromEntries((authorData || []).map(p => [p.id, p.full_name])));
+      }
+      setCierres((cierresData || []).filter(cierreVigente));
+      setCancelados((cierresData || []).filter(c => !cierreVigente(c)));
+      setCierrePagos(pagosData || []);
+      const recibosConCierre = new Set((cierresData || []).map(c => c.recibo_id).filter(Boolean));
+      setApartadosPendientes((recibosData || []).filter(r =>
+        !recibosConCierre.has(r.id)
+        && r.estatus !== "cancelado"
+        && r.firmas?.status !== "cancelado"
+      ));
+      return true;
+    } catch {
+      showToast('No se pudieron actualizar los cierres. Recarga antes de operar.', false);
+      return false;
+    } finally { setLoading(false); }
   };
 
   const getPctGerente = (anio, mes, allCierres) => {
@@ -397,10 +425,28 @@ export default function Cierres() {
     }
   };
 
+  const cancelarCierre = async motivo => {
+    if (!adminActivo || !cierreACancelar || cancellationLock.current || !motivoCancelacionValido(motivo)) return;
+    setCancelacionError(null);
+    cancellationLock.current = true;
+    setCancelando(cierreACancelar.id);
+    try {
+      const { data, error } = await supabase.rpc('cancelar_cierre', { p_cierre_id: cierreACancelar.id, p_motivo: motivo.trim() });
+      if (error) { setCancelacionError(cancellationError(error)); return; }
+      setCierreACancelar(null);
+      const refreshed = await loadCierres();
+      showToast(refreshed
+        ? data?.status === 'ya_cancelado' ? 'Este cierre ya estaba cancelado. Historial actualizado.' : 'Cierre cancelado. Evidencia histórica conservada.'
+        : 'La cancelación se registró, pero no se pudo actualizar la lista. Recarga antes de operar.', refreshed);
+    } catch { setCancelacionError(cancellationError(null)); }
+    finally { cancellationLock.current = false; setCancelando(null); }
+  };
+
   const deleteCierre = async (id, nombre) => {
     if (profile?.role_id !== "admin") { showToast("Solo Admin puede eliminar cierres", false); return; }
     if (!confirm(`Eliminar cierre de "${nombre}"?`)) return;
-    await supabase.from("cierres").delete().eq("id", id);
+    const { error } = await supabase.from("cierres").delete().eq("id", id);
+    if (error) { showToast('No se puede eliminar evidencia histórica. Usa Cancelar cierre si corresponde.', false); return; }
     showToast("Eliminado"); loadCierres();
   };
 
@@ -727,7 +773,7 @@ export default function Cierres() {
   const gerentePagadoForm = parseFloat(form.gerente_pagado_monto) || 0;
   const emporioPuroForm = comInmobForm - montoGerenteForm;
   const esRenov = esRenovacion(form.propiedad);
-  const esAdmin = profile?.role_id === "admin";
+  const esAdmin = adminActivo;
 
   const inp = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" };
   const inpGreen = { ...inp, border: "1.5px solid #86efac" };
@@ -735,7 +781,7 @@ export default function Cierres() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f4f5f7", fontFamily: "system-ui, sans-serif" }}>
-      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 3000 }}>{toast.msg}</div>}
+      {toast && <div role="status" aria-live="polite" style={{ position: "fixed", top: 20, right: 20, background: toast.ok ? "#065f46" : "#991b1b", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 14, zIndex: 3000 }}>{toast.msg}</div>}
 
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "3px solid #C8102E", padding: isMobile ? "12px 16px" : "0 28px", display: "flex", justifyContent: "space-between", alignItems: "center", height: isMobile ? "auto" : 64 }}>
@@ -877,7 +923,8 @@ export default function Cierres() {
                           <span style={{ fontSize: 11, color: "#9ca3af" }}>{c.fecha_cierre || ""}</span>
                         </div>
                       </div>
-                      {esAdmin && <div style={{ display: "flex", gap: 6 }}>
+                      {esAdmin && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "52%" }}>
+                        <button disabled={cancelando !== null} onClick={() => { setCancelacionError(null); setCierreACancelar(c); }} style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", borderRadius: 8, padding: "8px 10px", minHeight: 40, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", cursor: "pointer" }}>Cancelar cierre</button>
                         <button onClick={() => openEdit(c)} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Editar</button>
                         <button onClick={() => deleteCierre(c.id, c.propiedad)} style={{ background: "#fee2e2", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#991b1b" }}>X</button>
                       </div>}
@@ -1031,6 +1078,7 @@ export default function Cierres() {
                             <td style={{ padding: "9px 10px", fontSize: 12, fontWeight: 800, color: "#065f46" }}>{fmt(empNeto)}</td>
                             <td style={{ padding: "9px 10px" }}>
                               <div style={{ display: "flex", gap: 4 }}>
+                                {esAdmin && <button disabled={cancelando !== null} onClick={() => { setCancelacionError(null); setCierreACancelar(c); }} style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", borderRadius: 8, padding: "8px 10px", minHeight: 40, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", cursor: "pointer" }}>Cancelar cierre</button>}
                                 {esAdmin && <button onClick={() => openPago(c)} style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#065f46" }}>+ Pago</button>}
                                 {esAdmin && c.comision > 0 && c.cobrado > 0 && (
                                   <button onClick={() => descargarReciboComision(c)} style={{ background: "#fff0f2", border: "1px solid #fecdd3", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#C8102E" }}>Recibo</button>
@@ -1156,6 +1204,18 @@ export default function Cierres() {
         )}
       </div>
 
+      <section aria-label="Historial de cierres cancelados" style={{ padding: 16 }}>
+        <button onClick={() => setMostrarCancelados(v => !v)}>{mostrarCancelados ? 'Ocultar' : 'Mostrar'} cancelados ({cancelados.length})</button>
+        {mostrarCancelados && <><p>Historial excluido de totales, comisiones y KPIs. No modifica recibos ni firmas.</p>
+          {cancelados.map(c => <article key={c.id} style={{ padding: 12, borderBottom: '1px solid #ddd' }}>
+            <strong>Cancelado · #{c.id} · {c.propiedad}</strong>
+            <p style={{ fontSize: 14 }}>Asesor original: {c.vendedor || 'Sin asignar'} · Comisión histórica: {fmt(c.comision)}</p>
+            <p style={{ overflowWrap: 'anywhere' }}>{c.cancelacion_motivo}</p>
+            <small style={{ overflowWrap: 'anywhere' }}>Fecha: {new Date(c.cancelado_en).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })} · Canceló: {autores[c.cancelado_por] || c.cancelado_por}</small>
+          </article>)}
+        </>}
+      </section>
+      {cierreACancelar && adminActivo && <CierreCancellationDialog cierre={cierreACancelar} busy={cancelando !== null} error={cancelacionError} onClose={() => setCierreACancelar(null)} onConfirm={cancelarCierre} />}
       {/* Modal Nuevo/Editar Cierre */}
       {showModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 12 }}>

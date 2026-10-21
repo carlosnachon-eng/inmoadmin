@@ -1,0 +1,21 @@
+{
+  "dev_secret_probe_http": 200,
+  "zero_rows_requested": true,
+  "secret_printed": false,
+  "client_secret_matches": 0,
+  "javascript_tests": {
+    "passed": 25,
+    "failed": 0
+  },
+  "build": {
+    "exit_code": 0,
+    "static_pages": 81,
+    "warnings": "Font stylesheet optimization skipped: Google Fonts unavailable during build"
+  },
+  "main": "aeec321590c3f237d9ce0deedb37a1c020158dd3",
+  "merge_tree_exit": 0,
+  "recommendation": "NO MERGE",
+  "pending": [
+    "Committed cancellation history and post-commit visual exclusion in KPIs/reports/commissions on disposable isolated environment; permanent DEV fixture would violate zero-residue requirement"
+  ]
+}

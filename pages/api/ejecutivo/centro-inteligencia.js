@@ -63,7 +63,7 @@ async function cargarCierres(periodo, metrics) {
 
   const { data: cierres, error: cierresError } = await measure('cierres.periodo', () => supabase
     .from('cierres')
-    .select('id, fecha_cierre, operacion, precio, comision, cobrado, pendiente, cobrado_bool, vendedor, propiedad_id, recibo_id, firma_id, comision_inmobiliaria, monto_gerente')
+    .select('id, fecha_cierre, operacion, precio, comision, cobrado, pendiente, cobrado_bool, vendedor, propiedad_id, recibo_id, firma_id, comision_inmobiliaria, monto_gerente').eq('estado', 'activo')
     .gte('fecha_cierre', periodo.startDate)
     .lt('fecha_cierre', periodo.endExclusive)
     .order('fecha_cierre', { ascending: true }));
@@ -72,7 +72,7 @@ async function cargarCierres(periodo, metrics) {
 
   const { data: pagosPeriodo, error: pagosPeriodoError } = await measure('cierre_pagos.periodo', () => supabase
     .from('cierre_pagos')
-    .select('id, cierre_id, concepto, monto, fecha, notas')
+    .select('id, cierre_id, concepto, monto, fecha, notas, cierres!inner(estado)').eq('cierres.estado', 'activo')
     .gte('fecha', periodo.startDate)
     .lt('fecha', periodo.endExclusive)
     .order('fecha', { ascending: true }));
@@ -85,7 +85,7 @@ async function cargarCierres(periodo, metrics) {
   if (cierreIds.length > 0) {
     const { data, error } = await measure('cierre_pagos.cierres_periodo', () => supabase
       .from('cierre_pagos')
-      .select('id, cierre_id, concepto, monto, fecha, notas')
+      .select('id, cierre_id, concepto, monto, fecha, notas, cierres!inner(estado)').eq('cierres.estado', 'activo')
       .in('cierre_id', cierreIds));
 
     if (error) throw error;
@@ -266,7 +266,7 @@ async function cargarDatosOperativos(metrics) {
       .select('propiedad_id, envios(created_at)')),
     safe('operativo.recibos_apartado', () => supabase
       .from('recibos_apartado')
-      .select('id, folio, tipo, cliente_nombre, inmueble, propiedad_id, firma_id, estatus, monto, monto_total_acordado, apartado_vigencia_hasta, fecha_limite_firma, created_at, updated_at, recibos_abonos(id, monto, fecha, created_at)')
+      .select('id, folio, tipo, cliente_nombre, inmueble, propiedad_id, firma_id, estatus, monto, monto_total_acordado, apartado_vigencia_hasta, fecha_limite_firma, created_at, recibos_abonos(id, monto, fecha, created_at)')
       .neq('estatus', 'cancelado')
       .order('created_at', { ascending: false })),
     safe('operativo.firmas', () => supabase
@@ -280,11 +280,11 @@ async function cargarDatosOperativos(metrics) {
       .order('fecha', { ascending: true })),
     safe('operativo.cierres', () => supabase
       .from('cierres')
-      .select('id, propiedad, operacion, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, firma_id, propiedad_id')
+      .select('id, propiedad, operacion, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, firma_id, propiedad_id').eq('estado', 'activo')
       .order('fecha_cierre', { ascending: false })),
     safe('operativo.cierre_pagos', () => supabase
       .from('cierre_pagos')
-      .select('id, cierre_id, concepto, monto, fecha, notas')
+      .select('id, cierre_id, concepto, monto, fecha, notas, cierres!inner(estado)').eq('cierres.estado', 'activo')
       .order('fecha', { ascending: false })),
     safe('operativo.solicitudes_inquilino', () => supabase
       .from('solicitudes_inquilino')

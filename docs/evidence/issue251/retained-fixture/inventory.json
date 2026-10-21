@@ -1,0 +1,22 @@
+{
+  "config": [
+    "session_preload_libraries=supautils, safeupdate",
+    "statement_timeout=8s",
+    "lock_timeout=8s"
+  ],
+  "audit_count": 1,
+  "attempt_count": 1,
+  "payment_count": 0,
+  "preexisting_hash": "fc7bd96fc3fc8a889c96f8d759fb07ef",
+  "retained_fixture": {
+    "id": -252301,
+    "when": "2026-10-21T14:20:41.950374+00:00",
+    "actor": "e04ad988-7b62-49ee-9f70-184b31100519",
+    "label": "QA252 — NO REAL — RETENIDO AUTORIZADO",
+    "estado": "cancelado",
+    "reason": "QA252 — NO REAL. Cancelación de único fixture sintético retenido con autorización expresa del usuario el 21/10/2026 para certificar historial, KPIs, comisiones y reportes en DEV. Sin cobros ni pagos."
+  },
+  "attribution_count": 1,
+  "other_test_closures": 0,
+  "active_fixture_kpi_events": 0
+}

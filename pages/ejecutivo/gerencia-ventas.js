@@ -265,7 +265,7 @@ export default function GerenciaVentasDashboard() {
       const [profilesRes, partnersRes, cierresRes, citasRes, clientesRes, seguimientosRes, cartasRes, directoryRes] = await Promise.all([
         supabase.from("profiles").select("id, email, full_name, role_id, active, participa_kpis, created_at"),
         supabase.from("partner_users").select("email"),
-        supabase.from("cierres").select("id, anio, mes, propiedad, fecha_cierre, operacion, precio, comision, vendedor, notas, advisor_profile_id").gte("fecha_cierre", yearStart).lte("fecha_cierre", cierreQueryEnd),
+        supabase.from("cierres").select("id, anio, mes, propiedad, fecha_cierre, operacion, precio, comision, vendedor, notas, advisor_profile_id").eq('estado', 'activo').gte("fecha_cierre", yearStart).lte("fecha_cierre", cierreQueryEnd),
         supabase.from("citas").select("id, cliente_id, propiedad_id, asesor_id, fecha_hora, estado, created_at, updated_at").gte("fecha_hora", startDateTime).lt("fecha_hora", endExclusive.toISOString()),
         supabase.from("clientes").select("id, nombre, etapa_interes, asesor_id, created_at, updated_at"),
         supabase.from("seguimientos_cliente").select("id, cliente_id, asesor_id, tipo, created_at").gte("created_at", `${start}T00:00:00`),

@@ -1,0 +1,15 @@
+{
+  "changedFields": [
+    "estado",
+    "cancelado_en",
+    "cancelado_por",
+    "cancelacion_motivo"
+  ],
+  "unexpectedChanges": [],
+  "attributionUnchanged": true,
+  "preexistingUnchanged": true,
+  "auditCount": 1,
+  "paymentCount": 0,
+  "kpiEventsBefore": 1,
+  "kpiEventsAfter": 0
+}

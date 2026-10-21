@@ -1,0 +1,25 @@
+{
+  "project": "hjfwjnejbcpmknvfpdcq",
+  "fixture_ids": [
+    -252201,
+    -252202
+  ],
+  "remaining": {
+    "cierres": 0,
+    "payments": 0,
+    "cancel_audit": 0,
+    "commercial_attributions": 0,
+    "attribution_attempts": 0,
+    "auth_users": 0,
+    "profiles": 0,
+    "auth_sessions": 0,
+    "refresh_tokens": 0
+  },
+  "closure_md5_before": "fc7bd96fc3fc8a889c96f8d759fb07ef",
+  "closure_md5_after": "fc7bd96fc3fc8a889c96f8d759fb07ef",
+  "payment_md5_before": null,
+  "payment_md5_after": null,
+  "postgrest_tx_override": false,
+  "triggers_disabled": false,
+  "rls_disabled": false
+}

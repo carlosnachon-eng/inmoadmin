@@ -1,0 +1,119 @@
+{
+  "date": "2026-10-20",
+  "project": "hjfwjnejbcpmknvfpdcq",
+  "environment": "DEV only",
+  "original_head": "b3fee5890728f56ba9706053465254e24d7417ee",
+  "main_reviewed": "aeec321590c3f237d9ce0deedb37a1c020158dd3",
+  "original_dev_rerun": [
+    {
+      "result": {
+        "paid": "paid_blocked",
+        "first": "cancelado",
+        "second": "ya_cancelado",
+        "audit_events": 1,
+        "fixture_only": true,
+        "active_commission": 10000,
+        "control_unchanged": true,
+        "preserved_historical_commission": true
+      }
+    }
+  ],
+  "extended_dev": [
+    {
+      "result": {
+        "result": "PASS",
+        "idempotent": true,
+        "fixture_ids": [
+          -251960,
+          -251961,
+          -251962,
+          -251963
+        ],
+        "paid_blocked": true,
+        "single_audit": true,
+        "authorization": "claim_simulation_not_browser_auth",
+        "control_preserved": true,
+        "kpi_event_excluded": true,
+        "rollback_mandatory": true,
+        "kpi_rpc_income_delta": 22000,
+        "attribution_preserved": true,
+        "zero_movement_preserved": true,
+        "all_preexisting_closures_unchanged": true
+      }
+    }
+  ],
+  "effective_dev_rls": [
+    {
+      "result": {
+        "result": "PASS",
+        "authorization": "sql_roles_and_claims_not_browser_auth",
+        "rollback_mandatory": true,
+        "advisor_write_denied": true,
+        "anon_read_write_denied": true,
+        "admin_create_read_update": true,
+        "authenticated_truncate_denied": true
+      }
+    }
+  ],
+  "cleanup_and_acl": [
+    {
+      "evidence": {
+        "audit_rls": true,
+        "payments_rls": true,
+        "fixture_audits": 0,
+        "anon_cancel_rpc": false,
+        "fixture_cierres": 0,
+        "fixture_attempts": 0,
+        "fixture_payments": 0,
+        "migration_history": [
+          {
+            "name": "cierre_cancelacion_auditada",
+            "version": "20261019195754"
+          },
+          {
+            "name": "cierre_cancelacion_preservar_movimientos",
+            "version": "20261020234617"
+          },
+          {
+            "name": "cierre_cancelacion_serializar_origen",
+            "version": "20261020235130"
+          },
+          {
+            "name": "cierre_pagos_autorizacion_activa",
+            "version": "20261020235432"
+          },
+          {
+            "name": "cierre_historial_privilegios",
+            "version": "20261020235701"
+          }
+        ],
+        "anon_payments_select": false,
+        "fixture_attributions": 0,
+        "anon_cierres_truncate": false,
+        "authenticated_audit_insert": false,
+        "authenticated_cierres_truncate": false,
+        "authenticated_payments_truncate": false
+      }
+    }
+  ],
+  "local_postgres": {
+    "status": "PASS",
+    "checks": 55
+  },
+  "javascript": {
+    "status": "PASS",
+    "tests": 25
+  },
+  "build": {
+    "status": "PASS",
+    "static_pages": 81,
+    "dummy_credentials": true
+  },
+  "browser": {
+    "synthetic_desktop": "executed",
+    "synthetic_mobile": "executed at 390x844",
+    "authenticated_dev": "PENDING: preview login; no DEV browser session",
+    "production": "not accessed"
+  },
+  "recommendation": "NO MERGE until authenticated DEV QA"
+}

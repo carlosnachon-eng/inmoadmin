@@ -1,0 +1,431 @@
+CERTIFICACIÓN FINAL CON FIXTURE RETENIDO AUTORIZADO — 2026-10-21
+RECOMENDACIÓN TÉCNICA: MERGE. NO se realizó merge, despliegue ni migración productiva.
+
+AUTORIZACIÓN Y ESTADO DEV
+- El usuario autorizó expresamente conservar UN único fixture sintético cancelado
+  y su auditoría en DEV, sustituyendo sólo para él el requisito de cero residuos.
+- Cierre -252301: QA252 — NO REAL — RETENIDO AUTORIZADO. Comisión 252,
+  comisión vendedor 50.40, cobrado/pagos cero. Propiedad y asesor sintéticos
+  preexistentes DEV reutilizados; no se creó otra propiedad, usuario o equipo.
+- Retención esperada: 1 cierre cancelado, 1 auditoría, 1 atribución canónica y
+  1 intento de atribución asociado. Cero pagos y cero otros cierres de prueba.
+  NO borrar, reactivar ni deshabilitar triggers para limpiar este registro.
+
+PRUEBA PERSISTENTE REAL COMPLETADA
+- Sesión administrativa real, página original /cierres, backend DEV exclusivo
+  hjfwjnejbcpmknvfpdcq. Motivo y casilla explícita. Sin rollback ni simulación
+  de sesión/cliente/respuesta. Cancelación confirmada 2026-10-21 08:20:41 CDMX.
+- Auditoría: actor e04ad988-7b62-49ee-9f70-184b31100519, fecha y motivo idénticos
+  a la fila. Repetición RPC autenticada: ya_cancelado; sigue una sola auditoría.
+- Comparación exacta: únicamente cambian estado, cancelado_por, cancelado_en y
+  cancelacion_motivo. Atribución completa idéntica, vendedor Ivan e importes
+  originales conservados. Preexistentes hash fc7bd96fc3fc8a889c96f8d759fb07ef.
+- Historial real después de recargar: Cancelado #-252301, etiqueta NO REAL,
+  asesor original, comisión histórica 252, motivo, fecha CDMX y autor UUID.
+  Autor UUID es el respaldo previsto cuando no hay nombre disponible.
+  Verificado en Chrome escritorio y viewport móvil 390x844.
+- Antes: Scoreboard Ventas Puebla 1 operación/252; RPC KPI 1/252, evento presente;
+  BI/Centro generado 252, pendiente 252, costo directo 50.40.
+- Después de COMMIT y recarga: Scoreboard 0/0; ambas RPC KPI excluyen fixture;
+  BI y Centro HTTP 200, generado/cobrado/pendiente/costos 0, sin evento/alerta
+  del fixture. Ejecutivo octubre 0; acumulado conserva 22000 preexistentes.
+- Comisiones activas /cierres: vendedor y pendiente vendedor pasan de 50.40 a
+  cero. Historial conserva la comisión histórica. No se cambió ninguna comisión
+  pagada. /comisiones administra contratos, no consume cierres; no se confunde
+  su cálculo independiente con comisiones comerciales del cierre.
+- Recibo de comisión: antes 400 por no cobrado; después 404 por cancelado.
+  No genera PDF/documento para el cierre cancelado. No había recibo/firma
+  asociados al fixture manual; ningún documento real fue alterado.
+- Semanal: handler original y cliente DEV real pasan de 1/252 a 0/0; sólo el
+  transporte de correo se intercepta localmente. Cero correos enviados.
+  No es una prueba HTTP completa del cron ni se declara como tal.
+- Observador local de lecturas/RPC idempotente retirado; utilizaba sesión
+  real, sin respuestas simuladas, credenciales privilegiadas ni bypass.
+
+VALIDACIONES CONSERVADAS Y ALCANCE
+- 25/25 JS y regresiones financieras PASS; build 81/81 PASS después del último
+  cambio de producto (9a1a858). Esta fase sólo añade evidencia/documentación;
+  no se repiten pruebas de build por cambios documentales.
+- 55 controles PostgreSQL locales previos PASS: autorización activa, ACL/RLS,
+  inmutabilidad, idempotencia, pagos y carreras con bloqueo observado. Las
+  pruebas de concurrencia inicial son locales, no una nueva carrera HTTP DEV.
+- QA DEV previa: no-admin real 403 solo_admin, UI acceso restringido; sin token
+  o token inválido 401 en reportes; pago sintético asociado rechazado. Cuenta,
+  sesiones y fixtures anteriores ya eliminados; no se recrearon en esta fase.
+- main aeec321: fetch y merge-tree sin conflictos; no merge/rebase.
+- Pendientes no bloqueantes: navegadores distintos de Chrome y dispositivos
+  físicos. No se declara PASS sobre ellos. Bootstrap automático de ramas
+  Supabase sigue fallando por baseline histórica; ya no bloquea esta QA,
+  completada en DEV con la excepción de retención autorizada.
+
+EVIDENCIA Y SIGUIENTE PASO
+- docs/evidence/issue251/retained-fixture/: snapshots antes/después, diff de
+  preservación, HTTP real, idempotencia, inventario y capturas desktop/móvil.
+- Recomendación MERGE para revisión/autorización humana. PR permanece draft
+  mientras el usuario decide; no se marca listo ni se fusiona automáticamente.
+- Preparación productiva A–F y cinco migraciones en orden antes del código
+  (más abajo) siguen vigentes, con autorización INDEPENDIENTE. Este cierre de
+  QA satisface el gate DEV; no autoriza ejecutar ninguna etapa productiva.
+- Nunca usar #943/#950 reales para smoke tests. Producción no consultada ni
+  modificada. No intervención en canales de mensajería o redes sociales.
+
+Las secciones siguientes son evidencia histórica. Sus NO MERGE y pendientes
+previos quedan sustituidos por esta certificación final y la retención autorizada.
+
+INTENTO DE CERTIFICACIÓN EN RAMA DESECHABLE — 2026-10-21
+ESTADO: NO MERGE; escenario persistente todavía NO ejecutado.
+
+- Rama Supabase hija de DEV hjfwjnejbcpmknvfpdcq, sin datos copiados:
+  qa-pr252-cancelacion-desechable, ref akjvmlvdgryjckxmivco.
+- La creación devolvió CREATING_PROJECT; después MIGRATIONS_FAILED.
+  Consulta en la rama: cero tablas public, cero migraciones aplicadas,
+  sin tabla cron.job. No se configuró la aplicación contra esta rama,
+  no se crearon usuarios/fixtures y no se ejecutó cancelación COMMIT.
+- Brecha identificada: historial DEV empieza en condominium_transition_viewer;
+  exige roles/profiles/modelo condominal, ausentes en instalación vacía.
+  supabase/baselines/README.md documenta baselines aplicados manualmente
+  fuera del historial y prohíbe su repetición en DEV/Producción. No se obtuvo
+  log detallado del runner: el diagnóstico se basa en estado/catalogo,
+  precondiciones de la primera migración y documentación del repositorio.
+- No se reparó historial ni se reaplicó ninguna migración en DEV/Producción.
+  No se reconstruyó un esquema reducido para declararlo equivalente a DEV.
+- Rama temporal eliminada correctamente por delete_branch. list_branches
+  posterior: sólo registro main predeterminado, asociado a DEV; cero ramas
+  temporales. Supabase registró ese main al iniciar branching; no eliminar
+  el registro predeterminado como si fuera un fixture.
+- Verificación DEV posterior: dos cierres, cero cancelados, cero fixtures;
+  hash fc7bd96fc3fc8a889c96f8d759fb07ef, idéntico al previo.
+- Evidencia: docs/evidence/issue251/disposable-branch-attempt/results.json.
+- Pendiente decisión sobre ampliar trabajo a bootstrap del entorno aislado
+  o permitir retención explícita de un fixture inmutable en DEV. El requisito
+  actual de cero residuos sigue vigente hasta que el usuario lo cambie.
+- Producción no consultada ni modificada. Sin merge ni despliegue de la app.
+
+QA AUTENTICADA DEV CON CLAVE DE SERVIDOR — 2026-10-21 (America/Mexico_City)
+ESTADO ACTUAL: NO MERGE; acceso financiero, móvil y no-admin ya comprobados.
+
+- Clave Secret DEV validada sin mostrarla: GET cierres select=id limit=0,
+  HTTP 200. Archivo local ignorado por Git, modo 600; cero coincidencias del
+  valor secreto en .next/static. Ninguna variable remota/Vercel modificada.
+- Misma rama/PR. Dependencias temporales restauradas desde pnpm-lock.yaml,
+  instalación congelada. Servidor loopback 127.0.0.1:3252, DEV exclusivo.
+- CORRECCIÓN: Centro de Inteligencia solicitaba recibos_apartado.updated_at,
+  columna inexistente en DEV. Se retira de SELECT; el lector ya respalda
+  fecha_referencia con created_at. La misma pantalla deja de anunciar fuente
+  fallida, sin cambiar autorización, RLS, migraciones ni atribución.
+- PASS admin real, browser->API->DEV->UI: BI y Centro de Inteligencia HTTP 200;
+  dos fixtures activos octubre, generado 31000, cobrado 100, pendiente 30900.
+  Ejecutivo coincide. Tras limpiar y recargar BI: 0/0/0, cero registros octubre.
+- PASS recibos HTTP reales: fixture sin cobro 400; fixture con cobro 200,
+  application/pdf, cabecera %PDF-, 8026 bytes. Solo documento en memoria;
+  ningún recibo, depósito, cobro ni pago real modificado.
+- PASS móvil autenticado, viewport DOM comprobado 390 (capturas 390x844):
+  botón en tarjeta, diálogo íntegro, motivo vacío/corto bloqueado, motivo
+  válido sin casilla bloqueado, casilla habilita envío, Volver sin cambios.
+  Pago sintético asociado: rechazo real y mensaje legible dentro del modal.
+  No se ejecutó cancelación exitosa móvil persistente.
+- PASS no-admin real: cuenta temporal DEV explícitamente autorizada por usuario,
+  rol asesor, activa. Acceso restringido en /cierres, sin botón. Login real
+  y RPC directa con JWT real: 403, 42501, solo_admin. API BI también 403.
+- Reporte semanal con handler real y cliente DEV real: 200 equivalente,
+  1 cierre/22000 según whitelist de asesores existente (Ivan incluido,
+  Carlos excluido). No equivale al total BI de todos los asesores (31000).
+  Primer assert esperaba erróneamente el total BI; ajustado al alcance real
+  y repetido satisfactoriamente, sin cambiar reglas ni atribuciones.
+  Solo transporte de correo interceptado localmente; cero correos enviados.
+  Esta comprobación NO es HTTP E2E del cron.
+- 25/25 pruebas JS y regresiones financieras PASS después de la corrección.
+  Build PASS, 81/81 páginas. Avisos no bloqueantes: optimización de fuentes
+  Google omitida por falta de acceso y aviso Node de tipo de módulo en tests.
+  No se ejecutó deploy. main aeec321: merge-tree sin conflictos, sin merge.
+- Limpieza MCP verificada: fixtures -252201/-252202, pago sintético, intentos,
+  atribuciones y auditorías: todos cero. Cuenta Auth eliminada después de
+  logout global 204; DELETE 200 y consulta posterior 404. SQL confirma cero
+  usuario/perfil/sesiones/refresh tokens. Credenciales temporales borradas.
+  Hash cierres antes/después fc7bd96fc3fc8a889c96f8d759fb07ef; pagos nulos
+  antes/después. Config PostgREST original, triggers y RLS intactos.
+- Página observadora local de lecturas HTTP retirada antes de compilar; no
+  sustituía cliente, sesión, respuestas ni permisos; ningún bypass al producto.
+- Evidencia: docs/evidence/issue251/dev-server-key-qa/.
+
+PENDIENTE QUE BLOQUEA MERGE
+La sesión admin real y el acceso financiero ya no son bloqueos. Falta observar
+una cancelación COMMIT persistida y su historial/exclusión visual después de
+recargar KPIs/reportes/comisiones. Las pruebas SQL transaccionales previas y
+unitarias verifican exclusión e idempotencia, pero no sustituyen ese escenario.
+El trigger impide borrar un cierre cancelado y su auditoría. No se debe apagar
+para limpiar fixtures. Completar esta certificación en un entorno desechable
+separado que pueda destruirse íntegro, o acordar explícitamente retención de
+un fixture inmutable; no ejecutar esa prueba persistente en DEV compartido
+bajo el requisito actual de cero residuos. No declarar PASS no ejecutado.
+
+PRODUCCIÓN INTACTA. #943/#950 reales no tocados. Sin merge ni despliegue.
+Las secciones siguientes conservan las revisiones previas; los pendientes de
+clave, móvil y no-admin allí descritos quedan sustituidos por lo anterior.
+
+QA AUTENTICADA DEV — actualización 2026-10-21 (America/Mexico_City)
+ESTADO ACTUAL: NO MERGE; certificación parcial, pendientes explícitos.
+
+- Rama real 0ebbb32c, servidor local 127.0.0.1:3252, proyecto DEV exclusivo
+  hjfwjnejbcpmknvfpdcq. Sesión administrativa real del usuario en Chrome.
+- PASS escritorio: botón por fila, identidad y asesor original en diálogo,
+  motivo vacío/corto bloqueado, confirmación desmarcada bloqueada.
+- PASS HTTP autenticado: cancelar_cierre(-252101) respondió 200/cancelado,
+  interfaz mostró éxito. Prueba con Prefer: tx=rollback, no commit.
+  SQL posterior: tres fixtures activos, cero auditorías persistidas.
+- PASS rechazo financiero: fixture -252103 con pago sintético de 100;
+  RPC 400/cobros_requieren_conciliacion y error legible dentro del diálogo.
+- Instrumentación LOCAL temporal añadió rollback SOLO para esos tres IDs;
+  sesión, autorización, RPC y reglas reales. No simuló respuestas ni permisos.
+  El header Preference-Applied no es visible por CORS: verificación por SQL.
+  Un primer intento produjo error local al exigir ese header; corregido el
+  observador temporal y repetida la prueba. No fue un fallo del producto.
+- NO certificado: persistencia tras commit, historial cancelado persistente,
+  exclusión visual posterior en KPIs/reportes/comisiones y usuario no admin.
+  El rollback no puede certificar estos escenarios. No se confirmó cancelación
+  sintética permanente porque el historial inmutable impediría su limpieza.
+- Móvil autenticado PENDIENTE: override solicitado no produjo viewport móvil
+  verificable; capturas de esta sesión son de escritorio. QA móvil local
+  anterior se conserva como evidencia distinta, no como sesión DEV real.
+- Reportes financieros PENDIENTES: falta clave de servidor DEV válida.
+  CLI oficial 2.121 con --reveal terminó sin access token, incluso después
+  de la autorización del Llavero. Dashboard no entregó la clave existente.
+  No se crearon/rotaron claves ni se relajaron autorizaciones.
+- Limpieza 2026-10-21 autorizada por usuario y ejecutada desde SQL Editor DEV
+  al fallar el conector: cero cierres/pagos/auditorías/atribuciones/intentos
+  para -252101/-252102/-252103. Config pgrst.db_tx_end restablecida al valor
+  previo (ausente). Sin deshabilitar triggers ni modificar RLS.
+  Hash cierres antes/después: fc7bd96fc3fc8a889c96f8d759fb07ef.
+- Instrumentación temporal retirada; lib/supabase.js restaurado idéntico a HEAD.
+  Cambios de esta actualización: solo documentación y evidencia.
+- Evidencia: docs/evidence/issue251/authenticated/ (capturas + resultado SQL).
+- No Producción, no cierres reales, no merge, no despliegue.
+- Se conservan resultados previos: 55 checks PostgreSQL, 25 JS y build PASS;
+  no se reejecutan por esta actualización exclusivamente documental.
+
+La revisión anterior que sigue es histórica; su pendiente de sesión se
+sustituye por el alcance parcial descrito arriba. Recomendación NO MERGE
+hasta cerrar los escenarios pendientes sin vulnerar la inmutabilidad.
+
+REVALIDACIÓN DEL PR #252 — 2026-10-20 (America/Mexico_City)
+ESTADO ACTUAL: NO MERGE. Falta QA autenticada real en DEV, escritorio/móvil.
+La QA sintética local NO sustituye esa comprobación.
+
+RECUPERACIÓN Y COMPATIBILIDAD
+- Se retomó codex/issue-251-cancelar-cierre, commit b3fee589; mismo PR #252.
+- Issue #251 sin comentarios; revisados descripción, cambios, commit y los dos
+  comentarios del PR (bot de preview y gate de QA del propietario).
+- main revisado: aeec321590c3f237d9ce0deedb37a1c020158dd3. Sus tres commits
+  posteriores a bd0631d no cruzan cierres. git merge-tree --write-tree entre
+  las ramas terminó sin conflictos; no se realizó merge ni rebase.
+- La copia local anterior tenía objetos ilegibles. Se recuperó la MISMA rama
+  mediante un clone limpio; no se reinició la implementación.
+
+CORRECCIONES DE ESTA REVISIÓN
+1. Modal accesible con motivo obligatorio (10–1000), casilla explícita,
+   identificación del cierre y asesor, Volver sin cambios y botón Confirmar
+   cancelación. Permisos del hook central: administrador activo e interno.
+   Exclusión mutua inmediata del envío, además de la idempotencia del backend.
+2. Error dentro del modal: la QA móvil detectó que un toast externo quedaba
+   oculto por el dialog nativo. Rechazo por cobros y error genérico vueltos a probar
+   visualmente después de corregirlo (ver capturas).
+3. Historial con asesor y comisión originales, motivo, fecha CDMX y nombre
+   del autor cuando sus permisos permiten consultarlo; UUID como respaldo.
+4. Captura de errores de carga, sin anunciar datos vacíos como carga exitosa.
+5. Conservación de movimientos de monto cero tras cancelación: antes podían
+   borrarse. Ahora INSERT/UPDATE/DELETE de pagos se serializan con el cierre.
+   Las reglas aprobadas de cobros/pagos de monto distinto de cero no cambian.
+6. Carrera de regeneración por firma: si la inserción de otro cierre gana,
+   la cancelación se rechaza por origen ambiguo. Si la cancelación gana,
+   la inserción se bloquea. Pruebas con esperas reales de lock en ambos órdenes.
+7. Bloqueo compartido del perfil administrador durante la transacción:
+   la desactivación no puede rebasar una autorización ya en ejecución.
+8. Pagos en Panel, Ejecutivo, BI y Centro de Inteligencia ahora requieren
+   cierre activo, incluso en eventos y conteos. Se conservan cobros actuales
+   de cierres activos de meses anteriores; no se limita por fecha del cierre.
+9. Advisor detectó cierre_pagos con RLS OFF y grants anónimos de lectura y
+   escritura. Se activó RLS: lector interno activo y cierre visible conforme
+   al RLS del padre; escritura sólo admin activo. Políticas restrictivas
+   impiden que otra política permisiva amplíe ese alcance. Se retiraron
+   grants anónimos y privilegios TRUNCATE/REFERENCES/TRIGGER de roles API.
+   También se retiraron esos privilegios de cierres. RLS no protege TRUNCATE.
+
+EVIDENCIA EJECUTADA ACTUAL
+- JavaScript: 25/25 PASS (7 de cancelación/consumidores y 18 regresiones del
+  núcleo financiero/UI de condominios). Prueba de reporte semanal con fetch
+  interceptado: NO se envió correo. BI ejecuta el handler y helpers reales
+  con cliente en memoria. Recibo de comisión rechaza un cierre cancelado.
+- PostgreSQL local desechable: 55 controles PASS, con roles anon/authenticated,
+  perfiles admin/asesor/inactivo, dos conexiones concurrentes y un observador
+  de locks. Cinco migraciones aplicadas juntas. Incluye carreras de pago,
+  firma y desactivación; auditoría, inmutabilidad, ACL/RLS, origen, rollback,
+  atribución, control y operaciones normales de pagos activos.
+- Build Next.js 14.1.0: PASS, 81/81 páginas estáticas; credenciales ficticias,
+  sin claves productivas ni consultas de datos reales para la compilación.
+- DEV: repetida la prueba original con ROLLBACK: cancelado/ya_cancelado,
+  un evento, cobros bloqueados, control intacto, comisión vigente 10000.
+- DEV extendido con ROLLBACK: RPC get_sales_kpis_by_scope disminuyó exactamente
+  22000 sintéticos; vista y RPC de eventos excluyen el cierre cancelado.
+  Atribución idéntica, control idéntico y comparación de todos los cierres
+  preexistentes antes/después sin diferencias. Sin recibos/firmas sintéticos.
+- DEV RLS con SET LOCAL ROLE y claims simulados: admin crea/lee/actualiza
+  un movimiento sintético; asesor no inserta/actualiza/borra; anon no lee ni
+  inserta; authenticated sin TRUNCATE. No son sesiones de navegador reales.
+- Consulta final: 0 cierres, 0 auditorías, 0 pagos, 0 atribuciones y 0 intentos
+  de atribución de los fixtures. Tablas temporales y funciones de prueba
+  creadas dentro de las transacciones desaparecen con ROLLBACK.
+- Producción no se conectó ni modificó en esta revisión. #943/#950 reales,
+  comisiones pagadas, depósitos, recibos y documentos productivos intactos.
+
+QA VISUAL EJECUTADA Y LÍMITES
+- Chrome escritorio (viewport normal 1425x722) y móvil 390x844.
+- Página REAL copiada a una app Next temporal; cliente de Supabase y sesión
+  SIMULADOS, sin credenciales y con banner de QA sintética. No se incorporó
+  ningún bypass a la app desplegable. Runner y fixtures bajo tests/.
+- Ejecutados: activos por defecto; botón de cancelación; motivo vacío/corto
+  bloqueado; motivo válido sin casilla bloqueado; cancelación sintética;
+  totales 32000 -> 10000; comisión de vendedores 6400 -> 2000; historial con
+  atribución/autor; rechazo por cobros y error genérico visibles dentro del
+  modal; asesor con permiso de lectura sin acciones admin; admin inactivo
+  sin acceso. Historial legible y botones adaptados en móvil.
+- Capturas y logs: docs/evidence/issue251/. results.json distingue SQL real,
+  roles/claims simulados, PostgreSQL local y navegador sintético.
+- Preview del PR: https://inmoadmin-git-codex-issue-251-82ff94-carlosnachon-engs-projects.vercel.app
+  Se observó Acceso restringido en /cierres y formulario de login en /.
+  No había sesión DEV disponible. No se inició sesión ni se ejecutaron
+  operaciones en ese preview; tampoco se certificó su conexión a DEV.
+- PENDIENTE: sesión real de usuario de prueba contra hjfwjnejbcpmknvfpdcq,
+  Admin/no-Admin, desktop/móvil, RPC por HTTP, RLS de documentos/recibos y
+  actualización de pantallas financieras con datos DEV. No declarar PASS.
+- PENDIENTE: matriz de navegadores distinta de Chrome y dispositivos físicos.
+
+SEGURIDAD / ADVISORS
+- Reconsultado advisor después de activar RLS. Ya no reporta cierre_pagos
+  con RLS desactivado. Avisos del alcance restantes intencionales:
+  * auditoría privada RLS sin políticas: niega acceso directo.
+    https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+  * RPC SECURITY DEFINER ejecutable por authenticated: API deliberada que
+    valida auth.uid, perfil admin activo y search_path vacío.
+    https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable
+- Persisten avisos de otras tablas/funciones fuera del alcance. No se declara
+  una certificación de seguridad de toda la base de datos.
+- No se deshabilitó el trigger de atribución ni se modificaron sus funciones.
+  Resolver/backfill de atribución siguen pudiendo leer historia: las vistas
+  y RPC de KPI filtran estado; la atribución histórica no se elimina.
+
+MIGRACIONES Y DESPLIEGUE PREPARADO — NO EJECUTADO EN PRODUCCIÓN
+Orden obligatorio del repositorio:
+  1. 20261019195353_cierre_cancelacion_auditada.sql (original del PR)
+  2. 20261020234412_cierre_cancelacion_preservar_movimientos.sql
+  3. 20261020234923_cierre_cancelacion_serializar_origen.sql
+  4. 20261020235219_cierre_pagos_autorizacion_activa.sql
+  5. 20261020235638_cierre_historial_privilegios.sql
+Todas aplicadas sólo en DEV. El conector registra timestamps de aplicación
+propios (ver results.json); conciliar por nombre/definición, NO asumir que
+el historial DEV tiene los timestamps de los archivos. No ejecutar un
+supabase db push masivo para intentar corregir esa diferencia.
+
+Procedimiento futuro, sujeto a autorización INDEPENDIENTE:
+A. Completar primero el gate autenticado DEV y revisión del PR. Obtener la
+   autorización separada de merge, migración, despliegue y habilitación.
+B. Confirmar proyecto destino explícito, respaldo restaurable y snapshots de
+   definiciones, grants, políticas, triggers y totales vigentes. Verificar la
+   dependencia profiles_is_active_internal_reader y las políticas de cierres;
+   comprobar que los administradores autorizados conservan lectura del padre.
+C. Aplicar exclusivamente los cinco scripts revisados, EN ORDEN, de forma
+   transaccional antes del código. No hay backfill que cancele cierres.
+   Si aún no está autorizada la habilitación, revocar EXECUTE de authenticated
+   en cancelar_cierre dentro de la MISMA transacción antes de COMMIT; el código
+   viejo no debe operar cancelaciones ni exponer una ventana de habilitación.
+D. Verificar ACL/RLS, trigger de atribución habilitado, definición de vista,
+   KPIs y cierres activos intactos. No usar fixtures ni cancelar cierres reales
+   como smoke test de Producción. Detenerse ante diferencias no explicadas.
+E. Con autorización de publicación, desplegar código que usa estado='activo'.
+   Verificar lecturas y permisos; con autorización de habilitación, conceder
+   EXECUTE a authenticated manteniendo la validación de admin de la RPC.
+   Recién entonces evaluar el gate final; NO cancelar #943 ni otra operación
+   como parte de este procedimiento. Esa acción tendría autorización propia.
+F. Si falla la migración, ROLLBACK transaccional. Después de cancelaciones,
+   no regresar al código anterior ni borrar auditorías/reactivar filas. Ante
+   incidente, suspender nuevas cancelaciones mediante ACL con autorización
+   y corregir hacia adelante. RLS nunca se apaga para hacer pasar pruebas.
+
+REPRODUCCIÓN DE ESTA REVISIÓN
+node --test tests/cierreCancellation.test.mjs tests/cierreCancellationFinancial.test.mjs tests/condominiumFinancialCoreV1.test.mjs tests/condominiumFinancialAdminUi.test.mjs
+IG_PG_DEPS=<directorio con pg> IG_PG_BIN=<binarios PostgreSQL> node tests/cierreCancellationPostgres.mjs
+DEV ONLY: tests/cierreCancellationDEV.sql, cierreCancellationDEVExtended.sql,
+  cierreCancellationDEVRLS.sql, seguidos de cierreCancellationCleanup.sql.
+QA sintética: node tests/cierreCancellationVisualServer.mjs y abrir
+  http://127.0.0.1:3251/cierres (roles advisor/inactive vía query; rpc-error).
+El runner crea una app temporal; detenerlo elimina ese directorio.
+
+RECOMENDACIÓN FINAL: NO MERGE mientras falte QA autenticada DEV.
+No se realizó merge, despliegue manual ni ninguna modificación productiva.
+
+---------------- EVIDENCIA ORIGINAL CONSERVADA (2026-10-19) ----------------
+
+Issue #251 — cancelación auditada de cierres
+Fecha: 2026-10-19. Base main: bd0631d.
+
+ALCANCE
+RPC cancelar_cierre sólo para perfil admin activo; motivo obligatorio; bloqueo
+de fila; auditoría privada append-only; idempotencia por cierre. No modifica
+atribución comercial, recibo, firma ni montos históricos. Cobros/pagos existentes
+requieren conciliación y bloquean cancelación. Los pagos nuevos se serializan
+contra la cancelación. No permite reactivar ni regenerar el mismo origen.
+UI conserva activos por defecto y ofrece historial cancelado separado.
+Consumidores financieros y v_commercial_kpi_events excluyen cancelados.
+Las RPC de KPIs existentes consumen esa vista; no se reescriben.
+
+EVIDENCIA EJECUTADA
+- node --test tests/cierreCancellation.test.mjs: 4/4 PASS.
+- tests/cierreCancellationPostgres.mjs: 23 comprobaciones PASS en PostgreSQL
+  local desechable, con roles authenticated/anon y dos conexiones concurrentes.
+  Incluye doble cancelación, no-admin, motivo inválido, mutación directa,
+  pago previo, carreras pago/cancelación en ambos órdenes, rollback,
+  recreación por recibo/firma, auditoría inmutable, KPI y atribución conservada.
+- Build Next.js completo: PASS, 81/81 páginas; credenciales dummy sin servicios
+  externos. Advertencias de descarga de Google Fonts (optimización omitida).
+- Migración 20261019195353_cierre_cancelacion_auditada aplicada SÓLO en
+  Supabase DEV hjfwjnejbcpmknvfpdcq.
+- tests/cierreCancellationDEV.sql ejecutado en DEV con ROLLBACK:
+  first=cancelado, second=ya_cancelado, audit_events=1, paid=paid_blocked,
+  active_commission=10000, control_unchanged=true,
+  preserved_historical_commission=true.
+- Consulta posterior: cero cierres y cero auditorías residuales para los tres
+  IDs negativos de fixture. Los cierres reales 943 y 950 no fueron modificados.
+- ACL DEV: anon sin EXECUTE, authenticated sin INSERT directo en auditoría.
+
+ADVISORS DEV
+INFO RLS sin políticas en cierre_audit_private.cancelaciones: intencional,
+deniega acceso directo; sólo RPC SECURITY DEFINER con comprobación de admin.
+WARN RPC SECURITY DEFINER ejecutable por authenticated: intencional; permisos
+efectivos se validan dentro de la RPC y el search_path es vacío.
+Referencias:
+https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+Existen avisos de otras tablas fuera del alcance; no se corrigieron aquí.
+
+REPRODUCCIÓN LOCAL
+node --test tests/cierreCancellation.test.mjs
+IG_PG_DEPS=<directorio con paquete pg> IG_PG_BIN=<binarios postgres>
+  node tests/cierreCancellationPostgres.mjs
+El runner crea y elimina su propia base local; no acepta URL remota.
+
+PENDIENTE ANTES DE PRODUCCIÓN
+1. Revisión del PR y QA visual autenticada en DEV (desktop/móvil); no se
+   declara completada una prueba de navegador sólo por el build.
+2. Autorización explícita de migración y deployment productivos.
+3. Respaldar definición de v_commercial_kpi_events y esquema antes de aplicar.
+   Aplicar la migración completa de forma transaccional ANTES del código:
+   las consultas nuevas requieren la columna estado.
+4. Verificar ACL/RLS, trigger de atribución intacto y KPIs de activos.
+5. La cancelación REAL de #943 es una acción posterior con autorización propia;
+   no forma parte de esta implementación ni de la migración.
+
+ROLLBACK
+Si falla la aplicación transaccional de la migración: ROLLBACK completo.
+Tras commit, no borrar auditoría ni reactivar filas automáticamente. No volver
+al código anterior si hay cancelaciones: volvería a incluirlas en KPIs.
+Ante incidente posterior, suspender nuevas cancelaciones (revocar EXECUTE de
+authenticated) con autorización, conservar datos y corregir hacia adelante.
+No se realizó merge, deployment ni cambio en Producción.

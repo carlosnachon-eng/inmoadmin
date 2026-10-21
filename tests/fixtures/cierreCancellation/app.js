@@ -1,0 +1,1 @@
+export default function App({ Component, pageProps }) { return <><div style={{background:'#172554',color:'white',padding:8,fontFamily:'system-ui',fontSize:12}}>QA LOCAL SINTÉTICA · Sin conexión a DEV/Producción · Sesión simulada</div><Component {...pageProps}/></>; }

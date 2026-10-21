@@ -1,0 +1,38 @@
+{
+  "project": "hjfwjnejbcpmknvfpdcq",
+  "fixture": -252301,
+  "user_authorized_retention": true,
+  "committed": true,
+  "mocked_auth_or_data": false,
+  "retained": {
+    "cancelled_closure": 1,
+    "audit": 1,
+    "canonical_attribution": 1,
+    "attribution_attempt": 1,
+    "payments": 0
+  },
+  "kpi_before": {
+    "closures": 1,
+    "income": 252
+  },
+  "kpi_after": {
+    "closures": 0,
+    "income": 0
+  },
+  "seller_commission_active_before": 50.4,
+  "seller_commission_active_after": 0,
+  "repeat_result": "ya_cancelado",
+  "audit_count_after_repeat": 1,
+  "preexisting_closure_md5": "fc7bd96fc3fc8a889c96f8d759fb07ef",
+  "browser": "Chrome desktop and 390x844 emulation",
+  "unit_tests_latest": 25,
+  "build_static_pages_latest": 81,
+  "local_postgres_checks_prior": 55,
+  "code_changed_this_phase": false,
+  "recommendation": "MERGE subject to human authorization; no merge/deploy performed",
+  "limitations": [
+    "Physical devices and other browsers untested",
+    "Weekly report mail transport intercepted; no cron HTTP/send E2E",
+    "Automatic disposable Supabase branch bootstrap remains a separate issue"
+  ]
+}

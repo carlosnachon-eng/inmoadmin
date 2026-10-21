@@ -1,0 +1,13 @@
+Browser tab: 1877943863, Title: "Untitled query | SQL Editor | inmoadmin-dev | Emporio Inmobiliario | Supabase", URL: "https://supabase.com/dashboard/project/hjfwjnejbcpmknvfpdcq/sql/554f0d1f-9e9a-4e7f-97cf-d25e1ce9580c".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 233
+~				223 button Run
++						233 button 1 row(Limited to only 100 rows)
++							234 container
++								235 text 1  row (Limited to only 100 rows)
++					236 table
++						237 row verification
++							238 cell (selectable) verification
++						239 row {"audit":0,"pagos":0,"config":["session_preload_libraries=supautils, safeupdate","statement_timeout=8s","lock_timeout=8s"],"cierres":0,"attempts":0,"cierres_md5":"fc7bd96fc3fc8a889c96f8d759fb07ef","attributions":0} View full cell content
++							240 cell (selectable) Description: View full cell content, Value: {"audit":0,"pagos":0,"config":["session_preload_libraries=supautils, safeupdate","statement_timeout=8s","lock_timeout=8s"],"cierres":0,"attempts":0,"cierres_md5":"fc7bd96fc3fc8a889c96f8d759fb07ef","attributions":0}
+The focused UI element is 225 editor (settable) Description: Editor content, Value: ierre_audit_private.cancelaciones where cierre_id in(-252101,-252102,-252103)),'attributions',(select count(*) from public.commercial_attributions where cierre_id in(-252101,-252102,-252103)),'attempts',(select count(*) from public.commercial_attribution_attempts where event_key in('-252101','-252102','-252103')),'cierres_md5',(select md5(string_agg(to_jsonb(c)::text,'|' order by id)) from public.cierres c),'config',(select rolconfig from pg_roles where rolname='authenticator')) as verification;
