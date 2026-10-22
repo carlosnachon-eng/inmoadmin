@@ -21,3 +21,11 @@ test('sanitizes Graph failure and never claims absence of replies',async()=>{
  assert.equal(r.steps[2].code,100);assert.equal(r.page_replied,null);
  assert.ok(!JSON.stringify(r).includes('secret-content'));
 });
+test('omitted expansion can be checked with a separate bounded GET edge',async()=>{
+ const queue=[{id:'2_3',from:{id:'2'}},{data:[{id:'3_4'}]},{id:'3_4'},{data:[{id:'5',from:{id:'2'}}]}];
+ const r=await diagnoseReplyRead({account:'2',post:'2_3',comment:'3_4',token:'synthetic',fetchImpl:async(u,o)=>{
+  assert.equal(o.method,'GET');if(queue.length===1){assert.equal(u.pathname,'/v26.0/3_4/comments');assert.equal(u.searchParams.get('fields'),'id,from');}
+  return {ok:true,status:200,json:async()=>queue.shift()};
+ }});
+ assert.equal(r.status,'verified_separate_edge');assert.equal(r.page_replied,true);assert.equal(r.original_reader_verified,false);
+});
