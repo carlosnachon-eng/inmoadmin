@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {diagnoseReplyRead} from '../lib/messaging/commentAgent/replyDiagnostic.js';
+import {diagnoseReplyRead,certifiedOrganicTarget} from '../lib/messaging/commentAgent/replyDiagnostic.js';
+test('diagnostic remains bound to certified event when new organic comments arrive',()=>{
+ const target={event_ref:'09082f812f5efd9360ef5e853a39929e24c4364b831e7a3c3ab24df00ba73736',deleted:false};
+ assert.deepEqual(certifiedOrganicTarget([{event_ref:'other'},target]),[target]);
+ assert.deepEqual(certifiedOrganicTarget([{...target,deleted:true},{...target,content_box:{origin:'meta_history_v1'}}]),[]);
+});
 test('DEV opt-in exposes only validated published copy and permalink, never comment content',async()=>{
  const check=async(overrides={},membership=true)=>{
   const queue=[{id:'2_3',from:{id:'2'},is_published:true,message:'Synthetic public copy',permalink_url:'https://www.facebook.com/2/posts/3',...overrides},{data:membership?[{id:'3_4'}]:[]},{id:'3_4',message:'PRIVATE COMMENT'},{data:[]}];
