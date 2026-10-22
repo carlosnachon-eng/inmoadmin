@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {importFacebookHistory,historicalSampleRef} from '../lib/messaging/commentAgent/facebookHistory.js';
+import {importFacebookHistory,historicalSampleRef,propertyLinkDiagnostic} from '../lib/messaging/commentAgent/facebookHistory.js';
 import {projectFacebookComment} from '../lib/messaging/commentAgent/facebook.js';
 import {decideComment} from '../lib/messaging/commentAgent/decision.js';
 const c={connection:'00000000-0000-4000-8000-000000000001',app:'100',page:'200',secret:'a'.repeat(32),indexKey:'b'.repeat(64),dataKey:'c'.repeat(64)};
@@ -28,4 +28,16 @@ test('proposal search requires real inventory binding, absent reply and known au
 });
 test('eligible proposal sample encrypted and repeated search bounded without more reads',async()=>{
  const f=proposalFixture();assert.equal((await f.run()).inserted,1);assert.equal(f.rows.length,1);assert.equal(projectFacebookComment(c,f.rows[0]).event.author_verified,true);const n=f.calls.length;assert.equal((await f.run()).inserted,0);assert.equal(f.calls.length,n);assert.equal(JSON.stringify(f.rows).includes('precio'),false);
+});
+test('property diagnostics separate missing reference, format and inventory without leaking text',async()=>{
+ const url='https://emporioinmobiliario.com.mx/propiedades/EMP-TEST1';
+ const db=rows=>({from:()=>({select(){return this;},eq(){return this;},async limit(){return {data:rows};}})});
+ assert.equal(await propertyLinkDiagnostic(null),'message_absent');
+ assert.equal(await propertyLinkDiagnostic('precio sin link'),'no_url_in_message');
+ assert.equal(await propertyLinkDiagnostic('https://example.com/private'),'no_supported_property_url');
+ assert.equal(await propertyLinkDiagnostic(url+' '+url.replace('TEST1','TEST2')),'multiple_property_references');
+ assert.equal(await propertyLinkDiagnostic(url,db([])),'public_id_absent_in_dev');
+ assert.equal(await propertyLinkDiagnostic(url,db([{status:'draft'}])),'property_not_published');
+ assert.equal(await propertyLinkDiagnostic(url,db([{status:'published'}])),'exact_published_match');
+ assert.equal(await propertyLinkDiagnostic(url,db([{},{}])),'ambiguous_inventory');
 });
