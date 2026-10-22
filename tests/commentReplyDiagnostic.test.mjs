@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {diagnoseReplyRead} from '../lib/messaging/commentAgent/replyDiagnostic.js';
+test('DEV opt-in exposes only validated published copy and permalink, never comment content',async()=>{
+ const check=async(overrides={},membership=true)=>{
+  const queue=[{id:'2_3',from:{id:'2'},is_published:true,message:'Synthetic public copy',permalink_url:'https://www.facebook.com/2/posts/3',...overrides},{data:membership?[{id:'3_4'}]:[]},{id:'3_4',message:'PRIVATE COMMENT'},{data:[]}];
+  return diagnoseReplyRead({account:'2',post:'2_3',comment:'3_4',token:'SECRET',includePublication:true,fetchImpl:async()=>({ok:true,status:200,json:async()=>queue.shift()})});
+ };
+ const result=await check();assert.equal(result.publication.copy,'Synthetic public copy');assert.ok(!JSON.stringify(result).includes('PRIVATE COMMENT'));assert.ok(!JSON.stringify(result).includes('SECRET'));
+ assert.equal((await check({},false)).publication,undefined);
+ assert.equal((await check({is_published:false})).publication,null);
+ assert.equal((await check({permalink_url:'https://evil.example/'})).publication,null);
+ assert.equal((await check({from:{id:'9'}})).publication,undefined);
+});
 const run=async(node,edge={data:[{id:'3_4'}]})=>{
  const queue=[{id:'2_3',from:{id:'2'}},edge,node,node?.comments];
  return diagnoseReplyRead({account:'2',post:'2_3',comment:'3_4',token:'synthetic-secret',fetchImpl:async(u,o)=>{assert.equal(o.method,'GET');assert.equal(u.hostname,'graph.facebook.com');const d=queue.shift();return {ok:!d?.error,status:d?.error?400:200,json:async()=>d};}});
