@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {diagnoseReplyRead} from '../lib/messaging/commentAgent/replyDiagnostic.js';
 const run=async(node,edge={data:[{id:'3_4'}]})=>{
- const queue=[{id:'2_3',from:{id:'2'}},edge,node];
+ const queue=[{id:'2_3',from:{id:'2'}},edge,node,node?.comments];
  return diagnoseReplyRead({account:'2',post:'2_3',comment:'3_4',token:'synthetic-secret',fetchImpl:async(u,o)=>{assert.equal(o.method,'GET');assert.equal(u.hostname,'graph.facebook.com');const d=queue.shift();return {ok:!d?.error,status:d?.error?400:200,json:async()=>d};}});
 };
 test('reports verified reply without native IDs or content',async()=>{
@@ -27,5 +27,5 @@ test('omitted expansion can be checked with a separate bounded GET edge',async()
   assert.equal(o.method,'GET');if(queue.length===1){assert.equal(u.pathname,'/v26.0/3_4/comments');assert.equal(u.searchParams.get('fields'),'id,from');}
   return {ok:true,status:200,json:async()=>queue.shift()};
  }});
- assert.equal(r.status,'verified_separate_edge');assert.equal(r.page_replied,true);assert.equal(r.original_reader_verified,false);
+ assert.equal(r.status,'verified');assert.equal(r.page_replied,true);assert.equal(r.steps[3].stage,'replies_edge');
 });

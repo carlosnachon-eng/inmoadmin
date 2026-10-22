@@ -17,7 +17,7 @@ test('only verified exact publication with one first party catalog link selects 
  assert.equal(await publicationFacts({publication:{...publication,text:publication.text+' https://emporioinmobiliario.com.mx/propiedades/EMP-TEST2'},event,db}),null);
 });
 test('external replies require complete authors and exact post binding',async()=>{
- const read=async replies=>inspectMetaComment({platform:'facebook',account:'200',post:'200_400',comment:'200_300',token:'synthetic',fetchImpl:async u=>({ok:true,json:async()=>u.pathname.endsWith('/200_400/comments')?{data:[{id:'200_300'}]}:String(u).includes('/200_400?')?{id:'200_400',from:{id:'200'},message:'listing'}:{id:'200_300',from:{id:'500'},comments:replies}})});
+ const read=async replies=>inspectMetaComment({platform:'facebook',account:'200',post:'200_400',comment:'200_300',token:'synthetic',fetchImpl:async u=>({ok:true,json:async()=>u.pathname.endsWith('/200_300/comments')?replies:u.pathname.endsWith('/200_400/comments')?{data:[{id:'200_300'}]}:String(u).includes('/200_400?')?{id:'200_400',from:{id:'200'},message:'listing'}:{id:'200_300',from:{id:'500'}}})});
  assert.equal((await read({data:[{id:'200_600',from:{id:'200'}}]})).replied,true);
  assert.equal((await read({data:[],paging:{next:'not-followed'}})).replies_verified,false);
  assert.equal((await read({data:[{id:'200_600'}]})).replies_verified,false);

@@ -30,9 +30,9 @@ test('challenge exact; persistence failure is sanitized and never retried',async
 });
 test('exact Facebook edge membership replaces invalid parent-post assumption',async()=>{
  for(const [edge,node,pass] of [[{data:[{id:'400_300'}]},{id:'400_300'},true],[{data:[],paging:{next:'https://evil.invalid'}},{id:'400_300'},false],[{data:[{id:'400_300'}]},{id:'400_300',parent:{id:'200_400'}},false],[{data:[{id:'400_300'}]},{id:'999'},false]]){
-  const calls=[];const work=inspectMetaComment({platform:'facebook',account:'200',post:'200_400',comment:'400_300',token:'synthetic',fetchImpl:async(u,i)=>{calls.push(u);assert.equal(i.method,'GET');assert.equal(u.hostname,'graph.facebook.com');return {ok:true,json:async()=>u.pathname.endsWith('/200_400')?{id:'200_400',from:{id:'200'}}:u.pathname.endsWith('/comments')?edge:{...node,comments:{data:[]}}};}});
+  const calls=[];const work=inspectMetaComment({platform:'facebook',account:'200',post:'200_400',comment:'400_300',token:'synthetic',fetchImpl:async(u,i)=>{calls.push(u);assert.equal(i.method,'GET');assert.equal(u.hostname,'graph.facebook.com');return {ok:true,json:async()=>u.pathname.endsWith('/400_300/comments')?{data:[]}:u.pathname.endsWith('/200_400')?{id:'200_400',from:{id:'200'}}:u.pathname.endsWith('/comments')?edge:node};}});
   if(pass)assert.equal((await work).replies_verified,true);else await assert.rejects(work,/comment_post_denied/);
-  assert.ok(calls.length<=3);assert.equal(calls[1].searchParams.get('filter'),'toplevel');assert.equal(calls[1].searchParams.get('limit'),'100');
+  assert.ok(calls.length<=(pass?4:3));assert.equal(calls[1].searchParams.get('filter'),'toplevel');assert.equal(calls[1].searchParams.get('limit'),'100');
  }
 });
 test('read-only evaluation never requires a publish scope; prepared ingress uses only comment capture RPC',()=>{

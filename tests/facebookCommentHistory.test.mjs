@@ -20,6 +20,7 @@ function proposalFixture({linked=true,inventory=true,replied=false,complete=true
   if(path.endsWith('/200_300'))return Response.json({id:'200_300',from:{id:'200'},message:text});
   if(path.endsWith('/200_300/comments'))return Response.json({data:[{id:'400',from:author?{id:'500'}:null,message:'precio',created_time:'2026-10-01T12:00:00Z'}]});
   if(path.endsWith('/400'))return Response.json({id:'400',from:{id:'500'},comments:{data:replied?[{id:'600',from:{id:'200'}}]:[],...(complete?{}:{paging:{next:'never-follow'}})}});
+  if(path.endsWith('/400/comments'))return Response.json({data:replied?[{id:'600',from:{id:'200'}}]:[],...(complete?{}:{paging:{next:'never-follow'}})});
   throw Error('unexpected read');
  }})};
 }
