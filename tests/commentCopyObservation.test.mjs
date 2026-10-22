@@ -1,0 +1,11 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {compareCopies,observeFacebookCopies} from '../lib/messaging/commentAgent/copyObservation.js';
+const text='Residencia encinos bosque cristal terraza panoramica jardin alberca techada cocina integral amplia biblioteca privada luminosa';
+const inventory=[{public_id:'EMP-TEST1',descripcion:text},{public_id:'EMP-TEST2',descripcion:'Local comercial esquina centro historico acceso peatonal escaparates oficinas elevador recepcion estacionamiento subterraneo'}];
+test('exact normalized description is only an observation, never a verified link',()=>{const d=compareCopies(text.toUpperCase(),inventory);assert.equal(d.candidates[0].public_id,'EMP-TEST1');assert.equal(d.candidates[0].normalized_exact,true);assert.equal(d.auto_link,false);assert.equal(d.association_verified,false);});
+test('duplicate descriptions are ambiguous even at score one',()=>{assert.equal(compareCopies(text,[inventory[0],{...inventory[0],public_id:'EMP-TEST3'}]).status,'ambiguous_candidates');});
+test('generic or missing copy cannot produce a candidate',()=>{for(const t of ['',null,'casa en venta emporio informes contactanos'])assert.deepEqual(compareCopies(t,inventory).candidates,[]);});
+test('real adapter uses GET only, no database writes and no secret/native ID/text output',async()=>{const c={page:'200',secret:'synthetic-secret',indexKey:'b'.repeat(64)};const db={from:()=>({select(){return this;},eq(){return this;},order(){return this;},async limit(){return {data:inventory};}})};
+ const run=owner=>observeFacebookCopies({c,token:'synthetic-token',db,fetchImpl:async(u,o)=>{assert.equal(o.method,'GET');assert.equal(new URL(u).hostname,'graph.facebook.com');return Response.json({data:[{id:'200_300',from:{id:owner},message:text}]});}});
+ const d=await run('200');assert.equal(d.writes,0);assert.equal(d.links_created,0);assert.equal(d.rows[0].candidates[0].public_id,'EMP-TEST1');for(const s of ['synthetic-token','synthetic-secret','200_300',text])assert.equal(JSON.stringify(d).includes(s),false);await assert.rejects(run('999'),/owner/);
+});
