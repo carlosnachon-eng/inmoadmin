@@ -144,9 +144,19 @@ test('populated evaluation reuses encrypted capture and escalates missing eviden
  r.content_box=crypto.seal(c,'comment-content',binding,{text:'precio',username:'synthetic'});
  r.native_box=crypto.seal(c,'comment-native',binding,{comment_id:'123',media_id:'456'});
  const writes=[];const db={rpc:async(name,args)=>{if(name==='ig_business_comments_v1')return{data:[r]};assert.equal(name,'ig_business_token_v1');assert.equal(args.p_op,'load');return{data:null};}};
- const result=await evaluateInstagram({db,c,actor,store:async(op,data)=>{writes.push({op,data});return{};},fetchImpl:async()=>{throw Error('network forbidden');}});
+ const result=await evaluateInstagram({db,c,actor,store:async(op,data)=>{writes.push({op,data});return op==='capture'?{inserted:1}:{status:'recorded'};},fetchImpl:async()=>{throw Error('network forbidden');}});
  assert.equal(result.processed,1);assert.deepEqual(writes.map(x=>x.op),['capture','evaluate']);
  assert.equal(writes[1].data.status,'escalated');assert.equal(result.sender,false);
  const decision=crypto.open(c,'commercial-review',[r.comment_ref,writes[1].data.revision],writes[1].data.decision_box);
  assert.equal(decision.public_proposal,null);assert.equal(decision.publish_allowed,false);
+});
+test('Instagram only reports evaluation after durable acknowledgements, without retries',async()=>{
+ const c=businessConfig(env),r={comment_ref:'1'.repeat(64),media_ref:'2'.repeat(64),event_ref:'3'.repeat(64),occurred_at:new Date().toISOString()};
+ const binding=[r.comment_ref,r.media_ref,r.event_ref,r.occurred_at];
+ r.content_box=crypto.seal(c,'comment-content',binding,{text:'precio'});r.native_box=crypto.seal(c,'comment-native',binding,{comment_id:'123',media_id:'456'});
+ const db={rpc:async name=>({data:name==='ig_business_comments_v1'?[r]:null})};
+ const run=async(capture,evaluate)=>{const calls=[];const promise=evaluateInstagram({db,c,actor,store:async op=>{calls.push(op);return op==='capture'?capture:evaluate;},fetchImpl:async()=>{throw Error('network forbidden');}});return{promise,calls};};
+ for(const inserted of [0,1])for(const status of ['recorded','unchanged']){const {promise,calls}=await run({inserted},{status});assert.equal((await promise).processed,1);assert.deepEqual(calls,['capture','evaluate']);}
+ for(const bad of [null,{},[],{inserted:'1'},{inserted:2},{status:'recorded'}]){const {promise,calls}=await run(bad,{status:'recorded'});await assert.rejects(promise,/^Error: capture_not_recorded$/);assert.deepEqual(calls,['capture']);}
+ for(const bad of [null,{},[],{status:'stale_or_deleted'},{status:'consumed'},{status:'unexpected'}]){const {promise,calls}=await run({inserted:0},bad);await assert.rejects(promise,/^Error: evaluation_not_recorded$/);assert.deepEqual(calls,['capture','evaluate']);}
 });

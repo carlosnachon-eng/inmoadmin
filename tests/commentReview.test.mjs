@@ -10,7 +10,7 @@ test('bad HMAC/account/post are rejected',()=>{const {raw,signature}=capture();a
 test('removal and own author classified safely; tamper rejected',()=>{const x=capture({verb:'remove',from:{id:'200'}}),e=captureFacebookComments(x.raw,x.signature,c)[0];assert.equal(e.deleted,true);assert.equal(projectFacebookComment(c,e).event.own_author,true);assert.throws(()=>projectFacebookComment(c,{...e,comment_ref:ref(9)}));});
 const event={platform:'instagram',connection_ref:ref(1),post_ref:ref(2),comment_ref:ref(3),event_ref:ref(4),owned:true,replies_verified:true,occurred_at:new Date().toISOString(),text:'precio'};
 test('only verified exact publication with one first party catalog link selects property',async()=>{
- let reads=0;const db={from(){reads++;return{select(){return this;},eq(){return this;},async limit(){return{data:[{id:'synthetic',public_id:'EMP-TEST1',status:'published',precio:100,moneda:'MXN',operacion:'venta'}]};}};}};
+ let reads=0;const db={from(){reads++;return{select(){return this;},eq(){return this;},async limit(){return{data:[{id:'synthetic',public_id:'EMP-TEST1',status:'published',precio:100,moneda:'MXN',operacion:'sale'}]};}};}};
  const publication={verified:true,platform:'instagram',connection_ref:ref(1),post_ref:ref(2),text:'https://emporioinmobiliario.com.mx/propiedades/EMP-TEST1'};
  assert.equal((await publicationFacts({publication,event,db,reference:()=>ref(8)})).price,100);
  assert.equal(await publicationFacts({publication:{...publication,post_ref:ref(9)},event,db}),null);assert.equal(reads,1);

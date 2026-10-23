@@ -33,7 +33,7 @@ export function syntheticQa({env,fetchImpl=fetch,expiresAt,now=Date.now,associat
   }
   if(u.origin!==DEV_URL)throw Error('qa_destination_denied');
   if(method==='GET'&&(u.pathname==='/auth/v1/user'||u.pathname==='/rest/v1/profiles'))return fetchImpl(raw,options);
-  if(method==='GET'&&u.pathname==='/rest/v1/propiedades')return response([{id:'44444444-4444-4444-8444-444444444444',public_id:'EMP-QA256',status:'published',operacion:'venta',precio:1000000,moneda:'MXN'}]);
+  if(method==='GET'&&u.pathname==='/rest/v1/propiedades')return response([{id:'44444444-4444-4444-8444-444444444444',public_id:'EMP-QA256',status:'published',operacion:'sale',precio:1000000,moneda:'MXN'}]);
   if(method!=='POST')throw Error('qa_method_denied');
   const p=JSON.parse(options.body);
   if(p.p_connection!==QA_CONNECTION)throw Error('qa_connection_denied');

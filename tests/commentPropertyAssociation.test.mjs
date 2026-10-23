@@ -24,9 +24,23 @@ test('stale, deleted, unverified, sender-on, unauthorized bindings never write',
  await assert.rejects(bindProperty({...base,row:{...row,decision_box:{}}}));
 });
 function dbFor(p){return{from:()=>({select(){return this;},eq(){return this;},async limit(){return{data:p?[p]:[]};}})};}
-const property={id:'property',public_id:'EMP-SYNTHETIC',status:'published',precio:'6700000.00',moneda:'MXN',operacion:'venta'};
+const property={id:'property',public_id:'EMP-SYNTHETIC',status:'published',precio:'6700000.00',moneda:'MXN',operacion:'sale'};
 const publication={verified:true,platform:event.platform,connection_ref:event.connection_ref,post_ref:event.post_ref,text:'Copy sin referencia ni precio vigente'};
 const association={property_id:'property',public_id:'EMP-SYNTHETIC',source:'human_confirmed_publication'};
+test('catalog sale/rental operations generate proposals for both platforms; unknown enums fail closed',async()=>{
+ for(const platform of ['instagram','facebook']){
+  for(const [operacion,expected] of [['sale','venta'],['rental','renta mensual']]){
+   const e={...event,platform};
+   const facts=await publicationFacts({publication:{...publication,platform},event:e,association,db:dbFor({...property,operacion}),reference:()=>r(8)});
+   assert.equal(facts.operation,expected);const decision=decideComment({event:e,facts});
+   assert.equal(decision.status,'proposed');assert.ok(decision.public_proposal.includes(expected));assert.equal(decision.publish_allowed,false);
+  }
+ }
+ for(const operacion of ['venta','renta','SALE',null,'',{}]){
+  const facts=await publicationFacts({publication,event,association,db:dbFor({...property,operacion}),reference:()=>r(8)});
+  assert.equal(facts.operation,null);assert.equal(decideComment({event,facts}).reason,'approved_fact_missing');
+ }
+});
 test('durable association reads current DEV facts, not old copy or confirmation price',async()=>{
  for(const price of ['6700000.00',6800000]){
   const facts=await publicationFacts({publication,event,association,db:dbFor({...property,precio:price}),reference:()=>r(8)});

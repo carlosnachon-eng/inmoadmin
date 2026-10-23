@@ -42,7 +42,7 @@ export async function certifyDurableBridge(db){
    assert.equal(url.origin,DEV_URL);
    if(url.pathname==='/auth/v1/user')data={id:actor};
    else if(url.pathname==='/rest/v1/profiles')data=[{id:actor,active:true,role_id:'admin'}];
-   else if(url.pathname==='/rest/v1/propiedades')data=[{id:propertyId,public_id:'EMP-QA256',status:'published',operacion:'venta',precio:1000000,moneda:'MXN'}];
+   else if(url.pathname==='/rest/v1/propiedades')data=[{id:propertyId,public_id:'EMP-QA256',status:'published',operacion:'sale',precio:1000000,moneda:'MXN'}];
    else{
     const p=JSON.parse(options.body);
     if(url.pathname.endsWith('/ig_business_comments_v1'))data=(await db.query('select public.ig_business_comments_v1($1,$2) v',[p.p_connection,p.p_actor])).rows[0].v;

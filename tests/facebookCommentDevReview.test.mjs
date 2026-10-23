@@ -14,7 +14,7 @@ test('general evaluation handles independent events, durable association and pre
  const db={rpc:async(name,p)=>{calls.push({name,op:p.p_op,data:p.p_data});
   if(name==='comment_property_link_v1')return{data:{platform:'facebook',connection_id:conn,post_ref:events[1].post_ref,property_id:'qa-property',confirmed_by:actor,evidence_box:crypto.seal(c,'commercial-property-link',[events[1].post_ref],evidence)}};
   return{data:p.p_op==='list'?[approved]:p.p_op==='events'?events:{status:'recorded'}};
- },from:()=>({select(){return this;},eq(){return this;},async limit(){return{data:[{id:'qa-property',public_id:'EMP-QA',precio:100,moneda:'MXN',operacion:'venta',status:'published'}]};}})};
+ },from:()=>({select(){return this;},eq(){return this;},async limit(){return{data:[{id:'qa-property',public_id:'EMP-QA',precio:100,moneda:'MXN',operacion:'sale',status:'published'}]};}})};
  const fetchImpl=async(url,opts)=>{assert.equal(opts.method,'GET');const u=new URL(url),p=u.pathname;
   if(p==='/auth/v1/user')return Response.json({id:actor});if(p==='/rest/v1/profiles')return Response.json([{id:actor,role_id:'admin',active:true}]);
   if(p.endsWith('/debug_token'))return Response.json({data:{app_id:c.app,profile_id:c.page,type:'PAGE',is_valid:true,scopes:['pages_show_list','pages_manage_metadata','pages_read_engagement','pages_read_user_content'],expires_at:0,data_access_expires_at:0}});

@@ -13,7 +13,7 @@ test('missing author retained as unknown and always escalated, no proposal',asyn
 test('fixed batch event slot limits concurrency without claiming webhook HMAC',()=>{assert.equal(historicalSampleRef(c),historicalSampleRef(c));assert.notEqual(historicalSampleRef(c),historicalSampleRef({...c,connection:'different'}));});
 function proposalFixture({linked=true,inventory=true,replied=false,complete=true,author=true}={}){
  const rows=[],calls=[];const text=linked?'https://emporioinmobiliario.com.mx/propiedades/EMP-TEST1':'sin enlace';
- const q={select(){return this;},eq(){return this;},async limit(){return {data:inventory?[{id:'synthetic-property',public_id:'EMP-TEST1',status:'published',precio:1000000,moneda:'MXN',operacion:'venta'}]:[]};}};
+ const q={select(){return this;},eq(){return this;},async limit(){return {data:inventory?[{id:'synthetic-property',public_id:'EMP-TEST1',status:'published',precio:1000000,moneda:'MXN',operacion:'sale'}]:[]};}};
  return {rows,calls,run:()=>importFacebookHistory({c,token:'synthetic',proposalOnly:true,db:{from:()=>q},store:async(op,row)=>{if(op==='events')return rows;assert.equal(op,'capture');rows.push(row);return {inserted:1};},fetchImpl:async(url,opts)=>{
   assert.equal(opts.method,'GET');const path=new URL(url).pathname;calls.push(path);
   if(path.endsWith('/posts'))return Response.json({data:[{id:'200_300',from:{id:'200'},message:text}]});
