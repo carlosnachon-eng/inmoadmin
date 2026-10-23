@@ -52,3 +52,11 @@ Runtime commit: `0db636284fce3f5838a8356050bc362fa4fa0401`.
 - This certifies the association path, not Meta publishing or a real Instagram
   property association. EB-UW8871 remains absent from DEV. General historical
   batching and association replacement/revocation remain separate pending work.
+
+Final verification: cleanup initially returned a connector request-state error;
+an independent count confirmed fixtures remained. The exact QA connection was
+then deactivated and scoped cleanup completed. Independent final count across
+links, nonces, audits, reviews, events, connection and property: **0 residuals**;
+actions=0, enabled senders=0. No operational history was removed.
+Restored normal Inbox Preview `dpl_FBke49AG71wYhbipEE5KENUAPRUn` READY on
+`3eeef911ca1f785f4a07faeeff6985cf198d12d2` (same runtime as `0db6362`).
