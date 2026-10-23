@@ -82,6 +82,13 @@ export async function certifyDurableBridge(db){
  assert.equal(audit.find(x=>x.kind==='approve')?.n,1);
  assert.equal((await db.query('select count(*)::int n from commercial_comment_private.actions where connection_id=$1',[connection])).rows[0].n,0);
  assert.equal(metaReads,10);
+ // A real durable rejection must cross the signed bridge as failure, not evaluated.
+ await db.query("update commercial_comment_private.events set deleted=true where platform='instagram' and connection_id=$1",[connection]);
+ const rejected=await handler(request({op:'evaluate'}));assert.equal(rejected.status,503);
+ assert.deepEqual((await rejected.json()).diagnostic,{stage:'evaluation',code:'evaluation_not_recorded'});
+ listed=await (await handler(request())).json();assert.equal(listed.rows[0].status,'approved');
+ assert.equal((await db.query('select count(*)::int n from commercial_comment_private.actions where connection_id=$1',[connection])).rows[0].n,0);
+ console.log(JSON.stringify({durable_rejection:'PASS',http:503,diagnostic:'evaluation_not_recorded',approval_preserved:true,dispatches:0}));
  console.log(JSON.stringify({durable_bridge:'PASS',association:'persisted_once',evaluation:2,approval:1,replay:'rejected',refresh:'approved_retained',meta:'read-only mocked fixtures',real_network:0,claims:0,dispatches:0}));
  // Same disposable database is destroyed by the caller's finally block.
 }

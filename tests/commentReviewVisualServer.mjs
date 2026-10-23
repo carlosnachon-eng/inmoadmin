@@ -1,7 +1,18 @@
 // Memory-only UI QA; real component. No Meta/Supabase network or credentials.
 import http from 'node:http';import {createRequire} from 'node:module';import path from 'node:path';
+import {publicationFacts} from '../lib/messaging/commentAgent/verifiedPublication.js';
+import {decideComment} from '../lib/messaging/commentAgent/decision.js';
 const require=createRequire(path.join(process.env.WA_QA_DEPS,'package.json')),{build}=require('esbuild');
-let approvals=0,posts=0;const rows={};for(const platform of ['instagram','facebook'])rows[platform]=[{platform,comment_ref:'a'.repeat(64),revision:'b'.repeat(64),status:'proposed',reason:'verified_public_facts',intent:'price',public_proposal:'El precio de venta es $2,000,000 MXN.',opportunity:true,destination:'SALES'},{platform,comment_ref:'c'.repeat(64),revision:'d'.repeat(64),status:'escalated',reason:'property_binding_or_freshness',intent:'appointment',opportunity:true,destination:'SALES'}];
+let approvals=0,posts=0;const rows={};for(const platform of ['instagram','facebook']){
+ rows[platform]=[];
+ for(const [operacion,ref,precio] of [['sale','a',2000000],['rental','c',18000]]){
+  const event={platform,connection_ref:'1'.repeat(64),post_ref:'2'.repeat(64),comment_ref:ref.repeat(64),event_ref:'3'.repeat(64),owned:true,replies_verified:true,text:'precio',occurred_at:new Date().toISOString()};
+  const property={id:'synthetic-property',public_id:'EMP-QA256',status:'published',operacion,precio,moneda:'MXN'};
+  const db={from:()=>({select(){return this;},eq(){return this;},async limit(){return{data:[property]};}})};
+  const facts=await publicationFacts({event,publication:{verified:true,platform,connection_ref:event.connection_ref,post_ref:event.post_ref,text:'https://emporioinmobiliario.com.mx/propiedades/EMP-QA256'},db,reference:()=> '4'.repeat(64)});
+  rows[platform].push({...decideComment({event,facts}),platform,comment_ref:event.comment_ref,revision:ref.repeat(64),opportunity:true,destination:'SALES'});
+ }
+}
 const bundle=await build({stdin:{contents:"import React from 'react';import{createRoot}from'react-dom/client';import Panel from './components/CommentReviewPanel';createRoot(document.getElementById('root')).render(<Panel/>);",loader:'jsx',resolveDir:process.cwd()},bundle:true,write:false,jsx:'automatic',loader:{'.js':'jsx'},plugins:[{name:'session-fixture',setup(b){b.onResolve({filter:/lib\/supabase$/},()=>({path:'session',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:"export const supabase={auth:{getSession:async()=>({data:{session:{access_token:'synthetic'}}})}};"}));}}]});
 const server=http.createServer(async(req,res)=>{const u=new URL(req.url,'http://localhost');res.setHeader('Cache-Control','no-store');
  if(u.pathname==='/mobile'){res.setHeader('Content-Type','text/html');return res.end('<!doctype html><meta charset="utf-8"><h2>QA sintética · viewport CSS 390 × 844</h2><p>Sin Meta ni Supabase. No emula hardware móvil.</p><iframe title="QA móvil 390px" src="/" style="width:390px;height:844px;border:1px solid #ccc"></iframe>');}
