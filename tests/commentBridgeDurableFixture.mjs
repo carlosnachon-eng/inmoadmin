@@ -46,6 +46,7 @@ export async function certifyDurableBridge(db){
     const p=JSON.parse(options.body);
     if(url.pathname.endsWith('/ig_business_comments_v1'))data=(await db.query('select public.ig_business_comments_v1($1,$2) v',[p.p_connection,p.p_actor])).rows[0].v;
     else if(url.pathname.endsWith('/ig_business_token_v1')){assert.equal(p.p_op,'load');data=credential;}
+    else if(url.pathname.endsWith('/comment_property_link_v1')){assert.equal(p.p_op,'read');data=null;}
     else if(url.pathname.endsWith('/comment_bridge_request_v1'))data=(await db.query('select public.comment_bridge_request_v1($1,$2,$3,$4) v',[p.p_connection,p.p_actor,p.p_nonce,p.p_timestamp])).rows[0].v;
     else{assert.ok(url.pathname.endsWith('/comment_review_v1'));assert.ok(['capture','evaluate','list','approve'].includes(p.p_op));data=(await db.query('select public.comment_review_v1($1,$2,$3,$4,$5) v',[p.p_platform,p.p_connection,p.p_actor,p.p_op,p.p_data])).rows[0].v;}
    }

@@ -4,6 +4,33 @@ import {facebookDevPanel} from '../lib/messaging/commentAgent/facebookDevPanel.j
 import {DEV} from '../lib/messaging/commentAgent/facebookDevHealth.js';
 import {facebookCommentDevConfig} from '../lib/messaging/commentAgent/facebookDevConfig.js';
 import * as crypto from '../lib/messaging/facebook/messenger/crypto.js';
+import {createHmac} from 'node:crypto';
+import {captureFacebookComments} from '../lib/messaging/commentAgent/facebook.js';
+
+test('general evaluation handles independent events, durable association and preserves approval',async()=>{
+ const events=[1,2,3].map(n=>{const raw=Buffer.from(JSON.stringify({object:'page',entry:[{id:c.page,time:Math.floor(Date.now()/1000),changes:[{field:'feed',value:{item:'comment',verb:'add',comment_id:c.page+'_'+n,post_id:c.page+'_900',parent_id:c.page+'_900',from:{id:'500'},message:'precio'}}]}]}));return captureFacebookComments(raw,'sha256='+createHmac('sha256',c.secret).update(raw).digest('hex'),c)[0];});
+ const calls=[],approved={...events[0],status:'approved'};
+ const evidence={source:'human_confirmed_publication',platform:'facebook',connection_ref:crypto.ref(c,'review-connection',c.connection),post_ref:events[1].post_ref,property_public_id:'EMP-QA',actor};
+ const db={rpc:async(name,p)=>{calls.push({name,op:p.p_op,data:p.p_data});
+  if(name==='comment_property_link_v1')return{data:{platform:'facebook',connection_id:conn,post_ref:events[1].post_ref,property_id:'qa-property',confirmed_by:actor,evidence_box:crypto.seal(c,'commercial-property-link',[events[1].post_ref],evidence)}};
+  return{data:p.p_op==='list'?[approved]:p.p_op==='events'?events:{status:'recorded'}};
+ },from:()=>({select(){return this;},eq(){return this;},async limit(){return{data:[{id:'qa-property',public_id:'EMP-QA',precio:100,moneda:'MXN',operacion:'venta',status:'published'}]};}})};
+ const fetchImpl=async(url,opts)=>{assert.equal(opts.method,'GET');const u=new URL(url),p=u.pathname;
+  if(p==='/auth/v1/user')return Response.json({id:actor});if(p==='/rest/v1/profiles')return Response.json([{id:actor,role_id:'admin',active:true}]);
+  if(p.endsWith('/debug_token'))return Response.json({data:{app_id:c.app,profile_id:c.page,type:'PAGE',is_valid:true,scopes:['pages_show_list','pages_manage_metadata','pages_read_engagement','pages_read_user_content'],expires_at:0,data_access_expires_at:0}});
+  if(p.endsWith('/me'))return Response.json({id:c.page});if(p.endsWith('/subscribed_apps'))return Response.json({data:[{id:c.app,subscribed_fields:['feed']}]});
+  if(p.endsWith('_900/comments'))return Response.json({data:[1,2,3].map(n=>({id:c.page+'_'+n}))});
+  if(p.endsWith('/comments'))return Response.json({data:[]});
+  if(p.endsWith('_900'))return Response.json({id:c.page+'_900',from:{id:c.page},message:'No URL; registry required'});
+  return Response.json({id:p.split('/').pop(),from:{id:'500'}});
+ };
+ const api=createFacebookDevReview({env:()=>({...env,FACEBOOK_COMMENTS_DEV_PAGE_ACCESS_TOKEN:'x'.repeat(30)}),makeDb:()=>db,fetchImpl});
+ const d=await(await api(new Request(DEV+'/functions/v1/facebook-comments-dev-review',{method:'POST',headers:{authorization:'Bearer '+'s'.repeat(30),'Content-Type':'application/json'},body:JSON.stringify({op:'evaluate'})}))).json();
+ assert.equal(d.status,'evaluated');assert.equal(d.processed,2);assert.equal(d.preserved,1);
+ const writes=calls.filter(x=>x.op==='evaluate');assert.equal(writes.length,2);
+ for(const w of writes){assert.notEqual(w.data.comment_ref,approved.comment_ref);assert.equal(w.data.status,'proposed');assert.equal(w.data.reason,'verified_public_facts');}
+ assert.ok(calls.every(x=>['read','list','events','evaluate'].includes(x.op)));
+});
 const actor='00000000-0000-4000-8000-000000000001',conn='74c3f858-c4f6-40af-a068-6ef159819a87';
 const env={SUPABASE_URL:DEV,SUPABASE_SERVICE_ROLE_KEY:'synthetic-service',FACEBOOK_COMMENTS_DEV_ENABLED:'true',FACEBOOK_COMMENTS_DEV_MANUAL_SEND_ENABLED:'false',FACEBOOK_COMMENTS_DEV_CONNECTION_ID:conn,FACEBOOK_COMMENTS_DEV_APP_ID:'2220237475209417',FACEBOOK_COMMENTS_DEV_PAGE_ID:'119960324707764',FACEBOOK_COMMENTS_DEV_APP_SECRET:'a'.repeat(32),FACEBOOK_COMMENTS_DEV_VERIFY_TOKEN:'b'.repeat(32),FACEBOOK_COMMENTS_DEV_INDEX_KEY:'c'.repeat(64),FACEBOOK_COMMENTS_DEV_DATA_KEY:'d'.repeat(64),FACEBOOK_COMMENTS_DEV_TOKEN_KEY:'e'.repeat(64)};
 const c=facebookCommentDevConfig({...env,VERCEL_ENV:'development',NEXT_PUBLIC_SUPABASE_URL:DEV});

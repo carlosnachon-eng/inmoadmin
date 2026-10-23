@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {recordConfirmedDevProposal,CONFIRMED_EVENT,confirmedEvaluationResult} from '../lib/messaging/commentAgent/confirmedDevProposal.js';
+import {recordConfirmedDevProposal,CONFIRMED_EVENT,confirmedEvaluationResult} from './fixtures/confirmedDevProposal.js';
 test('UI success requires recorded or unchanged, never masks rejection',()=>{for(const status of ['recorded','unchanged'])assert.deepEqual(confirmedEvaluationResult({status}),{status:'evaluated',processed:1,persistence:status});assert.deepEqual(confirmedEvaluationResult({status:'stale_or_deleted'}),{status:'stale_or_deleted'});});
 const now=Date.parse('2026-10-23T18:00:00Z');
 const c={connection:'74c3f858-c4f6-40af-a068-6ef159819a87',app:'2220237475209417',page:'119960324707764',senderEnabled:false};

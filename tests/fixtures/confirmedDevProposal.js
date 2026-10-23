@@ -1,5 +1,5 @@
-import {decideComment} from './decision.js';
-import {revisionOf} from './review.js';
+import {decideComment} from '../../lib/messaging/commentAgent/decision.js';
+import {revisionOf} from '../../lib/messaging/commentAgent/review.js';
 
 // One user-authorized DEV observation. Not an inventory record or production association.
 export const CONFIRMED_EVENT='09082f812f5efd9360ef5e853a39929e24c4364b831e7a3c3ab24df00ba73736';

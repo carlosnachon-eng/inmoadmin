@@ -39,6 +39,7 @@ export function syntheticQa({env,fetchImpl=fetch,expiresAt,now=Date.now}){
   if(p.p_connection!==QA_CONNECTION)throw Error('qa_connection_denied');
   if(u.pathname==='/rest/v1/rpc/ig_business_comments_v1')return response([input]);
   if(u.pathname==='/rest/v1/rpc/ig_business_token_v1'&&p.p_op==='load')return response(credential);
+  if(u.pathname==='/rest/v1/rpc/comment_property_link_v1'&&p.p_op==='read')return response(null);
   if(u.pathname==='/rest/v1/rpc/comment_bridge_request_v1')return fetchImpl(raw,options);
   if(u.pathname==='/rest/v1/rpc/comment_review_v1'&&p.p_platform==='instagram'&&['capture','evaluate','list','approve'].includes(p.p_op))return fetchImpl(raw,options);
   throw Error('qa_operation_denied');
