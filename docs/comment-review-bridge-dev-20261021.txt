@@ -1,0 +1,61 @@
+PR #256 — isolated Instagram DEV review read bridge
+
+Scope and result
+- Branch codex/comments-observation-approval; implementation 87912ec.
+- No merge, Production deployments, Meta calls, publications or sender changes.
+- Existing Instagram keys remain exclusively inside observer DEV. No key export,
+  regeneration or reuse of Production credentials.
+- New Ed25519 private key is Secret on this branch's Preview only; its public key
+  is Config on observer Preview. User saved the private key directly.
+- Local copy helper stopped after provisioning; no private key artifact committed.
+
+Security
+- Vercel Deployment Protection remains enabled. User explicitly authorized exactly
+  inmoadmin Preview -> observer Preview in Trusted Sources.
+- Per-request Vercel OIDC header, signed GET/path/timestamp/user-token digest,
+  30-second signature validity, verified Supabase DEV user and active admin or
+  gerente_ventas profile are all required. Other branches lack signing credential.
+- Fixed DEV database and configured connection; service-role RPC only op=list.
+- GET only, no query/body/arbitrary RPC, no arbitrary ciphertext decryption.
+- Repeated GETs are read-only. Writes are rejected; no write replay semantics are
+  claimed. POST evaluation/approval through the bridge is not yet implemented.
+- Existing exact crypto bindings reused via shared reviewProjection.
+- Receiver denies operation if Instagram sender configuration is ON.
+- Remote destination is server-configured immutable observer deployment URL;
+  redirect:error, timeouts, no retries. Secrets/errors never serialized.
+
+Deployments
+- Observer isolated Preview READY: dpl_AAfEdqNYnCtSE7oz789BSLJ4obYe
+  emporio-instagram-observer-hjbiwjzs1-carlosnachon-engs-projects.vercel.app
+  No aliases assigned. Existing callback/deployment untouched.
+- Inmoadmin Preview READY: dpl_HawBFXBsrXj2TTcV6eAkB894TY6q
+  inmoadmin-ec2rhl000-carlosnachon-engs-projects.vercel.app
+
+Verification
+- 44/44 Node tests PASS: commentReviewBridge, commentReviewDiagnostics,
+  commentReview, commentObservation.
+- Local Next build PASS with synthetic build-only Supabase configuration.
+  First build without configuration failed supabaseUrl validation; not a code bug.
+  Font optimization warnings due local restricted network, no compilation errors.
+- Authenticated Admin DEV /administracion/inbox > Comentarios > Instagram:
+  real bridge response rendered read-only indicator, zero reviews, no journal error.
+  Evaluate disabled. No evaluate/approve actions executed.
+- Facebook tab: existing reader still renders zero reviews without error.
+- Read-only SQL confirmed both commercial_comment_private connections active,
+  sender_enabled=false, reviews=0 and actions=0 for each platform.
+- No fixtures inserted, no data cleanup required, no claims/dispatch actions.
+
+Limitations / recommendation
+- READ BRIDGE PASS only. NO MERGE for overall PR certification.
+- Empty journal cannot certify populated real-data projection; exact encrypted
+  projection and tamper cases were tested with isolated synthetic fixtures only.
+- Remote write bridge, durable replay protection for writes, populated authenticated
+  QA and refreshed mobile QA remain pending. No AI generation or private replies
+  certified by this change.
+- Next stage: share existing evaluate/approve service conservatively, implement
+  durable replay guard before enabling writes, then isolated populated UI QA.
+
+References
+https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/trusted-sources
+https://vercel.com/docs/oidc
+https://supabase.com/docs/reference/javascript/auth-getuser
