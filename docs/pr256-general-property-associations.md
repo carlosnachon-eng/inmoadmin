@@ -47,6 +47,26 @@
 
 ## Limits / NO MERGE for full launch
 
+## Authenticated Preview QA (2026-10-23)
+
+- Runtime commit `35dbb467d366a0fb9b5a70ff16ca648f032d6ad4`, deployment
+  `dpl_CZtom3zKHHkgJ9d3MZ2kbiE4d4B6` READY.
+- General Facebook evaluation completed for 20 real captured DEV comments in
+  the authenticated Inbox. Journal: 21 reviews total, including the previous
+  approved certification preserved; 6 ambiguous escalations, 1 property/freshness
+  escalation, 2 empty/reaction ignored, 4 own/nested ignored, 7 existing-action
+  suppressions. No new unsupported commercial proposal was produced.
+- One explicit association attempt for the previously confirmed EB-UW8871
+  returned the visible unavailable/unpublished DEV-property message. No link
+  or binding audit was created. This is a negative real Preview test, not a
+  successful real-property association.
+- Final DEV checks: property links=0, binding audits=0, actions=0,
+  senders enabled=0, prior approved reviews=1. Positive durable associations
+  were certified only with isolated synthetic PostgreSQL/Node fixtures.
+- No Production access, publication, merge or remote synthetic-data insertion.
+
+## Remaining launch limits
+
 EB-UW8871 still does not exist in DEV. No artificial binding to another property,
 no Production lookup/copy, and no current-availability assertion. The real
 comment's approved certification evidence is not general inventory proof.
