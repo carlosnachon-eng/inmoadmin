@@ -79,6 +79,13 @@ test('signed operation rejects body tamper, publish, arbitrary fields, native ID
  for(const body of [{op:'publish'},{op:'evaluate',platform:'facebook'},{op:'approve',comment:'123',revision:'a'.repeat(64),text:'test'}])assert.throws(()=>verifyBridge(post(body),env));
  assert.throws(()=>verifyBridge({...r,headers:{...r.headers,'x-review-nonce':''}},env));
 });
+test('Instagram property confirmation is signed exactly; no native IDs or implicit confirmation',()=>{
+ const operation={op:'bind_property',comment:'a'.repeat(64),revision:'b'.repeat(64),property_public_id:'EMP-QA256',confirmed:true};
+ assert.equal(verifyBridge(post(operation),env),'synthetic.user.token');
+ for(const patch of [{confirmed:false},{comment:'123'},{connection:'other'},{platform:'facebook'},{property_public_id:'https://example.test'}])assert.throws(()=>verifyBridge(post({...operation,...patch}),env));
+ const request=post(operation);request.rawBody=JSON.stringify({...operation,property_public_id:'EMP-OTHER'});
+ assert.throws(()=>verifyBridge(request,env),/bridge_signature/);
+});
 test('write replay is consumed durably before evaluation; no token renewal or Meta writes',async()=>{
  const seen=new Set(),calls=[];
  const fetchImpl=async(url,options)=>{
