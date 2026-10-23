@@ -13,6 +13,7 @@ import {reviewStore,recordReview,approveReview} from '../../../lib/messaging/com
 import {reviewDiagnostic} from '../../../lib/messaging/commentAgent/diagnostics.js';
 import {readThroughBridge,writeThroughBridge} from '../../../lib/messaging/commentAgent/bridge.js';
 import {evaluateInstagram} from '../../../lib/messaging/commentAgent/evaluateInstagram.js';
+import {bindInstagramProperty} from '../../../lib/messaging/commentAgent/bindInstagramProperty.js';
 import {projectReviews} from '../../../lib/messaging/commentAgent/reviewProjection.js';
 import {bridgeDiagnostic,safeBridgeDiagnostic} from '../../../lib/messaging/commentAgent/bridgeDiagnostic.js';
 import {diagnoseFacebookRead} from '../../../lib/messaging/commentAgent/facebookReadDiagnostic.js';
@@ -58,6 +59,7 @@ export default async function handler(req,res){
    return res.status(200).json(projectReviews(rows,crypto,c));
   }
   const body=req.body||{};
+  if(platform==='instagram'&&body.op==='bind_property')return res.status(200).json(await bindInstagramProperty({db,c,actor,store,operation:body}));
   stage=body.op==='approve'?'approval':'evaluation';
   if(body.op==='approve'){
    const row=rows.find(r=>r.comment_ref===body.comment&&r.revision===body.revision);

@@ -47,12 +47,12 @@ export default function CommentReviewPanel(){
   <select aria-label="Comentario a revisar" value={selected||''} onChange={e=>setSelected(e.target.value)} style={{maxWidth:'100%'}}><option value="">Selecciona comentario</option>{rows.map((r,i)=><option key={r.comment_ref} value={r.comment_ref}>{i+1}. {r.status} · {r.intent||r.reason}</option>)}</select>
   {row&&<div>{row.historical&&<p>Histórico importado de Meta · no acredita webhook orgánico.</p>}<p>{row.status} · {row.reason} · Destino: Ventas</p><p>{row.approved_text||row.public_proposal||'Requiere revisión humana; faltan datos o evidencia.'}</p>
    {row.evidence?.source==='user_confirmed_dev_observation'&&<p>Certificación histórica con precio confirmado manualmente. No es una lectura vigente del inventario ni habilita publicación.</p>}
-   {platform==='facebook'&&<fieldset disabled={busy||readOnly}><legend>Asociación de publicación a propiedad DEV</legend>
+   <fieldset disabled={busy||readOnly}><legend>Asociación de publicación a propiedad DEV · {platform==='instagram'?'Instagram':'Facebook'}</legend>
     <p>Confirma sólo después de verificar que esta publicación corresponde exactamente a la ficha. No se infiere por similitud ni se copia Producción.</p>
     <label>Referencia pública de propiedad<input aria-label="Referencia pública de propiedad" value={propertyId} maxLength={80} onFocus={()=>{editing.current=true;}} onBlur={()=>{editing.current=false;}} onChange={e=>{setPropertyId(e.target.value);setPropertyConfirmed(false);}}/></label>
     <label><input type="checkbox" checked={propertyConfirmed} onChange={e=>setPropertyConfirmed(e.target.checked)}/>He verificado la correspondencia exacta de publicación y propiedad</label>
     <button disabled={!propertyConfirmed||!propertyId.trim()} onClick={associate}>Guardar asociación sin publicar</button>
-   </fieldset>}
+   </fieldset>
    {row.status==='proposed'&&<><label>Editar propuesta<textarea aria-label="Editar propuesta" value={drafts[key]??row.public_proposal??''} onChange={e=>setDrafts(d=>({...d,[key]:e.target.value}))} maxLength={900} style={{width:'100%',boxSizing:'border-box'}}/></label>
     <button disabled={busy||readOnly} onClick={()=>action({op:'approve',comment:row.comment_ref,revision:row.revision,text:drafts[key]??row.public_proposal})}>Aprobar sin publicar</button></>}
    {row.status==='approved'&&<p>Aprobada y registrada. Envío deshabilitado.</p>}

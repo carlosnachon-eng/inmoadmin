@@ -5,7 +5,7 @@ import {businessConfig,SCOPES} from '../../lib/messaging/instagram/business/conf
 import {DEV_URL} from '../../lib/messaging/commentAgent/bridge.js';
 import * as crypto from '../../lib/messaging/instagram/business/crypto.js';
 export const QA_CONNECTION='725e2e98-88ce-45f3-bb9f-576863a45f04';
-export function syntheticQa({env,fetchImpl=fetch,expiresAt,now=Date.now}){
+export function syntheticQa({env,fetchImpl=fetch,expiresAt,now=Date.now,associationQa=false}){
  if(env.VERCEL_ENV!=='preview'||env.NEXT_PUBLIC_SUPABASE_URL!==DEV_URL)throw Error('qa_environment');
  const start=now();
  if(!Number.isFinite(expiresAt)||expiresAt<=start||expiresAt-start>7200000)throw Error('qa_expiry');
@@ -27,7 +27,7 @@ export function syntheticQa({env,fetchImpl=fetch,expiresAt,now=Date.now}){
   const u=new URL(raw),method=options.method||'GET';
   if(u.origin==='https://graph.instagram.com'){
    if(method!=='GET')throw Error('qa_send_denied');
-   if(u.pathname==='/v26.0/456')return response({id:'456',owner:{id:'300'},caption:'QA SINTÉTICA https://emporioinmobiliario.com.mx/propiedades/EMP-QA256'});
+   if(u.pathname==='/v26.0/456')return response({id:'456',owner:{id:'300'},caption:associationQa?'QA SINTÉTICA sin referencia pública':'QA SINTÉTICA https://emporioinmobiliario.com.mx/propiedades/EMP-QA256'});
    if(u.pathname==='/v26.0/123')return response({id:'123',media:{id:'456'},from:{id:'789'},replies:{data:[]}});
    throw Error('qa_meta_path_denied');
   }
@@ -39,7 +39,10 @@ export function syntheticQa({env,fetchImpl=fetch,expiresAt,now=Date.now}){
   if(p.p_connection!==QA_CONNECTION)throw Error('qa_connection_denied');
   if(u.pathname==='/rest/v1/rpc/ig_business_comments_v1')return response([input]);
   if(u.pathname==='/rest/v1/rpc/ig_business_token_v1'&&p.p_op==='load')return response(credential);
-  if(u.pathname==='/rest/v1/rpc/comment_property_link_v1'&&p.p_op==='read')return response(null);
+  if(u.pathname==='/rest/v1/rpc/comment_property_link_v1'&&p.p_platform==='instagram'&&['read','bind'].includes(p.p_op)){
+   if(associationQa)return fetchImpl(raw,options);
+   if(p.p_op==='read')return response(null);
+  }
   if(u.pathname==='/rest/v1/rpc/comment_bridge_request_v1')return fetchImpl(raw,options);
   if(u.pathname==='/rest/v1/rpc/comment_review_v1'&&p.p_platform==='instagram'&&['capture','evaluate','list','approve'].includes(p.p_op))return fetchImpl(raw,options);
   throw Error('qa_operation_denied');

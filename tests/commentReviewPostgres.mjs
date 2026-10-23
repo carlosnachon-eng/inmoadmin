@@ -45,7 +45,7 @@ try{
  ok((await db.query("select destination from commercial_comment_private.reviews")).rows[0].destination==='SALES');
  for(const role of ['anon','authenticated']){ok(!(await db.query("select has_function_privilege($1,'public.comment_review_v1(text,uuid,uuid,text,jsonb)','execute') v",[role])).rows[0].v);ok(!(await db.query("select has_schema_privilege($1,'commercial_comment_private','usage') v",[role])).rows[0].v);}
  ok((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='commercial_comment_private' and c.relkind='r' and relrowsecurity")).rows[0].n===6);
- await certifyDurableBridge(db);
  await certifyAssociations(db,db2);
+ await certifyDurableBridge(db);
  console.log(JSON.stringify({checks,result:'PASS',real_dispatches:0,synthetic_claims:1,synthetic_starts:1,cleanup:'disposable_local_database'}));
 }finally{await db?.end();await db2?.end();if(started)execFileSync(path.join(bin,'pg_ctl'),['-D',dir+'/db','stop','-m','fast','-w'],{stdio:'ignore'});if(dir.startsWith('/private/tmp/comment-review-pg-'))await rm(dir,{recursive:true,force:true});}
