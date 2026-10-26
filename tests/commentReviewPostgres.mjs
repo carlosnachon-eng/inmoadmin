@@ -10,6 +10,7 @@ try{
  await db.query('create role anon;create role authenticated;create role service_role;create table public.profiles(id uuid primary key,active boolean,role_id text);');
  await db.query(await readFile(new URL('../supabase/migrations/20261021001227_commercial_comment_review.sql',import.meta.url),'utf8'));
  await db.query(await readFile(new URL('../supabase/migrations/20261021143357_comment_bridge_requests.sql',import.meta.url),'utf8'));
+ await db.query(await readFile(new URL('../supabase/migrations/20261026150401_comment_review_observation_hardening.sql',import.meta.url),'utf8'));
  const actor=randomUUID(),denied=randomUUID(),connection=randomUUID(),r=n=>String(n).repeat(64),action=randomUUID();
  await db.query("insert into profiles values($1,true,'admin'),($2,true,'asesor')",[actor,denied]);
  await db.query("insert into commercial_comment_private.connections(platform,connection_id,active) values('instagram',$1,true),('facebook',$1,true)",[connection]);
@@ -29,9 +30,17 @@ try{
  await assert.rejects(call('list',{},denied),e=>e.code==='42501');checks++;
  const review={comment_ref:r(1),event_ref:r(3),revision:r(4),status:'proposed',reason:'verified_public_facts',decision_box:{synthetic:true},opportunity:true};
  ok((await call('evaluate',review)).status==='recorded');ok((await call('evaluate',review)).status==='unchanged');
+ // A fresh authenticated evaluation must renew evidence, not leave a proposal
+ // permanently unapprovable after the five-minute review window.
+ await db.query("update commercial_comment_private.reviews set updated_at=clock_timestamp()-interval '6 minutes' where connection_id=$1",[connection]);
+ ok((await call('approve',{comment_ref:r(1),revision:r(4),approval_box:{synthetic:true}})).status==='stale_or_blocked');
+ ok((await call('evaluate',review)).status==='recorded');
  ok((await call('approve',{comment_ref:r(1),revision:r(5),approval_box:{synthetic:true}})).status==='stale_or_blocked');
  const approved=await Promise.all([call('approve',{comment_ref:r(1),revision:r(4),approval_box:{synthetic:true}}),call('approve',{comment_ref:r(1),revision:r(4),approval_box:{synthetic:true}},actor,'instagram',db2)]);
  ok(approved.filter(x=>x.status==='approved_not_sent').length===1);
+ ok((await call('evaluate',{...review,revision:r(9)})).status==='unchanged');
+ ok((await call('approve',{comment_ref:r(9),approval_box:{synthetic:true}})).status==='stale_or_blocked');
+ await assert.rejects(call(null,{}));checks++;
  ok(!await send('claim')); // DB kill-switch OFF
  await db.query("update commercial_comment_private.connections set sender_enabled=true where platform='instagram'");
  const claims=await Promise.all([send('claim'),send('claim',randomUUID(),db2)]);ok(claims.filter(Boolean).length===1);
@@ -47,5 +56,14 @@ try{
  ok((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='commercial_comment_private' and c.relkind='r' and relrowsecurity")).rows[0].n===6);
  await certifyAssociations(db,db2);
  await certifyDurableBridge(db);
+ const counts=async()=>(await db.query("select (select count(*) from commercial_comment_private.events) events,(select count(*) from commercial_comment_private.reviews) reviews,(select count(*) from commercial_comment_private.audit) audit,(select count(*) from commercial_comment_private.property_links) links")).rows[0];
+ const retained=await counts();
+ await db.query(await readFile(new URL('../docs/pr256-observation-rollback.sql',import.meta.url),'utf8'));
+ assert.deepEqual(await counts(),retained);checks++;
+ ok((await db.query('select count(*)::int n from commercial_comment_private.connections where active or sender_enabled')).rows[0].n===0);
+ for(const fn of ['comment_review_v1(text,uuid,uuid,text,jsonb)','comment_action_v1(text,uuid,uuid,text,text,uuid,text)','comment_bridge_request_v1(uuid,uuid,uuid,bigint)','comment_property_link_v1(text,uuid,uuid,text,jsonb)']){
+  ok(!(await db.query("select has_function_privilege('service_role',$1,'execute') v",['public.'+fn])).rows[0].v);
+ }
+ console.log(JSON.stringify({rollback:'PASS',data_retained:true,gates_closed:true,rpc_revoked:true,scope:'disposable_local_only'}));
  console.log(JSON.stringify({checks,result:'PASS',real_dispatches:0,synthetic_claims:1,synthetic_starts:1,cleanup:'disposable_local_database'}));
 }finally{await db?.end();await db2?.end();if(started)execFileSync(path.join(bin,'pg_ctl'),['-D',dir+'/db','stop','-m','fast','-w'],{stdio:'ignore'});if(dir.startsWith('/private/tmp/comment-review-pg-'))await rm(dir,{recursive:true,force:true});}

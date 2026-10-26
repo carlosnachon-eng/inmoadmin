@@ -45,6 +45,8 @@ export default async function handler(req,res){
   }
   stage='configuration';
   const c=platform==='instagram'?businessConfig(process.env):messengerConfig(process.env);if(!c)return res.status(503).json({status:'configuration_missing',diagnostic:{stage,code:'platform_disabled'}});
+  // Observation must fail closed, including the non-bridge DEV path.
+  if(c.senderEnabled)return res.status(503).json({status:'configuration_missing',diagnostic:{stage,code:'sender_not_closed'}});
   const crypto=platform==='instagram'?igCrypto:fbCrypto;
   stage='database_client';
   const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}}),store=reviewStore(db,platform,c,actor);
