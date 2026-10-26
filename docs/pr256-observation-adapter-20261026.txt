@@ -1,0 +1,100 @@
+PR #256 — continuation, 2026-10-26 — NO MERGE
+
+Scope and exact evidence
+------------------------
+No Production writes/deployments, Meta writes, sends, callbacks, permissions,
+subscriptions or credentials changed. Existing DM/WhatsApp transports untouched.
+origin/main checked again: 3418db9; zero commits behind before this change.
+Preserve prior baseline: branch 34 inherited failures vs main 35; no broad
+rerun this turn. These numbers are not a new full-suite certification.
+
+Instagram zero-result root cause (read-only SQL, 2026-10-26)
+DEV connection 6d1c03a6-f7bc-4ac5-889d-0514aabf2faa: active, 0 comment_events,
+0 active authorized supervisors. Production connection
+5f695ba8-eeed-4dd7-8b9d-88b7e3a1327b: active, 25 comment_events,
+2 supervisors, latest captured_at 2026-10-26T15:02:33.804587Z.
+ig_business_comments_v1 uses profiles/admin-or-gerente + canary_operators in
+its ok CTE; absent authorization and absent events both aggregate to [].
+The Preview bridge is deliberately pinned to DEV. It cannot see Production
+comments. No credential, authorization or operational RPC was changed to
+hide this difference. Real populated Instagram general evaluation remains
+NOT CERTIFIED; previous populated approval QA was synthetic.
+
+Facebook and real inventory
+Prior read-only Meta evidence retained in pr256-readiness-20261026.txt:
+owned publication and organic comment membership, separate replies edge,
+token health and exact Page/app, no existing Page reply at that observation.
+User-confirmed publication: https://www.facebook.com/reel/1349760096430445/
+User-confirmed property: EB-UW8871. Re-read only public_id, precio, moneda,
+status, operacion in Production this turn: 6700000.00 / MXN / published / sale.
+DEV exact public_id count: 0. No property or customer content copied to DEV.
+Published inventory status is NOT a promise of availability.
+Thus the real pairing and current price are evidenced, but a normal durable
+association and newly generated proposal against the real inventory are not
+certified in DEV. Previous manual-price exception is not a substitute.
+
+New isolated observation adapter (not activated)
+GET-only Graph firewall, fixed platform hosts/v26.0, no redirects/retries;
+25-second network budget. Server allowlist of 1–3 post IDs; first 5 comments
+per post; paging explicitly reported as truncated, never followed blindly.
+Manual evaluate, encrypted journal, human property binding and approval only.
+No sender/OAuth/DM-store/cron invocation or publication operation. Approvals
+never dispatch. Missing comment author or incomplete replies suppress proposal.
+Dedicated provider commercial_comments_observation_v1; platform, connection,
+app, account, purpose and event bound into cryptography. Legacy ciphertext fails.
+Same-environment verified public inventory; no cross-environment lookup.
+Production branch selected before DEV adapters, behind explicit opt-in.
+Existing authenticated endpoint validates getUser/profile and same-origin POST.
+Service client never accepts client actor/connection/keys/facts/URLs.
+
+New migration (UNAPPLIED remotely)
+20261026160230_comment_observation_only_boundary.sql adds observation_only,
+CHECK sender=false for such connections, trigger rejecting action insertion,
+service-only comment_observation_v1 with active admin/gerente role and a locked
+active observation-only connection. Invalid operations denied. No existing
+connection is marked active, observation-only or altered by migration.
+This is migration FIVE in this PR, following the four already documented.
+Existing RLS/ACL remain; no new anon/authenticated execute/table privileges.
+
+Configuration manifest for a FUTURE explicitly authorized installation
+Production project must be bnzrnizrmonjxlktbhlp; default global mode unset/OFF.
+To opt in after authorization: COMMENT_OBSERVATION_MODE=human_review_only.
+For each P in INSTAGRAM / FACEBOOK, require COMMENT_OBSERVATION_${P}_:
+ MODE=human_review_only; SEND_ENABLED=false;
+ CONNECTION_ID=new dedicated UUID (not any DM or DEV connection);
+ APP_ID, ACCOUNT_ID=exact validated platform assets;
+ INDEX_KEY, DATA_KEY=distinct production-only 32-byte hex keys;
+ READ_TOKEN=separately provisioned authorized credential, no DEV fallback;
+ TOKEN_EXPIRES_AT=explicit epoch seconds (0 allowed only for Facebook after
+ health verification, never interpreted as a guarantee against revocation);
+ POST_IDS=JSON array of exact server-allowlisted owned publications.
+Keep the review connection active=true, observation_only=true,
+sender_enabled=false. Provisioning requires separate authorization; NOT done.
+No webhook/subscription/cron is needed by this manual snapshot adapter.
+Snapshots identify meta_read_v1 and never claim webhook certification.
+No claim that a future token is already provisioned or current permissions
+are independently sufficient; identity/read failures stop without retries.
+
+Rollback after a future authorized installation
+Unset global COMMENT_OBSERVATION_MODE first, restore previous app deployment;
+execute docs/pr256-observation-rollback.sql ONLY against the new review module
+after verifying project. It closes its connections and revokes the five RPCs;
+does not drop tables, ciphertext, approvals, associations or audit records.
+Do not revert operational channel migrations or rotate keys. Local rollback
+retains record counts and leaves gates closed. No remote rollback performed.
+
+Tests and outstanding certification
+64 affected JS tests PASS initially; final related suite rerun recorded in
+handoff. Seven new tests exercise the production adapter with synthetic data.
+Disposable PostgreSQL: 12 new boundary checks, 16 association checks, previous
+41 checks plus durable bridge fixture PASS. Real Meta/network sends = 0.
+Local DB removed in finally. No new remote fixtures. Build 81 pages PASS
+(font optimization warnings only). New UI mode needs final visual review.
+
+Exact remaining external step, not a request to publish replies:
+After code/security review and separate authorization, install the isolated
+observer with approved Production read credential and one owned post per
+platform. Read real comments, confirm exact property binding in that SAME
+inventory, evaluate and approve without publication; verify zero action rows.
+Current prohibition on Production installation is respected. Until this real
+path and final authenticated UI are certified, verdict remains NO MERGE.

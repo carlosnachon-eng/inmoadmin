@@ -12,7 +12,8 @@ begin
   'public.comment_action_v1(text,uuid,uuid,text,text,uuid,text)',
   'public.comment_review_v1(text,uuid,uuid,text,jsonb)',
   'public.comment_bridge_request_v1(uuid,uuid,uuid,bigint)',
-  'public.comment_property_link_v1(text,uuid,uuid,text,jsonb)'
+  'public.comment_property_link_v1(text,uuid,uuid,text,jsonb)',
+  'public.comment_observation_v1(text,uuid,uuid,text,jsonb)'
  ] loop
   target:=to_regprocedure(signature);
   if target is not null then

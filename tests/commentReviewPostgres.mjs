@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {readFile,mkdtemp,rm} from 'node:fs/promises';import {execFileSync} from 'node:child_process';import {randomUUID} from 'node:crypto';import net from 'node:net';import path from 'node:path';
 import {certifyDurableBridge} from './commentBridgeDurableFixture.mjs';
 import {certifyAssociations} from './commentAssociationPostgres.mjs';
+import {certifyObservationBoundary} from './commentObservationBoundaryPostgres.mjs';
 const require=createRequire(path.join(process.env.IG_PG_DEPS,'test.cjs')),{Client}=require('pg'),bin=process.env.IG_PG_BIN,dir=await mkdtemp('/private/tmp/comment-review-pg-');
 const port=await new Promise(resolve=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});});let db,db2,started=false,checks=0;const ok=x=>{assert.ok(x);checks++;};
 try{
@@ -56,6 +57,7 @@ try{
  ok((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='commercial_comment_private' and c.relkind='r' and relrowsecurity")).rows[0].n===6);
  await certifyAssociations(db,db2);
  await certifyDurableBridge(db);
+ await certifyObservationBoundary(db);
  const counts=async()=>(await db.query("select (select count(*) from commercial_comment_private.events) events,(select count(*) from commercial_comment_private.reviews) reviews,(select count(*) from commercial_comment_private.audit) audit,(select count(*) from commercial_comment_private.property_links) links")).rows[0];
  const retained=await counts();
  await db.query(await readFile(new URL('../docs/pr256-observation-rollback.sql',import.meta.url),'utf8'));

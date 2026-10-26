@@ -18,6 +18,7 @@ import {projectReviews} from '../../../lib/messaging/commentAgent/reviewProjecti
 import {bridgeDiagnostic,safeBridgeDiagnostic} from '../../../lib/messaging/commentAgent/bridgeDiagnostic.js';
 import {diagnoseFacebookRead} from '../../../lib/messaging/commentAgent/facebookReadDiagnostic.js';
 import {facebookDevPanel} from '../../../lib/messaging/commentAgent/facebookDevPanel.js';
+import {productionObservationEnabled,runProductionObservation} from '../../../lib/messaging/commentAgent/productionObservation.js';
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private,no-store');
  if(!commentObservationAllowed(process.env))return res.status(404).end();
@@ -27,6 +28,11 @@ export default async function handler(req,res){
   const actor=await authorizeInboxStaff(req);if(!actor?.active||!['admin','gerente_ventas'].includes(actor.role_id))return res.status(403).end();
   if(req.method==='POST'&&new URL(req.headers.origin||'https://invalid').host!==req.headers.host)return res.status(403).end();
   const platform=req.query.platform;if(!['instagram','facebook'].includes(platform))return res.status(400).end();
+  if(productionObservationEnabled(process.env)){
+   stage='production_observation';
+   const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+   return res.status(200).json(await runProductionObservation({env:process.env,platform,actor,body:req.method==='POST'?req.body:null,db}));
+  }
   if(req.method==='POST'&&platform==='facebook'&&req.body?.op==='diagnose_isolated_dev'){
    if(process.env.VERCEL_ENV!=='preview'||process.env.NEXT_PUBLIC_SUPABASE_URL!=='https://hjfwjnejbcpmknvfpdcq.supabase.co'||Object.keys(req.body).join(',')!=='op')return res.status(403).end();
    stage='isolated_dev_health';

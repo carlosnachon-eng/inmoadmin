@@ -7,8 +7,8 @@ const source=readFileSync(new URL('../pages/api/operaciones/comment-review.js',i
  .replace(/^import .*;\n/gm,'').replace('export default async function handler','async function handler');
 async function invoke({sender=false,role='admin',origin='https://preview.test',allowed=true}={}){
  let clients=0;
- const handler=new Function('process','authorizeInboxStaff','commentObservationAllowed','businessConfig','createClient',source+';return handler;')(
-  {env:{}},async()=>({active:true,role_id:role}),()=>allowed,()=>({senderEnabled:sender}),()=>{clients++;throw Error('unexpected_client');});
+ const handler=new Function('process','authorizeInboxStaff','commentObservationAllowed','businessConfig','createClient','productionObservationEnabled',source+';return handler;')(
+  {env:{}},async()=>({active:true,role_id:role}),()=>allowed,()=>({senderEnabled:sender}),()=>{clients++;throw Error('unexpected_client');},()=>false);
  const res={setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;},end(){return this;}};
  await handler({method:'POST',headers:{host:'preview.test',origin},query:{platform:'instagram'},body:{op:'evaluate'}},res);
  return{...res,clients};
