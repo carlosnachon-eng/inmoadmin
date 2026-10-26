@@ -1,0 +1,53 @@
+{
+  "fixture": {
+    "data": {
+      "id": -252301,
+      "estado": "activo",
+      "comision": 252,
+      "com_vendedor": 50.4,
+      "vendedor": "Ivan",
+      "advisor_profile_id": "b3830ea0-4131-46e3-b605-d56cca653198",
+      "cancelado_por": null,
+      "cancelado_en": null,
+      "cancelacion_motivo": null
+    }
+  },
+  "kpis": {
+    "cierres": 1,
+    "ingresos": 252
+  },
+  "events": {
+    "containsFixture": true
+  },
+  "/api/ejecutivo/bi-cierres-admin?year=2026&month=10&include=events": {
+    "http": 200,
+    "ok": true,
+    "metricas": {
+      "ingreso_generado": 252,
+      "cobrado": 0,
+      "pendiente_reconstruido": 252
+    },
+    "containsFixture": true
+  },
+  "/api/ejecutivo/centro-inteligencia?year=2026&month=10": {
+    "http": 200,
+    "ok": true,
+    "resumen_general": {
+      "total_generado": 252,
+      "total_cobrado": 0,
+      "total_pendiente": 252,
+      "costos_directos": 50.4,
+      "resultado_operativo": 201.6,
+      "resultado_operativo_nota": "Resultado de las unidades de negocio después de costos directos registrados. No incluye gastos corporativos, impuestos ni nómina administrativa general.",
+      "estado_confianza": "calculable",
+      "estado_confianza_label": "Alta",
+      "confianza_porcentaje": 100
+    },
+    "containsFixture": true
+  },
+  "/api/cierres/recibo-comision?id=-252301": {
+    "http": 400,
+    "error": "Este cierre aún no tiene comisión cobrada",
+    "containsFixture": false
+  }
+}

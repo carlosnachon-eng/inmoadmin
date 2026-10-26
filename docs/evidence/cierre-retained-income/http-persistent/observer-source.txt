@@ -1,0 +1,33 @@
+import {useState} from 'react';
+import {supabase} from '../lib/supabase';
+const ID=-252520;
+export default function QA(){
+ const [result,setResult]=useState(null),[busy,setBusy]=useState(false);
+ async function run(mode){setBusy(true);try{
+  if(process.env.NEXT_PUBLIC_SUPABASE_URL!=='https://hjfwjnejbcpmknvfpdcq.supabase.co'||window.location.origin!=='http://127.0.0.1:3252')throw new Error('DEV_ONLY');
+  const {data:{session}}=await supabase.auth.getSession();if(!session)throw new Error('DEV_SESSION_REQUIRED');
+  const headers={Authorization:`Bearer ${session.access_token}`};
+  const {data:c,error}=await supabase.from('cierres').select('id,estado,cancelacion_ingreso_retenido,comision,com_vendedor,cobrado,recibo_id').eq('id',ID).single();if(error)throw error;
+  if(mode==='repeat'&&c.estado!=='cancelado')throw new Error('REPEAT_REQUIRES_CANCELLED_FIXTURE');
+  if(mode==='standard'&&c.estado!=='activo')throw new Error('STANDARD_REQUIRES_ACTIVE_FIXTURE');
+  if(mode!=='read'){
+   const r=await supabase.rpc(mode==='repeat'?'cancelar_cierre_con_ingreso_retenido':'cancelar_cierre',{p_cierre_id:ID,p_motivo:'QA HTTP repeticion autorizada fixture sintetico sin cambios',...(mode==='repeat'?{p_importe_esperado:25500}:{})});
+   setResult({mode,fixture:ID,http_status:r.status,data:r.data,error:r.error?{code:r.error.code,message:r.error.message}:null});return;
+  }
+  const output={fixture:ID,session:'real DEV session',cierre:c};
+  for(const [label,url] of [['bi','/api/ejecutivo/bi-cierres-admin?year=2026&month=10&include=events'],['center','/api/ejecutivo/centro-inteligencia?year=2026&month=10']]){
+   const response=await fetch(url,{headers});const body=await response.json();
+   output[label]={http_status:response.status,metricas:body.metricas,resumen_general:body.resumen_general,unidades:body.unidades,fixture_events:body.eventos?.cierres?.filter(e=>String(e.source_id)===String(ID)||e.metadata?.cierre_id===ID),error:body.error};
+  }
+  const {data:kpi,error:ke}=await supabase.from('v_commercial_kpi_events').select('event_key,event_type,cierres,ingresos').eq('event_type','CIERRE').eq('event_key',String(ID));
+  output.kpi={events:kpi,error:ke?.message};
+  const recibo=await supabase.from('recibos_apartado').select('id,folio,monto,estatus').eq('id','aaaaaaaa-2525-4000-8000-000000000520').single();
+  const pago=await supabase.from('cierre_pagos').select('id,cierre_id,monto,fecha').eq('id','aaaaaaaa-2525-4000-8000-000000000521').single();
+  output.original_receipt={http_status:recibo.status,data:recibo.data,error:recibo.error?.message};
+  output.original_payment={http_status:pago.status,data:pago.data,error:pago.error?.message};
+  const commissionReceipt=await fetch('/api/cierres/recibo-comision?id='+ID,{headers});
+  output.commission_receipt_endpoint={http_status:commissionReceipt.status};
+  setResult(output);
+ }catch(e){setResult({error:e.message});}finally{setBusy(false);}}
+ return <main style={{padding:24,fontFamily:'system-ui'}}><h1>QA HTTP autenticada DEV · fixture -252520</h1><p>Cliente, sesión y APIs reales. No reemplaza respuestas. No conecta a Producción.</p>{['read','standard','repeat'].map(m=><button key={m} disabled={busy} onClick={()=>run(m)} style={{margin:8}}>{m}</button>)}<pre id="qa-result" style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(result,null,2)}</pre></main>;
+}

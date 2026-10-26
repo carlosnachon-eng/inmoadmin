@@ -112,7 +112,7 @@ async function cargarIgnorados(cliente = supabase) {
 async function cargarDatosConciliacion(cliente = supabase) {
   const { data: cierres, error: cierresError } = await cliente
     .from('cierres')
-    .select('id, propiedad, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, origen, notas, created_at, updated_at')
+    .select('id, propiedad, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, origen, notas, created_at, updated_at').eq('estado', 'activo')
     .order('fecha_cierre', { ascending: false });
 
   if (cierresError) throw cierresError;
@@ -203,7 +203,7 @@ function mapearItems({ cierres, pagos, recibos, ignorados }) {
 async function cargarItemConciliacion(cierreId, cliente = supabase) {
   const { data: cierre, error: cierreError } = await cliente
     .from('cierres')
-    .select('id, propiedad, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, origen, notas, created_at, updated_at')
+    .select('id, propiedad, fecha_cierre, comision, cobrado, pendiente, cobrado_bool, recibo_id, origen, notas, created_at, updated_at').eq('estado', 'activo')
     .eq('id', cierreId)
     .maybeSingle();
 

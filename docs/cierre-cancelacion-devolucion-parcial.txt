@@ -1,0 +1,91 @@
+DEV · Cancelación con devolución parcial externa · 2026-10-21
+
+Alcance
+Registra una devolución ya realizada fuera del sistema: cobro original $5,000,
+devolución $4,000, ingreso neto de la inmobiliaria $1,000, comisión vigente de
+asesor y gerente $0. No transfiere dinero ni altera el recibo o pago originales.
+No se consultó ni modificó Producción ni el cierre real de Bosques de Amalucan.
+No se publicó código, abrió PR, hizo merge ni desplegó este cambio.
+
+Implementación
+Migración 20261021170825_cierre_cancelacion_devolucion_parcial.sql aplicada solo
+al proyecto DEV hjfwjnejbcpmknvfpdcq. RPC nueva, limitada a administradores activos,
+motivo y confirmación explícita en UI, importe esperado, fecha real y referencia
+externa única. Rechaza comisiones pagadas, importes inválidos, discrepancias entre
+cobros y movimientos, fechas anteriores al último cobro o futuras, origen duplicado
+y referencia externa duplicada. Mantiene auditoría inmutable, locks e idempotencia.
+La referencia única no sustituye la conciliación: no usar si la devolución ya
+está registrada como egreso en otra parte del sistema.
+
+Reportes
+Ingreso generado por cancelación: neto $1,000. Flujo de efectivo: entrada original
+$5,000 por fecha del cobro y salida $4,000 por fecha real de devolución. Puede haber
+flujo negativo en un periodo que solo incluya la devolución. KPIs comerciales,
+rankings y comisiones excluyen el cierre cancelado. Conserva comisión histórica.
+
+Validación ejecutada
+- 30/30 pruebas JS de cancelación, finanzas y regresión de condominios.
+- 117 controles PostgreSQL en base local desechable: COMMIT, concurrencia real,
+  autorización, integridad, recibo, atribución, KPI, auditoría e idempotencia.
+- DEV real: tests/cierrePartialRefundDEV.sql ejecutó el flujo completo y terminó
+  en ROLLBACK. Incluye rechazo de devolución total, repetición y mutación directa.
+- DEV: fixture -252610, pago, recibo, atribución y auditoría ausentes al terminar.
+  Siguen las dos auditorías previas; no se crearon residuos persistentes nuevos.
+  Huella cierres antes/después (sin las tres columnas nuevas, separador |):
+  0f0f2db56ad11ace4b94ee82149d60d5.
+  Huella pagos antes/después: e043db7e5ef99fb2539bf09d03e9e17c.
+- Grants DEV comprobados: authenticated EXECUTE sí; anon y service_role no.
+  La autorización de administrador activo se comprueba dentro de la RPC.
+- Compilación Next.js correcta y git diff --check limpio.
+- QA visual LOCAL AISLADA, sesión simulada, sin conexión a Supabase: selección,
+  motivo, fecha real, referencia, confirmación, éxito, exclusión de ranking e
+  historial con 5000/4000/1000 y comisión cero. Escritorio y móvil real 390x844.
+  El input date requirió teclado nativo por formato dd/mm/aaaa del navegador.
+  Evidencia en docs/evidence/cierre-partial-refund/.
+
+Pendientes y límites
+La prueba HTTP autenticada pendiente quedó completada el 21/10/2026, 17:25 UTC.
+Resultado: PASS en DEV. El flujo queda listo para revisión y preparación de
+publicación; Producción requiere autorización posterior e independiente.
+La evidencia SQL anterior era rollback; la nueva prueba HTTP sí hizo COMMIT.
+No se certificó PDF: se preservó la fila del recibo sintético y el pago.
+Devolución total y múltiples devoluciones no están incluidas en este alcance.
+Advisors de DEV muestra advertencias del esquema general; no se alteraron para
+esta función. Auditoría privada con RLS y sin políticas es denegación deliberada.
+Otros errores de RLS se listan en dev-security-advisors.json; referencia oficial:
+https://supabase.com/docs/guides/database/database-linter?lint=0007_policy_exists_rls_disabled
+
+Preparación futura, sin ejecutar
+Tras cerrar QA HTTP y recibir autorización separada: respaldo y preflight,
+aplicar únicamente esta migración aditiva después de las de ingreso retenido;
+verificar grants/locks/vistas; desplegar código; revisar lecturas autenticadas.
+No ejecutar cancelaciones reales como prueba ni hacer db push masivo.
+
+Certificación HTTP persistente DEV (continuación autorizada)
+- Sesión real de administrador activo, aplicación local conectada exclusivamente
+  a hjfwjnejbcpmknvfpdcq; sin lectura de tokens por las herramientas.
+- Fixture único nuevo -252610, recibo aaaaaaaa-2525-4000-8000-000000000610,
+  pago aaaaaaaa-2525-4000-8000-000000000611, importe original 5000.
+- Cancelación ejecutada desde el diálogo real de cierres por SDK/HTTP; devolución
+  externa registrada 4000, retención neta 1000. Auditoría única COMMIT a las
+  17:25:30.220867 UTC con actor, motivo, fecha, referencia y originales.
+- BI y Centro respondieron HTTP 200 antes, durante y después. Total previo 25500;
+  activo 30500; cancelado 26500. Incremento neto 1000; costos de comisión finales
+  0; pendiente sin cambios. Eventos: generado 1000, entrada 5000, salida 4000.
+- KPI propio 1 -> 0. Repetición HTTP retorna ya_cancelado sin segunda auditoría.
+- BI, Centro y RPC sin sesión: HTTP 401. No se creó cuenta adicional; la prueba
+  HTTP no administrador/inactivo no se repitió en esta continuación (sí cubierta
+  por la suite PostgreSQL previa de 117 controles).
+- Historial real verificado en escritorio y móvil 390x844. Se conservan filas
+  originales de recibo/pago/atribución y atributos comerciales sin cambios.
+- Huella del resto de cierres antes/después 542dffe9a485cbbae34c598431cd79ff;
+  resto de pagos e043db7e5ef99fb2539bf09d03e9e17c. Auditorías totales 2 -> 3.
+- Excepción explícita al requisito anterior de cero residuos: se conserva este
+  único fixture NUEVO cancelado, su recibo, pago, atribución y auditoría inmutable,
+  conforme a la autorización del usuario. Los dos fixtures antiguos autorizados
+  permanecen intactos. No se tocaron cierres reales ni Producción.
+- Evidencia: docs/evidence/cierre-partial-refund/http-persistent/. Validaciones
+  automáticas sobre JSON de respuestas reales: assertions.json PASS.
+- Observador temporal eliminado de pages antes del commit. Fuente reproducible
+  en tests/fixtures/cierrePartialRefundHttpObserver.js (uso solo local DEV).
+- Sin push, nuevo PR, merge, migración productiva ni despliegue.

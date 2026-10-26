@@ -1,0 +1,32 @@
+[
+  {
+    "path": "/api/ejecutivo/bi-cierres-admin?year=2026&month=10",
+    "auth": "absent",
+    "http": 401
+  },
+  {
+    "path": "/api/ejecutivo/bi-cierres-admin?year=2026&month=10",
+    "auth": "invalid",
+    "http": 401
+  },
+  {
+    "path": "/api/ejecutivo/centro-inteligencia?year=2026&month=10",
+    "auth": "absent",
+    "http": 401
+  },
+  {
+    "path": "/api/ejecutivo/centro-inteligencia?year=2026&month=10",
+    "auth": "invalid",
+    "http": 401
+  },
+  {
+    "path": "/api/cierres/recibo-comision?id=-252201",
+    "auth": "absent",
+    "http": 401
+  },
+  {
+    "path": "/api/cierres/recibo-comision?id=-252201",
+    "auth": "invalid",
+    "http": 401
+  }
+]

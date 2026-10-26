@@ -294,10 +294,10 @@ export default async function handler(req, res) {
       ? admin.from("seguimientos_cliente").select("id, cliente_id, asesor_id, tipo, created_at").in("asesor_id", scopedAdvisorIdList).gte("created_at", start)
       : Promise.resolve(noData);
     const cierresQuery = scopedAdvisorIdList.length
-      ? admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured, vendedor, propiedad").in("advisor_profile_id", scopedAdvisorIdList).gte("fecha_cierre", startDate)
+      ? admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured, vendedor, propiedad").eq('estado', 'activo').in("advisor_profile_id", scopedAdvisorIdList).gte("fecha_cierre", startDate)
       : Promise.resolve(noData);
     const unstructuredCierresQuery = scopedAdvisorIdList.length
-      ? admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured, vendedor, propiedad").is("advisor_profile_id", null).gte("fecha_cierre", startDate)
+      ? admin.from("cierres").select("id, fecha_cierre, comision, advisor_profile_id, operation_type_structured, vendedor, propiedad").eq('estado', 'activo').is("advisor_profile_id", null).gte("fecha_cierre", startDate)
       : Promise.resolve(noData);
     const mappedSnapshotsQuery = scopedAdvisorIdList.length
       ? fetchAllPages(() => scoped

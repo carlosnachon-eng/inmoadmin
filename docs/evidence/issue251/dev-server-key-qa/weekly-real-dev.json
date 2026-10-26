@@ -1,0 +1,16 @@
+{
+  "scope": "real DEV database and real handler; mail transport intercepted locally, NOT HTTP E2E",
+  "httpEquivalent": 200,
+  "summary": {
+    "ok": true,
+    "mes": "octubre de 2026",
+    "totalCierres": 1,
+    "totalIngresos": 22000,
+    "cobrado": 0,
+    "atrasado": 0
+  },
+  "mailTransportCallsCaptured": 1,
+  "emailsSent": 0,
+  "htmlContains22000": true,
+  "scopeNote": "Existing weekly advisor whitelist includes Ivan, excludes Carlos; expected one synthetic closure and 22000, unlike all-advisor BI 31000"
+}

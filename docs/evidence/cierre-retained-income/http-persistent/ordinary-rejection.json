@@ -1,0 +1,10 @@
+{
+  "mode": "standard",
+  "fixture": -252520,
+  "http_status": 400,
+  "data": null,
+  "error": {
+    "code": "P0001",
+    "message": "cobros_requieren_conciliacion"
+  }
+}

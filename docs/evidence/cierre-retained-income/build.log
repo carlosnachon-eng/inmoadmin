@@ -1,0 +1,267 @@
+   ▲ Next.js 14.1.0
+
+   Linting and checking validity of types ...
+   Creating an optimized production build ...
+ ⚠ Failed to download the stylesheet for https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap. Skipped optimizing this font.
+ ⚠ Failed to download the stylesheet for https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap. Skipped optimizing this font.
+ ⚠ Failed to download the stylesheet for https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap. Skipped optimizing this font.
+ ✓ Compiled successfully
+   Collecting page data ...
+   Generating static pages (0/81) ...
+   Generating static pages (20/81) 
+   Generating static pages (40/81) 
+   Generating static pages (60/81) 
+ ✓ Generating static pages (81/81) 
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (pages)                                              Size     First Load JS
+┌ ○ /                                                      9.69 kB         158 kB
+├ ○ /404                                                   182 B          79.3 kB
+├ λ /administracion/inbox                                  41.8 kB         194 kB
+├ ○ /administracion/meta-diagnostic                        1.59 kB         150 kB
+├ ○ /antive-transicion                                     4.37 kB         148 kB
+├ λ /api/admin/emporio-intelligence-export                 0 B            79.1 kB
+├ λ /api/analizar-solicitud                                0 B            79.1 kB
+├ λ /api/blindaje/b2c-submission-token                     0 B            79.1 kB
+├ λ /api/blindaje/external-payment/bootstrap-b2c           0 B            79.1 kB
+├ λ /api/blindaje/external-payment/bootstrap-partner       0 B            79.1 kB
+├ λ /api/blindaje/external-payment/payment-public          0 B            79.1 kB
+├ λ /api/blindaje/internal/investigation-payments          0 B            79.1 kB
+├ λ /api/blindaje/internal/payment-proof-url               0 B            79.1 kB
+├ λ /api/blindaje/internal/review-investigation-payment    0 B            79.1 kB
+├ λ /api/cartas/aceptacion                                 0 B            79.1 kB
+├ λ /api/cartas/aceptacion-link                            0 B            79.1 kB
+├ λ /api/cierres/recibo-comision                           0 B            79.1 kB
+├ λ /api/condominios/financial-core                        0 B            79.1 kB
+├ λ /api/condominios/historical-recoveries                 0 B            79.1 kB
+├ λ /api/condominios/incidents                             0 B            79.1 kB
+├ λ /api/condominios/portal-access                         0 B            79.1 kB
+├ λ /api/condominios/reserve-fund                          0 B            79.1 kB
+├ λ /api/contacto-propiedad                                0 B            79.1 kB
+├ λ /api/cron-checador                                     0 B            79.1 kB
+├ λ /api/cron-recordatorio-kpis                            0 B            79.1 kB
+├ λ /api/cron-recordatorios                                0 B            79.1 kB
+├ λ /api/cron-vencimientos-recibos                         0 B            79.1 kB
+├ λ /api/cron/admin-agent-v2-auto-outbound                 0 B            79.1 kB
+├ λ /api/cron/admin-agent-v2-auto-shadow                   0 B            79.1 kB
+├ λ /api/cron/facebook-messenger-health                    0 B            79.1 kB
+├ λ /api/cron/instagram-comment-automation                 0 B            79.1 kB
+├ λ /api/cron/instagram-outbound-media-cleanup             0 B            79.1 kB
+├ λ /api/cron/legal-agent-v1                               0 B            79.1 kB
+├ λ /api/cron/owner-agent-v1                               0 B            79.1 kB
+├ λ /api/cron/provider-quote-replies                       0 B            79.1 kB
+├ λ /api/cron/provider-quote-sla                           0 B            79.1 kB
+├ λ /api/cron/respond-appointment-sync                     0 B            79.1 kB
+├ λ /api/cron/respond-commercial-worker                    0 B            79.1 kB
+├ λ /api/cron/respond-webhook-worker                       0 B            79.1 kB
+├ λ /api/cron/sales-agent-v2-auto-outbound                 0 B            79.1 kB
+├ λ /api/cron/sales-agent-v2-auto-shadow                   0 B            79.1 kB
+├ λ /api/cron/sales-agent-v2-recovery                      0 B            79.1 kB
+├ λ /api/cron/sales-v2-handoff-sla                         0 B            79.1 kB
+├ λ /api/cron/sales-v2-watchdog                            0 B            79.1 kB
+├ λ /api/cron/shadow-admin-outbound                        0 B            79.1 kB
+├ λ /api/cron/shadow-ai-real-auto                          0 B            79.1 kB
+├ λ /api/cron/shadow-media-retrieval                       0 B            79.1 kB
+├ λ /api/cron/shadow-operational-events                    0 B            79.1 kB
+├ λ /api/ejecutivo/ai-usage                                0 B            79.1 kB
+├ λ /api/ejecutivo/bi-cierres-admin                        0 B            79.1 kB
+├ λ /api/ejecutivo/centro-inteligencia                     0 B            79.1 kB
+├ λ /api/ejecutivo/conciliacion-cierres                    0 B            79.1 kB
+├ λ /api/ejecutivo/conciliacion-comisiones-admin           0 B            79.1 kB
+├ λ /api/ejecutivo/conciliacion-mantenimiento              0 B            79.1 kB
+├ λ /api/ejecutivo/conciliacion-poliza                     0 B            79.1 kB
+├ λ /api/ejecutivo/management-intervention                 0 B            79.1 kB
+├ λ /api/ejecutivo/respond-sync                            0 B            79.1 kB
+├ λ /api/ejecutivo/work-center                             0 B            79.1 kB
+├ λ /api/ejecutivo/work-center-event                       0 B            79.1 kB
+├ λ /api/enviar-catalogo-propiedades                       0 B            79.1 kB
+├ λ /api/enviar-recibo-condominio                          0 B            79.1 kB
+├ λ /api/firmas                                            0 B            79.1 kB
+├ λ /api/firmas/[id]                                       0 B            79.1 kB
+├ λ /api/firmas/avanzar                                    0 B            79.1 kB
+├ λ /api/firmas/crear                                      0 B            79.1 kB
+├ λ /api/firmas/migrar-flujo-activo                        0 B            79.1 kB
+├ λ /api/firmas/restaurar-flujo-activo                     0 B            79.1 kB
+├ λ /api/generar-dictamen                                  0 B            79.1 kB
+├ λ /api/generar-pdf-propiedad                             0 B            79.1 kB
+├ λ /api/generar-reporte-propietario                       0 B            79.1 kB
+├ λ /api/notif-checada                                     0 B            79.1 kB
+├ λ /api/notificar-cancelacion-recibo                      0 B            79.1 kB
+├ λ /api/notificar-recibo                                  0 B            79.1 kB
+├ λ /api/operaciones/admin-agent-v2-batch-smoke            0 B            79.1 kB
+├ λ /api/operaciones/admin-agent-v2-identification-canary  0 B            79.1 kB
+├ λ /api/operaciones/admin-agent-v2-inspect                0 B            79.1 kB
+├ λ /api/operaciones/admin-agent-v2-positive-smoke         0 B            79.1 kB
+├ λ /api/operaciones/admin-agent-v2-real-shadow            0 B            79.1 kB
+├ λ /api/operaciones/admin-agent-v2-smoke                  0 B            79.1 kB
+├ λ /api/operaciones/administrative-cases                  0 B            79.1 kB
+├ λ /api/operaciones/administrative-work                   0 B            79.1 kB
+├ λ /api/operaciones/client-reconciliation                 0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger                    0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger-advisors           0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger-appointments       0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger-assign             0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger-contact            0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger-history            0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger-inbox              0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger-media              0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger-names              0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger-properties         0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger-read-state         0 B            79.1 kB
+├ λ /api/operaciones/facebook-messenger-setup              0 B            79.1 kB
+├ λ /api/operaciones/instagram-business                    0 B            79.1 kB
+├ λ /api/operaciones/instagram-business-binding-check      0 B            79.1 kB
+├ λ /api/operaciones/maintenance-operational-events        0 B            79.1 kB
+├ λ /api/operaciones/meta-admin-controlled-outbound        0 B            79.1 kB
+├ λ /api/operaciones/meta-admin-diagnostic                 0 B            79.1 kB
+├ λ /api/operaciones/meta-admin-inbox                      0 B            79.1 kB
+├ λ /api/operaciones/meta-admin-inbox-manual               0 B            79.1 kB
+├ λ /api/operaciones/meta-admin-shadow-once                0 B            79.1 kB
+├ λ /api/operaciones/meta-admin-shadow-self-invoke         0 B            79.1 kB
+├ λ /api/operaciones/provider-quote-requests               0 B            79.1 kB
+├ λ /api/operaciones/recurring-tasks                       0 B            79.1 kB
+├ λ /api/operaciones/respond-appointment-pending           0 B            79.1 kB
+├ λ /api/operaciones/respond-human-attention               0 B            79.1 kB
+├ λ /api/operaciones/sales-v2-respond-comparison           0 B            79.1 kB
+├ λ /api/operaciones/sales-v2-shadow-view                  0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-continue                    0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-explicit-retry              0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-operational-continue        0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-operational-run             0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-output-ab-eval              0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-qa                          0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-real-authorize              0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-real-backfill               0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-real-continue               0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-real-dev-validate           0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-real-revoke                 0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-real-run                    0 B            79.1 kB
+├ λ /api/operaciones/shadow-ai-run                         0 B            79.1 kB
+├ λ /api/operaciones/shadow-coordinator                    0 B            79.1 kB
+├ λ /api/operaciones/shadow-exact-phone-confirmation       0 B            79.1 kB
+├ λ /api/operaciones/shadow-exact-phone-preflight          0 B            79.1 kB
+├ λ /api/operaciones/shadow-historical-replay              0 B            79.1 kB
+├ λ /api/operaciones/shadow-identities                     0 B            79.1 kB
+├ λ /api/operaciones/shadow-identity-bootstrap             0 B            79.1 kB
+├ λ /api/operaciones/shadow-run-exact-phone-preflight      0 B            79.1 kB
+├ λ /api/operaciones/shadow-synthetic-ingest               0 B            79.1 kB
+├ λ /api/operaciones/social-routing                        0 B            79.1 kB
+├ λ /api/operaciones/whatsapp-admin-inbox                  0 B            79.1 kB
+├ λ /api/operaciones/work-center                           0 B            79.1 kB
+├ λ /api/partners/approve                                  0 B            79.1 kB
+├ λ /api/partners/invitation-public                        0 B            79.1 kB
+├ λ /api/partners/invitations                              0 B            79.1 kB
+├ λ /api/partners/link-submission                          0 B            79.1 kB
+├ λ /api/partners/link-submission-invited                  0 B            79.1 kB
+├ λ /api/partners/logo                                     0 B            79.1 kB
+├ λ /api/partners/operations                               0 B            79.1 kB
+├ λ /api/partners/participant-public                       0 B            79.1 kB
+├ λ /api/partners/participants                             0 B            79.1 kB
+├ λ /api/partners/public-branding                          0 B            79.1 kB
+├ λ /api/partners/register                                 0 B            79.1 kB
+├ λ /api/prioridades-hoy                                   0 B            79.1 kB
+├ λ /api/propiedades-eb                                    0 B            79.1 kB
+├ λ /api/propietarios/recurrente                           0 B            79.1 kB
+├ λ /api/recibos/sincronizar-abono-cierre                  0 B            79.1 kB
+├ λ /api/recibos/trigger-firmas                            0 B            79.1 kB
+├ λ /api/rent-receipts                                     0 B            79.1 kB
+├ λ /api/reporte-semanal                                   0 B            79.1 kB
+├ λ /api/respond-leads                                     0 B            79.1 kB
+├ λ /api/send-email                                        0 B            79.1 kB
+├ λ /api/solicitar-documentos                              0 B            79.1 kB
+├ λ /api/submit-solicitud                                  0 B            79.1 kB
+├ λ /api/validar-curp                                      0 B            79.1 kB
+├ λ /api/webhook-respond                                   0 B            79.1 kB
+├ λ /api/webhooks/facebook-messenger                       0 B            79.1 kB
+├ λ /api/webhooks/instagram-business                       0 B            79.1 kB
+├ λ /api/webhooks/meta                                     0 B            79.1 kB
+├ λ /api/webhooks/respond                                  0 B            79.1 kB
+├ ○ /blindaje/anticipo                                     4.37 kB        83.5 kB
+├ ○ /caja                                                  5.52 kB         154 kB
+├ ○ /cartas                                                3.19 kB         152 kB
+├ ○ /cartas/[id]                                           9.74 kB         411 kB
+├ ○ /cartas/aceptar/[id]                                   2.91 kB          82 kB
+├ ○ /cartas/nueva                                          3.32 kB         152 kB
+├ ○ /checador                                              15.2 kB         159 kB
+├ ○ /cierres                                               15.7 kB         160 kB
+├ ○ /clientes                                              8.18 kB         157 kB
+├ ○ /clientes/[id]                                         7.71 kB         156 kB
+├ ○ /cobranza                                              7.85 kB         157 kB
+├ ○ /comisiones                                            6.64 kB         155 kB
+├ ○ /complementar-solicitud                                2.17 kB         146 kB
+├ ○ /condominio/[id]                                       33.6 kB         182 kB
+├ ○ /condominios                                           6.74 kB         155 kB
+├ ○ /condomino                                             9.58 kB         154 kB
+├ ○ /contratos                                             7.52 kB         156 kB
+├ ○ /coordinador-ia-sombra                                 38.7 kB         191 kB
+├ ○ /cotizacion/[id]                                       3.76 kB         148 kB
+├ ○ /dictamen                                              13.3 kB         157 kB
+├ ○ /ejecutivo                                             5.83 kB         155 kB
+├ ○ /ejecutivo/bi-test                                     3.43 kB         147 kB
+├ ○ /ejecutivo/conciliacion-cierres                        6.81 kB         151 kB
+├ ○ /ejecutivo/conciliacion-comisiones-admin               5.94 kB         150 kB
+├ ○ /ejecutivo/conciliacion-mantenimiento                  4.55 kB         148 kB
+├ ○ /ejecutivo/conciliacion-poliza                         6.3 kB          150 kB
+├ ○ /ejecutivo/gerencia-ventas                             7.58 kB         156 kB
+├ ○ /ejecutivo/ia-costos                                   3.03 kB         152 kB
+├ ○ /ejecutivo/inteligencia                                9.18 kB         156 kB
+├ ○ /ejecutivo/mi-gerencia                                 294 B           165 kB
+├ ○ /estadisticas-proyectos                                5.01 kB         154 kB
+├ ○ /finanzas                                              3.74 kB         148 kB
+├ ○ /firmas                                                5.89 kB         152 kB
+├ ○ /firmas/[id]                                           10.2 kB         157 kB
+├ ○ /firmas/nueva                                          1.13 kB        82.6 kB
+├ ○ /guias                                                 10.7 kB         269 kB
+├ ○ /inquilino                                             7.49 kB         151 kB
+├ ○ /inspecciones                                          6.06 kB         284 kB
+├ ○ /inspecciones/[id]                                     8.58 kB         287 kB
+├ ○ /inspecciones/plantillas                               5.72 kB         284 kB
+├ ○ /kpis                                                  5.33 kB         149 kB
+├ ○ /kpis-dashboard                                        5.97 kB         150 kB
+├ ○ /kpis-mtto-admon                                       6.29 kB         155 kB
+├ ○ /liquidaciones                                         20.2 kB         169 kB
+├ ○ /mantenimiento                                         13 kB           162 kB
+├ ○ /meta-admin-shadow-once                                943 B           145 kB
+├ ○ /mi-trabajo                                            288 B           165 kB
+├ ○ /mi-trabajo-administrativo                             9.28 kB         158 kB
+├ λ /operaciones/facebook-messenger-setup                  1.4 kB          145 kB
+├ λ /operaciones/instagram-business-binding-check          1.14 kB         145 kB
+├ λ /operaciones/instagram-business-setup                  3.1 kB          147 kB
+├ ○ /operaciones/tareas-recurrentes                        6.04 kB         155 kB
+├ ○ /partners/comisiones                                   4.13 kB         151 kB
+├ ○ /partners/dashboard                                    5.76 kB         153 kB
+├ ○ /partners/login                                        4.46 kB         148 kB
+├ ○ /partners/nueva-operacion                              4.85 kB         152 kB
+├ ○ /partners/operaciones/[id]                             7.1 kB          154 kB
+├ ○ /partners/pendiente                                    3.69 kB         148 kB
+├ ○ /partners/registro                                     3.73 kB         151 kB
+├ ○ /poliza                                                67.5 kB         221 kB
+├ ○ /poliza/docs/[folio]                                   3.02 kB         147 kB
+├ ○ /poliza/partners                                       865 B           154 kB
+├ ○ /poliza/solicitud/[id]                                 7.76 kB         152 kB
+├ λ /propiedad/[id]                                        5.05 kB        84.1 kB
+├ ○ /propiedades                                           10.4 kB         159 kB
+├ ○ /propiedades-admin                                     47.1 kB         196 kB
+├ ○ /propietario                                           9.61 kB         154 kB
+├ ○ /recibos                                               9.57 kB         411 kB
+├ ○ /recibos/nuevo                                         8.97 kB         410 kB
+├ ○ /registro-comprador                                    5.4 kB          149 kB
+├ ○ /registro-propietario                                  8.4 kB          157 kB
+├ ○ /registro-vendedor                                     5.75 kB         150 kB
+├ ○ /reporte-propietario                                   7.6 kB          156 kB
+├ ○ /reportes                                              4.35 kB         153 kB
+├ ○ /restablecer-contrasena                                1.69 kB         146 kB
+├ ○ /social-routing                                        2.07 kB         146 kB
+├ ○ /solicitud                                             315 B          79.4 kB
+├ ○ /solicitud-inquilino                                   10.8 kB         159 kB
+├ ○ /solicitud-obligado                                    2.83 kB        85.2 kB
+└ ○ /ventas-ia-sombra                                      4.39 kB         153 kB
++ First Load JS shared by all                              79.1 kB
+  ├ chunks/framework-8945e2c82a0b536f.js                   45.2 kB
+  ├ chunks/main-31a0f3e429cda416.js                        31.7 kB
+  └ other shared chunks (total)                            2.17 kB
+
+○  (Static)   prerendered as static content
+λ  (Dynamic)  server-rendered on demand using Node.js
+

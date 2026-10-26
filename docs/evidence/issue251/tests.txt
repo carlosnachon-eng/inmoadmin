@@ -1,0 +1,37 @@
+(node:14837) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file://<repo>/lib/cierreCancellation.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to <repo>/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ active totals exclude cancelled historical values (1.61475ms)
+✔ reason and controlled errors (0.154792ms)
+✔ audited financial consumers explicitly filter active closures (4.39425ms)
+✔ receipt sync sees cancellation, history excludes cancelled from active state (0.820209ms)
+✔ BI excludes cancelled closures and their movements but keeps current collections of older active closures (3.168416ms)
+✔ weekly report excludes cancelled sales without sending any email (40.131667ms)
+✔ commission receipt endpoint refuses a cancelled closure before generating a document (0.978667ms)
+✔ la ficha añade Finanzas sin sustituir Cartera ni Estado de cuenta (1.086333ms)
+✔ estado inactivo es explícito y no ofrece activación (0.173ms)
+✔ navegación cubre las siete superficies autorizadas (0.08875ms)
+✔ lectura y evidencia se autorizan server-side y se limitan por condominio (0.093791ms)
+✔ referencias sensibles se enmascaran antes de llegar al cliente (0.073875ms)
+✔ las métricas UI se derivan de cargos, aplicaciones conciliadas y ledger (0.116667ms)
+✔ identificación posterior usa el RPC existente y nunca edita el movimiento (0.126ms)
+✔ errores distinguen sesión, autorización y backend (0.057625ms)
+✔ el endpoint mantiene mutaciones con puede_editar y lectura con puede_ver (0.07825ms)
+✔ foundation is additive and all real condominiums remain inactive (0.760209ms)
+✔ ledger is balanced, posted transactionally and append-only (0.105917ms)
+✔ receipt applications are N:M and cannot exceed receipt or charge (0.074084ms)
+✔ receipt reconciliation uses PostgreSQL-compatible deterministic UUID selection (0.20875ms)
+✔ tenant isolation, RLS and private evidence fail closed (1.588958ms)
+✔ endpoint keeps privileged key server-side and requires a real session (0.09475ms)
+✔ rollback is fail-closed once financial activity or evidence exists (0.066208ms)
+✔ evidence accepts only certified private formats (0.798833ms)
+✔ input validation and safe error mapping (0.247709ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 121.205083

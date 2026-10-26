@@ -1,0 +1,85 @@
+{
+  "scope": "HTTP autenticada real DEV",
+  "active_admin": true,
+  "bi_http": 200,
+  "center_http": 200,
+  "biKeys": [
+    "ok",
+    "generated_at",
+    "generated_by",
+    "periodo",
+    "alcance",
+    "metricas",
+    "estado_confianza",
+    "unidades",
+    "eventos"
+  ],
+  "centerKeys": [
+    "ok",
+    "generated_at",
+    "generated_by",
+    "periodo",
+    "alcance",
+    "resumen_general",
+    "caja_vs_resultado",
+    "unidades",
+    "calidad_informacion",
+    "acciones_pendientes",
+    "proyeccion_anual",
+    "excepciones",
+    "fuentes_excepciones_con_error",
+    "_performance"
+  ],
+  "biMetrics": {
+    "ingreso_generado": 25500,
+    "cobrado": 25500,
+    "pendiente_reconstruido": 0
+  },
+  "centerUnits": [
+    {
+      "key": "cierres",
+      "metricas": {
+        "generado": 25500,
+        "cobrado": 25500,
+        "pendiente": 0,
+        "costos_directos": 0,
+        "resultado": 25500
+      }
+    },
+    {
+      "key": "administracion",
+      "metricas": {
+        "generado": 0,
+        "cobrado": 0,
+        "pendiente": 0,
+        "costos_directos": 0,
+        "resultado": 0
+      }
+    },
+    {
+      "key": "poliza_juridica",
+      "metricas": {
+        "generado": 0,
+        "cobrado": 0,
+        "pendiente": 0,
+        "costos_directos": 0,
+        "resultado": 0
+      }
+    },
+    {
+      "key": "mantenimiento",
+      "metricas": {
+        "generado": 0,
+        "cobrado": 0,
+        "pendiente": 0,
+        "costos_directos": 0,
+        "resultado": 0,
+        "margen_estimado": 0
+      }
+    }
+  ],
+  "fixture": [],
+  "kpi_count": 0,
+  "events": [],
+  "retry": null
+}

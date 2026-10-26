@@ -97,6 +97,7 @@ const UnidadSection = ({ titulo, unidad }) => {
         </p>
       </div>
 
+      {Number(unidad?.conciliacion?.ingresos_por_cancelacion) > 0 && <p style={{ color: '#065f46' }}>Incluye {fmtMoney(unidad.conciliacion.ingresos_por_cancelacion)} de ingreso por cancelación para la inmobiliaria. No cuenta como cierre comercial ni genera comisión de asesores.</p>}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
@@ -109,10 +110,10 @@ const UnidadSection = ({ titulo, unidad }) => {
           hint="Fuente primaria del devengado"
         />
         <MetricCard
-          title="Cobrado"
+          title={Number(unidad?.conciliacion?.devuelto_periodo) > 0 ? "Cobrado neto de devoluciones" : "Cobrado"}
           value={metricas.cobrado}
           estado={estado}
-          hint="Cobros del periodo por fecha real"
+          hint={Number(unidad?.conciliacion?.devuelto_periodo) > 0 ? `Cobro bruto ${fmtMoney(unidad.conciliacion.cobrado_bruto_periodo)} · Devolución ${fmtMoney(unidad.conciliacion.devuelto_periodo)}` : "Cobros del periodo por fecha real"}
         />
         <MetricCard
           title="Pendiente reconstruido"

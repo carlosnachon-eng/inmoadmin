@@ -1,0 +1,16 @@
+{
+  "scope": "real DEV database and real handler; mail transport intercepted locally, NOT HTTP E2E",
+  "httpEquivalent": 200,
+  "summary": {
+    "ok": true,
+    "mes": "octubre de 2026",
+    "totalCierres": 0,
+    "totalIngresos": 0,
+    "cobrado": 0,
+    "atrasado": 0
+  },
+  "mailTransportCallsCaptured": 1,
+  "emailsSent": 0,
+  "htmlContains252": false,
+  "scopeNote": "Single synthetic Ivan fixture; before=252, after=0; no email sent"
+}

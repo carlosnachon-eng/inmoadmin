@@ -1,0 +1,77 @@
+{
+  "devProject": "hjfwjnejbcpmknvfpdcq",
+  "productionAccessed": false,
+  "productionChanged": false,
+  "syntheticDEVTransaction": [
+    {
+      "result": "PASS",
+      "scope": "DEV synthetic transaction; rollback follows",
+      "retained_income": 25500,
+      "adviser_commission": 0,
+      "original_receipt_and_payment_unchanged": true,
+      "audited": true,
+      "idempotent": true
+    }
+  ],
+  "DEVAuthorization": [
+    {
+      "authorization": "PASS",
+      "checked_profiles": 19,
+      "scope": "authenticated SQL role / simulated JWT subject / NULL closure ID"
+    }
+  ],
+  "localPostgres": {
+    "result": "PASS",
+    "checks": 81,
+    "fixtures": "disposable local only",
+    "commitAndConcurrencyTested": true
+  },
+  "javascript": {
+    "pass": 27,
+    "fail": 0
+  },
+  "build": {
+    "result": "PASS",
+    "staticPages": 81,
+    "credentials": "synthetic build values; no real secrets"
+  },
+  "visual": {
+    "desktop": "PASS",
+    "mobile390x844": "PASS",
+    "scope": "isolated synthetic UI; simulated session, no DEV or Production connection",
+    "authenticatedDesktop": "PASS: original DEV interface and session after full reload"
+  },
+  "authenticatedDEVReads": {
+    "BI": "200, retained income 25500 after COMMIT",
+    "center": "200, retained income/net result 25500, direct costs 0",
+    "executive": "25500 month / 47500 accumulated generated, previous 22000 conserved"
+  },
+  "limits": [
+    "Initial synthetic receipt test rejected invalid tipo=renta; corrected to arrendamiento, then full test passed.",
+    "Prior rollback/mock evidence is historical. See http-persistent for completed authenticated COMMIT proof; real mobile viewport not certified in that phase."
+  ],
+  "authenticatedHTTPPersistent": {
+    "result": "PASS",
+    "fixture": -252520,
+    "commit": "2026-10-21T16:31:40.565917Z",
+    "biStatus": 200,
+    "centerStatus": 200,
+    "generated": 25500,
+    "collected": 25500,
+    "adviserCommission": 0,
+    "managerCommission": 0,
+    "directCosts": 0,
+    "netResult": 25500,
+    "kpiBefore": 1,
+    "kpiAfter": 0,
+    "idempotentStatus": 200,
+    "idempotentResult": "ya_cancelado",
+    "auditRows": 1,
+    "receiptStatus": 200,
+    "paymentStatus": 200,
+    "newCommissionReceiptStatus": 404,
+    "authorization": "single new retained synthetic fixture bundle expressly authorized",
+    "noProductionAccess": true,
+    "noRealClosuresTouched": true
+  }
+}

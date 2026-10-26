@@ -6,6 +6,8 @@ import {
   resolverPeriodo,
   resumirAdministracion,
   resumirCierres,
+  cargarIngresosCancelacion,
+  mapearEventosIngresosCancelacion,
 } from '../../../lib/ejecutivo/lecturaBiCierresAdmin';
 
 const supabase = createClient(
@@ -48,7 +50,7 @@ async function autenticarDireccion(req) {
 async function cargarCierres(periodo) {
   const { data: cierres, error: cierresError } = await supabase
     .from('cierres')
-    .select('id, fecha_cierre, operacion, precio, comision, cobrado, pendiente, cobrado_bool, vendedor, propiedad_id, recibo_id, firma_id')
+    .select('id, fecha_cierre, operacion, precio, comision, cobrado, pendiente, cobrado_bool, vendedor, propiedad_id, recibo_id, firma_id').eq('estado', 'activo')
     .gte('fecha_cierre', periodo.startDate)
     .lt('fecha_cierre', periodo.endExclusive)
     .order('fecha_cierre', { ascending: true });
@@ -57,7 +59,7 @@ async function cargarCierres(periodo) {
 
   const { data: pagosPeriodo, error: pagosPeriodoError } = await supabase
     .from('cierre_pagos')
-    .select('id, cierre_id, concepto, monto, fecha, notas')
+    .select('id, cierre_id, concepto, monto, fecha, notas, cierres!inner(estado)').eq('cierres.estado', 'activo')
     .gte('fecha', periodo.startDate)
     .lt('fecha', periodo.endExclusive)
     .order('fecha', { ascending: true });
@@ -70,7 +72,7 @@ async function cargarCierres(periodo) {
   if (cierreIds.length > 0) {
     const { data, error } = await supabase
       .from('cierre_pagos')
-      .select('id, cierre_id, concepto, monto, fecha, notas')
+      .select('id, cierre_id, concepto, monto, fecha, notas, cierres!inner(estado)').eq('cierres.estado', 'activo')
       .in('cierre_id', cierreIds);
 
     if (error) throw error;
@@ -81,6 +83,7 @@ async function cargarCierres(periodo) {
     cierres: cierres || [],
     pagosPeriodo: pagosPeriodo || [],
     pagosConciliacion,
+    ...await cargarIngresosCancelacion(supabase, periodo),
   };
 }
 
@@ -153,10 +156,10 @@ export default async function handler(req, res) {
       ...resumen,
       eventos: incluirEventos
         ? {
-          cierres: mapearEventosCierres({
+          cierres: [...mapearEventosIngresosCancelacion(datosCierres), ...mapearEventosCierres({
             cierres: datosCierres.cierres,
             pagos: datosCierres.pagosPeriodo,
-          }),
+          })],
           administracion: mapearEventosAdministracion({
             comisionesGeneradas: datosAdmin.comisionesPeriodo,
             comisionesCobradas: datosAdmin.comisionesCobradasPeriodo,

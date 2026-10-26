@@ -1,0 +1,53 @@
+{
+  "fixture": {
+    "data": {
+      "id": -252301,
+      "estado": "cancelado",
+      "comision": 252,
+      "com_vendedor": 50.4,
+      "vendedor": "Ivan",
+      "advisor_profile_id": "b3830ea0-4131-46e3-b605-d56cca653198",
+      "cancelado_por": "e04ad988-7b62-49ee-9f70-184b31100519",
+      "cancelado_en": "2026-10-21T14:20:41.950374+00:00",
+      "cancelacion_motivo": "QA252 — NO REAL. Cancelación de único fixture sintético retenido con autorización expresa del usuario el 21/10/2026 para certificar historial, KPIs, comisiones y reportes en DEV. Sin cobros ni pagos."
+    }
+  },
+  "kpis": {
+    "cierres": 0,
+    "ingresos": 0
+  },
+  "events": {
+    "containsFixture": false
+  },
+  "/api/ejecutivo/bi-cierres-admin?year=2026&month=10&include=events": {
+    "http": 200,
+    "ok": true,
+    "metricas": {
+      "ingreso_generado": 0,
+      "cobrado": 0,
+      "pendiente_reconstruido": 0
+    },
+    "containsFixture": false
+  },
+  "/api/ejecutivo/centro-inteligencia?year=2026&month=10": {
+    "http": 200,
+    "ok": true,
+    "resumen_general": {
+      "total_generado": 0,
+      "total_cobrado": 0,
+      "total_pendiente": 0,
+      "costos_directos": 0,
+      "resultado_operativo": 0,
+      "resultado_operativo_nota": "Resultado de las unidades de negocio después de costos directos registrados. No incluye gastos corporativos, impuestos ni nómina administrativa general.",
+      "estado_confianza": "calculable",
+      "estado_confianza_label": "Alta",
+      "confianza_porcentaje": 100
+    },
+    "containsFixture": false
+  },
+  "/api/cierres/recibo-comision?id=-252301": {
+    "http": 404,
+    "error": "Cierre no encontrado",
+    "containsFixture": false
+  }
+}

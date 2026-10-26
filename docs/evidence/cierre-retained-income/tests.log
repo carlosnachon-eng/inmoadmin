@@ -1,0 +1,39 @@
+(node:37071) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/carlos/Documents/ChatGPT/inmoadmin/cierre251-review/lib/cierreCancellation.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/carlos/Documents/ChatGPT/inmoadmin/cierre251-review/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ active totals exclude cancelled historical values (1.087208ms)
+✔ reason and controlled errors (0.415375ms)
+✔ audited financial consumers explicitly filter active closures (8.727375ms)
+✔ receipt sync sees cancellation, history excludes cancelled from active state (3.400625ms)
+✔ BI excludes cancelled closures and their movements but keeps current collections of older active closures (5.643667ms)
+✔ weekly report excludes cancelled sales without sending any email (42.728125ms)
+✔ commission receipt endpoint refuses a cancelled closure before generating a document (1.471958ms)
+✔ retained cancellation income survives BI without counting as an active sale or adviser commission (0.901792ms)
+✔ retention recognition and historic cash belong to independent periods (0.111834ms)
+✔ la ficha añade Finanzas sin sustituir Cartera ni Estado de cuenta (1.863708ms)
+✔ estado inactivo es explícito y no ofrece activación (0.195958ms)
+✔ navegación cubre las siete superficies autorizadas (0.115ms)
+✔ lectura y evidencia se autorizan server-side y se limitan por condominio (0.090167ms)
+✔ referencias sensibles se enmascaran antes de llegar al cliente (0.078542ms)
+✔ las métricas UI se derivan de cargos, aplicaciones conciliadas y ledger (0.158208ms)
+✔ identificación posterior usa el RPC existente y nunca edita el movimiento (0.128709ms)
+✔ errores distinguen sesión, autorización y backend (0.070459ms)
+✔ el endpoint mantiene mutaciones con puede_editar y lectura con puede_ver (0.09375ms)
+✔ foundation is additive and all real condominiums remain inactive (0.9745ms)
+✔ ledger is balanced, posted transactionally and append-only (0.117458ms)
+✔ receipt applications are N:M and cannot exceed receipt or charge (0.087833ms)
+✔ receipt reconciliation uses PostgreSQL-compatible deterministic UUID selection (0.080167ms)
+✔ tenant isolation, RLS and private evidence fail closed (1.732208ms)
+✔ endpoint keeps privileged key server-side and requires a real session (0.26325ms)
+✔ rollback is fail-closed once financial activity or evidence exists (0.076083ms)
+✔ evidence accepts only certified private formats (2.719875ms)
+✔ input validation and safe error mapping (0.267167ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 164.985792
