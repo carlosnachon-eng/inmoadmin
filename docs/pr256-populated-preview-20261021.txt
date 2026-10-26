@@ -1,0 +1,59 @@
+PR #256 — Populated synthetic approval in authenticated Preview
+Date: 2026-10-21
+
+Result: PREVIEW_POPULATED_APPROVAL_PASS (synthetic sources, real DEV journal).
+
+Scope and isolation
+- Existing PR branch and real Inbox UI, runtime 1ff6179.
+- Real Supabase DEV session/profile authorization, bridge Ed25519 signature,
+  original-byte handler, durable replay nonce, review RPC and encrypted approval.
+- Disposable connection 725e2e98-88ce-45f3-bb9f-576863a45f04, sender false.
+- Comment, native references, token, property facts and Meta GET responses were
+  explicitly synthetic. No actual Meta capability/ownership assertion is made.
+- Harness overrides all Instagram credential/configuration fields with public
+  test-only material and blocks real Graph network. Only identity/profile reads
+  and scoped review RPCs reach DEV. No operational source rows, credentials,
+  properties, canary grants or RLS changes were created.
+- Harness is NOT imported by normal entrypoint; temporary bundle only, Preview
+  and exact DEV gates, expiry 2026-10-21T17:00Z, maximum lifetime two hours.
+
+Remote evidence
+- Isolated observer READY dpl_Az6UwT49dBbRSuwduBLcmshKqgqq (no aliases).
+- QA Inbox READY dpl_DNd3QDnXVkhrEbups6HU3NAeMBhN.
+- Authenticated Admin evaluated one synthetic price comment in Inbox Comments.
+- UI showed proposed; operator edit was clearly marked QA SINTETICA / no publicar.
+- One click 'Aprobar sin publicar' returned 'Aprobación registrada sin publicar'.
+- Independent SQL: approved, encrypted approval present, approved_by present,
+  approved_at present, destination SALES. Audit: evaluate=1, approve=1;
+  signed requests=2; events=1; actions=0; enabled comment senders=0.
+- Full browser reload + reopening Comments showed approved text and
+  'Aprobada y registrada. Envío deshabilitado'. Audit remained 1/1/actions=0.
+- Screenshots: docs/evidence/pr256-review/preview-synthetic-approved.png and
+  preview-synthetic-refresh.png. Desktop authenticated remote evidence only;
+  no new mobile or real Meta certification claimed in this run.
+
+Tests
+- Existing relevant JS suites: 52/52 PASS.
+- New isolated-harness test: 1/1 PASS; authorization, expiry, environment guard,
+  review-only forwarding, no real source/token/Graph calls, encrypted projection.
+- Disposable local PostgreSQL: 30 checks PASS plus durable bridge fixture PASS
+  (evaluate, approve, replay rejection, refresh). Local DB removed in finally.
+- Preview build READY, no application runtime change required for this QA.
+
+Cleanup and restoration
+- First transactional cleanup call failed at connector requestState; independent
+  read showed seven fixture rows still present. No cleanup success was assumed.
+- Deactivated ONLY fixture connection, then removed exact-scoped bridge requests,
+  audit, review, event and connection in a transaction. No action rows existed.
+- Final independent query across all six tables: residual_rows=0, senders_on=0,
+  original_connections=2. No historical/operational records removed.
+- Branch Preview URL restored to normal observer djb75p5eu before final redeploy.
+- Restored Inbox READY dpl_64uoFoC8EFcPLKXkmqW2b2PCW6BH (runtime 1ff6179).
+- Temporary QA deployment cannot write after connection removal and also expires;
+  neither temporary deployment has a production target or callback alias.
+
+Limitations / recommendation
+- This closes populated approval + durable journal QA, not real Meta publishing.
+- No publications, claims, dispatches, merge or Production changes.
+- Keep publication disabled. Does not by itself approve automatic production
+  rollout or replace remaining platform permission/real-source checks.

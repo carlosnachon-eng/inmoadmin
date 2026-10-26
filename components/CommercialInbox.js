@@ -21,7 +21,7 @@ export async function inboxRequest(channel,op,{thread,body}={}){
  return result;
 }
 
-export default function CommercialInbox({instagramAvailable,facebookAvailable=true,whatsappAdminAvailable=false}){
+export default function CommercialInbox({instagramAvailable,facebookAvailable=true,whatsappAdminAvailable=false,commentObservationAvailable=false}){
  const [filter,setFilter]=useState('all'),[query,setQuery]=useState(''),[threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState('');
  const [waList,setWaList]=useState({phase:'loading'});
  const [canSyncHistory,setCanSyncHistory]=useState(false),[syncBusy,setSyncBusy]=useState(false),[syncStatus,setSyncStatus]=useState(''),[historyRevision,setHistoryRevision]=useState(0);
@@ -179,7 +179,7 @@ export default function CommercialInbox({instagramAvailable,facebookAvailable=tr
   {syncStatus&&<p role="status" className="loadWarning">{syncStatus}</p>}
   {error&&<p role="status" className="loadWarning">Algunos canales no están disponibles: {error}</p>}
   {filter==='whatsapp_admin'&&<p role="status" className="loadWarning">{whatsappAdminListMessage({...waList,environment:waList.status?.data_source?.environment})}{waList.phase==='ready'&&waList.status?.data_source&&<span> Origen: {waList.status.data_source.project_ref} · API HTTP 200 · acceso autorizado.</span>}</p>}
-  {filter==='comments'?<InstagramCommentsPanel open onClose={()=>setFilter('all')}/>:<div className={'workspace '+(selected?'hasSelection':'')}>
+  {filter==='comments'?<InstagramCommentsPanel open observationEnabled={commentObservationAvailable} onClose={()=>setFilter('all')}/>:<div className={'workspace '+(selected?'hasSelection':'')}>
    <aside aria-label="Conversaciones" className="threadsPane"><div className="paneHeading"><strong>Conversaciones</strong><span>{visible.length}</span></div>
     <div className="readFilters"><button className={unreadFilter==='all'?'active':''} onClick={()=>setUnreadFilter('all')}>Todas</button><button className={unreadFilter==='unread'?'active':''} onClick={()=>setUnreadFilter('unread')}>No leídas ({threads.filter(t=>t.unread&&(filter==='all'||t.channel===filter)).length})</button></div>
     <label className="searchBox"><span aria-hidden="true">⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar conversaciones" aria-label="Buscar conversaciones"/></label>
