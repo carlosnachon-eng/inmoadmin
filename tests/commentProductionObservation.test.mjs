@@ -2,11 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {observationConfig,observationFetch,runProductionObservation,snapshot,PRODUCTION_DB} from '../lib/messaging/commentAgent/productionObservation.js';
 import * as crypto from '../lib/messaging/commentAgent/observationCrypto.js';
+import {commentObservationAllowed,commentReviewAllowed} from '../lib/messaging/commentAgent/api.js';
 const env={VERCEL_ENV:'production',NEXT_PUBLIC_SUPABASE_URL:PRODUCTION_DB,COMMENT_OBSERVATION_MODE:'human_review_only'};
 const values={MODE:'human_review_only',SEND_ENABLED:'false',CONNECTION_ID:'00000000-0000-4000-8000-000000000001',APP_ID:'100',ACCOUNT_ID:'200',INDEX_KEY:'a'.repeat(64),DATA_KEY:'b'.repeat(64),READ_TOKEN:'synthetic_only_token_123',TOKEN_EXPIRES_AT:'0',POST_IDS:'["200_400"]'};
 for(const [k,v] of Object.entries(values))env['COMMENT_OBSERVATION_FACEBOOK_'+k]=v;
 const actor={active:true,role_id:'admin',id:'00000000-0000-4000-8000-000000000002'};
 const c=observationConfig(env,'facebook');
+test('production observation opt-in never enables DEV webhook or legacy reader',()=>{
+ assert.equal(commentReviewAllowed(env),true);assert.equal(commentObservationAllowed(env),false);
+ assert.equal(commentReviewAllowed({...env,COMMENT_OBSERVATION_MODE:undefined}),false);
+});
 test('explicit production-only configuration; no transport fallback',()=>{
  for(const patch of [{VERCEL_ENV:'preview'},{COMMENT_OBSERVATION_MODE:undefined},{COMMENT_OBSERVATION_FACEBOOK_SEND_ENABLED:'true'},{COMMENT_OBSERVATION_FACEBOOK_TOKEN_EXPIRES_AT:''},{INSTAGRAM_BUSINESS_CONNECTION_ID:c.connection},{COMMENT_OBSERVATION_FACEBOOK_DATA_KEY:c.indexKey}])assert.throws(()=>observationConfig({...env,...patch},'facebook'));
  assert.equal(c.senderEnabled,false);

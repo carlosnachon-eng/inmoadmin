@@ -4,7 +4,7 @@ import InstagramBusinessInbox from '../../components/InstagramBusinessInbox';
 import CommercialInbox from '../../components/CommercialInbox';
 import {messengerEnvironmentAllowed} from '../../lib/messaging/facebook/messenger/config';
 import {whatsappAdminPreviewAllowed} from '../../lib/messaging/whatsappAdmin/inbox';
-import {commentObservationAllowed} from '../../lib/messaging/commentAgent/api';
+import {commentReviewAllowed as commentObservationAllowed} from '../../lib/messaging/commentAgent/api';
 
 export async function getServerSideProps(){
  const enabled=process.env.INSTAGRAM_BUSINESS_ENABLED==='true'

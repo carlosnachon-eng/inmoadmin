@@ -84,12 +84,20 @@ Do not revert operational channel migrations or rotate keys. Local rollback
 retains record counts and leaves gates closed. No remote rollback performed.
 
 Tests and outstanding certification
-64 affected JS tests PASS initially; final related suite rerun recorded in
-handoff. Seven new tests exercise the production adapter with synthetic data.
+77 affected JS tests PASS on final safety-gate revision. Eight new tests
+exercise the production adapter with synthetic data. The separate review
+gate never enables the DEV webhook or legacy observation reader in Production.
 Disposable PostgreSQL: 12 new boundary checks, 16 association checks, previous
 41 checks plus durable bridge fixture PASS. Real Meta/network sends = 0.
 Local DB removed in finally. No new remote fixtures. Build 81 pages PASS
-(font optimization warnings only). New UI mode needs final visual review.
+(font optimization warnings only). Desktop and CSS-mobile 390x844 synthetic
+QA: one approval, one UI POST, zero real sends; approval retained on new read.
+Fixtures were memory-only; server stopped. No remote rows to clean.
+Authenticated Preview 499a2dc: Instagram empty as diagnosed; Facebook shows
+21 reviews, 7 escalated, 2 candidates; no evaluation/approval invoked.
+Screenshots: /private/tmp/pr256-observation-desktop.png,
+/private/tmp/pr256-observation-mobile.png, /private/tmp/pr256-observation-preview.png.
+Production-mode real populated UI remains untested, not hidden by DEV QA.
 
 Exact remaining external step, not a request to publish replies:
 After code/security review and separate authorization, install the isolated

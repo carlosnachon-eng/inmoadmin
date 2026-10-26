@@ -1,6 +1,6 @@
 import {createClient} from '@supabase/supabase-js';
 import {authorizeInboxStaff} from '../../../lib/shadow/ai/apiAuth.js';
-import {commentObservationAllowed} from '../../../lib/messaging/commentAgent/api.js';
+import {commentReviewAllowed} from '../../../lib/messaging/commentAgent/api.js';
 import {businessConfig} from '../../../lib/messaging/instagram/business/config.js';
 import {messengerConfig} from '../../../lib/messaging/facebook/messenger/config.js';
 import * as igCrypto from '../../../lib/messaging/instagram/business/crypto.js';
@@ -21,7 +21,7 @@ import {facebookDevPanel} from '../../../lib/messaging/commentAgent/facebookDevP
 import {productionObservationEnabled,runProductionObservation} from '../../../lib/messaging/commentAgent/productionObservation.js';
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private,no-store');
- if(!commentObservationAllowed(process.env))return res.status(404).end();
+ if(!commentReviewAllowed(process.env))return res.status(404).end();
  if(!['GET','POST'].includes(req.method))return res.status(405).end();
  let stage='authorization';
  try{
