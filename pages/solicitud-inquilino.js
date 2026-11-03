@@ -299,9 +299,9 @@ export default function SolicitudInquilino() {
 
   const validateStep5 = () => {
     const e = {};
-    if (!form.ref_fam1_nombre?.trim()) e.ref_fam1_nombre = "Agrega al menos una referencia familiar";
-    if (!form.ref_fam1_telefono?.trim()) e.ref_fam1_telefono = "El teléfono es requerido";
-    if (!form.ref_per1_nombre?.trim()) e.ref_per1_nombre = "Agrega al menos una referencia personal";
+    if (!isMoral && !form.ref_fam1_nombre?.trim()) e.ref_fam1_nombre = "Agrega al menos una referencia familiar";
+    if (!isMoral && !form.ref_fam1_telefono?.trim()) e.ref_fam1_telefono = "El teléfono es requerido";
+    if (!form.ref_per1_nombre?.trim()) e.ref_per1_nombre = isMoral ? "Agrega una referencia comercial" : "Agrega al menos una referencia personal";
     if (!form.ref_per1_telefono?.trim()) e.ref_per1_telefono = "El teléfono es requerido";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -336,11 +336,11 @@ export default function SolicitudInquilino() {
       setError("Debes aceptar el Aviso de Privacidad para continuar.");
       return;
     }
-    if (!form.num_personas?.trim()) {
+    if (!isMoral && !form.num_personas?.trim()) {
       setErrors({ num_personas: "Este campo es requerido" });
       return;
     }
-    if (!form.personas_detalle?.trim()) {
+    if (!isMoral && !form.personas_detalle?.trim()) {
       setErrors({ personas_detalle: "Este campo es requerido" });
       return;
     }
@@ -903,7 +903,7 @@ export default function SolicitudInquilino() {
           {/* PASO 5 — Referencias */}
           {step === 5 && (
             <div>
-              <SectionTitle number="6" title="Referencias Familiares" subtitle="Mínimo 1 referencia familiar requerida" />
+              {!isMoral && <><SectionTitle number="6" title="Referencias Familiares" subtitle="Mínimo 1 referencia familiar requerida" />
               {[1, 2, 3].map(n => (
                 <div key={n} style={{ background: colors.gray, borderRadius: 12, padding: "16px 20px", marginBottom: 16, border: n === 1 && errors.ref_fam1_nombre ? "1px solid #E07070" : "none" }}>
                   <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: colors.dark }}>
@@ -923,18 +923,19 @@ export default function SolicitudInquilino() {
                 </div>
               ))}
 
-              <SectionTitle number="6b" title="Referencias Personales" subtitle="Mínimo 1 referencia personal requerida (no familiares)" />
+              </>}
+              <SectionTitle number="6b" title={isMoral ? "Referencias Comerciales" : "Referencias Personales"} subtitle={isMoral ? "Una referencia comercial requerida" : "Mínimo 1 referencia personal requerida (no familiares)"} />
               {[1, 2, 3].map(n => (
                 <div key={n} style={{ background: colors.gray, borderRadius: 12, padding: "16px 20px", marginBottom: 16, border: n === 1 && errors.ref_per1_nombre ? "1px solid #E07070" : "none" }}>
                   <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: colors.dark }}>
-                    Referencia personal {n} {n === 1 && <span style={{ color: colors.red }}>*</span>}
+                    {isMoral ? "Referencia comercial" : "Referencia personal"} {n} {n === 1 && <span style={{ color: colors.red }}>*</span>}
                   </p>
                   <Grid cols={3}>
                     <Field label="Nombre" error={n === 1 ? errors.ref_per1_nombre : undefined}>
                       <Input value={form[`ref_per${n}_nombre`]} onChange={e => set(`ref_per${n}_nombre`, e.target.value)} error={n === 1 ? errors.ref_per1_nombre : undefined} />
                     </Field>
                     <Field label="Relación">
-                      <Input value={form[`ref_per${n}_relacion`]} onChange={e => set(`ref_per${n}_relacion`, e.target.value)} placeholder="Amigo, compañero..." />
+                      <Input value={form[`ref_per${n}_relacion`]} onChange={e => set(`ref_per${n}_relacion`, e.target.value)} placeholder={isMoral ? "Cliente, proveedor, arrendador..." : "Amigo, compañero..."} />
                     </Field>
                     <Field label="Teléfono" error={n === 1 ? errors.ref_per1_telefono : undefined}>
                       <Input type="tel" value={form[`ref_per${n}_telefono`]} onChange={e => set(`ref_per${n}_telefono`, e.target.value)} error={n === 1 ? errors.ref_per1_telefono : undefined} />
@@ -948,7 +949,8 @@ export default function SolicitudInquilino() {
           {/* PASO 6 — Ocupantes + envío */}
           {step === 6 && (
             <div>
-              <SectionTitle number="7" title="Ocupantes del Inmueble" subtitle="" />
+              <SectionTitle number="7" title={isMoral ? "Operación en el inmueble" : "Ocupantes del Inmueble"} subtitle="" />
+              {!isMoral ? <>
               <Grid>
                 <Field label="¿Cuántas personas habitarán?" required error={errors.num_personas}>
                   <Input type="number" min="1" value={form.num_personas} onChange={e => set("num_personas", e.target.value)} error={errors.num_personas} />
@@ -979,6 +981,8 @@ export default function SolicitudInquilino() {
                   </Field>
                 )}
               </Grid>
+
+              </> : <p style={{ color: colors.muted, lineHeight: 1.6 }}>La actividad empresarial y el uso previsto del inmueble se registraron en el paso 4. No se requieren datos de habitantes ni familiares para una persona moral.</p>}
 
               {/* Aviso de privacidad */}
               <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 12, padding: "20px", margin: "24px 0" }}>
