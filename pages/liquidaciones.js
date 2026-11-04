@@ -11,6 +11,7 @@ import {
   contractActiveInPeriod,
   maintenanceOwnerBalance,
   paymentReceivedByEmporio,
+  selectContractsForPeriod,
 } from "../lib/operaciones/ownerLiquidation";
 
 const fmt = (n) => new Intl.NumberFormat("es-MX", {
@@ -1033,10 +1034,8 @@ export default function Liquidaciones() {
     const mes = fechaCorte.toLocaleDateString("es-MX", { year: "numeric", month: "long" });
 
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
-    const contratosProp = contracts.filter(c =>
-      propsProp.some(p => p.name === c.property_name) &&
-      contratoVigenteEnPeriodo(c, anioCorte, mesNumCorte)
-    );
+    const periodKey = `${anioCorte}-${String(mesNumCorte).padStart(2, "0")}`;
+    const contratosProp = selectContractsForPeriod(contracts, propsProp.map(p => p.name), periodKey);
     const liqProp = ownerPayments.filter(l => l.owner_email === ownerEmail);
     const ticketsProp = tickets.filter(t => {
       if (!propsProp.some(p => p.name === t.property_name)) return false;
@@ -1066,7 +1065,6 @@ export default function Liquidaciones() {
       const d = new Date(p.due_date + "T12:00:00");
       return d.getMonth() === (mesNumCorte - 1) && d.getFullYear() === anioCorte;
     });
-    const periodKey = `${anioCorte}-${String(mesNumCorte).padStart(2, "0")}`;
     const liquidation = calculateOwnerLiquidation({
       ownerEmail,
       period: periodKey,
