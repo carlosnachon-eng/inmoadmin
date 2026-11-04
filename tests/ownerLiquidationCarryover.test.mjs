@@ -22,15 +22,17 @@ const payments = [
   { contract_id: "contract-1", due_date: "2026-10-01", amount: 15600, status: "pagado", recibido_por: "emporio" },
 ];
 
-test("renewal expense waives monthly administration for the same property and period", () => {
-  const expenses = [{ property_name: "Prisma 1202", paid_by: "propietario", date: "2026-09-01", amount: 15600, description: "Comisión por renovación" }];
-  assert.equal(administrationCommissionForPeriod(contracts[0], expenses, "2026-09"), 0);
-  assert.equal(administrationCommissionForPeriod(contracts[0], expenses, "2026-10"), 1560);
+test("renewal requires an explicit marker to waive monthly administration", () => {
+  const regularRenewal = [{ property_name: "Prisma 1202", paid_by: "propietario", date: "2026-09-01", amount: 7800, description: "Comisión por renovación", notes: "" }];
+  const exemptRenewal = [{ property_name: "Prisma 1202", paid_by: "propietario", date: "2026-09-01", amount: 15600, description: "Comisión por renovación", notes: "ADMIN_EXENTA_RENOVACION" }];
+  assert.equal(administrationCommissionForPeriod(contracts[0], regularRenewal, "2026-09"), 1560);
+  assert.equal(administrationCommissionForPeriod(contracts[0], exemptRenewal, "2026-09"), 0);
+  assert.equal(administrationCommissionForPeriod(contracts[0], exemptRenewal, "2026-10"), 1560);
 });
 
 test("Daniela-style September debt carries into October after renewal waiver", () => {
   const propertyExpenses = [
-    { property_name: "Prisma 1202", paid_by: "propietario", date: "2026-09-01", amount: 15600, description: "Comisión por renovación" },
+    { property_name: "Prisma 1202", paid_by: "propietario", date: "2026-09-01", amount: 15600, description: "Comisión por renovación", notes: "ADMIN_EXENTA_RENOVACION" },
     { property_name: "Prisma 1202", paid_by: "propietario", date: "2026-09-15", amount: 3000, description: "septiembre" },
   ];
   const ownerPayments = [{
