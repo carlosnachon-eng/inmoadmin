@@ -1070,7 +1070,7 @@ export default function Liquidaciones() {
       period: periodKey,
       properties,
       contracts,
-      payments: pagosMesCalc || [],
+      payments,
       ownerPayments: ownerPayments.map((row) => ({ ...row, period_key: periodoKeyDesdeDescripcion(row.period_description) })),
       propertyExpenses,
       maintenanceTickets: tickets,
@@ -1125,6 +1125,7 @@ export default function Liquidaciones() {
     const gastosOpProp = liquidation.totalExpenses;
     const totalLiqProp = liquidation.totalLiquid;
     const saldoAnteriorProp = liquidation.priorBalance;
+    const ajustesPendientesAnteriores = liquidation.pendingAdjustmentBalance || 0;
     const deudaPropietario = liquidation.ownerDebt;
     const comisionExentaRenovacion = liquidation.totalCommissionWaivedByRenewal;
     // Balance real considerando sólo el dinero que Emporio tiene en su poder,
@@ -1179,7 +1180,7 @@ export default function Liquidaciones() {
       const mesMes2 = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
       return desc.includes(mesMes2) && desc.includes(String(anioCorte)) && l.status === "pagado";
     });
-    const extraLines = (costoMantPropTotal > 0 ? 1 : 0) + (anticipoMantProp > 0 ? 2 : 0) + (saldoPendienteAnteriores > 0 ? 1 : 0) + (saldoPendienteMesActual > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 && !yaLiquidadoPre ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0) + (totalComYaCobrada > 0 ? 1 : 0) + (totalComProp > 0 ? 1 : 0) + (saldoAnteriorProp !== 0 ? 1 : 0) + (comisionExentaRenovacion > 0 ? 1 : 0);
+    const extraLines = (costoMantPropTotal > 0 ? 1 : 0) + (anticipoMantProp > 0 ? 2 : 0) + (saldoPendienteAnteriores > 0 ? 1 : 0) + (saldoPendienteMesActual > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 && !yaLiquidadoPre ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0) + (totalComYaCobrada > 0 ? 1 : 0) + (totalComProp > 0 ? 1 : 0) + (saldoAnteriorProp !== 0 ? 1 : 0) + (ajustesPendientesAnteriores > 0 ? 1 : 0) + (comisionExentaRenovacion > 0 ? 1 : 0);
     const boxH = 28 + extraLines * 7;
 
     doc.setFillColor(185, 28, 60); doc.rect(14, y, 182, 7, "F");
@@ -1224,6 +1225,13 @@ export default function Liquidaciones() {
       doc.text(saldoAnteriorProp < 0 ? "Saldo anterior a favor de Emporio:" : "Saldo anterior a favor del propietario:", 18, lineY);
       doc.setFont("helvetica", "bold"); doc.setTextColor(saldoAnteriorProp < 0 ? 185 : 6, saldoAnteriorProp < 0 ? 28 : 95, saldoAnteriorProp < 0 ? 60 : 70);
       doc.text(`${saldoAnteriorProp < 0 ? "-" : "+"}${fmt(Math.abs(saldoAnteriorProp))}`, 105, lineY);
+      lineY += 7;
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+    }
+    if (ajustesPendientesAnteriores > 0) {
+      doc.text("Incluye ajustes históricos pendientes:", 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
+      doc.text(fmt(ajustesPendientesAnteriores), 105, lineY);
       lineY += 7;
       doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
     }
