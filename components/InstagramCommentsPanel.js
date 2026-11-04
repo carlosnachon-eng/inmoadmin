@@ -1,5 +1,6 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useState,useRef} from 'react';
 import {supabase} from '../lib/supabase';
+import CommentReviewPanel from './CommentReviewPanel';
 
 async function request(op,{body,query={}}={}){
  const {data}=await supabase.auth.getSession();
@@ -25,7 +26,8 @@ const CANNED=[
  'Con gusto. Mándanos DM y te compartimos precio, ubicación y disponibilidad 🙌'
 ];
 
-export default function InstagramCommentsPanel({open,onClose}){
+export default function InstagramCommentsPanel({open,onClose,observationEnabled=false}){
+ const loading=useRef(false);
  const [rows,setRows]=useState([]);
  const [allowed,setAllowed]=useState(false);
  const [busy,setBusy]=useState(false);
@@ -40,6 +42,8 @@ export default function InstagramCommentsPanel({open,onClose}){
  const [replyRevision,setReplyRevision]=useState(0);
 
  async function load(){
+  if(loading.current)return;
+  loading.current=true;
   setBusy(true);setStatus('');
   try{
    const r=await request('comments');
@@ -51,10 +55,15 @@ export default function InstagramCommentsPanel({open,onClose}){
   }catch(e){
    setRows([]);setSelected(null);
    setStatus(e.message==='forbidden'?'Comentarios disponibles para Dirección/Gerencia de Ventas.':'No fue posible cargar comentarios.');
-  }finally{setBusy(false);}
+  }finally{loading.current=false;setBusy(false);}
  }
 
  useEffect(()=>{if(open)void load();},[open]);
+ useEffect(()=>{
+  if(!open||!observationEnabled)return;
+  const timer=setInterval(()=>{if(!document.hidden)void load();},10000);
+  return()=>clearInterval(timer);
+ },[open,observationEnabled]);
  useEffect(()=>{if(!open||!selected||mediaInfo[selected])return;
   let cancelled=false;
   request('comment-media',{body:{comment:selected}}).then(data=>{
@@ -104,6 +113,7 @@ export default function InstagramCommentsPanel({open,onClose}){
  }
 
  if(!open)return null;
+ if(observationEnabled)return <section aria-label="Comentarios DEV"><button type="button" onClick={onClose}>Volver a mensajes</button><CommentReviewPanel/></section>;
  return <section className="commentsInbox" aria-label="Comentarios de Instagram">
   <aside className="commentListPane">
    <header className="listHeader">

@@ -1,0 +1,79 @@
+PR B — Comments observation foundation (NOT launch ready)
+
+Scope and isolation
+Independent branch based on main aeec321, not stacked on WhatsApp repair.
+No database migrations, secrets, Meta configuration, webhook changes, sends,
+cron activation or Production deployments. Existing manual senders unchanged.
+New endpoint requires Preview/development AND exact DEV Supabase project,
+active admin/gerente_ventas, then the existing authorized comments RPC.
+Production returns 404 before authentication/database access.
+
+Audit findings
+- Instagram: encrypted capture, authorized reader, public manual reply and
+  legacy automation action journal exist. DMs and comments are separate.
+- Facebook receiver handles entry.messaging; feed comment changes are ignored.
+  No operational Facebook comment capture/reader was found. UI explicitly says pending.
+- No accredited publication-to-property registry was found. Never infer a
+  property from caption, proximity, text or a caller-supplied ID.
+- Local absence of a reply does not establish absence of external responses.
+  The live adapter marks replies_verified=false. It cannot propose publication.
+- Legacy automateBusinessComment references dryRun without accepting it in
+  its arguments; the batch caller does not pass it. This path is NOT called or
+  repaired here because unblocking it could enable an existing generic sender.
+  Requires a separate guarded migration before any automation activation.
+
+Implemented phase-1 subset
+- Pure deterministic engine, exact platform/connection/post/property binding,
+  public facts freshness, safe numeric facts, conservative mixed/sensitive intent
+  escalation, existing/uncertain action suppression, duplicate/conflict handling.
+- Identifies price, availability, location, features, appointments, requirements.
+  Location/requirements/appointments escalate until approved field contracts exist.
+- GET-only observation API; sanitized 503 rather than silent empty success.
+- Existing Inbox Comments panel: DEV-only observation card and ten-second
+  refresh. Draft state is not reset by refresh. No new Inbox.
+- Metrics refer ONLY to current authorized batch, not lifetime totals.
+  responded_by_agent and opportunities_generated remain zero. Candidates are
+  not claimed as created commercial opportunities.
+- No durable audit, no human-approval transaction, no automatic/public/private
+  dispatch. Flags say false explicitly. Copy-to-draft is not approval or sending.
+
+Tests and evidence
+29/29 new decision/API tests PASS (node --test tests/commentObservation.test.mjs).
+Production build PASS with synthetic non-routable build configuration.
+Expanded run: 40 PASS / 2 FAIL. Existing unrelated failures:
+1. instagramBusinessDurable imports missing loadBusinessImage export.
+2. commercialInboxSharedRoles regex senderEnabled\s*= matches existing ===.
+Neither referenced implementation was changed by this branch.
+Synthetic browser harness: tests/commentObservationVisualServer.mjs.
+Actual observation component and decision engine rendered, proposal copied to
+manual draft, desktop and 390x844 mobile screenshots in docs/evidence/comment-observation.
+This is isolated component QA, NOT authenticated Preview end-to-end certification.
+Harness has CSP connect-src none, GET-only server, no database and no credentials.
+No synthetic database rows were created; no DEV/Production cleanup needed.
+
+Meta verification / limitations
+Official reference collection:
+https://www.postman.com/meta/instagram/folder/6raa77c/instagram-api-with-instagram-login
+Documents Instagram Login scope family including instagram_business_manage_comments.
+Endpoint-specific official references to verify before enabling dispatch:
+https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/comment-moderation/
+https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/messaging-api/private-replies/
+https://developers.facebook.com/docs/messenger-platform/discovery/private-replies/
+Direct documentation retrieval was blocked/rate-limited. Do not interpret the
+engine's conservative seven-day proposal cap as certified Meta entitlement.
+Private capability must be separately verified per platform/connection/comment;
+currently no live adapter supplies that capability. No permission requested.
+Do not enable live_comments without a separately established live use case.
+Facebook permission/App Review requirements remain endpoint- and asset-specific;
+Instagram permissions are not reusable for Facebook.
+
+Remaining before phase 2/3 (NO MERGE recommendation)
+1. Facebook feed capture/encrypted store/authorized reader and fixtures.
+2. Accredited publication-property registry and public-field contracts.
+3. External response-state verification for both platforms and tested permissions.
+4. Durable decision/approval journal, stale-version guards, transactional claims,
+   independent per-platform kill switches and no retry after uncertain dispatch.
+5. Approved public/private transports, windows/limits and concurrency tests.
+6. Actual commercial follow-up linkage and durable metrics.
+7. Authenticated Preview desktop/mobile end-to-end and refresh/draft verification.
+This draft intentionally cannot activate the requested agent yet.

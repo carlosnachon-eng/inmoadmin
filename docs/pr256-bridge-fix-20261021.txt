@@ -1,0 +1,61 @@
+PR #256 — Bridge evaluation diagnosis and durable approval certification
+2026-10-21. DEV/Preview only. No merge, Production, secrets or senders changed.
+
+Confirmed root causes
+1. Native Vercel Node handler populated req.body before bridgeReceiver read it.
+   Authenticated Preview showed body_read:parsed_body. Request journal remained 0.
+   Next-style config.api.bodyParser=false did not prevent this on the standalone
+   bundled native function. Kept fail-closed verification, replaced only entrypoint
+   with Web GET/POST handler supplying the original byte stream.
+   Official reference: https://vercel.com/kb/guide/how-do-i-get-the-raw-body-of-a-serverless-function
+2. UI 10-second GET refresh cleared action errors, obscuring the failure.
+   Action errors/results are now independent of successful list refreshes.
+3. After fixing bytes, request_once succeeded but evaluation failed upstream.
+   DEV catalog proved public.ig_business_comments_v1(uuid,uuid) and comment source
+   tables absent. Existing migrations 20261018160000 and 20261018183000 were absent.
+   Applied their existing SQL only to hjfwjnejbcpmknvfpdcq after local validation.
+   No schema changes to Production; no synthetic records inserted remotely.
+
+Changes
+- Safe fixed stage/code diagnostics across receiver, proxy, API and UI.
+- Native Web Request adapter: bounded original stream, fatal UTF-8 decoding,
+  unchanged signature/session/role/connection/nonce and sender OFF enforcement.
+- No parsed-object reconstruction, arbitrary RPC, publisher, retry or token renewal.
+- Existing comment migration parity in DEV (tables/RLS/capture/read/action RPC
+  definitions only; no action invocation, grants to operators or sender activation).
+
+Validation
+- 52/52 JavaScript tests PASS.
+- Next.js build PASS (81 pages); only Google Fonts download/optimization warnings
+  under restricted local network. Remote Preview build also READY.
+- 30 existing PostgreSQL checks PASS in disposable local database.
+- Additional end-to-end durable fixture PASS: Web Request -> signature -> real
+  comments reader -> encrypted capture -> evaluation -> real review RPC -> approval
+  -> fresh read. Exactly one approval audit, replay rejected, second approval
+  blocked, approved text decrypts after read. Zero claims/dispatches for this flow.
+- Local fixture uses synthetic keys/token/account/property and mocked read-only
+  Meta proof. It is NOT evidence of a real Meta publication or remote approval.
+- Local DB removed in finally, including failure runs; no remote fixture residues.
+- Preview authenticated UI now reports evaluation completed, processed=0.
+- DEV after evaluation: bridge_requests=2 (one post-fix upstream failure, one
+  completed evaluation), source_comments=0, reviews=0, actions=0, enabled_senders=0.
+- Three new source tables RLS enabled. Reader execution: anon=false,
+  authenticated=false, service_role=true; operator scope preserved in RPC.
+- Security advisors were run. Unrelated existing public-table RLS/definer/Auth
+  warnings remain outside scope. Private journal no-policy findings are deliberate
+  deny-all with service-only RPC ACL, not authorization bypasses.
+  Reference: https://supabase.com/docs/guides/database/database-linter
+
+Preview READY
+- Inmoadmin dpl_CAzb5EwmcvihAZ9UwsovFNbNFqs6, runtime commit 1ff6179.
+- Bridge dpl_EhcPCdPDi3qmHjSeBujdfLD6RXhv, isolated Preview, no alias replacement.
+- Only branch COMMENT_REVIEW_BRIDGE_URL updated; secret values unchanged.
+- Screenshot: docs/evidence/pr256-review/bridge-evaluation-fixed.png
+
+Remaining certification / NO MERGE
+The remote Preview has zero source comments and therefore no approvable proposal.
+Remote populated approval remains unvalidated; local durable approval is PASS.
+Do not manufacture a verified property association or introduce a fixture bypass
+using the live DEV keys just to label the remote test PASS. Next step is an
+authorized, correctly captured DEV comment with verifiable public facts, or an
+explicitly isolated populated QA setup. No publications needed for approval QA.
