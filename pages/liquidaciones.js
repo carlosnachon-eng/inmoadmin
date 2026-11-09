@@ -356,7 +356,9 @@ export default function Liquidaciones() {
       supabase.from("owner_payments").select("*").order("created_at", { ascending: false }),
       supabase.from("property_expenses").select("*").order("date", { ascending: false }),
       supabase.from("maintenance_tickets").select("*").order("created_at", { ascending: false }),
-      supabase.from("cash_movements").select("id, type, category, description, amount, date").eq("type", "entrada").eq("category", "renta_cobrada"),
+      supabase.from("cash_movements")
+        .select("id, type, category, description, amount, date, reference_id, reference_type, notes")
+        .in("category", ["renta_cobrada", "ajuste_propietario", "ajuste_comision_admin"]),
     ]);
     setProperties(p.data || []);
     setContracts(c.data || []);
@@ -875,6 +877,10 @@ export default function Liquidaciones() {
     const saldoAnterior = liquidation.priorBalance;
     const deudaPropietario = liquidation.ownerDebt;
     const comisionExentaRenovacion = liquidation.totalCommissionWaivedByRenewal;
+    const ingresoExtraordinario = liquidation.extraordinaryIncome || 0;
+    const devolucionesAjustes = liquidation.extraordinaryOutflows || 0;
+    const comisionExtraordinaria = liquidation.extraordinaryCommission || 0;
+    const movimientosExtraordinarios = liquidation.extraordinaryMovements || [];
     const gastosOpMes = liquidation.totalExpenses;
     const mantenimientoDescontadoMes = liquidation.totalDiscountedMaintenance;
     const propNamesOwner = propsProp.map(p => p.name);
@@ -1181,7 +1187,7 @@ export default function Liquidaciones() {
       const mesMes2 = fechaCorte.toLocaleDateString("es-MX", { month: "long" }).toLowerCase();
       return desc.includes(mesMes2) && desc.includes(String(anioCorte)) && l.status === "pagado";
     });
-    const extraLines = (costoMantPropTotal > 0 ? 1 : 0) + (anticipoMantProp > 0 ? 2 : 0) + (saldoPendienteAnteriores > 0 ? 1 : 0) + (saldoPendienteMesActual > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 && !yaLiquidadoPre ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0) + (totalComYaCobrada > 0 ? 1 : 0) + (totalComProp > 0 ? 1 : 0) + (saldoAnteriorProp !== 0 ? 1 : 0) + (ajustesPendientesAnteriores > 0 ? 1 : 0) + (comisionExentaRenovacion > 0 ? 1 : 0);
+    const extraLines = (costoMantPropTotal > 0 ? 1 : 0) + (anticipoMantProp > 0 ? 2 : 0) + (saldoPendienteAnteriores > 0 ? 1 : 0) + (saldoPendienteMesActual > 0 ? 1 : 0) + (gastosOpProp > 0 ? 1 : 0) + (totalAdelanto > 0 && !yaLiquidadoPre ? 1 : 0) + (rentaDirecta > 0 ? 1 : 0) + (totalComYaCobrada > 0 ? 1 : 0) + (totalComProp > 0 ? 1 : 0) + (saldoAnteriorProp !== 0 ? 1 : 0) + (ajustesPendientesAnteriores > 0 ? 1 : 0) + (comisionExentaRenovacion > 0 ? 1 : 0) + (ingresoExtraordinario > 0 ? 1 : 0) + (devolucionesAjustes > 0 ? 1 : 0) + (comisionExtraordinaria > 0 ? 1 : 0);
     const boxH = 28 + extraLines * 7;
 
     doc.setFillColor(185, 28, 60); doc.rect(14, y, 182, 7, "F");
@@ -1222,6 +1228,13 @@ export default function Liquidaciones() {
       lineY += 7;
     }
     doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+    if (ingresoExtraordinario > 0) {
+      doc.text("Ingresos extraordinarios:", 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(6, 95, 70);
+      doc.text(`+${fmt(ingresoExtraordinario)}`, 105, lineY);
+      lineY += 7;
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+    }
     if (saldoAnteriorProp !== 0) {
       doc.text(saldoAnteriorProp < 0 ? "Saldo anterior a favor de Emporio:" : "Saldo anterior a favor del propietario:", 18, lineY);
       doc.setFont("helvetica", "bold"); doc.setTextColor(saldoAnteriorProp < 0 ? 185 : 6, saldoAnteriorProp < 0 ? 28 : 95, saldoAnteriorProp < 0 ? 60 : 70);
@@ -1254,6 +1267,20 @@ export default function Liquidaciones() {
       doc.text(`Comisión administración retenida:`, 18, lineY);
       doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
       doc.text(`-${fmt(totalComYaCobrada)} (ya cobrada)`, 105, lineY);
+      lineY += 7;
+    }
+    if (comisionExtraordinaria > 0) {
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+      doc.text("Administración s/ extraordinarios:", 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
+      doc.text(`-${fmt(comisionExtraordinaria)}`, 105, lineY);
+      lineY += 7;
+    }
+    if (devolucionesAjustes > 0) {
+      doc.setFont("helvetica", "normal"); doc.setTextColor(74, 74, 74);
+      doc.text("Devoluciones y ajustes:", 18, lineY);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(185, 28, 60);
+      doc.text(`-${fmt(devolucionesAjustes)}`, 105, lineY);
       lineY += 7;
     }
     if (costoMantPropTotal > 0) {
@@ -1402,6 +1429,27 @@ export default function Liquidaciones() {
     });
     y = doc.lastAutoTable.finalY + 12;
     if (y > 230) { doc.addPage(); y = 15; }
+
+    if (movimientosExtraordinarios.length > 0) {
+      y = sectionTitle("Movimientos extraordinarios del corte", y);
+      const propertyById = new Map(propsProp.map(p => [String(p.id), p.name]));
+      autoTable(doc, {
+        startY: y,
+        head: [["Concepto", "Propiedad", "Movimiento", "Monto"]],
+        body: movimientosExtraordinarios.map(mv => [
+          mv.description || "Ajuste",
+          propertyById.get(String(mv.reference_id)) || "—",
+          mv.category === "ajuste_comision_admin" ? "Administración" : (mv.type === "entrada" ? "Ingreso" : "Devolución / ajuste"),
+          `${mv.type === "entrada" ? "+" : "-"}${fmt(mv.amount)}`,
+        ]),
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: headStyle,
+        alternateRowStyles: altRow,
+        margin: tableMargin,
+      });
+      y = doc.lastAutoTable.finalY + 12;
+      if (y > 230) { doc.addPage(); y = 15; }
+    }
 
     y = sectionTitle("Historial de Liquidaciones", y);
     autoTable(doc, {
