@@ -1035,7 +1035,8 @@ export default function Liquidaciones() {
 
     const propsProp = properties.filter(p => p.owner_email === ownerEmail);
     const periodKey = `${anioCorte}-${String(mesNumCorte).padStart(2, "0")}`;
-    const contratosProp = selectContractsForPeriod(contracts, propsProp.map(p => p.name), periodKey);
+    const contratosProp = selectContractsForPeriod(contracts, propsProp.map(p => p.name), periodKey)
+      .filter(c => c.status === "activo");
     const liqProp = ownerPayments.filter(l => l.owner_email === ownerEmail);
     const ticketsProp = tickets.filter(t => {
       if (!propsProp.some(p => p.name === t.property_name)) return false;
