@@ -1135,6 +1135,10 @@ export default function Liquidaciones() {
     const ajustesPendientesAnteriores = liquidation.pendingAdjustmentBalance || 0;
     const deudaPropietario = liquidation.ownerDebt;
     const comisionExentaRenovacion = liquidation.totalCommissionWaivedByRenewal;
+    const ingresoExtraordinario = liquidation.extraordinaryIncome || 0;
+    const devolucionesAjustes = liquidation.extraordinaryOutflows || 0;
+    const comisionExtraordinaria = liquidation.extraordinaryCommission || 0;
+    const movimientosExtraordinarios = liquidation.extraordinaryMovements || [];
     // Balance real considerando sólo el dinero que Emporio tiene en su poder,
     // incluido el saldo neto arrastrado del corte anterior.
     const balanceEmporio = liquidation.netBeforePayments;
