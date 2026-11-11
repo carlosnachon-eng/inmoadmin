@@ -6,6 +6,7 @@ import Head from 'next/head'
 import { usePartnerInvitation, invitationsEnabled, invitationUnavailable, linkInvitedSubmission } from '../lib/usePartnerInvitation'
 import PasoOrigen from '../components/poliza/PasoOrigen'
 import { needsOrigenStep, origenMetadata, partnerCandidateKey, partnerContextStatus, validatedPartnerResponse, shouldLinkPartner } from '../lib/blindajeOrigen.mjs'
+import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
@@ -18,6 +19,18 @@ const colors = {
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_FILE_EXTENSIONS = ["pdf", "jpg", "jpeg", "png"];
+
+const publicSupabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  }
+);
 
 const fileValidationError = (file) => {
   if (!file) return null;
@@ -434,20 +447,19 @@ export default function SolicitudInquilino() {
         payload.blindaje_submission_claim_hash = claim.claim_hash
       }
 
-      const { data, error: insertError } = await supabase
+      const submissionId = crypto.randomUUID();
+      const { error: insertError } = await publicSupabase
         .from("solicitudes_inquilino")
-        .insert(payload)
-        .select("id")
-        .single();
+        .insert({ ...payload, id: submissionId });
 
       if (insertError) throw insertError;
-      receivedId = data.id
+      receivedId = submissionId
 
-      setSubmitId(data.id);
+      setSubmitId(submissionId);
 
       let invitedLinked = false
       if (secureInvitation) {
-        const linked = await linkInvitedSubmission(invitation, 'inquilino', data.id)
+        const linked = await linkInvitedSubmission(invitation, 'inquilino', submissionId)
         invitedLinked = linked
         setInvitationLinkWarning(!linked)
       } else if (shouldLinkPartner(origenEnabled, router.query, partnerStatus)) {
@@ -459,7 +471,7 @@ export default function SolicitudInquilino() {
             partner_operation_id: router.query.operacion,
             participant_id: router.query.participante || null,
             tipo: 'inquilino',
-            record_id: data.id,
+            record_id: submissionId,
           }),
         }).catch(() => {});
       }
@@ -476,7 +488,7 @@ export default function SolicitudInquilino() {
         const analisisRes = await fetch('/api/analizar-solicitud', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ solicitud_id: data.id, tipo_ejecucion: 'inicial' }),
+          body: JSON.stringify({ solicitud_id: submissionId, tipo_ejecucion: 'inicial' }),
         });
         if (analisisRes.ok) {
           const resultado = await analisisRes.json();
@@ -494,7 +506,7 @@ export default function SolicitudInquilino() {
             updatePayload.curp_nombre_renapo = resultado.validacionCurp.nombre_en_renapo;
             updatePayload.curp_status = resultado.validacionCurp.curp_status;
           }
-          await supabase.from('solicitudes_inquilino').update(updatePayload).eq('id', data.id);
+          await publicSupabase.from('solicitudes_inquilino').update(updatePayload).eq('id', submissionId);
         }
       } catch (e) {
         console.error('Error análisis IA:', e.message);
