@@ -6,7 +6,6 @@ import Head from 'next/head'
 import { usePartnerInvitation, invitationsEnabled, invitationUnavailable, linkInvitedSubmission } from '../lib/usePartnerInvitation'
 import PasoOrigen from '../components/poliza/PasoOrigen'
 import { needsOrigenStep, origenMetadata, partnerCandidateKey, partnerContextStatus, validatedPartnerResponse, shouldLinkPartner } from '../lib/blindajeOrigen.mjs'
-import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
@@ -20,17 +19,41 @@ const colors = {
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_FILE_EXTENSIONS = ["pdf", "jpg", "jpeg", "png"];
 
-const publicSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
+const publicInsertTenantApplication = async (row) => {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/solicitudes_inquilino`, {
+    method: "POST",
+    headers: {
+      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
     },
+    body: JSON.stringify(row),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const message = body?.message || body?.details || `Error HTTP ${response.status}`;
+    throw new Error(message);
   }
-);
+};
+
+const publicUpdateTenantApplication = async (id, patch) => {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/solicitudes_inquilino?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: {
+      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const message = body?.message || body?.details || `Error HTTP ${response.status}`;
+    throw new Error(message);
+  }
+};
 
 const fileValidationError = (file) => {
   if (!file) return null;
@@ -448,11 +471,7 @@ export default function SolicitudInquilino() {
       }
 
       const submissionId = crypto.randomUUID();
-      const { error: insertError } = await publicSupabase
-        .from("solicitudes_inquilino")
-        .insert({ ...payload, id: submissionId });
-
-      if (insertError) throw insertError;
+      await publicInsertTenantApplication({ ...payload, id: submissionId });
       receivedId = submissionId
 
       setSubmitId(submissionId);
@@ -506,7 +525,7 @@ export default function SolicitudInquilino() {
             updatePayload.curp_nombre_renapo = resultado.validacionCurp.nombre_en_renapo;
             updatePayload.curp_status = resultado.validacionCurp.curp_status;
           }
-          await publicSupabase.from('solicitudes_inquilino').update(updatePayload).eq('id', submissionId);
+          await publicUpdateTenantApplication(submissionId, updatePayload);
         }
       } catch (e) {
         console.error('Error análisis IA:', e.message);
