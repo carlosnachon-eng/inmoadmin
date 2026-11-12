@@ -22,6 +22,7 @@ export const nav = [
   { id: "reporte-propietario", label: "Reporte Propietarios", icon: "📊", link: "/reporte-propietario", modulo: "reporte-propietario" },
   { id: "checador",      label: "Checador",          icon: "🕒",  link: "/checador",           modulo: "checador" },
   { id: "guias",         label: "Guías",              icon: "📍",  link: "/guias",              modulo: "guias" },
+  { id: "consultoria",   label: "Consultoría",         icon: "🧭",  link: "/consultoria",        modulo: "consultoria", rolesPermitidos: ["consultora_negocios","admin"] },
   { id: "kpis",          label: "KPIs",               icon: "🎯",  link: "/kpis",               modulo: "kpis" },
   { id: "mi_trabajo",    label: "Mi Trabajo",         icon: "📌",  link: "/mi-trabajo",         modulo: "ejecutivo", rolesPermitidos: ["admin", "gerente_ventas", "asesor"] },
   { id: "mi_trabajo_administrativo", label: "Trabajo Administrativo", icon: "🗂️", link: "/mi-trabajo-administrativo", modulo: "operaciones_work_center", rolesPermitidos: ["admin", "coord_operaciones"] },
