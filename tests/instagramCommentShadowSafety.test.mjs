@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 const code=readFileSync(new URL('../lib/messaging/instagram/business/comments.js',import.meta.url),'utf8');
 const cron=readFileSync(new URL('../pages/api/cron/instagram-comment-automation.js',import.meta.url),'utf8');
 const fold=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-const snippet=code.match(/export function classifyBusinessCommentAutomation\([\s\S]*?(?=\nexport async function sendBusinessPrivateCommentReplyOnce)/)?.[0];
+const snippet=code.match(/export function classifyBusinessCommentAutomation\([\s\S]*?(?=\nexport (?:async )?function )/)?.[0];
 assert.ok(snippet,'classifier export exists');
 const classify=new Function('open','binding','fold',snippet.replace(/^export /,'')+'; return classifyBusinessCommentAutomation;')((_c,_purpose,_binding,box)=>box,()=>[],fold);
 const row=(text,overrides={})=>({occurred_at:'2026-10-18T12:00:00.000Z',content_box:{text,...overrides}});

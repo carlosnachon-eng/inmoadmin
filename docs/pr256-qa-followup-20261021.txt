@@ -1,0 +1,43 @@
+PR #256 — QA retomada 2026-10-21
+
+Estado: NO MERGE. No certificación durable completa todavía.
+
+Implementación evaluada: e5dc08c.
+Preview del alias: dpl_5eo5TWyfEqURrsJCXewgd1nxPoQN, READY,
+commit e5dc08cacf31640d976f0b778a81a4dc44f873ba, target Preview.
+
+QA autenticada remota:
+- Sesión Admin DEV reconocida; panel Comentarios abre sin error visible.
+- Evaluar sin publicar deshabilita controles durante la operación y vuelve
+  a estado vacío sin mostrar error. Se comprobó también tras recargar.
+- Esto NO demuestra ejecución del puente: bridge_requests en Supabase DEV
+  conserva count=0, last_request=null. Reviews=0, actions=0.
+- Configuración actual del proyecto contiene COMMENT_REVIEW_BRIDGE_URL
+  y la clave privada exclusiva de la rama; no se leyeron valores secretos.
+- La consulta de runtime logs no aportó registros para el periodo/ruta.
+- No atribuir el resultado vacío a un fallo de cifrado, permisos o datos:
+  la causa aún no está acreditada. Falta correlacionar la petición real
+  con deployment y rama, y mostrar el resultado seguro de la operación
+  antes de certificar evaluación/aprobación remotas.
+
+QA sintética aislada (componente real, API de fixture en memoria):
+- Viewport CSS anidado 390 x 844; no emulación de hardware móvil.
+- Edición de propuesta y aprobación: PASS, texto editado visible.
+- Cambio Instagram -> Facebook -> Instagram: PASS; estado aprobado
+  preservado en Instagram, propuesta Facebook independiente.
+- Contadores de fixture: approvals=1, posts=1, real_sends=0.
+- La evidencia desktop del turno anterior también es sintética.
+- Esta prueba NO sustituye la auditoría cifrada durable del puente remoto.
+- El servidor de QA sólo vive en memoria; terminarlo elimina sus fixtures.
+
+Pruebas repetidas: 48/48 JS PASS (bridge, review, diagnostics, observation).
+PostgreSQL 30 comprobaciones y build PASS: evidencia del turno anterior,
+no repetidos en este turno. Cambio actual sólo en harness de QA y reporte.
+
+Seguridad: sender DB false en Instagram y Facebook; cero actions en el
+journal comercial DEV. Sin publicaciones, llamadas de envío, cambios de
+secretos, merge ni intervención productiva. No se insertaron fixtures en DEV.
+
+Evidencia móvil: docs/evidence/pr256-review/mobile-approval-390.png.
+Próximo requisito: resolver la ausencia del comprobante durable remoto;
+después certificar aprobación durable sintética y revisar el PR completo.
