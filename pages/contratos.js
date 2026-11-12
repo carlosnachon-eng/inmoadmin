@@ -54,6 +54,88 @@ const generarPagos = (contrato) => {
   return pagos;
 };
 
+
+const syncPagosContrato = async (contrato, administraEmporio) => {
+  const { data: linkedRows, error: linkedError } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("contract_id", contrato.id);
+  if (linkedError) throw linkedError;
+
+  if (!administraEmporio) return;
+
+  const expected = generarPagos(contrato);
+  const expectedByDate = new Map(expected.map(p => [p.due_date, p]));
+  const expectedDates = new Set(expectedByDate.keys());
+  const linked = linkedRows || [];
+
+  const outside = linked.filter(p => !expectedDates.has(p.due_date));
+  const paidOutside = outside.filter(p => p.status === "pagado");
+  const pendingOutside = outside.filter(p => p.status !== "pagado");
+
+  if (paidOutside.length) {
+    const { error } = await supabase
+      .from("payments")
+      .update({ contract_id: null })
+      .in("id", paidOutside.map(p => p.id));
+    if (error) throw error;
+  }
+
+  if (pendingOutside.length) {
+    const { error } = await supabase
+      .from("payments")
+      .delete()
+      .in("id", pendingOutside.map(p => p.id));
+    if (error) throw error;
+  }
+
+  const linkedExpected = linked.filter(p => expectedDates.has(p.due_date));
+  const linkedDates = new Set(linkedExpected.map(p => p.due_date));
+
+  for (const row of linkedExpected) {
+    const desired = expectedByDate.get(row.due_date);
+    if (row.status !== "pagado") {
+      const { error } = await supabase
+        .from("payments")
+        .update({
+          tenant_name: desired.tenant_name,
+          tenant_email: desired.tenant_email,
+          property_name: desired.property_name,
+          period_month: desired.period_month,
+          period_year: desired.period_year,
+          amount: desired.amount,
+        })
+        .eq("id", row.id);
+      if (error) throw error;
+    }
+  }
+
+  const missing = expected.filter(p => !linkedDates.has(p.due_date));
+  for (const pago of missing) {
+    const { data: existing, error: existingError } = await supabase
+      .from("payments")
+      .select("id,status")
+      .is("contract_id", null)
+      .eq("property_name", pago.property_name)
+      .eq("tenant_name", pago.tenant_name)
+      .eq("due_date", pago.due_date)
+      .eq("amount", pago.amount)
+      .limit(1);
+    if (existingError) throw existingError;
+
+    if (existing?.length) {
+      const { error } = await supabase
+        .from("payments")
+        .update({ contract_id: contrato.id })
+        .eq("id", existing[0].id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from("payments").insert(pago);
+      if (error) throw error;
+    }
+  }
+};
+
 const Modal = ({ title, onClose, children }) => (
   <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
     <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
@@ -203,10 +285,27 @@ export default function Contratos() {
     };
 
     if (editing) {
-      const { error } = await supabase.from("contracts").update(data).eq("id", editing);
+      const { data: updatedContract, error } = await supabase
+        .from("contracts")
+        .update(data)
+        .eq("id", editing)
+        .select()
+        .single();
+      if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
+
+      try {
+        const property = properties.find(p => p.name === updatedContract.property_name);
+        const administraEmporio = propertyIsCurrentlyAdministered(property);
+        await syncPagosContrato(updatedContract, administraEmporio);
+      } catch (syncError) {
+        setSaving(false);
+        showToast("Contrato actualizado, pero hubo un error al sincronizar cobranza: " + syncError.message, false);
+        await loadData();
+        return;
+      }
+
       setSaving(false);
-      if (error) { showToast("Error: " + error.message, false); return; }
-      showToast("Contrato actualizado");
+      showToast("Contrato y cobranza actualizados");
     } else {
       const { data: newContract, error } = await supabase.from("contracts").insert([{ ...data, status: "activo" }]).select().single();
       if (error) { setSaving(false); showToast("Error: " + error.message, false); return; }
