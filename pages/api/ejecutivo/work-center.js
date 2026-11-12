@@ -204,7 +204,8 @@ export default async function handler(req, res) {
     const mode = req.query.mode || "mine";
     const targetId = req.query.target || null;
     const canManage = MANAGEMENT_ROLES.has(profile.role_id);
-    if (mode !== "mine" && !canManage) return res.status(403).json({ ok: false, error: "Supervision no autorizada." });
+    const canViewManagement = canManage || profile.role_id === "consultora_negocios";
+    if (mode !== "mine" && !canViewManagement) return res.status(403).json({ ok: false, error: "Supervision no autorizada." });
     if (profile.role_id === "coord_operaciones") return res.status(403).json({ ok: false, error: "Scope comercial no autorizado." });
 
     const effectiveTargetId = mode === "mine" ? profile.id : targetId || null;
@@ -254,7 +255,7 @@ export default async function handler(req, res) {
         .filter((edge) => isEvaluableAdvisor(profilesById.get(edge.subordinate_profile_id)))
         .forEach((edge) => visibleAdvisorIds.add(edge.subordinate_profile_id));
     }
-    if (profile.role_id === "admin") {
+    if (profile.role_id === "admin" || profile.role_id === "consultora_negocios") {
       profiles.filter(isEvaluableAdvisor).forEach((p) => visibleAdvisorIds.add(p.id));
       edges
         .filter((edge) => edge.supervisor_profile_id !== profile.id)
