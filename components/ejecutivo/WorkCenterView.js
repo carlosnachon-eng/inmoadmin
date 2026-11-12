@@ -444,6 +444,7 @@ export default function WorkCenterView({ type = "advisor" }) {
 
   const isManagerView = type === "manager";
   const canUseManager = ["admin", "gerente_ventas"].includes(profile?.role_id);
+  const canViewManager = canUseManager || profile?.role_id === "consultora_negocios";
   const isUnassignedSelected = selectedAdvisor === "__unassigned";
   const mode = isManagerView ? (selectedAdvisor && !isUnassignedSelected ? "supervise" : "management") : "mine";
   const canRegisterSupervision = isManagerView && canUseManager && !isUnassignedSelected;
@@ -454,6 +455,11 @@ export default function WorkCenterView({ type = "advisor" }) {
 
   const loadData = useCallback(async ({ silent = false, accessToken = session?.access_token } = {}) => {
     if (!accessToken || !profile) return;
+    if (isManagerView && !canViewManager) {
+      setLoading(false);
+      setError("Supervisión no autorizada.");
+      return;
+    }
     if (!silent) {
       setLoading(true);
       setError("");
