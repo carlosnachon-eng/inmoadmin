@@ -1,6 +1,7 @@
 {
   "git": {
     "deploymentEnabled": {
+      "codex/respond-advanced-integration": false,
       "codex/meta-respond-correlation": false,
       "codex/meta-admin-observer": false,
       "codex/respond-durable-ack": false,
