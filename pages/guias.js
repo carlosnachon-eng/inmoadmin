@@ -10,7 +10,7 @@ const supabase = createClient(
 
 // Roles con acceso a Guías (antes era una lista de correos sueltos).
 // Según la matriz de permisos: Admin, Gerente de Ventas y Asesores.
-const ROLES_CON_ACCESO_GUIAS = ['admin', 'gerente_ventas', 'asesor']
+const ROLES_CON_ACCESO_GUIAS = ['admin', 'gerente_ventas', 'asesor', 'consultora_negocios']
 
 // Nombres reales como respaldo mientras profiles.full_name esté vacío
 const NOMBRES_CONOCIDOS = {
@@ -386,6 +386,8 @@ export default function Guias() {
   }, [session])
 
   const tieneAcceso = ROLES_CON_ACCESO_GUIAS.includes(perfilDb?.role_id)
+  const esConsultora = perfilDb?.role_id === 'consultora_negocios'
+  const seccionesVisibles = SECCIONES.filter(s => !esConsultora || !['cuenta', 'ficha'].includes(s.id))
 
   // Prellenar nombre del asesor desde perfil
   useEffect(() => {
@@ -450,6 +452,7 @@ export default function Guias() {
   const labelSt = { display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }
 
   const renderBloque = (bloque, i) => {
+    if (esConsultora && bloque.tipo === 'banco') return null
     const key = `${seccionActiva}-${i}`
     if (bloque.tipo === 'tabla') return (
       <div key={i} style={{ marginBottom: 24 }}>
@@ -560,7 +563,7 @@ export default function Guias() {
         {/* TABS */}
         <div style={{ background: '#fff', borderBottom: '1px solid #f3f4f6', padding: '0 20px' }}>
           <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', gap: 0, overflowX: 'auto' }}>
-            {SECCIONES.map(s => (
+            {seccionesVisibles.map(s => (
               <button key={s.id} onClick={() => setSeccionActiva(s.id)}
                 style={{ padding: '14px 16px', fontSize: 13, fontWeight: 700, color: seccionActiva === s.id ? s.color : '#9ca3af', background: 'none', border: 'none', borderBottom: `2px solid ${seccionActiva === s.id ? s.color : 'transparent'}`, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 {s.label}
