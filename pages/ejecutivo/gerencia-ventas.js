@@ -7,7 +7,7 @@ import { SinAcceso } from "../../lib/permisos";
 const META_MENSUAL_NUEVA = 380000;
 const META_CITAS_DIARIAS = 2;
 const META_CONVERSION_OPERATIVA = 0.15;
-const ROLES_AUTORIZADOS_GERENCIA_VENTAS = new Set(["admin", "gerente_ventas"]);
+const ROLES_AUTORIZADOS_GERENCIA_VENTAS = new Set(["admin", "gerente_ventas", "consultora_negocios"]);
 const ROLES_ASESORES = new Set(["asesor"]);
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const VALIDACION_HISTORICA = {
