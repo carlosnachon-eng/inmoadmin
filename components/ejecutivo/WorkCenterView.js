@@ -749,7 +749,7 @@ export default function WorkCenterView({ type = "advisor" }) {
   if (!fase2aEnabled) return <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Módulo no habilitado.</main>;
   if (!session) return isPreviewUi ? <LoginPanel /> : <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Redirigiendo al inicio de sesión...</main>;
   if (!profile || loading && !data) return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "system-ui" }}>Cargando centro de trabajo...</div>;
-  if (isManagerView && !canUseManager) {
+  if (isManagerView && !canViewManager) {
     return <Layout view="mi_trabajo" profile={profile}><main style={{ padding: 28 }}><Panel><h1>Sin acceso</h1><p>Tu rol no tiene acceso a Mi Gerencia.</p></Panel></main></Layout>;
   }
 

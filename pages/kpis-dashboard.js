@@ -8,7 +8,7 @@ const supabase = createClient(
 )
 
 // Roles con acceso a este dashboard (antes era una lista de correos sueltos)
-const ROLES_ADMIN_DASHBOARD = ['admin', 'gerente_ventas']
+const ROLES_ADMIN_DASHBOARD = ['admin', 'gerente_ventas', 'consultora_negocios']
 
 // Roles que aparecen en el ranking/listado del dashboard (los que registran KPIs)
 const ROLES_EN_RANKING = ['asesor', 'gerente_ventas']

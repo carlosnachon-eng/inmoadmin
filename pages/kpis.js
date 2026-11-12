@@ -14,7 +14,7 @@ const ROLES_QUE_REGISTRAN_KPIS = ['asesor', 'gerente_ventas']
 
 // Roles con acceso de administrador dentro de KPIs (ven el botón de
 // "Ver Dashboard"). Antes era una lista de correos sueltos.
-const ROLES_ADMIN_KPIS = ['admin', 'gerente_ventas']
+const ROLES_ADMIN_KPIS = ['admin', 'gerente_ventas', 'consultora_negocios']
 
 const isPartnerEmail = (email, partnerEmails) => partnerEmails.has(String(email || '').toLowerCase())
 
