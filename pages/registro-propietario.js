@@ -329,8 +329,6 @@ export default function RegistroPropietario() {
         if (error) throw new Error('No se pudo subir ' + file.name + ': ' + error.message)
       }))
       await api({ action: 'finish', id, token, files: fileExtensions })
-      pendingRegistration.current = null
-
       let invitedLinked = false
       if (secureInvitation) {
         const linked = await linkInvitedSubmission(invitation, 'propietario', id)
@@ -352,10 +350,12 @@ export default function RegistroPropietario() {
 
       if (externalOrigin) {
         finishExternalPayment(await bootstrapPayment({ origin: externalOrigin, role: 'propietario', claim: claimRef.current, invitation: secureInvitation ? invitation : null, linked: invitedLinked }))
+        pendingRegistration.current = null
         setSubmitId(id); setStep(4)
         return
       }
 
+      pendingRegistration.current = null
       setSubmitId(id); setStep(4)
     } catch (err) {
       if (externalOrigin) {
