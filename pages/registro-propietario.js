@@ -64,19 +64,12 @@ const PartnerBanner = ({ branding }) => {
   )
 }
 
-const uploadDoc = async (file, folder, fileName) => {
-  const ext = file.name.split('.').pop()
-  const path = `${folder}/${fileName}.${ext}`
-  const { error } = await supabase.storage.from('poliza-docs').upload(path, file, { upsert: true })
-  if (error) throw error
-  return path
-}
-
 export default function RegistroPropietario() {
   const router = useRouter()
   const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true' || externalPaymentEnabled
   const claimRef = useRef(null)
   const submitLock = useRef(false)
+  const pendingRegistration = useRef(null)
   const [paymentReceipt, setPaymentReceipt] = useState(null)
   const [origenSelection, setOrigenSelection] = useState(null)
   const [partnerValidation, setPartnerValidation] = useState(null)
@@ -269,9 +262,9 @@ export default function RegistroPropietario() {
 
   const handleSubmit = async () => {
     if (!validateStep3()) return
-    if (externalPaymentEnabled && (submitLock.current || recovery.blocked)) return
-    if (externalPaymentEnabled) submitLock.current = true
-    let receivedId = null, externalOrigin = null
+    if (submitLock.current || (externalPaymentEnabled && recovery.blocked)) return
+    submitLock.current = true
+    let receivedId = null, externalOrigin = null, documentsFinalized = false
     setLoading(true)
     try {
       const v = getValues()
@@ -295,30 +288,45 @@ export default function RegistroPropietario() {
         payload.blindaje_submission_claim_hash = claim.claim_hash
       }
 
-      const { data, error } = await supabase.from('propietarios_inmuebles').insert(payload).select('id').single()
-      if (error) throw error
-      receivedId = data.id
-
-      const id = data.id
-      const folder = `propietarios/${id}`
-      const docUpdates = {}
-
-      const [pathId, pathComp, pathPred, pathEscritura] = await Promise.all([
-        files.doc_identificacion ? uploadDoc(files.doc_identificacion, folder, 'identificacion') : Promise.resolve(null),
-        files.doc_comprobante_domicilio ? uploadDoc(files.doc_comprobante_domicilio, folder, 'comprobante_domicilio') : Promise.resolve(null),
-        files.doc_predial ? uploadDoc(files.doc_predial, folder, 'predial') : Promise.resolve(null),
-        files.doc_escritura ? uploadDoc(files.doc_escritura, folder, 'documentos_persona_moral') : Promise.resolve(null),
-      ])
-
-      if (pathId) docUpdates.doc_identificacion_b64 = pathId
-      if (pathComp) docUpdates.doc_comprobante_domicilio_b64 = pathComp
-      if (pathPred) docUpdates.doc_predial_b64 = pathPred
-      if (pathEscritura) docUpdates.doc_escritura_b64 = pathEscritura
-
-      if (Object.keys(docUpdates).length > 0) {
-        await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', id)
+      // Validate files before writing anything: no partial property record for invalid files.
+      for (const file of Object.values(files).filter(Boolean)) {
+        const ext = file.name.split('.').pop().toLowerCase()
+        if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) throw new Error('Solo se permiten archivos PDF, JPG o PNG.')
+        if (file.size > 50 * 1024 * 1024) throw new Error('Cada documento debe pesar menos de 50 MB.')
       }
+      // A public visitor cannot insert/update this RLS-protected table directly.
+      // Keep a single in-flight registration so retrying uploads cannot duplicate a property.
+      const api = async (body) => {
+        const response = await fetch('/api/propietarios/registro-publico', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || 'No se pudo registrar el inmueble.')
+        return result
+      }
+      if (!pendingRegistration.current) {
+        pendingRegistration.current = await api({ action: 'start', payload })
+      }
+      const { id, token } = pendingRegistration.current
+      receivedId = id
 
+      const fileEntries = Object.entries(files).filter(([, file]) => Boolean(file))
+      const fileExtensions = Object.fromEntries(fileEntries.map(([field, file]) => [
+        field, file.name.split('.').pop().toLowerCase(),
+      ]))
+      const signed = await api({ action: 'sign', id, token, files: fileExtensions })
+      await Promise.all(fileEntries.map(async ([field, file]) => {
+        const upload = signed.uploads[field]
+        if (!upload) throw new Error('No se autorizó la carga de ' + field)
+        const { error } = await supabase.storage.from('poliza-docs').uploadToSignedUrl(
+          upload.path, upload.token, file, { contentType: file.type || undefined },
+        )
+        if (error) throw new Error('No se pudo subir ' + file.name + ': ' + error.message)
+      }))
+      await api({ action: 'finish', id, token, files: fileExtensions })
+      documentsFinalized = true
       let invitedLinked = false
       if (secureInvitation) {
         const linked = await linkInvitedSubmission(invitation, 'propietario', id)
@@ -340,13 +348,15 @@ export default function RegistroPropietario() {
 
       if (externalOrigin) {
         finishExternalPayment(await bootstrapPayment({ origin: externalOrigin, role: 'propietario', claim: claimRef.current, invitation: secureInvitation ? invitation : null, linked: invitedLinked }))
+        pendingRegistration.current = null
         setSubmitId(id); setStep(4)
         return
       }
 
+      pendingRegistration.current = null
       setSubmitId(id); setStep(4)
     } catch (err) {
-      if (externalOrigin) {
+      if (externalOrigin && documentsFinalized) {
         // Recover a committed INSERT whose HTTP response was lost, using the claim, never a UUID credential.
         const recovered = !receivedId && claimRef.current
           ? await bootstrapPayment({ origin: 'b2c', role: 'propietario', claim: claimRef.current }) : null
@@ -359,7 +369,9 @@ export default function RegistroPropietario() {
         return
       }
       console.error(err)
-      setErrors({ global: 'Ocurrió un error al subir los documentos. Por favor intenta de nuevo.' })
+      setErrors({ global: receivedId
+        ? 'No pudimos terminar la carga de documentos. Conserva esta página y vuelve a intentar; no se creará otro registro. Si persiste, contacta a Emporio.'
+        : (err?.message || 'No pudimos guardar los datos. Comunícate con Emporio antes de repetir el envío.') })
     } finally {
       submitLock.current = false
       setLoading(false)
