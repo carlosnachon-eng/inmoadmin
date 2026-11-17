@@ -70,6 +70,17 @@ export default async function handler(req, res) {
       for (const value of Object.values(payload)) {
         if (typeof value === 'string' && value.length > 1500) return reply(res, 413, 'Un campo es demasiado extenso.')
       }
+      // A reload after a partial upload must not silently create a duplicate.
+      const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+      const { data: duplicates, error: lookupError } = await db.from('propietarios_inmuebles')
+        .select('id')
+        .eq('correo_propietario', payload.correo_propietario)
+        .eq('direccion_inmueble', payload.direccion_inmueble)
+        .gte('created_at', cutoff)
+        .limit(1)
+      if (lookupError) throw lookupError
+      if (duplicates?.length) return reply(res, 409,
+        'Ya recibimos un registro reciente para ese inmueble. Contacta a Emporio para confirmar sus documentos.')
       const { data, error } = await db.from('propietarios_inmuebles').insert(payload).select('id').single()
       if (error) throw error
       return res.status(200).json({ id: data.id, token: capability(data.id) })
