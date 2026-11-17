@@ -64,14 +64,6 @@ const PartnerBanner = ({ branding }) => {
   )
 }
 
-const uploadDoc = async (file, folder, fileName) => {
-  const ext = file.name.split('.').pop()
-  const path = `${folder}/${fileName}.${ext}`
-  const { error } = await supabase.storage.from('poliza-docs').upload(path, file, { upsert: true })
-  if (error) throw error
-  return path
-}
-
 export default function RegistroPropietario() {
   const router = useRouter()
   const origenEnabled = process.env.NEXT_PUBLIC_BLINDAJE_ORIGEN_OPERACION_ENABLED === 'true' || externalPaymentEnabled
@@ -272,7 +264,7 @@ export default function RegistroPropietario() {
     if (!validateStep3()) return
     if (submitLock.current || (externalPaymentEnabled && recovery.blocked)) return
     submitLock.current = true
-    let receivedId = null, externalOrigin = null
+    let receivedId = null, externalOrigin = null, documentsFinalized = false
     setLoading(true)
     try {
       const v = getValues()
@@ -296,6 +288,12 @@ export default function RegistroPropietario() {
         payload.blindaje_submission_claim_hash = claim.claim_hash
       }
 
+      // Validate files before writing anything: no partial property record for invalid files.
+      for (const file of Object.values(files).filter(Boolean)) {
+        const ext = file.name.split('.').pop().toLowerCase()
+        if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) throw new Error('Solo se permiten archivos PDF, JPG o PNG.')
+        if (file.size > 50 * 1024 * 1024) throw new Error('Cada documento debe pesar menos de 50 MB.')
+      }
       // A public visitor cannot insert/update this RLS-protected table directly.
       // Keep a single in-flight registration so retrying uploads cannot duplicate a property.
       const api = async (body) => {
@@ -322,13 +320,13 @@ export default function RegistroPropietario() {
       await Promise.all(fileEntries.map(async ([field, file]) => {
         const upload = signed.uploads[field]
         if (!upload) throw new Error('No se autorizó la carga de ' + field)
-        if (file.size > 50 * 1024 * 1024) throw new Error('Cada documento debe pesar menos de 50 MB.')
         const { error } = await supabase.storage.from('poliza-docs').uploadToSignedUrl(
           upload.path, upload.token, file, { contentType: file.type || undefined },
         )
         if (error) throw new Error('No se pudo subir ' + file.name + ': ' + error.message)
       }))
       await api({ action: 'finish', id, token, files: fileExtensions })
+      documentsFinalized = true
       let invitedLinked = false
       if (secureInvitation) {
         const linked = await linkInvitedSubmission(invitation, 'propietario', id)
@@ -358,7 +356,7 @@ export default function RegistroPropietario() {
       pendingRegistration.current = null
       setSubmitId(id); setStep(4)
     } catch (err) {
-      if (externalOrigin) {
+      if (externalOrigin && documentsFinalized) {
         // Recover a committed INSERT whose HTTP response was lost, using the claim, never a UUID credential.
         const recovered = !receivedId && claimRef.current
           ? await bootstrapPayment({ origin: 'b2c', role: 'propietario', claim: claimRef.current }) : null
