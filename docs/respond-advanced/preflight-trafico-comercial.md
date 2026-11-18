@@ -1,0 +1,27 @@
+# Preflight comercial — 12 de noviembre de 2026
+
+**Estado: NO-GO para enviar la prueba de WhatsApp o abrir tráfico general.** No se hizo merge, despliegue, publicación, envío ni cambio en Recepción o workflows activos.
+
+| Control | Evidencia | Resultado |
+|---|---|---|
+| Código | PR #267 abierto, borrador, sin merge; revisión `a9b3442`. 114/114 pruebas de integración repetidas. | PASS local |
+| Dominio canónico | Vercel: `dpl_CLx16kkrcwoDXJG2PsvA6SXvQatE`, READY, Production, `main@18c11d2`. `GET /api/respond/inventory` sin credencial devuelve 404 HTML, no el 404 JSON del controlador. | Falta desplegar el endpoint certificado |
+| Respond.io | Acción GET guardada en Ventas y Rentas, inactivo, con tres filtros y host reservado `.invalid`. Sin bearer real. El simulador registró la asignación nativa a Carlos, sin mensaje de transferencia. | PASS en simulador; pendiente WhatsApp real |
+| Duplicados | Los nueve workflows publicados coinciden por nombre y fecha de publicación con la revisión previa. JUR fuera de horario tiene aviso propio en disparador manual; los otros no tenían paso de envío. | Inventario sin cambios; falta verificar trazas en WhatsApp |
+| Apagado | Pruebas locales de estado deshabilitado, expiración, cambio de generación y fallo del control pasaron. | PASS local; no hay ruta en el deployment vigente para repetir la prueba en vivo |
+| Datos privados | La ruta privada permanece limitada a DEV y no forma parte de la configuración del agente comercial. | Sin habilitar |
+
+## Secuencia de liberación y prueba controlada
+
+1. Construir desde el SHA revisado. Preparar un deployment productivo **sin asignar el dominio**, con las banderas comercial y privada apagadas, y sin levantar los procesadores salientes de InmoAdmin. Confirmar 404 JSON y no-store en el candidato; registrar el deployment canónico anterior. Verificar que el firewall de ruta exacta siga limitado a 60/min por IP y que el RPC instalado coincide con el SQL ya certificado. No reinstalar el control por defecto ni copiar credenciales retiradas.
+2. Para la ventana controlada, emitir bearer y capacidad central independientes. En Vercel, conservar el hash del bearer y la capacidad como secreto del servidor; en Respond.io, usar el bearer solo en el encabezado de la acción. No exportar trazas con encabezados. Configurar ventana corta y un máximo de 24 h. Mantener 10 solicitudes globales/min y una lectura concurrente por instancia. Validar venta, renta, 401 y apagado (404 JSON con un bearer todavía válido), y volver a dejar cerrado. El 404 HTML del deployment actual no acredita el apagado.
+3. Antes de pedir el primer mensaje, confirmar en Inbox la conversación del WhatsApp personal de Carlos: canal oficial comercial correcto, contacto inequívoco y sin chat abierto ni trabajo de otro asesor; si hay una conversación existente, no cambiarla. Probar Recepción y Ventas con asignación exclusiva a ese contacto mediante un agente de Recepción de prueba que conserve sus reglas y solo derive el contacto de prueba a Ventas; no establecerlo como predeterminado ni publicar/cambiar el agente de Recepción vigente. Si el espacio no ofrece un aislamiento comprobable, detenerse y usar un espacio/canal de prueba dedicado. El primer mensaje puede entrar a la Recepción vigente si se envía antes de aislarlo.
+4. Mensaje 1, solo tras aviso de listo: **«Hola, busco una casa en venta en Puebla. ¿Qué opciones tienen?»**. Confirmar una sola asignación y respuesta, HTTP con inventario publicado y sin disponibilidad inventada. Mensaje 2: **«Gracias. Quiero agendar una visita. ¿Me pasas con Carlos, por favor?»**. Confirmar evento nativo de asignación, Carlos como responsable en Inbox, ausencia de otra respuesta de IA y continuidad humana. Repetir el cierre y guardar resultados redactados.
+5. Solo con autorización final y PASS: Recepción deriva compra/renta/búsqueda a Ventas y Rentas; propietarios que ofrecen un inmueble a Captación o Carlos hasta validar el especialista; consultas generales de Blindaje Legal a Pólizas; asuntos contractuales a Jurídico; Administración/Condominios a humanos. Una sola ruta por intención y ningún segundo disparador de envío. Todos los prospectos comerciales elegibles, sin cupo de diez conversaciones; no ampliar a otros canales ni tomar conversaciones asignadas. Conservar límites técnicos; saturación o imposibilidad de validar datos deriva a humanos. Confirmar un supervisor disponible y mantener la ventana de consulta de hasta 24 h.
+
+## Apagado y registro
+
+1. En Respond.io, suspender la entrada al especialista, desactivar el agente de Ventas y reasignar sus conversaciones a Carlos/Ventas. No desactivar Recepción global ni tocar workflows ajenos.
+2. En el control central, dejar `enabled=false`, vencer la capacidad e invalidar su hash (el trigger avanza la generación; no editarla manualmente). Verificar 404 JSON con bearer aún vigente y cero capacidades activas. La API bloqueada no apaga por sí sola las respuestas del agente.
+3. Revocar bearer actual/anterior, retirar el encabezado de Respond y las credenciales temporales de Vercel. Mantener ambos endpoints apagados. Si hay regresión del sitio, evaluar revertir al deployment canónico previo con autorización separada.
+4. Registrar solo hora, número ordinal de la prueba, categoría venta/renta, estado HTTP, latencia, número de resultados, evento de asignación sí/no, duplicado sí/no y resultado. No guardar texto del contacto, teléfono, nombre, ID de contacto, encabezados ni tokens.

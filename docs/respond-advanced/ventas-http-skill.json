@@ -1,0 +1,20 @@
+{
+  "agent_name": "Emporio — Ventas y Rentas",
+  "publish": false,
+  "activate": false,
+  "action_name": "Consultar inventario InmoAdmin",
+  "when_and_how": "Consultar exclusivamente publicaciones de venta o renta con operación, ciudad y tipo expresados por el cliente. Recopilar los tres filtros antes de llamar. Usar solo GET, URL y encabezados fijos. Interpretar status matched/empty/needs_clarification; no inventar disponibilidad. Errores HTTP o falta de respuesta requieren atención humana sin reintentos automáticos.",
+  "inputs": [
+    {"name":"operation","format":"Text","description":"Obligatorio: sale para venta, rental para renta"},
+    {"name":"city","format":"Text","description":"Obligatorio: ciudad explícita, solo letras y espacios"},
+    {"name":"propertyType","format":"Text","description":"Obligatorio: Casa, Departamento, Terreno, Local, Oficina o Bodega"}
+  ],
+  "method": "GET",
+  "url_placeholder_only": "https://inventory-pilot.invalid/api/respond/inventory",
+  "query_parameters": {"operation":"$agent.operation","city":"$agent.city","propertyType":"$agent.propertyType"},
+  "headers": {"Accept":"application/json","Authorization":"Bearer <INGRESAR_SOLO_EN_CONFIGURACION_PROTEGIDA>"},
+  "body": null,
+  "human_skill": "Assign to agent or team",
+  "human_target": "Carlos Nachon",
+  "human_instruction": "Assign to @Carlos Nachon cuando el cliente pida un asesor, visita, negociación, disponibilidad o condiciones que la API no acredita, o cuando falle la verificación. Do not respond to the Contact when assigning conversations to @Carlos Nachon. No sustituir la acción por una frase de transferencia."
+}
