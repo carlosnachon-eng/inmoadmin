@@ -85,6 +85,7 @@ const PROPIEDAD_VACIA = {
   en_marketplace: false, fecha_marketplace: null,
   vistas_tiktok: "", vistas_instagram: "", vistas_facebook: "",
 
+  marketing_keyword: "",
   notas_internas: "",
 };
 
@@ -834,6 +835,7 @@ export default function PropiedadesAdmin() {
     setForm({
       ...PROPIEDAD_VACIA,
       ...p,
+      marketing_keyword: p.marketing_keyword || "",
       plaza_id: p.plaza_id || "",
       precio: p.precio || "",
       recamaras: p.recamaras || "",
@@ -942,6 +944,9 @@ export default function PropiedadesAdmin() {
     delete payload.id;
     delete payload.created_at;
     delete payload.updated_at;
+    // Generated columns are read-only in PostgreSQL. Keep only the editable source.
+    delete payload.marketing_keyword_key;
+    payload.marketing_keyword = String(form.marketing_keyword || "").trim() || null;
 
     if (modalForm === "nueva" || modalForm.plaza_id !== plaza.id) {
       payload.plaza_assignment_source = "propiedades_admin:manual_selection";
@@ -1667,6 +1672,19 @@ export default function PropiedadesAdmin() {
                 }
               }}
             />
+          </Campo>
+
+          <Campo label="Palabra clave comercial (búsqueda por IA)">
+            <input
+              style={inputStyle}
+              value={form.marketing_keyword || ""}
+              onChange={e => setForm(f => ({ ...f, marketing_keyword: e.target.value }))}
+              placeholder="Ej. Bello Horizonte"
+              maxLength={160}
+            />
+            <p style={{ margin: "6px 0 0", fontSize: 11, color: "#6b7280" }}>
+              Referencia interna para que Respond.io identifique esta propiedad. No se muestra en el anuncio público.
+            </p>
           </Campo>
 
           <Campo label="Notas internas (no se muestran en el sitio)">
