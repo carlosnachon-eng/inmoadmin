@@ -1,0 +1,60 @@
+PR #256 — Authenticated DEV journal investigation
+
+Root cause (confirmed)
+The Preview branch codex/comments-observation-approval does not receive the
+existing DEV integration environment configuration. Authenticated admin UI
+returns configuration: platform_disabled for Instagram and Facebook.
+businessConfig/messengerConfig return null before RPC when their ENABLED
+variables are not true. This is not evidence of a PostgreSQL/RLS failure.
+
+Vercel environment metadata inspected WITHOUT decrypting values:
+- Messenger DEV connection/config/encryption keys and service-role key are
+  scoped to codex/facebook-messenger-foundation, not this PR branch.
+- Instagram's Preview OAuth redirect and another service-role entry are scoped
+  to codex/instagram-inbox-foundation. Other required Instagram DEV variables
+  are absent from this project's effective PR branch configuration.
+- Production values were not read or copied. No environment values changed.
+
+Database checks, DEV hjfwjnejbcpmknvfpdcq only:
+- commercial_comment_private has active Instagram and Facebook connections.
+- Both sender_enabled=false; events=0; reviews=0; actions=0.
+- service_role has EXECUTE on comment_review_v1.
+- Calling list for the existing active admin and each connection returns array.
+- No migration, RLS, grants, profiles or records changed during this diagnosis.
+
+Code correction/diagnostics
+Commit 0b70fbd: fixed-stage/code diagnostics, no raw exceptions, SQL details,
+tokens, native IDs, ciphertext or env values; authenticated Preview only.
+RPC error code propagation restricted to an explicit allowlist.
+Mobile review panel is no longer nested in a legacy detail pane that is hidden
+when no Instagram comment is selected. Approved edited text is displayed.
+Neither platform's transport/config validation was weakened or modified.
+Vercel deployment 7VJ913hsCqGA2mqmeALHgjqcXJR8 READY for this commit.
+
+Validation
+36 tests passed before deployment. Added regression reproducing absent branch
+configuration and proving that merely enabling gates still fails closed if
+required credentials are absent. Final suite count: 37.
+Authenticated desktop UI confirms ADMINISTRADOR and sanitized configuration
+error, not a false empty-success response. Evidence: journal-config-desktop.png.
+Full authenticated data/approval/mobile QA remains BLOCKED, not PASS.
+
+Required provisioning (no automatic changes performed)
+Vercel project inmoadmin -> Environment Variables -> Preview only -> branch
+codex/comments-observation-approval. Do NOT remove source-branch overrides or
+broaden secrets to all Preview branches. Never use Production keys.
+Supply the existing matching DEV SUPABASE_SERVICE_ROLE_KEY and APP_ENV=preview.
+Restore the DEV INSTAGRAM_BUSINESS_* configuration required by businessConfig:
+ENABLED, CONNECTION_ID, APP_ID, INSTAGRAM_APP_ID, ACCOUNT_ID,
+INSTAGRAM_APP_SECRET, VERIFY_TOKEN, INDEX_KEY, DATA_KEY, TOKEN_KEY,
+OAUTH_REDIRECT_URI, GRAPH_VERSION. MANUAL_SEND_ENABLED must remain false.
+Restore the DEV FACEBOOK_MESSENGER_* configuration required by messengerConfig:
+ENABLED, CONNECTION_ID, APP_ID, PAGE_ID, APP_SECRET, VERIFY_TOKEN,
+INDEX_KEY, DATA_KEY, TOKEN_KEY. MANUAL_SEND_ENABLED must remain false.
+Keep the existing DEV account/connection/crypto bindings; do not regenerate
+encryption keys or perform OAuth just to make the list render.
+Secret values are intentionally non-exportable. The owner must securely save
+the existing DEV values under this branch, or explicitly authorize a narrowly
+scoped provisioning mechanism. No secrets through chat.
+Then redeploy Preview, verify authenticated GET for both platforms, and resume
+QA. Keep publication/dispatch paths disabled. No merge recommendation yet.

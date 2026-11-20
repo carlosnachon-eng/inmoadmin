@@ -1,0 +1,11 @@
+// Isolated UI fixture: no database, authentication credentials or Meta traffic.
+import http from 'node:http';
+import {createRequire} from 'node:module';
+import path from 'node:path';
+import {reviewBatch} from '../lib/messaging/commentAgent/decision.js';
+const require=createRequire(path.join(process.env.WA_QA_DEPS,'package.json'));
+const ref=n=>String(n).repeat(64),now=Date.now();
+const data=reviewBatch([{event:{platform:'instagram',connection_ref:ref(1),comment_ref:ref(2),post_ref:ref(3),event_ref:ref(4),owned:true,replies_verified:true,occurred_at:new Date(now).toISOString(),text:'precio'},facts:{platform:'instagram',connection_ref:ref(1),post_ref:ref(3),property_ref:ref(5),source:'inmoadmin_verified_publication',public:true,active:true,verified_at:new Date(now).toISOString(),price:2000000,currency:'MXN',operation:'venta'}}],{now});
+const bundle=await require('esbuild').build({stdin:{contents:`import React,{useState} from 'react';import{createRoot}from'react-dom/client';import Panel from './components/CommentObservation';function App(){const[draft,setDraft]=useState('');return <main><h1>QA sintética aislada</h1><Panel data={${JSON.stringify(data)}} comment="${ref(2)}" onUse={setDraft}/><label>Borrador manual<textarea value={draft} onChange={e=>setDraft(e.target.value)}/></label><p>Sin endpoint de envío.</p></main>}createRoot(document.getElementById('root')).render(<App/>);`,loader:'jsx',resolveDir:process.cwd()},bundle:true,write:false,jsx:'automatic',loader:{'.js':'jsx'}});
+const server=http.createServer((req,res)=>{if(req.method!=='GET'){res.writeHead(405);return res.end();}res.setHeader('Content-Type','text/html');res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'");res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:16px Arial;margin:16px}main{max-width:760px;margin:auto}textarea{display:block;width:90%;min-height:100px}button{padding:10px;max-width:100%}</style><div id="root"></div><script>${bundle.outputFiles[0].text}</script>`);});
+server.listen(0,'127.0.0.1',()=>console.log('QA_URL=http://127.0.0.1:'+server.address().port));
