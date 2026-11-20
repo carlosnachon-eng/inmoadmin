@@ -1343,6 +1343,10 @@ function WorkTable({ items, onAudit, onViewCita, onFollowUp, interventions = [],
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {item.respondDeepLink && <a href={item.respondDeepLink} target="_blank" rel="noreferrer" style={{ ...secondaryButtonStyle, display: "inline-block", textDecoration: "none" }}>Abrir conversación</a>}
                     {item.respondContactId && !item.respondDeepLink && <span style={{ color: "#6b7280", fontSize: 12, fontWeight: 900 }}>Sin enlace Respond.io configurado</span>}
+                    {!item.citaId && item.opportunityId && item.clientId && item.respondContactId && (
+                      <a href={`/clientes/${encodeURIComponent(item.clientId)}?citaOrigen=${encodeURIComponent(item.opportunityId)}`}
+                        style={{ ...secondaryButtonStyle, textDecoration: "none" }}>Agendar cita</a>
+                    )}
                     {action?.kind === "cita" && <button onClick={() => onViewCita(item)} style={secondaryButtonStyle}>{action.label}</button>}
                     {action?.kind === "info" && <span title={action.title} style={{ color: "#6b7280", fontSize: 12, fontWeight: 900 }}>{action.label}</span>}
                     {activeIntervention?.id ? (

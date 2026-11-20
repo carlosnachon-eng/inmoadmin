@@ -155,7 +155,8 @@ function ModalEnviarPropiedades({ cliente, onClose, showToast, asesorId }) {
 
 export default function FichaCliente() {
   const router = useRouter();
-  const { id } = router.query;
+  const { id, citaOrigen } = router.query;
+  const oportunidadCitaId = typeof citaOrigen === "string" ? citaOrigen : null;
   const { cargando: permisoCargando, puedeVer, perfil } = usePermiso("clientes");
 
   const [cliente, setCliente] = useState(null);
@@ -174,6 +175,10 @@ export default function FichaCliente() {
   const [confirmarBorrarCita, setConfirmarBorrarCita] = useState(null);
   const [modalNuevaCita, setModalNuevaCita] = useState(false);
   const [nuevaFechaHora, setNuevaFechaHora] = useState("");
+
+  useEffect(() => {
+    if (oportunidadCitaId) setModalNuevaCita(true);
+  }, [oportunidadCitaId]);
   const [nuevaPropiedadBusqueda, setNuevaPropiedadBusqueda] = useState("");
   const [nuevasPropiedadesResultado, setNuevasPropiedadesResultado] = useState([]);
   const [nuevaPropiedadElegida, setNuevaPropiedadElegida] = useState(null);
@@ -350,6 +355,10 @@ export default function FichaCliente() {
 
   const cerrarModalNuevaCita = () => {
     setModalNuevaCita(false);
+    if (oportunidadCitaId) {
+      const { citaOrigen: _origen, ...query } = router.query;
+      router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
+    }
     setNuevaFechaHora("");
     setNuevaPropiedadBusqueda("");
     setNuevasPropiedadesResultado([]);
@@ -369,6 +378,7 @@ export default function FichaCliente() {
       asesor_id: perfil?.id,
       fecha_hora: new Date(nuevaFechaHora).toISOString(),
       estado: "agendada",
+      ...(oportunidadCitaId ? { source_opportunity_id: oportunidadCitaId } : {}),
     }).select("asesor_id, fecha_hora").single();
     setGuardandoNuevaCita(false);
 
