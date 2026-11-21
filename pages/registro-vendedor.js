@@ -50,7 +50,7 @@ const FileBox = ({ label, hint, file, onFile, error }) => {
         <input ref={ref} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={e => onFile(e.target.files[0])} />
         <span style={{ display: 'block', fontSize: 22, marginBottom: 6, color: file ? '#065f46' : '#b91c3c' }}>{file ? '✓' : '↑'}</span>
         <span style={{ display: 'block', fontSize: 13, color: '#374151', fontWeight: 500, marginBottom: 3 }}>{file ? file.name : hint}</span>
-        <span style={{ display: 'block', fontSize: 11, color: '#9ca3af' }}>{file ? 'Toca para cambiar' : 'PDF, JPG o PNG · máx 10 MB'}</span>
+        <span style={{ display: 'block', fontSize: 11, color: '#9ca3af' }}>{file ? 'Toca para cambiar' : 'PDF, JPG o PNG · máx 50 MB'}</span>
       </div>
     </Field>
   )
@@ -61,6 +61,8 @@ export default function RegistroVendedor() {
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState({})
   const [submitId, setSubmitId] = useState(null)
+  const pendingRegistration = useRef(null)
+  const submitting = useRef(false)
   const [tipoPersona, setTipoPersona] = useState('fisica')
   const [libreGravamen, setLibreGravamen] = useState('si')
   const [tipoCopropiedad, setTipoCopropiedad] = useState('no')
@@ -82,12 +84,14 @@ export default function RegistroVendedor() {
     return v
   }
   const saveStep = () => { if (!formRef.current) return; formRef.current.querySelectorAll('input[name], textarea[name], select[name]').forEach(el => { saved.current[el.name] = el.value }) }
-  const uploadDoc = async (file, folder, fileName) => {
-    const ext = file.name.split('.').pop()
-    const path = `${folder}/${fileName}.${ext}`
-    const { error } = await supabase.storage.from('poliza-docs').upload(path, file, { upsert: true })
-    if (error) throw error
-    return path
+  const api = async (body) => {
+    const response = await fetch('/api/propietarios/registro-vendedor-publico', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(result.error || 'No se pudo completar el registro.')
+    return result
   }
 
   const validateStep1 = () => {
@@ -117,7 +121,8 @@ export default function RegistroVendedor() {
   }
 
   const handleSubmit = async () => {
-    if (!validateStep2()) return
+    if (!validateStep2() || submitting.current) return
+    submitting.current = true
     setLoading(true)
     try {
       const v = getVals()
@@ -135,26 +140,30 @@ export default function RegistroVendedor() {
         ...(tipoCopropiedad !== 'no' && numCopropietarios >= 2 && copropietarios[1].nombre ? { copropietario_2_nombre: copropietarios[1].nombre, copropietario_2_telefono: copropietarios[1].telefono, copropietario_2_correo: copropietarios[1].correo, copropietario_2_rfc: copropietarios[1].rfc, copropietario_2_tipo_id: copropietarios[1].tipo_id } : {}),
         ...(tipoCopropiedad !== 'no' && numCopropietarios >= 3 && copropietarios[2].nombre ? { copropietario_3_nombre: copropietarios[2].nombre, copropietario_3_telefono: copropietarios[2].telefono, copropietario_3_correo: copropietarios[2].correo, copropietario_3_rfc: copropietarios[2].rfc, copropietario_3_tipo_id: copropietarios[2].tipo_id } : {}),
       }
-      const { data, error } = await supabase.from('propietarios_inmuebles').insert(payload).select('id').single()
-      if (error) throw error
-      const id = data.id
-      const folder = `vendedores/${id}`
-      const docUpdates = {}
-      const [pathId, pathComp, pathPred, pathEsc] = await Promise.all([
-        files.doc_identificacion ? uploadDoc(files.doc_identificacion, folder, 'identificacion') : Promise.resolve(null),
-        files.doc_comprobante_domicilio ? uploadDoc(files.doc_comprobante_domicilio, folder, 'comprobante_domicilio') : Promise.resolve(null),
-        files.doc_predial ? uploadDoc(files.doc_predial, folder, 'predial') : Promise.resolve(null),
-        files.doc_escritura ? uploadDoc(files.doc_escritura, folder, 'escritura') : Promise.resolve(null),
-        files.doc_certificado_libertad_gravamen ? uploadDoc(files.doc_certificado_libertad_gravamen, folder, 'certificado_libertad_gravamen') : Promise.resolve(null),
-      ])
-      if (pathId) docUpdates.doc_identificacion_b64 = pathId
-      if (pathComp) docUpdates.doc_comprobante_domicilio_b64 = pathComp
-      if (pathPred) docUpdates.doc_predial_b64 = pathPred
-      if (pathEsc) docUpdates.doc_escritura_b64 = pathEsc
-      if (Object.keys(docUpdates).length > 0) await supabase.from('propietarios_inmuebles').update(docUpdates).eq('id', id)
+      for (const file of Object.values(files).filter(Boolean)) {
+        const ext = file.name.split('.').pop().toLowerCase()
+        if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) throw new Error('Solo se permiten archivos PDF, JPG o PNG.')
+        if (file.size > 50 * 1024 * 1024) throw new Error('Cada documento debe pesar menos de 50 MB.')
+      }
+      if (!pendingRegistration.current) {
+        pendingRegistration.current = await api({ action: 'start', payload })
+      }
+      const { id, token } = pendingRegistration.current
+      const entries = Object.entries(files).filter(([, file]) => Boolean(file))
+      const extensions = Object.fromEntries(entries.map(([field, file]) => [field, file.name.split('.').pop().toLowerCase()]))
+      const signed = await api({ action: 'sign', id, token, files: extensions })
+      await Promise.all(entries.map(async ([field, file]) => {
+        const upload = signed.uploads[field]
+        if (!upload) throw new Error('No se autorizó la carga de ' + field)
+        const { error } = await supabase.storage.from('poliza-docs').uploadToSignedUrl(
+          upload.path, upload.token, file, { contentType: file.type || undefined },
+        )
+        if (error) throw new Error('No se pudo subir ' + file.name + ': ' + error.message)
+      }))
+      await api({ action: 'finish', id, token, files: extensions })
       setSubmitId(id); setStep(3)
-    } catch (err) { console.error(err); setErrors({ global: 'Ocurrió un error. Por favor intenta de nuevo.' }) }
-    finally { setLoading(false) }
+    } catch (err) { console.error(err); setErrors({ global: err.message || 'No se pudo completar el registro. Contacta a Emporio.' }) }
+    finally { submitting.current = false; setLoading(false) }
   }
 
   const STEPS = ['Su inmueble', 'Documentos']
