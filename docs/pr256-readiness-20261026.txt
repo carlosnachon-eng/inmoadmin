@@ -1,0 +1,137 @@
+PR #256 — readiness audit, 2026-10-26
+Verdict: NO MERGE for the requested functional Production observation release.
+No Production writes, PR merge, publications, private replies or token changes.
+
+Branch synchronization
+- Integrated all 11 pending main commits, without conflicts, in 40177bc.
+- Audited main base: 3418db91b4c67e6717410a9510f79e9fb0ae006e.
+- No diff from main in Instagram Business transport, Messenger transport or
+  WhatsApp Administration libraries. New Facebook DEV webhook is separate.
+
+Demonstrated fixes
+- PostgreSQL regression reproduced: a same-revision proposal older than five
+  minutes remained unchanged on fresh evaluation and could never be approved.
+- New additive fourth migration refreshes only unapproved decisions following
+  new server evaluation, keeps approvals unchanged, rejects null/invalid ops,
+  non-object data and approval of an absent review. Approval freshness remains.
+- Direct non-bridge DEV API now also blocks senderEnabled before privileged DB
+  construction (bridge and isolated Facebook already did so).
+- Fixed classifier test extraction stopping at the next exported function;
+  no change to the certified Instagram classifier/runtime.
+
+Security evidence
+- Actual DEV: seven private tables RLS=true, anon/authenticated SELECT=false.
+- Four RPCs: SECURITY DEFINER, empty search_path, anon/authenticated EXECUTE=false,
+  service_role=true. No client can select private ciphertext directly.
+- Service callers require getUser + active admin/gerente_ventas profile before
+  privileged operations; platform/connection are server-configured, not body IDs.
+- Bridge requires signed exact request, token binding, nonce and time validity;
+  registry requires exact captured event, actor, connection, published property.
+- Review/approval routes have no Meta publishing or action/claim operation.
+- Supabase security advisory relevant to the private schema is informational
+  rls_enabled_no_policy: intentional deny-all direct access, service RPC only.
+  Existing unrelated project advisories were not changed or called resolved.
+- This is a scoped code/test/ACL audit, not proof against all possible attacks.
+
+Migration plan (no Production execution)
+1. 20261021001227_commercial_comment_review.sql
+2. 20261021143357_comment_bridge_requests.sql
+3. 20261023184956_comment_property_association.sql
+4. 20261026150401_comment_review_observation_hardening.sql
+The original three and fourth replacement execute in disposable PostgreSQL.
+Fourth migration applied only to DEV; remote ACL rechecked afterwards.
+Read-only Production metadata confirms required profiles and propiedades fields
+and expected types. New schema/RPC absent: no naming collision found. This is
+schema-contract compatibility, NOT an executed Production migration test.
+Before authorized release: capture migration ledger and schema-only backup,
+verify PITR/backup availability with the owner, pin reviewed SHA, apply only these
+four in order via project migration procedure, verify RLS/ACL and zero actions.
+Never use an unrestricted migration push containing unrelated pending work.
+Each file is transactional; on failure stop and inspect ledger, do not replay
+uncertain application operations. Retain schema/data if reverting the app.
+Non-destructive operational rollback: docs/pr256-observation-rollback.sql.
+That rollback closes only NEW review connections and revokes NEW module RPCs;
+then restore the previous app deployment. No DROP, DELETE or key rotation.
+
+Meta-backed evidence versus simulation
+FACEBOOK REAL (rechecked 2026-10-26 in authenticated Preview):
+- Isolated token health PASS at 15:10:48 UTC. Correct app/Page; PAGE token,
+  pages_manage_metadata/pages_read_engagement/pages_read_user_content present;
+  subscribed_fields=[feed], expires_at=0, data_access_expires_at=1800399028.
+  expires_at=0 is Meta's current indication, not immunity to revocation.
+- Organic target publication ownership, membership and replies-edge all HTTP200.
+  Exact membership=true, binding=true; complete replies edge count=0, no next
+  page, no missing authors: page_replied=false. Diagnostic writes=0.
+- DEV isolated journal: 50 events (1 explicitly historical, 49 unmarked), all
+  structured cipher envelopes. Do NOT equate every unmarked row to a separately
+  correlated webhook/HMAC certification. Prior organic certification stands;
+  this audit did not generate another event or reconstruct expired logs.
+- 21 reviews displayed. No durable real property_links in DEV. EB-UW8871
+  previously confirmed by user is absent from DEV; historical manual approval
+  is explicitly not general live inventory proof. No invented/copied property.
+INSTAGRAM REAL:
+- Normal authenticated bridge evaluation completes with processed=0; normal
+  review connection has zero events and zero property links. Therefore no real
+  Instagram comment/property proposal chain is certified by this audit.
+SYNTHETIC:
+- Previous populated remote approval used real auth/bridge/encryption/DEV DB
+  but synthetic Meta and property facts (separate evidence report).
+- Current disposable PostgreSQL validates persistence, duplicate capture,
+  concurrent approval, isolation, stale re-evaluation and preservation.
+- Desktop/mobile UI fixture uses actual component but memory storage and no
+  Meta/Supabase. CSS viewport 390x844 is not a physical-device certification.
+
+Tests
+- 145/145 targeted Node tests PASS after fixes.
+- Disposable PostgreSQL: 41 review/rollback checks + 16 association checks PASS;
+  durable bridge evaluation/approval/replay/refresh and rejection PASS.
+  Local lifecycle fixture includes one SYNTHETIC claim/start; zero network or
+  real dispatch. Remote senders never enabled.
+- Next build PASS after main synchronization; no production credentials used.
+- Extended channel suite: branch 747/781 PASS, 34 FAIL; same command on an
+  independent archive of main 3418db9: 697/732 PASS, 35 FAIL. Failure-name set
+  comparison: zero new failures, one fixed classifier extraction test. Different
+  totals reflect added comment tests. These pre-existing tests remain failing;
+  neither the full suite nor unrelated channel certification is claimed PASS.
+- Desktop sale and mobile rental approvals shown as recorded/not sent; local
+  metrics approvals=2, posts=2, real_sends=0. Evidence screenshots local:
+  /private/tmp/pr256-final-desktop.png and /private/tmp/pr256-final-mobile.png.
+- Local fixtures removed by database teardown/server termination. No remote
+  synthetic data inserted in this audit. Existing authorized DEV history retained.
+
+Production observation configuration — BLOCKED, not activated
+Current executable gates deliberately accept only preview/development and
+Supabase DEV. Facebook panel points to isolated DEV edge/connection; Instagram
+bridge is Preview-bound. There is NO truthful set of environment variables that
+turns this into a functional isolated Production observer without an adapter.
+Do not set VERCEL_ENV=preview in Production, reuse DEV bridge, or change DM flags.
+
+Required deployment contract, to implement/test before recommending MERGE:
+- Production project bnzrnizrmonjxlktbhlp, normal VERCEL_ENV=production.
+- New explicit per-platform observation configuration/connection IDs, distinct
+  from DM transports and DEV, no fallback to DEV edge/credentials.
+- Dedicated Production encryption/index keys and authorized read credentials;
+  validate identity/scopes server-side, never copy DEV ciphertext or native IDs.
+- Application must expose ONLY list/evaluate/bind/approve; no sender transport.
+- commercial_comment_private.connections: active=true only after read health,
+  sender_enabled=false for EACH authorized observation connection.
+- Revoke service_role EXECUTE on public.comment_action_v1 during observation;
+  keep all direct table grants revoked. Review RPC privileges remain service-only.
+- Preserve operational Instagram/Messenger/WhatsApp sender settings; a global
+  Instagram DM flag must not be repurposed to control this new module.
+- No Meta subscriptions/callback changes or new receiving route activation until
+  separately authorized; no background evaluator/sender cron.
+- Deployment preflight must prove zero actions and no publishing-capable path,
+  then role/auth/connection/cipher/duplicate/approval checks in a staged build.
+
+Remaining release blockers
+1. Production-specific observation adapter/configuration is not implemented.
+2. Real Instagram source + exact same-environment property + proposal evidence
+   absent. Need authorized real evidence; synthetic QA cannot close this.
+3. Real general Facebook property association absent; cannot map to a different
+   DEV listing or copy Production just to make a test pass.
+4. Prior populated remote approvals are explicitly prior-commit evidence, not
+   a repeated full remote populated certification of the final audit SHA.
+Bounded batches (20 of up to 200) are not a durable automatic processing queue.
+Opportunities are candidate flags directed to SALES, not completed CRM records.
+No generative AI/public/private dispatch certification is claimed or requested.
