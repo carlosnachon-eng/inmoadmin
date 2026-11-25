@@ -49,6 +49,17 @@ export default function ReportePropietario() {
   const [generandoPdf, setGenerandoPdf] = useState(false);
   const [toast, setToast] = useState(null);
   const [asesorNombre, setAsesorNombre] = useState("");
+  const [evaluacion, setEvaluacion] = useState({ diagnostico: "", recomendacion: "", estrategia: "", validada: false });
+  const cambiarEvaluacion = (campo, valor) => setEvaluacion(prev => ({ ...prev, [campo]: valor, validada: false }));
+  const evaluacionLista = evaluacion.validada && ["diagnostico", "recomendacion", "estrategia"].every(c => evaluacion[c].trim() && evaluacion[c].length <= 900);
+  const citasEfectivas = datos?.citas.filter(c => ["efectiva", "calificada"].includes(c.estado)).length || 0;
+  const rangoVigente = datos?.rango?.desde === desde && datos?.rango?.hasta === hasta;
+  const indicaciones = !datos ? [] : [
+    ...(datos.visitas.length > 0 && !datos.citas.length ? ["Hay visitas sin citas: revisar anuncio, precio y seguimiento con Comercial."] : []),
+    ...(citasEfectivas > 0 ? ["Contrastar las objeciones de las citas efectivas con el seguimiento y los comparables antes de recomendar cambios."] : []),
+    ...(citasEfectivas >= 2 && propiedadSel?.status === "published" ? ["Dos o más citas efectivas y publicación activa: comprobar ofertas o apartados antes de concluir que no hubo avance."] : []),
+    ...(/renta|arrendamiento/i.test(String(propiedadSel?.tipo_operacion || propiedadSel?.operacion || propiedadSel?.titulo || "")) ? ["Renta: contrastar la antigüedad real con la referencia de colocación de 15 días; no confundir el periodo del reporte con la antigüedad."] : []),
+  ];
   const [adminProperties, setAdminProperties] = useState([]);
   const [adminContracts, setAdminContracts] = useState([]);
   const [adminBusqueda, setAdminBusqueda] = useState("");
@@ -222,6 +233,8 @@ export default function ReportePropietario() {
   const generarReporte = async () => {
     if (!propiedadSel) return;
     setLoading(true);
+    setDatos(null);
+    setEvaluacion({ diagnostico: "", recomendacion: "", estrategia: "", validada: false });
     try {
       const filtroFecha = (query) => {
         let q = query;
@@ -244,6 +257,7 @@ export default function ReportePropietario() {
         filtroFechaHora(supabase.from("citas").select("*, clientes(nombre)").eq("propiedad_id", propiedadSel.id)),
       ]);
 
+      for (const resultado of [visitasRes, solicitudesRes, enviosPropRes, citasRes]) if (resultado.error) throw resultado.error;
       const visitas = visitasRes.data || [];
       const solicitudes = solicitudesRes.data || [];
       let envios = (enviosPropRes.data || []).map((e) => e.envios).filter(Boolean);
@@ -266,6 +280,7 @@ export default function ReportePropietario() {
           supabase.from("visitas_propiedad").select("id", { count: "exact", head: true }).eq("propiedad_id", propiedadSel.id).gte("created_at", `${desdeAnteriorStr}T00:00:00`).lte("created_at", `${hastaAnteriorStr}T23:59:59`),
           supabase.from("citas").select("id", { count: "exact", head: true }).eq("propiedad_id", propiedadSel.id).gte("fecha_hora", `${desdeAnteriorStr}T00:00:00`).lte("fecha_hora", `${hastaAnteriorStr}T23:59:59`),
         ]);
+        if (visitasAntRes.error || citasAntRes.error) throw visitasAntRes.error || citasAntRes.error;
         comparativaAnterior = {
           visitas: visitasAntRes.count || 0,
           citas: citasAntRes.count || 0,
@@ -273,7 +288,9 @@ export default function ReportePropietario() {
         };
       }
 
-      setDatos({ visitas, solicitudes, envios, citas, comparativaAnterior });
+      setDatos({ visitas, solicitudes, envios, citas, comparativaAnterior, rango: { desde, hasta } });
+      const realizadas = citas.filter(c => ["efectiva", "calificada"].includes(c.estado)).length;
+      setEvaluacion({ diagnostico: `Durante el periodo se registraron ${visitas.length} visitas a la ficha, ${envios.length} envíos y ${realizadas} citas efectivas. `, recomendacion: "", estrategia: "", validada: false });
     } catch (e) {
       showToast("Error al generar el reporte: " + e.message, false);
     }
@@ -281,7 +298,7 @@ export default function ReportePropietario() {
   };
 
   const generarPdf = async () => {
-    if (!propiedadSel || !datos) return;
+    if (!propiedadSel || !datos || !rangoVigente || !evaluacionLista) return;
     setGenerandoPdf(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -293,6 +310,7 @@ export default function ReportePropietario() {
           desde, hasta,
           usuario_id: session?.user?.id,
           asesor_nombre: asesorNombre,
+          evaluacion,
         }),
       });
       const data = await res.json();
@@ -610,7 +628,27 @@ export default function ReportePropietario() {
                     </p>
                   </div>
 
-                  <button onClick={generarPdf} disabled={generandoPdf} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "12px 24px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+                  <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, border: "1px solid #e5e7eb" }}>
+                    <h3 style={{ margin: "0 0 10px", fontSize: 15 }}>Diagnóstico y estrategia comercial</h3>
+                    <p style={{ fontSize: 12, color: "#6b7280" }}>Revisión interna (no aparece en el PDF). Contrasta la retroalimentación de los prospectos, comparables, precio y seguimiento. No atribuyas causas sin evidencia.</p>
+                    {indicaciones.map((texto, i) => <p key={i} style={{ fontSize: 12, color: "#92400e" }}>{texto}</p>)}
+                    {[
+                      ["diagnostico", "Nuestra evaluación", "Resume las conclusiones verificadas de la actividad y las objeciones reales."],
+                      ["recomendacion", "Nuestra recomendación", "Indica qué conviene hacer: mantener, ajustar precio, mejorar presentación u otra acción fundamentada."],
+                      ["estrategia", "Estrategia para el siguiente periodo", "Explica las acciones que realizará Emporio y, si aplica, qué autorización necesita."],
+                    ].map(([campo, titulo, placeholder]) => (
+                      <label key={campo} style={{ display: "block", marginTop: 12, fontSize: 13, fontWeight: 700 }}>
+                        {titulo}
+                        <textarea value={evaluacion[campo]} onChange={e => cambiarEvaluacion(campo, e.target.value)} maxLength={900} rows={4} placeholder={placeholder} style={{ display: "block", width: "100%", boxSizing: "border-box", border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, marginTop: 6, fontSize: 13 }} />
+                      </label>
+                    ))}
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 14, fontSize: 12 }}>
+                      <input type="checkbox" checked={evaluacion.validada} onChange={e => setEvaluacion(prev => ({ ...prev, validada: e.target.checked }))} />
+                      Confirmo que revisé la evidencia y que el texto es una recomendación final para el propietario, no una lista de pendientes internos.
+                    </label>
+                    {!rangoVigente && <p style={{ color: "#92400e", fontSize: 12 }}>Actualiza el reporte para el periodo seleccionado antes de emitir el PDF.</p>}
+                  </div>
+                  <button onClick={generarPdf} disabled={generandoPdf || !evaluacionLista || !rangoVigente} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "12px 24px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
                     {generandoPdf ? "Generando…" : "📄 Generar reporte para enviar"}
                   </button>
               </>
