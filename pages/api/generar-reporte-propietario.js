@@ -9,7 +9,12 @@ const supabaseAdmin = createClient(
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { propiedad_id, desde, hasta, asesor_nombre } = req.body;
+  const { propiedad_id, desde, hasta, asesor_nombre, evaluacion } = req.body || {};
+  const campos = ["diagnostico", "recomendacion", "estrategia"];
+  if (evaluacion?.validada !== true || campos.some(c => typeof evaluacion[c] !== "string" || !evaluacion[c].trim() || evaluacion[c].length > 900)) {
+    return res.status(400).json({ error: "Completa y valida la evaluación, recomendación y estrategia comercial antes de emitir el reporte (máximo 900 caracteres por campo)." });
+  }
+  const evaluacionValidada = Object.fromEntries(campos.map(c => [c, evaluacion[c].trim()]));
   if (!propiedad_id) return res.status(400).json({ error: "Falta propiedad_id" });
 
   const { data: propiedad, error: errorPropiedad } = await supabaseAdmin
@@ -76,6 +81,7 @@ export default async function handler(req, res) {
       filtroFechaHora(supabaseAdmin.from("citas").select("*, clientes(nombre)").eq("propiedad_id", propiedad_id)),
     ]);
 
+    for (const resultado of [visitasRes, solicitudesRes, enviosPropRes, citasRes]) if (resultado.error) throw resultado.error;
     const visitas = visitasRes.data || [];
     const solicitudes = solicitudesRes.data || [];
     let envios = (enviosPropRes.data || []).map((e) => e.envios).filter(Boolean);
@@ -97,6 +103,7 @@ export default async function handler(req, res) {
         supabaseAdmin.from("visitas_propiedad").select("id", { count: "exact", head: true }).eq("propiedad_id", propiedad_id).gte("created_at", `${desdeAnteriorStr}T00:00:00`).lte("created_at", `${hastaAnteriorStr}T23:59:59`),
         supabaseAdmin.from("citas").select("id", { count: "exact", head: true }).eq("propiedad_id", propiedad_id).gte("fecha_hora", `${desdeAnteriorStr}T00:00:00`).lte("fecha_hora", `${hastaAnteriorStr}T23:59:59`),
       ]);
+      if (visitasAntRes.error || citasAntRes.error) throw visitasAntRes.error || citasAntRes.error;
       comparativaAnterior = { visitas: visitasAntRes.count || 0, citas: citasAntRes.count || 0 };
     }
 
@@ -106,6 +113,7 @@ export default async function handler(req, res) {
       periodo: { desde, hasta },
       datos: { visitas, solicitudes, envios, citas, comparativaAnterior },
       asesorNombre: asesor_nombre || null,
+      evaluacion: evaluacionValidada,
     });
 
     const nombreArchivo = `reporte_${propiedad.public_id || propiedad_id}_${Date.now()}.pdf`;
