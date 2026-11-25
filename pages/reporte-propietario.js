@@ -595,7 +595,6 @@ export default function ReportePropietario() {
                   )}
                 </div>
 
-                {propietario && (
                   <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, border: "1px solid #f0f0f0" }}>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 6 }}>
                       Asesor a cargo de esta propiedad (aparece en el cierre del reporte)
@@ -610,13 +609,10 @@ export default function ReportePropietario() {
                       Déjalo en blanco si no quieres mostrar un asesor específico en este reporte.
                     </p>
                   </div>
-                )}
 
-                {propietario && (
                   <button onClick={generarPdf} disabled={generandoPdf} style={{ background: brand.red, color: "#fff", border: "none", borderRadius: 10, padding: "12px 24px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
                     {generandoPdf ? "Generando…" : "📄 Generar reporte para enviar"}
                   </button>
-                )}
               </>
             )}
           </>
